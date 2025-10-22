@@ -1,7 +1,3 @@
-# ========================================================
-# =================== PARTE 1: ITENS 1-6 =================
-# ========================================================
-
 import os
 import pandas as pd
 import unicodedata
@@ -45,14 +41,13 @@ def _SUB(titulo):
 # ========================================================
 # 1) CONFIGURAÇÃO GOOGLE DRIVE / SHEETS
 # ========================================================
+
 _BANNER("1) CONFIGURAÇÃO GOOGLE DRIVE/SHEETS")
 
-CAMINHO_CREDENCIAIS = "./credentials.json"
-
-PASTA_BRUTA_ID = "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5"
-PASTA_TRATADA_ID = "10mW1LPrjsGRPYSWLMAF7tKgQbufLgDie"
-NOME_PLANILHA_TRATADA = "Dashboard_Duque_de_Caxias_Ouvidoria_Duque_de_Caxias_Tabela"
-
+# ----------------------------
+# AUTENTICAÇÃO ÚNICA (usar apenas uma vez)
+# ----------------------------
+CAMINHO_CREDENCIAIS = ".github/workflows/credentials.json"
 SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/spreadsheets"
@@ -62,43 +57,51 @@ try:
     creds = Credentials.from_service_account_file(CAMINHO_CREDENCIAIS, scopes=SCOPES)
     drive_service = build("drive", "v3", credentials=creds)
     gc = gspread.authorize(creds)
+    client = gc  # alias usado em partes do script
+    logging.info("✅ Autenticação Google OK")
     print("✅ Autenticação Google OK.")
-    logging.info("Autenticação Google OK")
 except Exception as e:
     logging.exception("Falha na autenticação Google. Verifique CAMINHO_CREDENCIAIS.")
     raise
 
 # ========================================================
-# 2) LEITURA — ÚLTIMA PLANILHA BRUTA DO DRIVE
+# 2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE - DINÂMICO)
 # ========================================================
-_BANNER("2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE)")
+_BANNER("2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE - DINÂMICO)")
 
-query = f"'{PASTA_BRUTA_ID}' in parents and mimeType='application/vnd.google-apps.spreadsheet'"
+from googleapiclient.discovery import build
+from google.oauth2.service_account import Credentials
+import gspread
+import pandas as pd
+import logging
 
-try:
-    arquivos = drive_service.files().list(
-        q=query, spaces="drive",
-        fields="files(id, name, createdTime)",
-        orderBy="createdTime desc", pageSize=1
-    ).execute().get("files", [])
-except Exception as e:
-    logging.exception("Erro ao listar arquivos no Drive.")
-    raise
+# --- Função helper para obter a última planilha da pasta bruta ---
+def get_latest_spreadsheet_df(folder_id: str, gspread_client, drive_svc) -> (str, str, pd.DataFrame):
+    res = drive_svc.files().list(
+        q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+        orderBy="modifiedTime desc",
+        pageSize=1,
+        fields="files(id, name, modifiedTime)"
+    ).execute()
+    files = res.get("files", [])
+    if not files:
+        raise SystemExit("❌ Nenhuma planilha bruta encontrada na pasta do Google Drive.")
+    latest = files[0]
+    fid, fname = latest["id"], latest["name"]
+    sh = gspread_client.open_by_key(fid)
+    aba = sh.sheet1
+    dfb = pd.DataFrame(aba.get_all_records())
+    return fid, fname, dfb
 
-if not arquivos:
-    raise FileNotFoundError(f"Nenhuma planilha na pasta {PASTA_BRUTA_ID}.")
-sheet_id = arquivos[0]["id"]
-print(f"📂 Última planilha encontrada: {arquivos[0]['name']}")
-logging.info(f"Última planilha encontrada: {arquivos[0]['name']} ({sheet_id})")
+# --- Uso (substitui a lógica duplicada) ---
+FOLDER_ID_BRUTA = "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5"
+latest_file_id, latest_file_name, df_bruta = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
+df = df_bruta.copy()
 
-try:
-    sh = gc.open_by_key(sheet_id)
-    df = pd.DataFrame(sh.sheet1.get_all_records())
-    print(f"✅ Planilha bruta importada com sucesso: {df.shape}")
-    logging.info(f"Planilha bruta importada com sucesso: {df.shape}")
-except Exception as e:
-    logging.exception("Erro ao abrir planilha por key com gspread.")
-    raise
+print(f"📂 Última planilha encontrada: {latest_file_name} ({latest_file_id})")
+logging.info(f"Última planilha encontrada: {latest_file_name} ({latest_file_id})")
+print(f"✅ Planilha bruta importada com sucesso: {df_bruta.shape}")
+logging.info(f"Planilha bruta importada com sucesso: {df_bruta.shape}")
 
 # ========================================================
 # 3) NORMALIZAÇÃO DE NOMES DE COLUNA
@@ -116,6 +119,17 @@ def normalizar_nome_coluna(col: str) -> str:
 df.columns = [normalizar_nome_coluna(c) for c in df.columns]
 print("✅ Cabeçalhos normalizados:", list(df.columns))
 logging.info(f"Cabeçalhos normalizados: {list(df.columns)}")
+
+# Padroniza a coluna 'protocolo' consistentemente (strip + upper)
+def normalize_protocolo_col(df_local: pd.DataFrame, col: str = "protocolo") -> pd.DataFrame:
+    if col in df_local.columns:
+        df_local[col] = df_local[col].astype(str).str.strip().str.upper()
+    else:
+        logging.warning(f"⚠️ Coluna '{col}' não encontrada após normalização!")
+    return df_local
+
+df = normalize_protocolo_col(df, "protocolo")
+# atenção: após leitura de df_bruta e df_tratada também aplique a mesma função (ver Item 5/8)
 
 # ========================================================
 # 4) FUNÇÕES AUXILIARES (codificação / datas / post em lotes)
@@ -282,31 +296,71 @@ def _canon_prazo_restante(v):
         return "Demanda Concluída"
     return s_clean
 
-# ========================================================
-# 4.5) CRIAÇÃO DO DF_UPSERT
-# ========================================================
-df_upsert = df.copy()
-df_upsert["protocolo"] = df_upsert["protocolo"].astype(str).str.strip()
-
-# =============================================
+# ============================================= 
 # 5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA
 # =============================================
 _BANNER("5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA")
 
-# Abre a planilha tratada (já no fluxo local)
 try:
-    planilha_tratada = gc.open_by_key("1GB1Bf9p81X4MpR1TFoO2T55lnSr2wfJeKrU5LnuOFlk")
+    # ---------- CONSTANTES / IDs ----------
+    # Defina PLANILHA_TRATADA_ID no topo do arquivo ou altere aqui diretamente:
+    PLANILHA_TRATADA_ID = "1SmO5yTD5B6fN_gT-7m1wosP_sbzmtd0agTC-LNCnX9Y"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
+
+    # ---------- ABRE A PLANILHA TRATADA (única fonte) ----------
+    planilha_tratada = gc.open_by_key(PLANILHA_TRATADA_ID)
     aba_tratada = planilha_tratada.sheet1
     df_tratada = pd.DataFrame(aba_tratada.get_all_records())
-    df_tratada["protocolo"] = df_tratada["protocolo"].astype(str).str.strip()
-    protocolos_existentes = set(df_tratada["protocolo"].tolist())
-    print(f"🔑 Protocolos já na planilha tratada: {len(protocolos_existentes)}")
-    logging.info(f"Protocolos já na planilha tratada: {len(protocolos_existentes)}")
+
+    # Normaliza colunas da planilha tratada
+    df_tratada.columns = [normalizar_nome_coluna(c) for c in df_tratada.columns]
+
+    # Normaliza 'protocolo' consistentemente
+    df_tratada = normalize_protocolo_col(df_tratada, "protocolo")
+    protocolos_existentes_set = set(df_tratada["protocolo"].astype(str).tolist())
+
+    # ---------- LÊ A ÚLTIMA PLANILHA BRUTA (reutiliza FOLDER_ID_BRUTA e helper) ----------
+    # IMPORTANTE: get_latest_spreadsheet_df deve existir (Item 2)
+    if 'FOLDER_ID_BRUTA' in globals():
+        folder_id = FOLDER_ID_BRUTA
+    else:
+        folder_id = "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5"  # fallback se não definido acima
+
+    latest_file_id, latest_file_name, df_bruta = get_latest_spreadsheet_df(folder_id, gc, drive_service)
+
+    # Normaliza colunas e protocolo da bruta
+    df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns]
+    df_bruta = normalize_protocolo_col(df_bruta, "protocolo")
+
+    # Marca novos protocolos (comparação com o conjunto da tratada)
+    df_bruta["eh_novo"] = ~df_bruta["protocolo"].isin(protocolos_existentes_set)
+    novos_protos = df_bruta.loc[df_bruta["eh_novo"], "protocolo"].tolist()
+
+    print(f"🔑 Protocolos já na planilha tratada: {len(protocolos_existentes_set)}")
+    print(f"🆕 Protocolos detectados como novos: {len(novos_protos)}")
+    logging.info(f"Protocolos já na planilha tratada: {len(protocolos_existentes_set)}")
+    logging.info(f"Protocolos detectados como novos: {novos_protos[:50]}")
+
+    # Log dos existentes que não serão enviados
+    nao_enviados = df_bruta.loc[~df_bruta["eh_novo"], "protocolo"].tolist()
+    print(f"⚠️ Protocolos existentes que não serão enviados (não novos): {len(nao_enviados)}")
+    logging.info(f"Protocolos existentes que não serão enviados: {nao_enviados[:50]}")
+
+    # Verificação final
+    if df_bruta.empty:
+        raise Exception("A planilha bruta mais recente está vazia ou não pôde ser lida.")
+
+    # Substitui df pelo df_bruta "oficial" para manter compatibilidade posterior
+    df = df_bruta.copy()
+
 except Exception as e:
-    print(f"⚠️ Não foi possível carregar a planilha tratada: {e}")
-    logging.warning(f"Não foi possível carregar a planilha tratada: {e}")
+    print(f"⚠️ Erro ao carregar planilhas: {e}")
+    logging.warning(f"Erro ao carregar planilhas: {e}")
     df_tratada = pd.DataFrame()
-    protocolos_existentes = set()
+    protocolos_existentes_set = set()
+    df = pd.DataFrame()
+    df["eh_novo"] = True
+    novos_protos = []
+    nao_enviados = []
 
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
@@ -328,39 +382,76 @@ logging.info(f"Novos protocolos: {len(novos)}, Existentes: {len(existentes)}")
 # ========================================================
 _BANNER("7) TRATAMENTOS (somente NOVOS)")
 
+# Seleciona apenas os protocolos novos identificados no Item 5
+df_novos = df[df["eh_novo"] == True].copy()
+
+if df_novos.empty:
+    logging.info("Nenhum protocolo novo para tratamento.")
+else:
+    logging.info(f"Aplicando tratamentos em {len(df_novos)} protocolos novos. Shape inicial: {df_novos.shape}")
+
 def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     df_loc = df_in.copy()
+    logging.debug(f"Iniciando _tratar_full com DataFrame de shape: {df_loc.shape}")
 
     # 7.1 Tema/Assunto — mantém 'não se aplica' → 'Assédio'
-    if "tema" in df_loc.columns and "assunto" in df_loc.columns:
-        tema_tmp = df_loc["tema"].astype(str).str.strip().str.casefold()
-        assunto_tmp = df_loc["assunto"].astype(str).str.strip().str.casefold()
-        valores_assunto = ["outro", "outros", "na", "n/a", "n\\a", ""]
-        cond_42 = (tema_tmp == "não se aplica") & (assunto_tmp.isin(valores_assunto))
-        if int(cond_42.sum()):
-            df_loc.loc[cond_42, "assunto"] = "Assédio"
-        cond_41 = (tema_tmp == "não se aplica")
-        if int(cond_41.sum()):
-            df_loc.loc[cond_41, "tema"] = "Assédio"
+    try:
+        if "tema" in df_loc.columns and "assunto" in df_loc.columns:
+            tema_tmp = df_loc["tema"].astype(str).str.strip().str.casefold()
+            assunto_tmp = df_loc["assunto"].astype(str).str.strip().str.casefold()
+            valores_assunto = ["outro", "outros", "na", "n/a", "n\\a", ""]
+            cond_42 = (tema_tmp == "não se aplica") & (assunto_tmp.isin(valores_assunto))
+            if int(cond_42.sum()):
+                df_loc.loc[cond_42, "assunto"] = "Assédio"
+                logging.info(f"Tratamento 7.1 (Assunto) aplicado a {int(cond_42.sum())} linhas.")
+            cond_41 = (tema_tmp == "não se aplica")
+            if int(cond_41.sum()):
+                df_loc.loc[cond_41, "tema"] = "Assédio"
+                logging.info(f"Tratamento 7.1 (Tema) aplicado a {int(cond_41.sum())} linhas.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.1 (Tema/Assunto): {e}", exc_info=True)
 
     # 7.2 Data da conclusão → texto "DD/MM/AA" ou "Não concluído"
-    if "data_da_conclusao" in df_loc.columns:
-        df_loc["data_da_conclusao"] = _conclusao_strict(df_loc["data_da_conclusao"])
-        df_loc["data_da_conclusao"] = df_loc["data_da_conclusao"].apply(
-            lambda x: x if pd.notna(x) and str(x).strip().lower() not in ["na", "nan", "n/a", ""] else "Não concluído"
-        )
+    try:
+        if "data_da_conclusao" in df_loc.columns:
+            df_loc["data_da_conclusao"] = _conclusao_strict(df_loc["data_da_conclusao"])
+            df_loc["data_da_conclusao"] = df_loc["data_da_conclusao"].apply(
+                lambda x: x if pd.notna(x) and str(x).strip().lower() not in ["na", "nan", "n/a", ""] else "Não concluído"
+            )
+            logging.info("Tratamento 7.2 (Data da Conclusão) aplicado.")
+            # QA: Verifica se a coluna tem valores inválidos após o tratamento
+            invalid_dates = df_loc["data_da_conclusao"].apply(
+                lambda x: pd.isna(x) or (str(x).strip().lower() not in ["não concluído"] and not re.match(r"\d{2}/\d{2}/\d{2}", str(x)))
+            )
+            if invalid_dates.any():
+                logging.warning(f"QA 7.2: Coluna 'data_da_conclusao' contém valores inválidos/inesperados após tratamento em {invalid_dates.sum()} linhas. Exemplos: {df_loc.loc[invalid_dates, 'data_da_conclusao'].unique()[:5].tolist()}")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.2 (Data da Conclusão): {e}", exc_info=True)
+
 
     # 7.3 Unidades de saúde (capitaliza e trata “sem informação”)
-    for col in df_loc.columns:
-        if "unidade" in col and "saude" in col:
-            df_loc[col] = (
-                df_loc[col].astype(str).str.strip().str.lower()
-                .replace("sem informação", "Não é uma Unidade de Saúde")
-                .str.capitalize()
-            )
+    try:
+        for col in df_loc.columns:
+            if "unidade" in col and "saude" in col:
+                linhas_alteradas = (df_loc[col].astype(str).str.strip().str.lower() == "sem informação").sum()
+                df_loc[col] = (
+                    df_loc[col].astype(str).str.strip().str.lower()
+                    .replace("sem informação", "Não é uma Unidade de Saúde")
+                    .str.capitalize()
+                )
+                if linhas_alteradas > 0:
+                    logging.info(f"Tratamento 7.3 (Unidades de Saúde) aplicado na coluna '{col}' para {linhas_alteradas} linhas.")
+                # QA para 'unidade'/'saude'
+                if df_loc[col].astype(str).str.contains(r'(?i)(sim|nao|true|false|\?{2,})').any():
+                    logging.warning(f"QA 7.3: Coluna '{col}' ainda contém valores inesperados (Sim/Não/True/False/??) após tratamento. Exemplos: {df_loc.loc[df_loc[col].astype(str).str.contains(r'(?i)(sim|nao|true|false|\?{2,})'), col].unique()[:5].tolist()}")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.3 (Unidades de Saúde): {e}", exc_info=True)
+
 
     # 7.4 Órgãos por tema — MATCH EXATO, fallback apenas se TEMA vazio
+    # Reafirmação das funções auxiliares para garantir auto-suficiência deste bloco
     import unicodedata as _ud, re as _re
+
     def _norm(s):
         if pd.isna(s): return ""
         s = str(s).strip().lower()
@@ -417,249 +508,408 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
 
     def mapear_orgao_exato(celula_tema):
         orgs = []
-        for t in _div_temas(celula_tema):
+        # Garante que celula_tema é string antes de passar para _div_temas
+        tema_as_str = str(celula_tema) if pd.notna(celula_tema) else ""
+        for t in _div_temas(tema_as_str):
             t_norm = _norm(t)
             if not t_norm:
                 continue
             if t_norm in map_exact:
                 orgs.append(map_exact[t_norm])
+        # Garante que sempre retorna uma string ou None, nunca uma lista vazia ou algo booleano
         return " | ".join(dict.fromkeys(o.strip() for o in orgs if o and str(o).strip())) or None
 
-    if "tema" in df_loc.columns:
-        df_loc["orgaos"] = df_loc["tema"].apply(mapear_orgao_exato)
+    try:
+        if "tema" in df_loc.columns:
+            # Explicitamente converte 'tema' para string ANTES de aplicar a lógica,
+            # para evitar que booleanos ou outros tipos sejam passados para as funções de mapeamento.
+            df_loc["tema"] = df_loc["tema"].astype(str)
+            logging.debug("Coluna 'tema' convertida para string.")
 
+            def atribuir_orgao_para_linha(row):
+                tema_val = row.get("tema") # 'tema_val' será agora uma string
+                orgao = mapear_orgao_exato(tema_val)
+                if not orgao or str(orgao).strip() == "":
+                    # Fallback, garanta que é uma string, não None ou booleano
+                    return "Secretaria Municipal de Comunicação e Relações Públicas"
+                return orgao # <-- CORRETAMENTE INDENTADO!
+
+            # Aplica atribuição de órgãos para TODAS as linhas, garantindo novos protocolos
+            # Cria a coluna 'orgaos' se não existir, ou a preenche se existir
+            df_loc["orgaos"] = df_loc.apply(lambda row: atribuir_orgao_para_linha(row), axis=1)
+            logging.info("Tratamento 7.4 (Órgãos por tema) aplicado.")
+        else:
+            # Se 'tema' não existe, garante que 'orgaos' é criada ou preenchida com um valor padrão
+            if "orgaos" not in df_loc.columns:
+                df_loc["orgaos"] = "Secretaria Municipal de Comunicação e Relações Públicas"
+                logging.warning("Coluna 'tema' ausente. 'orgaos' criada com valor padrão.")
+            else:
+                df_loc["orgaos"].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
+                df_loc["orgaos"] = df_loc["orgaos"].astype(str) # Garante que a coluna é string
+                logging.warning("Coluna 'tema' ausente. 'orgaos' preenchida com valor padrão e convertida para string.")
+
+        # Padronização final de órgãos
         def _canon_orgaos(cell):
             if cell is None or str(cell).strip() == "":
-                return cell
+                return ""
             partes = [p.strip() for p in str(cell).split("|")]
             partes = [_canon_txt(p) for p in partes if p]
             return " | ".join(dict.fromkeys(partes))
 
-        df_loc["orgaos"] = df_loc["orgaos"].apply(_canon_orgaos)
+        # Aplica canonização final e garante tipo string
+        df_loc["orgaos"] = df_loc["orgaos"].apply(_canon_orgaos).astype(str)
+        logging.info("Tratamento 7.4 (Padronização final de órgãos) aplicado.")
 
-        mask_tema_vazio = df_loc["tema"].isna() | (df_loc["tema"].astype(str).str.strip() == "")
-        mask_org_vazio  = df_loc["orgaos"].isna() | (df_loc["orgaos"].astype(str).str.strip() == "")
-        df_loc.loc[mask_tema_vazio & mask_org_vazio, "orgaos"] = "Secretaria Municipal de Comunicação e Relações Públicas"
+        # Fallback adicional para células com TEMA vazio e ORGÃOS ainda vazios
+        if "tema" in df_loc.columns: # Condição para evitar erro se 'tema' não existir
+            mask_tema_vazio = df_loc["tema"].isna() | (df_loc["tema"].astype(str).str.strip() == "")
+            mask_org_vazio  = df_loc["orgaos"].isna() | (df_loc["orgaos"].astype(str).str.strip() == "")
+            if (mask_tema_vazio & mask_org_vazio).any():
+                count_fallback = (mask_tema_vazio & mask_org_vazio).sum()
+                df_loc.loc[mask_tema_vazio & mask_org_vazio, "orgaos"] = "Secretaria Municipal de Comunicação e Relações Públicas"
+                logging.warning(f"QA 7.4: {count_fallback} linhas tiveram 'orgaos' preenchido por fallback final (tema e orgaos vazios).")
+        else: # Se 'tema' não existe, preenche 'orgaos' onde estiver vazio
+            count_fillna = df_loc["orgaos"].isna().sum()
+            if count_fillna > 0:
+                df_loc["orgaos"].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
+                logging.warning(f"QA 7.4: 'orgaos' preenchido por fallback final para {count_fillna} linhas (tema ausente).")
+
+        # QA Final para 'orgaos': verifica valores inesperados (Sim/Não/True/False, etc.)
+        unexpected_orgaos = df_loc["orgaos"].astype(str).str.contains(r'(?i)^(sim|nao|true|false|cidadão|\?{2,}|nan)$')
+        if unexpected_orgaos.any():
+            logging.error(f"QA 7.4: Coluna 'orgaos' ainda contém valores inesperados em {unexpected_orgaos.sum()} linhas. Exemplos: {df_loc.loc[unexpected_orgaos, 'orgaos'].unique()[:5].tolist()}",
+                          extra={'data': df_loc.loc[unexpected_orgaos, ['protocolo', 'tema', 'orgaos']].to_dict(orient='records')[:5]})
+            # Considere levantar uma exceção ou tomar uma ação mais drástica aqui se esses valores forem críticos.
+
+        logging.info(f"QA 7.4: value_counts da coluna 'orgaos' após tratamento: \n{df_loc['orgaos'].value_counts(dropna=False).to_string()}")
+
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.4 (Órgãos por tema): {e}", exc_info=True)
+
 
     # 7.5 Padronização 'servidor' (dicionário completo)
-    dicionario_servidor = {
-        "Camila do Lago Marins": "Camila Marins",
-        "Camila Marins": "Camila Marins",
-        "Dhayane Cristina Pinho de Almeida": "Dhayane Cristina Pinho de Almeida",
-        "Dhayane Pinho": "Dhayane Cristina Pinho de Almeida",
-        "Joana Darc Salles Ferreira": "Joana Darc Salles Ferreira",
-        "Joana Salles": "Joana Darc Salles Ferreira",
-        "Lucia Helena Tinoco Pacehco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lúcia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lúcia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helenba Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Rafaella Marques Gomes Santos": "Rafaella Marques Gomes Santos",
-        "Roilene Pereira da Silva": "Rosilene Pereira da Silva",
-        "Rosilene Pereira da Silva": "Rosilene Pereira da Silva",
-        "Stephanie dos Santos Silva": "Stephanie dos Santos Silva",
-        "Stephanie Santos": "Stephanie dos Santos Silva",
-        "Stéphanie Santos": "Stephanie dos Santos Silva",
-        "Stéphaniesantos": "Stephanie dos Santos Silva",
-        "Stpehanie Santos": "Stephanie dos Santos Silva",
-        "Anne Beatriz da Silva": "Anne Beatriz da Silva Rodrigues",
-        "Bruna Maria ( Coordenadora)": "Cidadão",
-        "Isabel": "Cidadão",
-        "Gabriela da Silva Rozi": "Cidadão",
-        "Lana Carolina Mesquita de Andrade": "Cidadão",
-        "Lívia Cavalcante": "Lívia Kathleen Cavalcante Patriota Leite",
-        "Lívia Kathleen Cavalcante Patriota Leite": "Lívia Kathleen Cavalcante Patriota Leite",
-        "Lucia Helena": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helena Tinoco": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helena Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helen Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helan Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helena  Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Lucia Helena Tinoco Pachewco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-        "Mery": "Cidadão",
-        "Ouvidoria Geral (Adm)": "Cidadão",
-        "Rafaella Marques": "Rafaella Marques Gomes Santos",
-        "Ronaldo de Oliveira Brandão": "Cidadão",
-        "Séphanie Santos": "Stephanie dos Santos Silva",
-        "Shirley Santana": "Cidadão",
-        "Stépanie Santos": "Stephanie dos Santos Silva",
-        "Stéphanie  Santos": "Stephanie dos Santos Silva",
-        "Stéphanie Santos": "Stephanie dos Santos Silva",
-        "Stephanie dos Santos": "Stephanie dos Santos Silva",
-        "Stéphanie Santoa": "Stephanie dos Santos Silva",
-        "Stephanie Santos": "Stephanie dos Santos Silva",
-        "Stephanie dos Santos": "Stephanie dos Santos Silva",
-        "Stephanie Santos": "Stephanie dos Santos Silva",
-        "Thamires Manhães": "Cidadão"
-    }
-    if "servidor" in df_loc.columns:
-        _orig = df_loc["servidor"].astype(str).str.strip()
-        df_loc["servidor"] = _orig.map(dicionario_servidor).fillna(_orig)
+    try:
+        dicionario_servidor = {
+            "Camila do Lago Marins": "Camila Marins", "Camila Marins": "Camila Marins",
+            "Dhayane Cristina Pinho de Almeida": "Dhayane Cristina Pinho de Almeida", "Dhayane Pinho": "Dhayane Cristina Pinho de Almeida",
+            "Joana Darc Salles Ferreira": "Joana Darc Salles Ferreira", "Joana Salles": "Joana Darc Salles Ferreira",
+            "Lucia Helena Tinoco Pacehco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+            "Lucia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lúcia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+            "Lúcia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helenba Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+            "Rafaella Marques Gomes Santos": "Rafaella Marques Gomes Santos",
+            "Roilene Pereira da Silva": "Rosilene Pereira da Silva", "Rosilene Pereira da Silva": "Rosilene Pereira da Silva",
+            "Stephanie dos Santos Silva": "Stephanie dos Santos Silva", "Stephanie Santos": "Stephanie dos Santos Silva",
+            "Stéphanie Santos": "Stephanie dos Santos Silva", "Stéphaniesantos": "Stephanie dos Santos Silva",
+            "Stpehanie Santos": "Stephanie dos Santos Silva",
+            "Anne Beatriz da Silva": "Anne Beatriz da Silva Rodrigues", "Bruna Maria ( Coordenadora)": "Cidadão",
+            "Isabel": "Cidadão", "Gabriela da Silva Rozi": "Cidadão", "Lana Carolina Mesquita de Andrade": "Cidadão",
+            "Lívia Cavalcante": "Lívia Kathleen Cavalcante Patriota Leite", "Lívia Kathleen Cavalcante Patriota Leite": "Lívia Kathleen Cavalcante Patriota Leite",
+            "Lucia Helena": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco": "Lúcia Helena Tinoco Pacheco Varella",
+            "Lucia Helena Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helen Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+            "Lucia Helan Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena  Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+            "Lucia Helena Tinoco Pachewco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+            "Mery": "Cidadão", "Ouvidoria Geral (Adm)": "Cidadão", "Rafaella Marques": "Rafaella Marques Gomes Santos",
+            "Ronaldo de Oliveira Brandão": "Cidadão", "Séphanie Santos": "Stephanie dos Santos Silva",
+            "Shirley Santana": "Cidadão", "Stépanie Santos": "Stephanie dos Santos Silva",
+            "Stéphanie  Santos": "Stephanie dos Santos Silva", "Stéphanie Santos": "Stephanie dos Santos Silva",
+            "Stephanie dos Santos": "Stephanie dos Santos Silva", "Stéphanie Santoa": "Stephanie dos Santos Silva",
+            "Stephanie Santos": "Stephanie dos Santos Silva", "Stephanie dos Santos": "Stephanie dos Santos Silva",
+            "Stephanie Santos": "Stephanie dos Santos Silva", "Thamires Manhães": "Cidadão"
+        }
+        if "servidor" in df_loc.columns:
+            _orig = df_loc["servidor"].astype(str).str.strip()
+            df_loc["servidor"] = _orig.map(dicionario_servidor).fillna(_orig)
+            logging.info("Tratamento 7.5 (Padronização 'servidor') aplicado.")
+            logging.debug(f"QA 7.5: value_counts da coluna 'servidor' após tratamento: \n{df_loc['servidor'].value_counts(dropna=False).to_string(max_rows=10)}")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.5 (Padronização 'servidor'): {e}", exc_info=True)
+
 
     # 7.6 Responsável (normalização)
-    if "responsavel" in df_loc.columns:
-        df_loc["responsavel"] = _canon_responsavel_series(df_loc["responsavel"])
+    try:
+        if "responsavel" in df_loc.columns:
+            df_loc["responsavel"] = _canon_responsavel_series(df_loc["responsavel"])
+            df_loc["responsavel"] = df_loc["responsavel"].astype(str).replace(
+                {"Sim": "Cidadão", "Não": "Não Informado", "True": "Cidadão", "False": "Não Informado"}, regex=False
+            )
+            df_loc.loc[df_loc["responsavel"].str.strip() == "", "responsavel"] = "Não Informado"
+            logging.info("Tratamento 7.6 (Responsável) aplicado.")
+            # QA para 'responsavel'
+            unexpected_responsavel = df_loc["responsavel"].astype(str).str.contains(r'(?i)^(sim|nao|true|false|\?{2,}|nan)$')
+            if unexpected_responsavel.any():
+                logging.warning(f"QA 7.6: Coluna 'responsavel' ainda contém valores inesperados em {unexpected_responsavel.sum()} linhas. Exemplos: {df_loc.loc[unexpected_responsavel, 'responsavel'].unique()[:5].tolist()}")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.6 (Responsável): {e}", exc_info=True)
+
 
     # 7.7 Datas e tipos
-    if "data_da_criacao" in df_loc.columns:
-        df_loc["data_da_criacao"] = _to_ddmmaa_text(df_loc["data_da_criacao"]).astype(str)
-    if "status_demanda" in df_loc.columns:
-        df_loc["status_demanda"] = df_loc["status_demanda"].astype(str)
-    if "data_da_conclusao" in df_loc.columns:
-        df_loc["data_da_conclusao"] = _conclusao_strict(df_loc["data_da_conclusao"])
+    try:
+        if "data_da_criacao" in df_loc.columns:
+            df_loc["data_da_criacao"] = _to_ddmmaa_text(df_loc["data_da_criacao"]).astype(str)
+            logging.info("Tratamento 7.7 (data_da_criacao) aplicado.")
+        if "status_demanda" in df_loc.columns:
+            df_loc["status_demanda"] = df_loc["status_demanda"].astype(str)
+            logging.info("Tratamento 7.7 (status_demanda) tipo aplicado.")
+        if "data_da_conclusao" in df_loc.columns:
+            df_loc["data_da_conclusao"] = _conclusao_strict(df_loc["data_da_conclusao"])
+            logging.info("Tratamento 7.7 (data_da_conclusao) strict aplicado.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.7 (Datas e Tipos): {e}", exc_info=True)
+
 
     # 7.8 Regra de ouro: se CONCLUÍDA => 'prazo_restante' = 'Demanda Concluída'
-    if "status_demanda" in df_loc.columns and "prazo_restante" in df_loc.columns:
-        mask_conc = df_loc["status_demanda"].map(_is_concluida)
-        df_loc.loc[mask_conc, "prazo_restante"] = "Demanda Concluída"
+    try:
+        if "status_demanda" in df_loc.columns and "prazo_restante" in df_loc.columns:
+            mask_conc = df_loc["status_demanda"].map(_is_concluida)
+            if mask_conc.any():
+                df_loc.loc[mask_conc, "prazo_restante"] = "Demanda Concluída"
+                logging.info(f"Tratamento 7.8 (prazo_restante p/ concluída) aplicado para {mask_conc.sum()} linhas.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.8 (Prazo Restante): {e}", exc_info=True)
 
+    logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
     return df_loc
 
+# Aplica o tratamento aos novos protocolos
+try:
+    if not df_novos.empty:
+        df_novos = _tratar_full(df_novos)
+        logging.info(f"Tratamento full aplicado a {len(df_novos)} protocolos novos.")
+    else:
+        logging.info("df_novos está vazio, pulando _tratar_full.")
+except Exception as e:
+    logging.critical(f"Erro CRÍTICO ao aplicar _tratar_full em df_novos: {e}", exc_info=True)
+    # Dependendo da severidade, você pode querer levantar a exceção ou parar o pipeline.
+    raise
 
+# QA pós _tratar_full global para df_novos
+if not df_novos.empty:
+    for col in ['orgaos', 'responsavel', 'status_demanda', 'data_da_conclusao']:
+        if col in df_novos.columns:
+            empty_count = df_novos[col].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']).sum()
+            if empty_count > 0:
+                logging.warning(f"QA Pós-Tratamento (df_novos): Coluna '{col}' contém {empty_count} valores vazios/inválidos/não informados. Exemplos: {df_novos.loc[df_novos[col].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']), col].unique()[:5].tolist()}")
+            
+            # Verificação de tipos para garantir que são strings
+            if not pd.api.types.is_string_dtype(df_novos[col]):
+                logging.error(f"QA Pós-Tratamento (df_novos): Coluna '{col}' não é do tipo string após tratamento. Tipo atual: {df_novos[col].dtype}. Convertendo para string.")
+                df_novos[col] = df_novos[col].astype(str)
+                
 # ========================================================
-# 8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS (CORRIGIDO)
+# 8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS
 # ========================================================
 _BANNER("8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS")
 
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials
-
-    if 'client' not in globals():
-        scope = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
-        client = gspread.authorize(creds)
-except Exception as e:
-    raise SystemExit(f"❌ Não foi possível autenticar o client do Google Sheets: {e}")
-
 # ----------------------------------------------------------
-# ABRE A PLANILHA TRATADA NO GOOGLE SHEETS
+# GARANTE QUE df_bruta EXISTE E TEM A COLUNA 'protocolo'
 # ----------------------------------------------------------
 try:
-    planilha_tratada = client.open_by_key("1GB1Bf9p81X4MpR1TFoO2T55lnSr2wfJeKrU5LnuOFlk")
-    aba_tratada = planilha_tratada.sheet1
+    if 'df_bruta' not in globals() or df_bruta.empty:
+        raise SystemExit("❌ df_bruta não está definido ou está vazio. Carregue a base bruta antes do Item 8.")
+    logging.info(f"df_bruta presente e com shape: {df_bruta.shape}")
+
+    df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns] # Garante que está normalizado
+    df_bruta = normalize_protocolo_col(df_bruta, "protocolo") # Garante que protocolo está padronizado
+    logging.debug("Colunas e protocolos de df_bruta normalizados.")
 except Exception as e:
-    raise SystemExit(f"❌ Não foi possível abrir a planilha tratada: {e}")
+    logging.critical(f"Erro na checagem inicial de df_bruta no Item 8: {e}", exc_info=True)
+    raise
 
 # ----------------------------------------------------------
-# CONVERTE A PLANILHA EXISTENTE EM DATAFRAME
+# CARREGA PLANILHA TRATADA E OBTÉM PROTOCOLOS EXISTENTES
 # ----------------------------------------------------------
-df_tratada = pd.DataFrame(aba_tratada.get_all_records())
-df_tratada.columns = df_tratada.columns.str.strip().str.lower()
 
-# Padroniza a coluna protocolo
-if "protocolo" in df_tratada.columns:
-    df_tratada["protocolo"] = df_tratada["protocolo"].astype(str).str.strip()
-    protocolos_existentes = set(df_tratada["protocolo"])
-else:
-    protocolos_existentes = set()
-    logging.warning("⚠️ Coluna 'protocolo' não encontrada na planilha tratada!")
-
-# ----------------------------------------------------------
-# FILTRA APENAS OS PROTOCOLOS NOVOS
-# ----------------------------------------------------------
-df_send = df_upsert[~df_upsert["protocolo"].isin(protocolos_existentes)].copy()
-
-# --- Garantir tratamento consistente em toda a base antes do envio ---
-# Aplica o tratamento full (item 7) ao df_upsert e/ou somente aos novos (df_send)
-# Recomendo aplicar em df_upsert para consistência global:
 try:
-    df_upsert = _tratar_full(df_upsert)
+    if 'client' not in globals() or client is None:
+        raise SystemExit("❌ Cliente gspread não autenticado. Verifique Item 1.")
+
+    PLANILHA_TRATADA_ID = "1SmO5yTD5B6fN_gT-7m1wosP_sbzmtd0agTC-LNCnX9Y"
+    planilha_tratada_gs = client.open_by_key(PLANILHA_TRATADA_ID)
+    aba_tratada = planilha_tratada_gs.sheet1
+    logging.info(f"Planilha tratada '{PLANILHA_TRATADA_ID}' aberta.")
 except Exception as e:
-    logging.exception("Falha ao aplicar _tratar_full em df_upsert: %s", e)
+    logging.critical(f"Erro ao abrir a planilha tratada ou autenticar no Item 8: {e}", exc_info=True)
+    raise
 
-# Agora (se você preferir aplicar apenas aos novos), aplique também a df_send:
-df_send = df_upsert[~df_upsert["protocolo"].isin(protocolos_existentes)].copy()
-# reforço: df_send já vem tratado, mas garanta:
-df_send = _tratar_full(df_send)
+try:
+    df_tratada_existente = pd.DataFrame(aba_tratada.get_all_records())
+    df_tratada_existente.columns = [normalizar_nome_coluna(c) for c in df_tratada_existente.columns]
+    logging.info(f"df_tratada_existente carregado com shape: {df_tratada_existente.shape}")
 
-print(f"📦 Atualizando planilha tratada: {len(df_send)} linhas | "
-      f"{(len(df_send) + 500 - 1) // 500} lotes")
-logging.info(f"Atualizando planilha tratada: {len(df_send)} linhas | "
-             f"{(len(df_send) + 500 - 1) // 500} lotes")
+    protocolos_existentes_set_final = set()
+    if "protocolo" in df_tratada_existente.columns:
+        df_tratada_existente["protocolo"] = df_tratada_existente["protocolo"].astype(str).str.strip().str.upper()
+        protocolos_existentes_set_final = set(df_tratada_existente["protocolo"])
+        logging.debug(f"Set de protocolos existentes criado com {len(protocolos_existentes_set_final)} itens.")
+    else:
+        logging.warning("Coluna 'protocolo' não encontrada em df_tratada_existente. Não será possível identificar protocolos existentes.")
+
+    cols_alvo_tratada = list(df_tratada_existente.columns)
+    if df_tratada_existente.empty:
+        if 'df_novos' in globals() and not df_novos.empty:
+            cols_alvo_tratada = list(df_novos.columns)
+            logging.info("Planilha tratada vazia, usando colunas de df_novos como referência para o schema.")
+        elif not df_bruta.empty:
+            cols_alvo_tratada = list(df_bruta.columns)
+            logging.info("Planilha tratada vazia e df_novos vazio, usando colunas de df_bruta como referência para o schema.")
+        else:
+            logging.error("Não foi possível determinar o schema da planilha tratada. df_tratada_existente, df_novos e df_bruta estão vazios.")
+            raise ValueError("Não foi possível determinar o schema da planilha tratada.")
+    logging.debug(f"Colunas alvo da planilha tratada: {cols_alvo_tratada}")
+
+except Exception as e:
+    logging.critical(f"Erro ao processar df_tratada_existente ou definir schema alvo no Item 8: {e}", exc_info=True)
+    raise
 
 # ----------------------------------------------------------
-# 🔧 TRATAMENTO CRÍTICO — DATA DA CONCLUSÃO
+# IDENTIFICA E PREPARA NOVOS PROTOCOLOS PARA ENVIO
 # ----------------------------------------------------------
-# Função para padronizar datas e preencher "Não concluído" se inválida
-def tratar_data_conclusao(x):
-    if pd.isna(x) or str(x).strip().lower() in ["", "nan", "na", "n/a", "none"]:
+
+try:
+    novos_protocolos_a_enviar = set(df_bruta["protocolo"]) - protocolos_existentes_set_final
+    df_send_bruto = df_bruta[df_bruta["protocolo"].isin(novos_protocolos_a_enviar)].copy()
+
+    if df_send_bruto.empty:
+        logging.info("Nenhum protocolo novo detectado para envio. df_send será um DataFrame vazio.")
+        print("🧹 Nenhum protocolo novo para enviar.")
+        df_send = pd.DataFrame(columns=cols_alvo_tratada) # Define df_send vazio com colunas corretas
+    else:
+        logging.info(f"Detectados {len(df_send_bruto)} protocolos novos para processar e enviar. Shape inicial: {df_send_bruto.shape}")
+        print(f"🧹 Novos protocolos a enviar: {len(df_send_bruto)}")
+
+        # APLICA TODOS OS TRATAMENTOS DE _tratar_full AQUI!
+        df_send = _tratar_full(df_send_bruto.copy())
+        logging.info(f"Função _tratar_full aplicada a df_send_bruto. Shape após tratamento: {df_send.shape}")
+
+        # Remove colunas auxiliares que não devem ser escritas no Google Sheets
+        cols_to_drop = []
+        if "eh_novo" in df_send.columns:
+            cols_to_drop.append("eh_novo")
+        # Adicione aqui outras colunas auxiliares
+        # if "alguma_coluna_temp" in df_send.columns: cols_to_drop.append("alguma_coluna_temp")
+
+        if cols_to_drop:
+            df_send = df_send.drop(columns=cols_to_drop)
+            logging.info(f"Colunas auxiliares removidas de df_send: {cols_to_drop}. Novo shape: {df_send.shape}")
+
+        # Garante que o df_send tem as colunas corretas e na ordem certa
+        df_send_final = df_send.reindex(columns=cols_alvo_tratada, fill_value="")
+        logging.info(f"df_send reindexado para alinhar com colunas alvo. Shape final: {df_send_final.shape}")
+
+        # QA: Verifica se alguma coluna do df_send_final contém valores inesperados antes do envio
+        for col_qa in ['orgaos', 'responsavel', 'status_demanda', 'data_da_conclusao']:
+            if col_qa in df_send_final.columns:
+                unexpected_values = df_send_final[col_qa].astype(str).str.contains(r'(?i)^(sim|nao|true|false|\?{2,}|nan|none)$')
+                if unexpected_values.any():
+                    logging.error(f"QA Pré-Envio (df_send): Coluna '{col_qa}' contém valores inesperados em {unexpected_values.sum()} linhas. Exemplos: {df_send_final.loc[unexpected_values, col_qa].unique()[:5].tolist()}",
+                                  extra={'data': df_send_final.loc[unexpected_values, ['protocolo', col_qa]].to_dict(orient='records')[:5]})
+                    # Considerar um raise SystemExit aqui se a qualidade do dado for crítica
+
+        # Garante que todas as colunas sejam strings para evitar problemas de tipo no GSpread
+        for col in df_send_final.columns:
+            df_send_final[col] = df_send_final[col].astype(str)
+        logging.info("Todas as colunas de df_send_final convertidas para string.")
+
+        df_send = df_send_final.copy() # Atribui o DataFrame final preparado para df_send
+
+except Exception as e:
+    logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
+    raise
+
+# ----------------------------------------------------------
+# TRATAMENTO CRÍTICO — DATA DA CONCLUSÃO (APÓS _tratar_full)
+# e PADRONIZA OUTRAS DATAS
+#
+# Com a aplicação de _tratar_full acima, estas funções devem ser menos necessárias.
+# Elas são mantidas como um último ajuste de formato para DD/MM/YYYY se _tratar_full
+# retornar DD/MM/YY e o GSheet esperar o ano com 4 dígitos.
+# ----------------------------------------------------------
+def tratar_data_conclusao_item8(x):
+    if pd.isna(x) or str(x).strip().lower() in ["", "nan", "na", "n/a", "none", "não concluído"]:
         return "Não concluído"
     try:
-        return pd.to_datetime(x, errors="coerce").strftime("%d/%m/%Y")
+        dt = pd.to_datetime(x, errors="coerce", dayfirst=True)
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+        else:
+            return "Não concluído"
     except Exception:
         return "Não concluído"
 
-if "data_da_conclusao" in df_send.columns:
-    df_send["data_da_conclusao"] = df_send["data_da_conclusao"].apply(tratar_data_conclusao)
-else:
-    logging.warning("⚠️ Coluna 'data_da_conclusao' não está presente em df_send!")
+if not df_send.empty and "data_da_conclusao" in df_send.columns:
+    df_send["data_da_conclusao"] = df_send["data_da_conclusao"].apply(tratar_data_conclusao_item8)
+    logging.debug("Re-aplicado tratamento de 'data_da_conclusao' para garantir formato DD/MM/YYYY.")
 
-# ----------------------------------------------------------
-# PADRONIZA OUTRAS DATAS (DD/MM/AAAA)
-# ----------------------------------------------------------
-def tratar_data_generica(x):
+def tratar_data_generica_item8(x):
     try:
         if pd.isna(x) or str(x).strip().lower() in ["", "nan", "na", "n/a"]:
             return ""
-        return pd.to_datetime(x, errors="coerce").strftime("%d/%m/%Y")
+        dt = pd.to_datetime(x, errors="coerce", dayfirst=True)
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+        else:
+            return ""
     except Exception:
         return ""
 
 for col in ["data_da_criacao"]:
-    if col in df_send.columns:
-        df_send[col] = df_send[col].apply(tratar_data_generica)
+    if not df_send.empty and col in df_send.columns:
+        df_send[col] = df_send[col].apply(tratar_data_generica_item8)
+        logging.debug(f"Re-aplicado tratamento de '{col}' para garantir formato DD/MM/YYYY.")
 
 # ----------------------------------------------------------
-# CHECAGEM DE SANIDADE — UNIDADE_CADASTRO
+# CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
 # ----------------------------------------------------------
-if "unidade_cadastro" in df_send.columns:
-    nulos_uc = int(df_send["unidade_cadastro"].isna().sum())
-    print(f"🧪 Checagem (NOVOS): unidade_cadastro presente | nulos={nulos_uc}")
-    logging.info(f"Checagem (NOVOS): unidade_cadastro presente | nulos={nulos_uc}")
+if not df_send.empty and "unidade_cadastro" in df_send.columns:
+    nulos_uc = int(df_send["unidade_cadastro"].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']).sum())
+    print(f"🧪 Checagem (NOVOS - PRONTOS PARA ENVIO): unidade_cadastro presente | vazios={nulos_uc}")
+    logging.info(f"Checagem (NOVOS - PRONTOS PARA ENVIO): unidade_cadastro presente | vazios={nulos_uc}")
+    if nulos_uc > 0:
+        logging.warning(f"QA Pré-Envio: 'unidade_cadastro' contém {nulos_uc} valores vazios/inválidos em df_send. Exemplos: {df_send.loc[df_send['unidade_cadastro'].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']), 'unidade_cadastro'].unique()[:5].tolist()}")
 else:
-    print("⚠️ Aviso: unidade_cadastro não está em df_send (verifique colunas)")
-    logging.warning("unidade_cadastro não está em df_send (verifique colunas)")
+    print("⚠️ Aviso: unidade_cadastro não está em df_send ou df_send está vazio.")
+    logging.warning("unidade_cadastro não está em df_send ou df_send está vazio. Verifique a consistência do schema.")
 
 # ----------------------------------------------------------
-# ENVIO EM LOTES PARA EVITAR LIMITE DE REQUISIÇÕES
+# ENVIO EM LOTES
 # ----------------------------------------------------------
-lote = 500
-total_lotes = (len(df_send) + lote - 1) // lote
-print(f"📦 Envio — APENAS NOVOS: {len(df_send)} linhas | {total_lotes} lotes")
-logging.info(f"Envio — APENAS NOVOS: {len(df_send)} linhas | {total_lotes} lotes")
+if df_send.empty:
+    logging.info("Nenhum protocolo para enviar, pulando envio em lotes.")
+    print("📦 Nenhum protocolo para enviar.")
+else:
+    lote = 500
+    total_lotes = (len(df_send) + lote - 1) // lote
+    print(f"📦 Envio — APENAS NOVOS (FINAL): {len(df_send)} linhas | {total_lotes} lotes")
+    logging.info(f"Envio — APENAS NOVOS (FINAL): {len(df_send)} linhas | {total_lotes} lotes")
 
-for i in range(0, len(df_send), lote):
-    chunk = df_send.iloc[i:i+lote].copy()   # já foi tratado por _tratar_full
+    existing_values = aba_tratada.get_all_values()
+    sheet_is_empty = len(existing_values) == 0
 
-    # Garante que todos os vazios ou NaN em 'data_da_conclusao' sejam marcados como 'Não concluída'
-    if "data_da_conclusao" in chunk.columns:
-        chunk["data_da_conclusao"] = (
-            chunk["data_da_conclusao"]
-            .astype(str)
-            .str.strip()
-            .replace(["nan", "NaT", "", "None"], "Não concluída")
-        )
-    # Garantir que não existam valores nulos em outras colunas -> substitui por ""
-    chunk = chunk.fillna("")   # OK: "Não concluído" é string, não é NaN, não será sobrescrito
-    values = [chunk.columns.tolist()] + chunk.values.tolist()  # inclui cabeçalho
-    first_idx = i + 1
-    last_idx = min(i + lote, len(df_send))
-    protos_preview = list(chunk.get("protocolo", []))[:3]
-    print(f"   • Enviando {first_idx}-{last_idx} (prévia protocolos: {protos_preview})")
-    logging.info(f"Enviando {first_idx}-{last_idx} (prévia protocolos: {protos_preview})")
+    for i in range(0, len(df_send), lote):
+        chunk = df_send.iloc[i:i+lote].copy()
+        rows = chunk.values.tolist()
+        first_idx = i + 1
+        last_idx = min(i + lote, len(df_send))
+        protos_preview = list(chunk.get("protocolo", []))[:3]
+        logging.debug(f"Processando lote {first_idx}-{last_idx}. Prévia protocolos: {protos_preview}")
+        print(f"   • Enviando {first_idx}-{last_idx} (prévia protocolos: {protos_preview})")
 
-    try:
-        # Envia o bloco inteiro com batch_update, logo após o último registro
-        cell_range = f"A{len(df_tratada) + 2 + i}"
-        aba_tratada.update(cell_range, values)
-    except Exception as e:
-        logging.exception(f"Erro ao enviar lote {first_idx}-{last_idx} para planilha tratada: {e}")
-        print(f"❌ Erro ao enviar lote {first_idx}-{last_idx}: {e}")
+        try:
+            if sheet_is_empty:
+                header = chunk.columns.tolist()
+                aba_tratada.append_rows([header] + rows)
+                logging.info(f"Lote {first_idx}-{last_idx} enviado com cabeçalho.")
+                sheet_is_empty = False
+            else:
+                aba_tratada.append_rows(rows)
+                logging.info(f"Lote {first_idx}-{last_idx} enviado (sem cabeçalho).")
+        except Exception as e:
+            logging.exception(f"Erro CRÍTICO ao enviar lote {first_idx}-{last_idx}: {e}")
+            print(f"❌ Erro ao enviar lote {first_idx}-{last_idx}: {e}")
+            failed = chunk[["protocolo"]].copy()
+            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+            failed.to_csv(f"failed_append_{first_idx}_{last_idx}_{timestamp}.csv", index=False, encoding="utf-8-sig")
+            # Dependendo da severidade, você pode querer parar o pipeline aqui.
 
 print("✅ Atualização da planilha tratada concluída com sucesso.")
 logging.info("✅ Atualização da planilha tratada concluída com sucesso.")
@@ -861,20 +1111,54 @@ if "protocolo" in df.columns and "servidor" in df.columns:
 # ========================================================
 # 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias)
 # ========================================================
-_BANNER("10) DELTAS HISTÓRICOS")
 
-# Compara colunas *_OLD para atualização seletiva
-delta_status = df[df["status_demanda"] != df.get("status_demanda_OLD", df["status_demanda"])]
-delta_conc   = df[df["data_da_conclusao"] != df.get("data_da_conclusao_OLD", df["data_da_conclusao"])]
-delta_tempo  = df[df["tempo_de_resolucao_em_dias"] != df.get("tempo_de_resolucao_em_dias_OLD", df["tempo_de_resolucao_em_dias"])]
+_BANNER("10) DELTAS HISTÓRICOS (ajustado para novos protocolos)")
 
-logging.info(f"Delta STATUS: {len(delta_status)} linhas")
-logging.info(f"Delta DATA_CONCLUSAO: {len(delta_conc)} linhas")
-logging.info(f"Delta TEMPO_DE_RESOLUCAO: {len(delta_tempo)} linhas")
+# --- Alinha colunas do df_send ao schema da tratada ---
+try:
+    cols_tratada = list(df_tratada.columns)
+    # df_send pode não existir (caso nenhum novo); garante variável
+    if 'df_send' not in globals():
+        df_send = pd.DataFrame(columns=cols_tratada)
+    df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
+    df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
+except Exception as e:
+    logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
+    # fallback simples: tenta usar df_send como fonte
+    df_full = df_send.copy()
 
-_patch_grouped_force(delta_status, "protocolo", "status_demanda", aba_tratada)
-_patch_grouped_force(delta_conc, "protocolo", "data_da_conclusao", aba_tratada)
-_patch_grouped_force(delta_tempo, "protocolo", "tempo_de_resolucao_em_dias", aba_tratada)
+# --- Garante existência das colunas *_OLD para comparações de histórico ---
+for col in ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias"]:
+    old_col = f"{col}_OLD"
+    if old_col not in df_full.columns:
+        # copia o valor atual para coluna OLD (se não existir), normalizando nulos
+        df_full[old_col] = df_full.get(col, "").fillna("")
+
+# --- Função delta robusta (com fillna e casting a str) ---
+def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
+    old_col = f"{col}_OLD"
+    if old_col in df_full_local.columns:
+        left = df_full_local.get(col, "").fillna("").astype(str)
+        right = df_full_local.get(old_col, "").fillna("").astype(str)
+        return df_full_local[left != right].copy()
+    else:
+        # se não há coluna OLD, considera apenas os recém marcados como 'eh_novo'
+        return df_full_local[df_full_local.get("eh_novo", False) == True].copy()
+
+# --- Calcula deltas específicos (apenas uma vez e sem sobrescritas) ---
+delta_status = _delta_df(df_full, "status_demanda")
+delta_conc   = _delta_df(df_full, "data_da_conclusao")
+delta_tempo  = _delta_df(df_full, "tempo_de_resolucao_em_dias")
+
+# --- Logs e verificações ---
+logging.info(f"Delta STATUS: {len(delta_status)} linhas alteradas/novas")
+logging.info(f"Delta DATA_CONCLUSAO: {len(delta_conc)} linhas alteradas/novas")
+logging.info(f"Delta TEMPO_DE_RESOLUCAO: {len(delta_tempo)} linhas alteradas/novas")
+
+print(f"📊 Deltas calculados com sucesso:")
+print(f"   • STATUS: {len(delta_status)}")
+print(f"   • DATA_CONCLUSAO: {len(delta_conc)}")
+print(f"   • TEMPO_DE_RESOLUCAO: {len(delta_tempo)}")
 
 # ========================================================
 # 11) QA & SUMÁRIO FINAL
@@ -912,6 +1196,36 @@ for col in qa_cols:
 # ========================================================
 # 12) FINALIZAÇÃO
 # ========================================================
+
+# --- Sanity checks finais (colocar antes do _BANNER("12) PIPELINE FINALIZADO")) ---
+try:
+    bruta_rows = len(df_bruta) if 'df_bruta' in globals() and isinstance(df_bruta, pd.DataFrame) else 0
+    bruta_cols = list(df_bruta.columns)[:20] if 'df_bruta' in globals() and isinstance(df_bruta, pd.DataFrame) and not df_bruta.empty else []
+except Exception:
+    bruta_rows, bruta_cols = 0, []
+
+try:
+    tratada_rows = len(df_tratada) if 'df_tratada' in globals() and isinstance(df_tratada, pd.DataFrame) else 0
+    tratada_cols = list(df_tratada.columns)[:20] if 'df_tratada' in globals() and isinstance(df_tratada, pd.DataFrame) and not df_tratada.empty else []
+except Exception:
+    tratada_rows, tratada_cols = 0, []
+
+novos_cnt = int(df_bruta['eh_novo'].sum()) if 'df_bruta' in globals() and 'eh_novo' in df_bruta.columns else 0
+df_send_cnt = len(df_send) if 'df_send' in globals() and isinstance(df_send, pd.DataFrame) else 0
+
+logging.info(f"Sanity: df_bruta rows={bruta_rows} cols={bruta_cols}")
+logging.info(f"Sanity: df_tratada rows={tratada_rows} cols={tratada_cols}")
+logging.info(f"Sanity: novos detectados={novos_cnt} | df_send (preparados para envio)={df_send_cnt}")
+print(f"Sanity checks — bruta:{bruta_rows} rows, tratada:{tratada_rows} rows, novos:{novos_cnt}, to_send:{df_send_cnt}")
+
+# opcional: numero real de linhas na sheet (pode ser custoso em tempo)
+try:
+    if 'aba_tratada' in globals():
+        total_sheet_rows = len(aba_tratada.get_all_values())
+        logging.info(f"Sanity: aba_tratada (sheet) rows={total_sheet_rows}")
+except Exception as e:
+    logging.warning(f"Não foi possível obter aba_tratada.get_all_values(): {e}")
+
 _BANNER("12) PIPELINE FINALIZADO")
 
 print("🎯 Pipeline executado com sucesso!")
