@@ -29,13 +29,9 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
-          # Usa 'printf %s' para escrever o secret. Este método é mais robusto
-          # para strings que podem conter quebras de linha ou caracteres especiais,
-          # pois ele imprime o conteúdo da string diretamente sem interpretação adicional do shell.
           printf "%s" "${{ secrets.GDRIVE_CRED_JSON }}" > .github/workflows/credentials.json
           
           echo "--- Conteúdo do .github/workflows/credentials.json (para depuração) ---"
-          # Adiciona cat para imprimir o conteúdo do arquivo criado, útil para depuração
           cat .github/workflows/credentials.json
           echo "--- Fim do conteúdo ---"
 
