@@ -6,6 +6,7 @@ import requests
 import json
 import gspread
 import numpy as np
+import base64 # <-- NOVA IMPORTAÇÃO AQUI!
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import warnings
@@ -19,7 +20,7 @@ from typing import List, Dict
 # Logging (arquivo + console)
 # ----------------------------
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.INFO, # Pode mudar para logging.DEBUG para mais detalhes durante a depuração.
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
         logging.FileHandler("pipeline_tratamento.log", encoding="utf-8"),
@@ -39,7 +40,7 @@ def _SUB(titulo):
     logging.info(titulo)
 
 # ========================================================
-# 1) CONFIGURAÇÃO GOOGLE DRIVE / SHEETS (CORRIGIDO PARA LEITURA EXPLÍCITA DE JSON)
+# 1) CONFIGURAÇÃO GOOGLE DRIVE / SHEETS (AGORA PYTHON DECODIFICA BASE64)
 # ========================================================
 
 _BANNER("1) CONFIGURAÇÃO GOOGLE DRIVE/SHEETS")
@@ -54,11 +55,19 @@ SCOPES = [
 ]
 
 try:
-    # --- CORREÇÃO AQUI: Leitura e decodificação explícita do JSON ---
-    logging.info(f"Tentando ler arquivo de credenciais: '{CAMINHO_CREDENCIAIS}'")
-    with open(CAMINHO_CREDENCIAIS, "r", encoding="utf-8") as json_file:
-        service_account_info = json.load(json_file)
-    logging.info("✅ Arquivo de credenciais JSON lido e decodificado com sucesso.")
+    # --- CORREÇÃO AQUI: Python lê a string Base64 e a decodifica ---
+    logging.info(f"Tentando ler string Base64 do arquivo: '{CAMINHO_CREDENCIAIS}'")
+    with open(CAMINHO_CREDENCIAIS, "r", encoding="utf-8") as file:
+        encoded_json_string = file.read().strip() # Lê e remove espaços/newlines
+
+    # Decodifica de Base64 para bytes, depois para string UTF-8
+    decoded_json_bytes = base64.b64decode(encoded_json_string)
+    decoded_json_str = decoded_json_bytes.decode('utf-8')
+    
+    # Carrega a string JSON decodificada em um dicionário Python
+    service_account_info = json.loads(decoded_json_str)
+    
+    logging.info("✅ Arquivo de credenciais Base64 lido e JSON decodificado com sucesso.")
     
     # Usa Credentials.from_service_account_info com o dicionário JSON
     creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
@@ -69,15 +78,18 @@ try:
     print("✅ Autenticação Google OK.")
 except FileNotFoundError:
     logging.critical(f"❌ Falha na autenticação Google: Arquivo de credenciais não encontrado em '{CAMINHO_CREDENCIAIS}'. Verifique o caminho e a criação do arquivo no workflow.", exc_info=True)
-    raise SystemExit("Erro crítico: Arquivo de credenciais não encontrado.")
+    raise SystemExit("Erro crítico: Arquivo de credenciais não encontrado. O pipeline será encerrado.")
+except base64.binascii.Error as e:
+    logging.critical(f"❌ Falha na autenticação Google: Erro ao decodificar a string Base64. Conteúdo inválido no secret? Erro: {e}. O pipeline será encerrado.", exc_info=True)
+    raise SystemExit("Erro crítico: Conteúdo Base64 inválido no arquivo de credenciais.")
 except json.JSONDecodeError as e:
-    logging.critical(f"❌ Falha na autenticação Google: Erro ao decodificar JSON do arquivo de credenciais. Conteúdo inválido. Erro: {e}", exc_info=True)
-    # Este erro indica que o JSON dentro do arquivo é inválido. O log do YML
-    # com 'cat' é crucial para ver o que foi decodificado.
-    raise SystemExit("Erro crítico: Conteúdo inválido no arquivo de credenciais JSON.")
+    logging.critical(f"❌ Falha na autenticação Google: Erro ao decodificar JSON da string Base64 decodificada. Conteúdo inválido. Erro: {e}. O pipeline será encerrado.", exc_info=True)
+    # Este erro agora indica que o JSON decodificado pelo Python é inválido.
+    # O log do YML será crucial para ver o que o Base64 produziu.
+    raise SystemExit("Erro crítico: Conteúdo JSON inválido na string Base64 decodificada.")
 except Exception as e:
-    logging.critical(f"❌ Falha na autenticação Google. Erro inesperado: {e}", exc_info=True)
-    raise SystemExit("Erro crítico: Falha inesperada na autenticação Google.")
+    logging.critical(f"❌ Falha na autenticação Google. Erro inesperado: {e}. O pipeline será encerrado.", exc_info=True)
+    raise SystemExit("Erro crítico: Falha inesperada na autenticação Google. O pipeline será encerrado.")
 
 # ========================================================
 # 2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE - DINÂMICO) - MANTIDO COM MELHORIAS DE TRY/EXCEPT
@@ -100,7 +112,7 @@ def get_latest_spreadsheet_df(folder_id: str, gspread_client, drive_svc) -> (str
         ).execute()
         files = res.get("files", [])
         if not files:
-            logging.critical(f"❌ Nenhuma planilha bruta encontrada na pasta do Google Drive com ID: '{folder_id}'.", exc_info=True)
+            logging.critical(f"❌ Nenhuma planilha bruta encontrada na pasta do Google Drive com ID: '{folder_id}'. O pipeline será encerrado.", exc_info=True)
             raise SystemExit("Erro crítico: Nenhuma planilha bruta encontrada.")
         latest = files[0]
         fid, fname = latest["id"], latest["name"]
@@ -109,7 +121,7 @@ def get_latest_spreadsheet_df(folder_id: str, gspread_client, drive_svc) -> (str
         dfb = pd.DataFrame(aba.get_all_records())
         return fid, fname, dfb
     except Exception as e:
-        logging.critical(f"❌ Erro ao obter a última planilha da pasta bruta '{folder_id}': {e}", exc_info=True)
+        logging.critical(f"❌ Erro ao obter a última planilha da pasta bruta '{folder_id}': {e}. O pipeline será encerrado.", exc_info=True)
         raise SystemExit("Erro crítico: Falha ao carregar planilha bruta.")
 
 
@@ -126,7 +138,7 @@ try:
 except SystemExit: # Captura o SystemExit da função helper para não logar novamente
     raise
 except Exception as e:
-    logging.critical(f"❌ Erro ao processar a planilha bruta principal. Verifique o FOLDER_ID_BRUTA e permissões. Erro: {e}", exc_info=True)
+    logging.critical(f"❌ Erro ao processar a planilha bruta principal. Verifique o FOLDER_ID_BRUTA e permissões. Erro: {e}. O pipeline será encerrado.", exc_info=True)
     raise SystemExit("Erro crítico: Falha no processamento da planilha bruta.")
 
 # ========================================================
@@ -159,7 +171,7 @@ try:
     df = normalize_protocolo_col(df, "protocolo")
     logging.info("Coluna 'protocolo' padronizada.")
 except Exception as e:
-    logging.critical(f"❌ Erro na normalização de nomes de coluna ou padronização de protocolo. Erro: {e}", exc_info=True)
+    logging.critical(f"❌ Erro na normalização de nomes de coluna ou padronização de protocolo. Erro: {e}. O pipeline será encerrado.", exc_info=True)
     raise SystemExit("Erro crítico: Falha na normalização de dados.")
 
 # ========================================================
@@ -316,7 +328,7 @@ def _canon_prazo_restante(v):
     return s_clean
 
 # ============================================= 
-# 5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA
+# 5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA - MANTIDO (com ajuste de logging)
 # =============================================
 _BANNER("5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA")
 
@@ -326,14 +338,13 @@ try:
     PLANILHA_TRATADA_ID = "1SmO5yTD5B6fN_gT-7m1wosP_sbzmtd0agTC-LNCnX9Y"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
 
     # ---------- ABRE A PLANILHA TRATADA (única fonte) ----------
-    planilha_tratada = gc.open_by_key(PLANILHA_TRATADA_ID)
-    aba_tratada = planilha_tratada.sheet1
-    df_tratada = pd.DataFrame(aba_tratada.get_all_records())
+    planilha_tratada_gs = gc.open_by_key(PLANILHA_TRATADA_ID) # Renomeado para evitar conflito com df_tratada
+    aba_tratada = planilha_tratada_gs.sheet1
+    logging.info(f"Planilha tratada '{PLANILHA_TRATADA_ID}' aberta.")
 
-    # Normaliza colunas da planilha tratada
+    df_tratada = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada.columns = [normalizar_nome_coluna(c) for c in df_tratada.columns]
 
-    # Normaliza 'protocolo' consistentemente
     df_tratada = normalize_protocolo_col(df_tratada, "protocolo")
     protocolos_existentes_set = set(df_tratada["protocolo"].astype(str).tolist())
 
