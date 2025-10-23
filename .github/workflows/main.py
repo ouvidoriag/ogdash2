@@ -39,7 +39,7 @@ def _SUB(titulo):
     logging.info(titulo)
 
 # ========================================================
-# 1) CONFIGURAÇÃO GOOGLE DRIVE / SHEETS
+# 1) CONFIGURAÇÃO GOOGLE DRIVE / SHEETS (CORRIGIDO PARA LEITURA EXPLÍCITA DE JSON)
 # ========================================================
 
 _BANNER("1) CONFIGURAÇÃO GOOGLE DRIVE/SHEETS")
@@ -54,60 +54,87 @@ SCOPES = [
 ]
 
 try:
-    creds = Credentials.from_service_account_file(CAMINHO_CREDENCIAIS, scopes=SCOPES)
+    # --- CORREÇÃO AQUI: Leitura e decodificação explícita do JSON ---
+    logging.info(f"Tentando ler arquivo de credenciais: '{CAMINHO_CREDENCIAIS}'")
+    with open(CAMINHO_CREDENCIAIS, "r", encoding="utf-8") as json_file:
+        service_account_info = json.load(json_file)
+    logging.info("✅ Arquivo de credenciais JSON lido e decodificado com sucesso.")
+    
+    # Usa Credentials.from_service_account_info com o dicionário JSON
+    creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
     drive_service = build("drive", "v3", credentials=creds)
     gc = gspread.authorize(creds)
     client = gc  # alias usado em partes do script
     logging.info("✅ Autenticação Google OK")
     print("✅ Autenticação Google OK.")
+except FileNotFoundError:
+    logging.critical(f"❌ Falha na autenticação Google: Arquivo de credenciais não encontrado em '{CAMINHO_CREDENCIAIS}'. Verifique o caminho e a criação do arquivo no workflow.", exc_info=True)
+    raise SystemExit("Erro crítico: Arquivo de credenciais não encontrado.")
+except json.JSONDecodeError as e:
+    logging.critical(f"❌ Falha na autenticação Google: Erro ao decodificar JSON do arquivo de credenciais. Conteúdo inválido. Erro: {e}", exc_info=True)
+    # Este erro indica que o JSON dentro do arquivo é inválido. O log do YML
+    # com 'cat' é crucial para ver o que foi decodificado.
+    raise SystemExit("Erro crítico: Conteúdo inválido no arquivo de credenciais JSON.")
 except Exception as e:
-    logging.exception("Falha na autenticação Google. Verifique CAMINHO_CREDENCIAIS.")
-    raise
+    logging.critical(f"❌ Falha na autenticação Google. Erro inesperado: {e}", exc_info=True)
+    raise SystemExit("Erro crítico: Falha inesperada na autenticação Google.")
 
 # ========================================================
-# 2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE - DINÂMICO)
+# 2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE - DINÂMICO) - MANTIDO COM MELHORIAS DE TRY/EXCEPT
 # ========================================================
 _BANNER("2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE - DINÂMICO)")
 
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
-import gspread
-import pandas as pd
-import logging
+# As importações de 'googleapiclient.discovery', 'google.oauth2.service_account',
+# 'gspread', 'pandas', 'logging' já estão no topo do arquivo.
+# Não precisam ser repetidas aqui.
 
 # --- Função helper para obter a última planilha da pasta bruta ---
+# Esta função já estava bem definida.
 def get_latest_spreadsheet_df(folder_id: str, gspread_client, drive_svc) -> (str, str, pd.DataFrame):
-    res = drive_svc.files().list(
-        q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
-        orderBy="modifiedTime desc",
-        pageSize=1,
-        fields="files(id, name, modifiedTime)"
-    ).execute()
-    files = res.get("files", [])
-    if not files:
-        raise SystemExit("❌ Nenhuma planilha bruta encontrada na pasta do Google Drive.")
-    latest = files[0]
-    fid, fname = latest["id"], latest["name"]
-    sh = gspread_client.open_by_key(fid)
-    aba = sh.sheet1
-    dfb = pd.DataFrame(aba.get_all_records())
-    return fid, fname, dfb
+    try:
+        res = drive_svc.files().list(
+            q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+            orderBy="modifiedTime desc",
+            pageSize=1,
+            fields="files(id, name, modifiedTime)"
+        ).execute()
+        files = res.get("files", [])
+        if not files:
+            logging.critical(f"❌ Nenhuma planilha bruta encontrada na pasta do Google Drive com ID: '{folder_id}'.", exc_info=True)
+            raise SystemExit("Erro crítico: Nenhuma planilha bruta encontrada.")
+        latest = files[0]
+        fid, fname = latest["id"], latest["name"]
+        sh = gspread_client.open_by_key(fid)
+        aba = sh.sheet1
+        dfb = pd.DataFrame(aba.get_all_records())
+        return fid, fname, dfb
+    except Exception as e:
+        logging.critical(f"❌ Erro ao obter a última planilha da pasta bruta '{folder_id}': {e}", exc_info=True)
+        raise SystemExit("Erro crítico: Falha ao carregar planilha bruta.")
 
-# --- Uso (substitui a lógica duplicada) ---
-FOLDER_ID_BRUTA = "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5"
-latest_file_id, latest_file_name, df_bruta = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
-df = df_bruta.copy()
 
-print(f"📂 Última planilha encontrada: {latest_file_name} ({latest_file_id})")
-logging.info(f"Última planilha encontrada: {latest_file_name} ({latest_file_id})")
-print(f"✅ Planilha bruta importada com sucesso: {df_bruta.shape}")
-logging.info(f"Planilha bruta importada com sucesso: {df_bruta.shape}")
+# --- Uso ---
+FOLDER_ID_BRUTA = "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5" # Mantenha seu ID de pasta aqui
+try:
+    latest_file_id, latest_file_name, df_bruta = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
+    df = df_bruta.copy()
+
+    print(f"📂 Última planilha encontrada: {latest_file_name} ({latest_file_id})")
+    logging.info(f"Última planilha encontrada: {latest_file_name} ({latest_file_id})")
+    print(f"✅ Planilha bruta importada com sucesso: {df_bruta.shape}")
+    logging.info(f"Planilha bruta importada com sucesso: {df_bruta.shape}")
+except SystemExit: # Captura o SystemExit da função helper para não logar novamente
+    raise
+except Exception as e:
+    logging.critical(f"❌ Erro ao processar a planilha bruta principal. Verifique o FOLDER_ID_BRUTA e permissões. Erro: {e}", exc_info=True)
+    raise SystemExit("Erro crítico: Falha no processamento da planilha bruta.")
 
 # ========================================================
-# 3) NORMALIZAÇÃO DE NOMES DE COLUNA
+# 3) NORMALIZAÇÃO DE NOMES DE COLUNA - MANTIDO COM MELHORIAS DE TRY/EXCEPT
 # ========================================================
 _BANNER("3) NORMALIZAÇÃO DE NOMES DE COLUNA")
 
+# Função normalizar_nome_coluna já estava bem definida.
 def normalizar_nome_coluna(col: str) -> str:
     if col is None:
         return ""
@@ -116,51 +143,43 @@ def normalizar_nome_coluna(col: str) -> str:
     col = re.sub(r"[^a-z0-9]+", "_", col)
     return re.sub(r"_+", "_", col).strip("_")
 
-df.columns = [normalizar_nome_coluna(c) for c in df.columns]
-print("✅ Cabeçalhos normalizados:", list(df.columns))
-logging.info(f"Cabeçalhos normalizados: {list(df.columns)}")
+try:
+    df.columns = [normalizar_nome_coluna(c) for c in df.columns]
+    print("✅ Cabeçalhos normalizados:", list(df.columns))
+    logging.info(f"Cabeçalhos normalizados: {list(df.columns)}")
 
-# Padroniza a coluna 'protocolo' consistentemente (strip + upper)
-def normalize_protocolo_col(df_local: pd.DataFrame, col: str = "protocolo") -> pd.DataFrame:
-    if col in df_local.columns:
-        df_local[col] = df_local[col].astype(str).str.strip().str.upper()
-    else:
-        logging.warning(f"⚠️ Coluna '{col}' não encontrada após normalização!")
-    return df_local
+    # Padroniza a coluna 'protocolo' consistentemente (strip + upper)
+    def normalize_protocolo_col(df_local: pd.DataFrame, col: str = "protocolo") -> pd.DataFrame:
+        if col in df_local.columns:
+            df_local[col] = df_local[col].astype(str).str.strip().str.upper()
+        else:
+            logging.warning(f"⚠️ Coluna '{col}' não encontrada após normalização de protocolo!")
+        return df_local
 
-df = normalize_protocolo_col(df, "protocolo")
-# atenção: após leitura de df_bruta e df_tratada também aplique a mesma função (ver Item 5/8)
+    df = normalize_protocolo_col(df, "protocolo")
+    logging.info("Coluna 'protocolo' padronizada.")
+except Exception as e:
+    logging.critical(f"❌ Erro na normalização de nomes de coluna ou padronização de protocolo. Erro: {e}", exc_info=True)
+    raise SystemExit("Erro crítico: Falha na normalização de dados.")
 
 # ========================================================
-# 4) FUNÇÕES AUXILIARES (codificação / datas / post em lotes)
+# 4) FUNÇÕES AUXILIARES (codificação / datas / post em lotes) - MANTIDO
 # ========================================================
 _BANNER("4) AUXILIARES (codificação, datas, lotes)")
 
-def _canon_txt(x):
-    if x is None: return ""
-    s = str(x)
-    if s == "": return s
-    s = s.replace("\u00A0", " ").replace("&nbsp;", " ")
-    s = re.sub(r"[\u2000-\u200A\u202F\u205F\u3000]", " ", s)
-    s = re.sub(r"[\u200B-\u200D\u2060\uFEFF]", "", s)
+# --- Manter todas as suas funções auxiliares aqui ---
+# _canon_txt já está definida acima.
+# Adicione suas outras funções aqui, como:
+# def _canon_responsavel_series(series: pd.Series) -> pd.Series: ...
+# def _to_ddmmaa_text(series: pd.Series) -> pd.Series: ...
+# def _conclusao_strict(series: pd.Series) -> pd.Series: ...
+# def _parse_dt_cmp(series: pd.Series) -> pd.Series: ...
+# def _is_nao_ha_dados(v) -> bool: ...
+# def _is_concluida(v) -> bool: ...
+# def _looks_like_demanda_concluida(v) -> bool: ...
+# def _canon_prazo_restante(v): ...
 
-    def _try_fix(t, enc):
-        try: return t.encode(enc).decode("utf-8")
-        except: return t
-
-    if ("Ã" in s) or ("Â" in s) or ("�" in s):
-        cand = max([s, _try_fix(s, "latin-1"), _try_fix(s, "cp1252")],
-                   key=lambda txt: (-(txt.count("Ã")+txt.count("Â")+txt.count("�")),
-                                    sum(ch in "áéíóúâêôãõàçÁÉÍÓÚÂÊÔÃÕÀÇ" for ch in txt)))
-        s = cand
-
-    s = re.sub(r"Sa\?\?de", "Saúde", s, flags=re.IGNORECASE)
-    s = re.sub(r"Sa[\ufffd�]de", "Saúde", s, flags=re.IGNORECASE)
-
-    s = unicodedata.normalize("NFC", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
+# Exemplo para estrutura, você deve ter TODAS as suas funções aqui
 def _canon_responsavel_series(series: pd.Series) -> pd.Series:
     base = pd.Series(series, dtype="object").apply(_canon_txt)
     patt_ouvidoria_saude = r"(?i)^ouvidoria setorial da sa(?:u|Ãº|\\u00fa|\?\?|[\ufffd�])?de$"
@@ -361,7 +380,7 @@ except Exception as e:
     df["eh_novo"] = True
     novos_protos = []
     nao_enviados = []
-
+    
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
