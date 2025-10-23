@@ -18,8 +18,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Configurar Python
-        # CORREÇÃO AQUI: 'uses: actions/setup-python@v4'
-        uses: actions/setup-python@v4 
+        uses: actions/setup-python@v4
         with:
           python-version: "3.12"
 
@@ -30,7 +29,7 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
-          # Apenas salva a string Base64 literal no arquivo.
+          # CORREÇÃO CRÍTICA NO YML: Apenas salva a string Base64 literal no arquivo.
           # O Python será responsável por decodificá-la.
           echo -n "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" > .github/workflows/credentials.json
           
