@@ -29,7 +29,7 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
-          # Apenas salva a string Base64 literal no arquivo, garantindo limpeza.
+          # Apenas salva a string Base64 literal no arquivo.
           # O Python será responsável por decodificá-la.
           # O 'tr -d' aqui é CRÍTICO para remover QUALQUER caractere extra do secret.
           echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | tr -d '\n\r\t ' > .github/workflows/credentials.json
