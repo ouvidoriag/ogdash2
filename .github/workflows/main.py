@@ -178,18 +178,24 @@ except Exception as e:
 # ========================================================
 _BANNER("4) AUXILIARES (codificação, datas, lotes)")
 
-# --- Manter todas as suas funções auxiliares aqui ---
-# _canon_txt já está definida acima.
-# Adicione suas outras funções aqui, como:
-# def _canon_responsavel_series(series: pd.Series) -> pd.Series: ...
-# def _to_ddmmaa_text(series: pd.Series) -> pd.Series: ...
-# def _conclusao_strict(series: pd.Series) -> pd.Series: ...
-# def _parse_dt_cmp(series: pd.Series) -> pd.Series: ...
-# def _is_nao_ha_dados(v) -> bool: ...
-# def _is_concluida(v) -> bool: ...
-# def _looks_like_demanda_concluida(v) -> bool: ...
-# def _canon_prazo_restante(v): ...
-
+# Definição do canon_txt
+def _canon_txt(v) -> str:
+    """
+    Função de canonização de texto: converte para string, remove acentos,
+    converte para minúsculas e limpa espaços.
+    """
+    if v is None:
+        return ""
+    # Normaliza para decompor caracteres acentuados (ex: 'á' -> 'a' + '´')
+    s = unicodedata.normalize("NFKD", str(v))
+    # Remove os caracteres de combinação (acentos)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    # Converte para minúsculas e remove espaços no início/fim
+    s = s.lower().strip()
+    # Substitui múltiplos espaços por um único espaço
+    s = re.sub(r"\s+", " ", s)
+    return s
+    
 # Exemplo para estrutura, você deve ter TODAS as suas funções aqui
 def _canon_responsavel_series(series: pd.Series) -> pd.Series:
     base = pd.Series(series, dtype="object").apply(_canon_txt)
