@@ -18,7 +18,8 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Configurar Python
-        uses: actions:setup-python@v4
+        # CORREÇÃO AQUI: 'uses: actions/setup-python@v4'
+        uses: actions/setup-python@v4 
         with:
           python-version: "3.12"
 
@@ -29,30 +30,14 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
-          # DEBUG 1: Imprime o conteúdo RAW do secret (Base64 em HEX)
-          echo "--- Conteúdo RAW do Secret (Base64 em HEX) ---"
-          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | xxd -p
-          echo "--- Fim do Conteúdo RAW do Secret ---"
-
-          # Processamento mais agressivo da string Base64:
-          # 1. Pega o secret Base64.
-          # 2. Remove TODAS as quebras de linha/espaços/tabs, garantindo uma linha única limpa.
-          # 3. Decodifica de Base64.
-          # 4. Remove caracteres de controle ASCII que não sejam quebras de linha com 'sed'.
-          # 5. Salva no arquivo credentials.json.
-          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" \
-          | tr -d '\n\r\t ' \
-          | base64 --decode \
-          | sed 's/[[:cntrl:]\\]//g' > .github/workflows/credentials.json
-          # O sed 's/[[:cntrl:]\\]//g' remove caracteres de controle e backslashes
-
-          # DEBUG 2: Imprime o conteúdo DECODIFICADO no log para inspeção.
-          echo "--- INÍCIO DO ARQUIVO JSON DECODIFICADO ---"
+          # Apenas salva a string Base64 literal no arquivo.
+          # O Python será responsável por decodificá-la.
+          echo -n "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" > .github/workflows/credentials.json
+          
+          # DEBUG: Imprime o conteúdo RAW do arquivo (ainda em Base64)
+          echo "--- INÍCIO DO ARQUIVO DE CREDENCIAIS (Base64 RAW) ---"
           cat .github/workflows/credentials.json
-          echo "\n--- FIM DO ARQUIVO JSON DECODIFICADO ---"
-
-      - name: Rodar script Python
-        run: python .github/workflows/main.py
+          echo "\n--- FIM DO ARQUIVO DE CREDENCIAIS (Base64 RAW) ---"
 
       - name: Rodar script Python
         run: python .github/workflows/main.py
