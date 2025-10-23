@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Configurar Python
-        uses: actions/setup-python@v4
+        uses: actions:setup-python@v4
         with:
           python-version: "3.12"
 
@@ -29,15 +29,30 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
+          # DEBUG 1: Imprime o conteúdo RAW do secret (Base64 em HEX)
           echo "--- Conteúdo RAW do Secret (Base64 em HEX) ---"
           echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | xxd -p
           echo "--- Fim do Conteúdo RAW do Secret ---"
-          
-          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | tr -d '\n\r ' | base64 --decode | tee .github/workflows/credentials.json
-          
-          echo "--- Conteúdo DECODIFICADO do JSON (no log) ---"
+
+          # Processamento mais agressivo da string Base64:
+          # 1. Pega o secret Base64.
+          # 2. Remove TODAS as quebras de linha/espaços/tabs, garantindo uma linha única limpa.
+          # 3. Decodifica de Base64.
+          # 4. Remove caracteres de controle ASCII que não sejam quebras de linha com 'sed'.
+          # 5. Salva no arquivo credentials.json.
+          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" \
+          | tr -d '\n\r\t ' \
+          | base64 --decode \
+          | sed 's/[[:cntrl:]\\]//g' > .github/workflows/credentials.json
+          # O sed 's/[[:cntrl:]\\]//g' remove caracteres de controle e backslashes
+
+          # DEBUG 2: Imprime o conteúdo DECODIFICADO no log para inspeção.
+          echo "--- INÍCIO DO ARQUIVO JSON DECODIFICADO ---"
           cat .github/workflows/credentials.json
-          echo "--- Fim do Conteúdo DECODIFICADO do JSON ---"
+          echo "\n--- FIM DO ARQUIVO JSON DECODIFICADO ---"
+
+      - name: Rodar script Python
+        run: python .github/workflows/main.py
 
       - name: Rodar script Python
         run: python .github/workflows/main.py
