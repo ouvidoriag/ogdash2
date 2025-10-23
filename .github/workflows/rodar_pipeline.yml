@@ -5,10 +5,8 @@ on:
     branches:
       - main
   schedule:
-    - cron: "0 10 * * *"   # 10:00 UTC (07:00 BRT / 08:00 BRST)
-    - cron: "0 15 * * *"  # 15:00 UTC (12:00 BRT / 13:00 BRST)
-    - cron: "0 19 * * *"  # 19:00 UTC (16:00 BRT / 17:00 BRST)
-
+    - cron: "0 12 * * *"   # 12:00 UTC (09:00 BRT / 10:00 BRST)
+    - cron: "0 17 * * *"  # 17:00 UTC (14:00 BRT / 15:00 BRST)
 jobs:
   rodar_pipeline:
     runs-on: ubuntu-latest
