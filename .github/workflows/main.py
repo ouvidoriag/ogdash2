@@ -40,7 +40,7 @@ def _SUB(titulo):
     logging.info(titulo)
 
 # ========================================================
-# 1) CONFIGURAÇÃO GOOGLE DRIVE / SHEETS (AGORA PYTHON LIMPA O JSON DECODIFICADO)
+# 1) CONFIGURAÇÃO GOOGLE DRIVE / SHEETS (REMOVIDA LIMPEZA AGRESSIVA)
 # ========================================================
 
 _BANNER("1) CONFIGURAÇÃO GOOGLE DRIVE/SHEETS")
@@ -63,21 +63,11 @@ try:
     decoded_json_bytes = base64.b64decode(encoded_json_string)
     decoded_json_str = decoded_json_bytes.decode('utf-8')
     
-    # --- CORREÇÃO AQUI: LIMPEZA AGRESSIVA DA STRING JSON ANTES DE json.loads() ---
-    # Remove caracteres de controle inválidos (exceto quebras de linha essenciais para private_key formatada)
-    # Alguns caracteres como '\u0000' (null) podem estar causando isso.
-    # Usaremos uma regex para remover caracteres de controle (range ASCII 0-31, exceto 10,13 para \n, \r)
-    # E também remove backslashes soltos que podem ser o problema.
-    clean_json_str = re.sub(r'[\x00-\x09\x0b\x0c\x0e-\x1f\x7f\\]', '', decoded_json_str) # Remove chars 0-9, 11, 12, 14-31, 127 e backslashes.
-
-    # Opcional: Se o problema for apenas na private_key e ela está bem formatada com \n escapado
-    # Talvez o problema esteja no JSON completo ter quebras de linha não escapadas.
-    # Mas a minificação deve ter cuidado disso.
-
-    # Vamos tentar com a limpeza de caracteres de controle:
-    service_account_info = json.loads(clean_json_str)
+    # --- CORREÇÃO AQUI: A linha de limpeza agressiva 'clean_json_str = re.sub(...)' FOI REMOVIDA. ---
+    # Agora passamos a string JSON decodificada diretamente para json.loads.
+    service_account_info = json.loads(decoded_json_str)
     
-    logging.info("✅ Arquivo de credenciais Base64 lido e JSON decodificado e limpo com sucesso.")
+    logging.info("✅ Arquivo de credenciais Base64 lido e JSON decodificado com sucesso (limpeza agressiva removida).")
     
     creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
     drive_service = build("drive", "v3", credentials=creds)
@@ -92,11 +82,10 @@ except base64.binascii.Error as e:
     logging.critical(f"❌ Falha na autenticação Google: Erro ao decodificar a string Base64. Conteúdo inválido no secret? Erro: {e}. O pipeline será encerrado.", exc_info=True)
     raise SystemExit("Erro crítico: Conteúdo Base64 inválido no arquivo de credenciais.")
 except json.JSONDecodeError as e:
-    logging.critical(f"❌ Falha na autenticação Google: Erro ao decodificar JSON da string Base64 decodificada e limpa. Conteúdo inválido. Erro: {e}. O pipeline será encerrado.", exc_info=True)
-    # Este erro agora indicará que, mesmo APÓS a limpeza de caracteres de controle, o JSON ainda é inválido.
-    # O log do YML (com xxd -p) e o valor de clean_json_str antes do json.loads serão cruciais.
-    logging.debug(f"String JSON limpa antes de json.loads: '{clean_json_str[:500]}'") # Loga os primeiros 500 chars
-    raise SystemExit("Erro crítico: Conteúdo JSON inválido na string Base64 decodificada e limpa.")
+    logging.critical(f"❌ Falha na autenticação Google: Erro ao decodificar JSON da string Base64 decodificada. Conteúdo inválido. Erro: {e}. O pipeline será encerrado.", exc_info=True)
+    # Se este erro ainda ocorrer, o problema está na string JSON decodificada antes de qualquer limpeza.
+    # O log do YML (com xxd -p) será crucial para ver o que o Base64 produziu.
+    raise SystemExit("Erro crítico: Conteúdo JSON inválido na string Base64 decodificada.")
 except Exception as e:
     logging.critical(f"❌ Falha na autenticação Google. Erro inesperado: {e}. O pipeline será encerrado.", exc_info=True)
     raise SystemExit("Erro crítico: Falha inesperada na autenticação Google. O pipeline será encerrado.")
