@@ -29,17 +29,18 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
-          # CORREÇÃO: Usando o novo nome do secret que contém o Base64.
-          # Pega o secret (que agora sabemos que está em Base64), 
-          # remove quebras de linha ou espaços acidentais com 'tr',
-          # decodifica de volta para JSON real com 'base64 --decode',
-          # e salva no arquivo esperado pelo script Python.
-          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | tr -d '\n\r ' | base64 --decode > .github/workflows/credentials.json
+          # DEBUG 1: Imprime o conteúdo RAW do secret (em hexadecimal) para verificar caracteres invisíveis.
+          echo "--- Conteúdo RAW do Secret (Base64 em HEX) ---"
+          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | xxd -p
+          echo "--- Fim do Conteúdo RAW do Secret ---"
+
+          # Processamento da string Base64: limpa, decodifica e salva.
+          # Usamos 'tee' para também imprimir o JSON decodificado no log.
+          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | tr -d '\n\r ' | base64 --decode | tee .github/workflows/credentials.json
           
-          # Confirmação visual no log para garantir que o JSON foi gerado corretamente (para depuração)
-          echo "--- INÍCIO DO ARQUIVO JSON DECODIFICADO ---"
+          echo "--- Conteúdo DECODIFICADO do JSON (no log) ---"
           cat .github/workflows/credentials.json
-          echo "\n--- FIM DO ARQUIVO JSON DECODIFICADO ---"
+          echo "--- Fim do Conteúdo DECODIFICADO do JSON ---"
 
       - name: Rodar script Python
         run: python .github/workflows/main.py
