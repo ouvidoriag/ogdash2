@@ -29,13 +29,10 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
-          # DEBUG 1: Imprime o conteúdo RAW do secret (em hexadecimal) para verificar caracteres invisíveis.
           echo "--- Conteúdo RAW do Secret (Base64 em HEX) ---"
           echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | xxd -p
           echo "--- Fim do Conteúdo RAW do Secret ---"
-
-          # Processamento da string Base64: limpa, decodifica e salva.
-          # Usamos 'tee' para também imprimir o JSON decodificado no log.
+          
           echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | tr -d '\n\r ' | base64 --decode | tee .github/workflows/credentials.json
           
           echo "--- Conteúdo DECODIFICADO do JSON (no log) ---"
