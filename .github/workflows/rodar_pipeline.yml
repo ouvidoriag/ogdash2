@@ -29,14 +29,16 @@ jobs:
 
       - name: Criar arquivo de credenciais
         run: |
-          # CORREÇÃO CRÍTICA NO YML: Apenas salva a string Base64 literal no arquivo.
+          # Apenas salva a string Base64 literal no arquivo, garantindo limpeza.
           # O Python será responsável por decodificá-la.
-          echo -n "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" > .github/workflows/credentials.json
+          # O 'tr -d' aqui é CRÍTICO para remover QUALQUER caractere extra do secret.
+          echo "${{ secrets.GDRIVE_CRED_JSON_BASE64 }}" | tr -d '\n\r\t ' > .github/workflows/credentials.json
           
-          # DEBUG: Imprime o conteúdo RAW do arquivo (ainda em Base64)
-          echo "--- INÍCIO DO ARQUIVO DE CREDENCIAIS (Base64 RAW) ---"
-          cat .github/workflows/credentials.json
-          echo "\n--- FIM DO ARQUIVO DE CREDENCIAIS (Base64 RAW) ---"
+          # DEBUG CRÍTICO: Imprime o conteúdo RAW do arquivo que o Python vai ler, em HEX.
+          # Isso nos mostrará SE existe algum caractere problemático no BASE64 que o Python lê.
+          echo "--- INÍCIO DO ARQUIVO credentials.json (Base64 RAW em HEX que Python lê) ---"
+          cat .github/workflows/credentials.json | xxd -p
+          echo "\n--- FIM DO ARQUIVO credentials.json (Base64 RAW em HEX que Python lê) ---"
 
       - name: Rodar script Python
         run: python .github/workflows/main.py
