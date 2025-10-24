@@ -406,72 +406,99 @@ except Exception as e:
 # ========================================================
 
 
-# ================================================================= #
-# ==== INÍCIO DO BLOCO TEMPORÁRIO CORRIGIDO - INSIRA AQUI ========= #
-# ================================================================= #
+# ========================================================
+# 5) COLETA DE PROTOCOLOS EXISTENTES ...
+# ... (final do seu código do Item 5)
+# ========================================================
 
-# ========================================================================
-# 5.5) SINCRONIZAÇÃO FORÇADA E TEMPORÁRIA (REMOVER APÓS 1ª EXECUÇÃO)
-# ========================================================================
-_BANNER("5.5) SINCRONIZAÇÃO FORÇADA DE 'servidor' (REMOVER DEPOIS)")
-print(" Executando sincronização única e direta para a coluna 'servidor'...")
-logging.info("INICIANDO: Sincronização forçada e temporária da coluna 'servidor'.")
+
+# ======================================================================= #
+# ========= INÍCIO DO BLOCO TEMPORÁRIO E DEFINITIVO - INSIRA AQUI ========= #
+# ======================================================================= #
+
+# ===================================================================================
+# 5.5) SINCRONIZAÇÃO COMPLETA E TEMPORÁRIA DE 'servidor' (REMOVER APÓS 1ª EXECUÇÃO)
+# ===================================================================================
+_BANNER("5.5) SINCRONIZAÇÃO COMPLETA E TEMPORÁRIA DE 'servidor'")
+print(" Executando sincronização COMPLETA para a coluna 'servidor'. Isso pode levar um momento...")
+logging.info("INICIANDO: Sincronização COMPLETA e temporária da coluna 'servidor'.")
 
 try:
-    # 1. Normaliza os nomes das colunas da base bruta para garantir que 'servidor' seja acessível
-    df.columns = [normalizar_nome_coluna(c) for c in df.columns]
+    # 1. GARANTE QUE TEMOS OS DOIS DATAFRAMES COMPLETOS
+    # Recarrega a base bruta e a tratada para garantir que temos os dados mais recentes e completos
+    _SUB("Carregando e preparando dados para sincronização...")
     
-    # 2. Verifica se tudo que precisamos existe
-    if 'df' in globals() and 'servidor' in df.columns and 'aba_tratada' in globals():
+    # Carrega a base bruta (df_bruta) e normaliza
+    latest_file_id_sync, latest_file_name_sync, df_bruta_sync = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
+    df_bruta_sync.columns = [normalizar_nome_coluna(c) for c in df_bruta_sync.columns]
+    print(f" Base bruta para sincronização carregada: {df_bruta_sync.shape[0]} linhas.")
+
+    # Carrega a base tratada (df_tratada) e normaliza
+    df_tratada_sync = pd.DataFrame(aba_tratada.get_all_records())
+    df_tratada_sync.columns = [normalizar_nome_coluna(c) for c in df_tratada_sync.columns]
+    print(f" Base tratada para sincronização carregada: {df_tratada_sync.shape[0]} linhas.")
+    
+    if 'protocolo' not in df_bruta_sync.columns or 'servidor' not in df_bruta_sync.columns or 'protocolo' not in df_tratada_sync.columns:
+        raise ValueError("Colunas 'protocolo' ou 'servidor' não encontradas. Verifique os nomes das colunas nas planilhas.")
+
+    # 2. CRIA UM MAPA DE "VERDADE" A PARTIR DA BASE BRUTA
+    # Este mapa terá: {protocolo: servidor_correto}
+    _SUB("Criando mapa de servidores corretos a partir da base bruta...")
+    # Remove duplicatas da base bruta para garantir um mapa limpo
+    df_bruta_sync.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
+    mapa_servidor_correto = df_bruta_sync.set_index('protocolo')['servidor'].to_dict()
+    print(f" Mapa de servidores criado com {len(mapa_servidor_correto)} protocolos únicos da base bruta.")
+
+    # 3. IDENTIFICA AS DIFERENÇAS NA BASE TRATADA
+    _SUB("Identificando registros que precisam de correção na base tratada...")
+    # Aplica o mapa à base tratada para encontrar o valor que 'servidor' deveria ter
+    df_tratada_sync['servidor_correto'] = df_tratada_sync['protocolo'].map(mapa_servidor_correto)
+    
+    # Compara o valor atual com o valor correto, ignorando os que não estão na base bruta (NaN)
+    df_para_atualizar = df_tratada_sync[
+        (df_tratada_sync['servidor_correto'].notna()) & 
+        (df_tratada_sync['servidor'] != df_tratada_sync['servidor_correto'])
+    ]
+    
+    if df_para_atualizar.empty:
+        print("✅ Nenhuma divergência encontrada. A coluna 'servidor' já está sincronizada.")
+        logging.info("Nenhuma divergência encontrada na sincronização de 'servidor'.")
+    else:
+        print(f" Encontradas {len(df_para_atualizar)} linhas para corrigir na coluna 'servidor'.")
+        logging.info(f"Encontradas {len(df_para_atualizar)} linhas para corrigir em 'servidor'.")
+
+        # 4. PREPARA E EXECUTA A ATUALIZAÇÃO EM LOTE
+        _SUB("Preparando e enviando a atualização para o Google Sheets...")
+        TARGET_COL_INDEX = df_tratada_sync.columns.get_loc('servidor') + 1 # Encontra o índice da coluna dinamicamente
         
-        # 3. Define o índice da coluna alvo DIRETAMENTE. Coluna 'servidor' é a 20ª coluna (T).
-        TARGET_COL_INDEX = 20 
-        print(f" Alvo da atualização: Coluna {TARGET_COL_INDEX} ('servidor').")
-        logging.info(f"Alvo da atualização definido: Coluna {TARGET_COL_INDEX} ('servidor').")
-
-        # 4. Pega os dados brutos necessários
-        df_sync = df[['protocolo', 'servidor']].copy()
-
-        # 5. Cria um mapa de protocolo -> número da linha para atualizações rápidas
-        print(" Construindo mapa de protocolos da planilha tratada...")
-        protocolos_tratada = aba_tratada.col_values(1) # Pega todos os protocolos da Coluna A
-        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_tratada)}
-        print(f" Mapa construído com {len(protocolo_para_linha)} protocolos.")
-
-        # 6. Prepara a lista de células que precisam ser atualizadas
+        protocolos_na_sheet = aba_tratada.col_values(1)
+        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
+        
         cells_to_update = []
-        for index, row in df_sync.iterrows():
+        for _, row in df_para_atualizar.iterrows():
             protocolo = row['protocolo']
-            servidor_bruto = row['servidor']
-            
+            servidor_correto = row['servidor_correto']
             if protocolo in protocolo_para_linha:
                 linha_idx = protocolo_para_linha[protocolo]
-                # Adiciona um objeto gspread.Cell à lista
-                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(servidor_bruto)))
+                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(servidor_correto)))
 
-        # 7. Envia a atualização em um único lote para o Google Sheets
         if cells_to_update:
-            print(f" Preparando {len(cells_to_update)} células para atualização...")
-            logging.info(f"Enviando {len(cells_to_update)} atualizações para a coluna 'servidor'.")
             aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-            print("✅ Sincronização da coluna 'servidor' concluída com sucesso.")
+            print(f"✅ Sincronização COMPLETA da coluna 'servidor' concluída. {len(cells_to_update)} células foram atualizadas.")
             print(" AVISO: Lembre-se de remover todo o bloco 'Item 5.5' do script após esta execução.")
-            logging.info("CONCLUÍDO: Sincronização forçada da coluna 'servidor'.")
+            logging.info(f"CONCLUÍDO: Sincronização completa. {len(cells_to_update)} células de 'servidor' atualizadas.")
         else:
-            print(" Nenhuma célula para atualizar. A sincronização foi pulada.")
-            logging.info("Nenhuma célula para atualizar na sincronização forçada.")
-
-    else:
-        print("⚠️ Pulo da sincronização: DataFrame 'df' ou coluna 'servidor' não encontrados.")
-        logging.warning("Pulo da sincronização forçada: df, servidor ou aba_tratada não disponíveis.")
+            print(" Nenhuma célula pôde ser mapeada para atualização.")
 
 except Exception as e:
-    print(f"❌ Erro crítico durante a sincronização forçada: {e}")
-    logging.error(f"Erro crítico durante a sincronização forçada do servidor: {e}", exc_info=True)
+    print(f"❌ Erro crítico durante a sincronização completa: {e}")
+    logging.error(f"Erro crítico durante a sincronização completa do servidor: {e}", exc_info=True)
 
-# ================================================================= #
-# ============= FIM DO BLOCO TEMPORÁRIO CORRIGIDO ================= #
-# ================================================================= #
+
+# ======================================================================= #
+# =================== FIM DO BLOCO TEMPORÁRIO DEFINITIVO ================== #
+# ======================================================================= #
+
 
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
