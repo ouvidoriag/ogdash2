@@ -910,22 +910,51 @@ if not df_send.empty and "data_da_conclusao" in df_send.columns:
     df_send["data_da_conclusao"] = df_send["data_da_conclusao"].apply(tratar_data_conclusao_item8)
     logging.debug("Re-aplicado tratamento de 'data_da_conclusao' para garantir formato DD/MM/YYYY.")
 
-def tratar_data_generica_item8(x):
+def tratar_data_generica_item8_final(x):
+    """
+    Tratamento final robusto para garantir o formato DD/MM/AAAA para o Sheets,
+    lidando com valores que já são strings ou formatos de 2 dígitos.
+    """
+    s = str(x).strip()
+    if s.lower() in ["", "nan", "na", "n/a", "none"]:
+        return ""
+
+    # Verifica se já está no formato DD/MM/AAAA. Se sim, mantém como string.
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
+        return s
+    
+    # 1. Tenta o parsing flexível (mais comum)
     try:
-        if pd.isna(x) or str(x).strip().lower() in ["", "nan", "na", "n/a"]:
-            return ""
-        dt = pd.to_datetime(x, errors="coerce", dayfirst=True)
+        dt = pd.to_datetime(s, errors="coerce", dayfirst=True)
         if pd.notna(dt):
             return dt.strftime("%d/%m/%Y")
-        else:
-            return ""
+        
+        # 2. Se falhou, tenta explicitamente formatos de 2 dígitos que podem ter escapado (DD/MM/AA)
+        if re.fullmatch(r"\d{2}/\d{2}/\d{2}", s):
+            dt_y = pd.to_datetime(s, format="%d/%m/%y", errors="coerce")
+            if pd.notna(dt_y):
+                return dt_y.strftime("%d/%m/%Y")
+        
+        # 3. Tenta formatos ISO (YYYY-MM-DD)
+        if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+            dt_iso = pd.to_datetime(s, errors="coerce", dayfirst=False)
+            if pd.notna(dt_iso):
+                return dt_iso.strftime("%d/%m/%Y")
+            
+        return "" # Se tudo falhou
+            
     except Exception:
-        return ""
+        return "" # Em caso de erro de parsing
 
 for col in ["data_da_criacao"]:
     if not df_send.empty and col in df_send.columns:
-        df_send[col] = df_send[col].apply(tratar_data_generica_item8)
-        logging.debug(f"Re-aplicado tratamento de '{col}' para garantir formato DD/MM/YYYY.")
+        # Aplica a função de tratamento final (com ano de 4 dígitos)
+        df_send[col] = df_send[col].apply(tratar_data_generica_item8_final)
+        
+        # GARANTE que a coluna FINAL é string (DD/MM/AAAA) para envio sem erro de tipo.
+        df_send[col] = df_send[col].astype(str)
+        logging.debug(f"Re-aplicado tratamento FINAL de '{col}' para garantir formato DD/MM/AAAA (String).")
+
 
 # ----------------------------------------------------------
 # CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
