@@ -399,7 +399,48 @@ except Exception as e:
     df["eh_novo"] = True
     novos_protos = []
     nao_enviados = []
-    
+
+# ======================================================== #
+# ==== INÍCIO DO BLOCO TEMPORÁRIO - INSIRA O CÓDIGO AQUI === #
+# ======================================================== #
+
+# ========================================================
+# 5.5) SINCRONIZAÇÃO TEMPORÁRIA (REMOVER APÓS 1ª EXECUÇÃO)
+# ========================================================
+_BANNER("5.5) SINCRONIZAÇÃO TEMPORÁRIA (REMOVER APÓS 1ª EXECUÇÃO)")
+print(" Executando passo de sincronização única para a coluna 'servidor'...")
+logging.info("INICIANDO: Sincronização temporária da coluna 'servidor'.")
+
+try:
+    # Verifica se os DataFrames e a coluna necessária existem
+    if 'df' in globals() and 'servidor' in df.columns and 'aba_tratada' in globals():
+        
+        # Cria um DataFrame apenas com as colunas necessárias para o patch: protocolo e servidor da base bruta
+        df_sync_servidor = df[['protocolo', 'servidor']].copy()
+        
+        print(f" Sincronizando {len(df_sync_servidor)} registros da base bruta para a tratada...")
+        logging.info(f"Sincronizando {len(df_sync_servidor)} servidores da base bruta.")
+
+        # Utiliza a função de patch existente para forçar a atualização
+        # Esta função irá encontrar cada protocolo na planilha tratada e atualizar o valor da célula 'servidor'
+        _patch_grouped_force(df_sync_servidor, "protocolo", "servidor", aba_tratada)
+
+        print("✅ Sincronização da coluna 'servidor' concluída.")
+        print(" AVISO: Lembre-se de remover todo o bloco 'Item 5.5' do script após esta execução.")
+        logging.info("CONCLUÍDO: Sincronização temporária da coluna 'servidor'.")
+    else:
+        print("⚠️ Pulo da sincronização temporária: DataFrame 'df' ou coluna 'servidor' não encontrados.")
+        logging.warning("Pulo da sincronização temporária: df, servidor ou aba_tratada não disponíveis.")
+
+except Exception as e:
+    print(f"❌ Erro durante a sincronização temporária: {e}")
+    logging.error(f"Erro durante a sincronização temporária do servidor: {e}", exc_info=True)
+    print(" O pipeline continuará, mas a sincronização pode ter falhado.")
+
+# ======================================================== #
+# ======= FIM DO BLOCO TEMPORÁRIO - INSIRA ATÉ AQUI ======== #
+# ======================================================== #
+
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
