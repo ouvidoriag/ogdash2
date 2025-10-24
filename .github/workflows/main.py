@@ -400,46 +400,78 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
-# ======================================================== #
-# ==== INÍCIO DO BLOCO TEMPORÁRIO - INSIRA O CÓDIGO AQUI === #
-# ======================================================== #
+# ========================================================
+# 5) COLETA DE PROTOCOLOS EXISTENTES ...
+# ... (final do seu código do Item 5)
+# ========================================================
 
-# ========================================================
-# 5.5) SINCRONIZAÇÃO TEMPORÁRIA (REMOVER APÓS 1ª EXECUÇÃO)
-# ========================================================
-_BANNER("5.5) SINCRONIZAÇÃO TEMPORÁRIA (REMOVER APÓS 1ª EXECUÇÃO)")
-print(" Executando passo de sincronização única para a coluna 'servidor'...")
-logging.info("INICIANDO: Sincronização temporária da coluna 'servidor'.")
+
+# ================================================================= #
+# ==== INÍCIO DO BLOCO TEMPORÁRIO CORRIGIDO - INSIRA AQUI ========= #
+# ================================================================= #
+
+# ========================================================================
+# 5.5) SINCRONIZAÇÃO FORÇADA E TEMPORÁRIA (REMOVER APÓS 1ª EXECUÇÃO)
+# ========================================================================
+_BANNER("5.5) SINCRONIZAÇÃO FORÇADA DE 'servidor' (REMOVER DEPOIS)")
+print(" Executando sincronização única e direta para a coluna 'servidor'...")
+logging.info("INICIANDO: Sincronização forçada e temporária da coluna 'servidor'.")
 
 try:
-    # Verifica se os DataFrames e a coluna necessária existem
+    # 1. Normaliza os nomes das colunas da base bruta para garantir que 'servidor' seja acessível
+    df.columns = [normalizar_nome_coluna(c) for c in df.columns]
+    
+    # 2. Verifica se tudo que precisamos existe
     if 'df' in globals() and 'servidor' in df.columns and 'aba_tratada' in globals():
         
-        # Cria um DataFrame apenas com as colunas necessárias para o patch: protocolo e servidor da base bruta
-        df_sync_servidor = df[['protocolo', 'servidor']].copy()
-        
-        print(f" Sincronizando {len(df_sync_servidor)} registros da base bruta para a tratada...")
-        logging.info(f"Sincronizando {len(df_sync_servidor)} servidores da base bruta.")
+        # 3. Define o índice da coluna alvo DIRETAMENTE. Coluna 'servidor' é a 20ª coluna (T).
+        TARGET_COL_INDEX = 20 
+        print(f" Alvo da atualização: Coluna {TARGET_COL_INDEX} ('servidor').")
+        logging.info(f"Alvo da atualização definido: Coluna {TARGET_COL_INDEX} ('servidor').")
 
-        # Utiliza a função de patch existente para forçar a atualização
-        # Esta função irá encontrar cada protocolo na planilha tratada e atualizar o valor da célula 'servidor'
-        _patch_grouped_force(df_sync_servidor, "protocolo", "servidor", aba_tratada)
+        # 4. Pega os dados brutos necessários
+        df_sync = df[['protocolo', 'servidor']].copy()
 
-        print("✅ Sincronização da coluna 'servidor' concluída.")
-        print(" AVISO: Lembre-se de remover todo o bloco 'Item 5.5' do script após esta execução.")
-        logging.info("CONCLUÍDO: Sincronização temporária da coluna 'servidor'.")
+        # 5. Cria um mapa de protocolo -> número da linha para atualizações rápidas
+        print(" Construindo mapa de protocolos da planilha tratada...")
+        protocolos_tratada = aba_tratada.col_values(1) # Pega todos os protocolos da Coluna A
+        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_tratada)}
+        print(f" Mapa construído com {len(protocolo_para_linha)} protocolos.")
+
+        # 6. Prepara a lista de células que precisam ser atualizadas
+        cells_to_update = []
+        for index, row in df_sync.iterrows():
+            protocolo = row['protocolo']
+            servidor_bruto = row['servidor']
+            
+            if protocolo in protocolo_para_linha:
+                linha_idx = protocolo_para_linha[protocolo]
+                # Adiciona um objeto gspread.Cell à lista
+                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(servidor_bruto)))
+
+        # 7. Envia a atualização em um único lote para o Google Sheets
+        if cells_to_update:
+            print(f" Preparando {len(cells_to_update)} células para atualização...")
+            logging.info(f"Enviando {len(cells_to_update)} atualizações para a coluna 'servidor'.")
+            aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
+            print("✅ Sincronização da coluna 'servidor' concluída com sucesso.")
+            print(" AVISO: Lembre-se de remover todo o bloco 'Item 5.5' do script após esta execução.")
+            logging.info("CONCLUÍDO: Sincronização forçada da coluna 'servidor'.")
+        else:
+            print(" Nenhuma célula para atualizar. A sincronização foi pulada.")
+            logging.info("Nenhuma célula para atualizar na sincronização forçada.")
+
     else:
-        print("⚠️ Pulo da sincronização temporária: DataFrame 'df' ou coluna 'servidor' não encontrados.")
-        logging.warning("Pulo da sincronização temporária: df, servidor ou aba_tratada não disponíveis.")
+        print("⚠️ Pulo da sincronização: DataFrame 'df' ou coluna 'servidor' não encontrados.")
+        logging.warning("Pulo da sincronização forçada: df, servidor ou aba_tratada não disponíveis.")
 
 except Exception as e:
-    print(f"❌ Erro durante a sincronização temporária: {e}")
-    logging.error(f"Erro durante a sincronização temporária do servidor: {e}", exc_info=True)
-    print(" O pipeline continuará, mas a sincronização pode ter falhado.")
+    print(f"❌ Erro crítico durante a sincronização forçada: {e}")
+    logging.error(f"Erro crítico durante a sincronização forçada do servidor: {e}", exc_info=True)
 
-# ======================================================== #
-# ======= FIM DO BLOCO TEMPORÁRIO - INSIRA ATÉ AQUI ======== #
-# ======================================================== #
+# ================================================================= #
+# ============= FIM DO BLOCO TEMPORÁRIO CORRIGIDO ================= #
+# ================================================================= #
 
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
