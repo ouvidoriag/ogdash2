@@ -204,14 +204,15 @@ def _canon_responsavel_series(series: pd.Series) -> pd.Series:
         patt_ouvidoria_saude: "Ouvidoria Setorial da Saúde",
         r"(?i)^cidad(?:\u00e3|ã)o$": "Cidadão",
     }, regex=True)
-
+    
+# Padroniza data_da_criacao para o formato data DD/MM/AAAA
 def _to_ddmmaa_text(series: pd.Series) -> pd.Series:
     EXCEL_BASE = pd.Timestamp("1899-12-30")
     def _one(v):
         if pd.isna(v): return None
         if isinstance(v, (pd.Timestamp, np.datetime64)):
             dt = pd.to_datetime(v, errors="coerce")
-            return dt.strftime("%d/%m/%y") if pd.notna(dt) else None
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else None ## <-- MUDANÇA AQUI de %y para %Y
         s = str(v).strip()
         if s == "": return None
         s2 = s.replace("T", " ").replace("Z", "")
@@ -220,27 +221,29 @@ def _to_ddmmaa_text(series: pd.Series) -> pd.Series:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 dt = pd.to_datetime(s2, errors="coerce", dayfirst=False)
-            return dt.strftime("%d/%m/%y") if pd.notna(dt) else s
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
         if re.fullmatch(r"\d{5,6}(\.\d+)?", s2):
-            try: return (EXCEL_BASE + pd.to_timedelta(float(s2), "D")).strftime("%d/%m/%y")
+            try: return (EXCEL_BASE + pd.to_timedelta(float(s2), "D")).strftime("%d/%m/%Y") ## <-- MUDANÇA AQUI de %y para %Y
             except: pass
         if re.fullmatch(r"\d{13}", s2):
             dt = pd.to_datetime(int(s2), unit="ms", errors="coerce")
-            return dt.strftime("%d/%m/%y") if pd.notna(dt) else s
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
         if re.fullmatch(r"\d{10}(\.\d+)?", s2):
             dt = pd.to_datetime(float(s2), unit="s", errors="coerce")
-            return dt.strftime("%d/%m/%y") if pd.notna(dt) else s
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
         for fmt in ["%d/%m/%Y %H:%M:%S","%d/%m/%Y %H:%M","%d/%m/%Y",
                     "%d/%m/%y %H:%M:%S","%d/%m/%y %H:%M","%d/%m/%y",
+
                     "%Y-%m-%d %H:%M:%S","%Y-%m-%d %H:%M","%Y-%m-%d"]:
-            try: return pd.to_datetime(s2, format=fmt).strftime("%d/%m/%y")
+            try: return pd.to_datetime(s2, format=fmt).strftime("%d/%m/%Y") ## <-- MUDANÇA AQUI de %y para %Y
             except: pass
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             dt = pd.to_datetime(s2, dayfirst=True, errors="coerce")
-        return dt.strftime("%d/%m/%y") if pd.notna(dt) else s
+        return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
     return series.apply(_one).astype("object")
 
+# Padroniza data_da_conclusao para o formato data DD/MM/AAAA
 def _conclusao_strict(series: pd.Series) -> pd.Series:
     s = pd.Series(series, dtype="object").astype(str).str.strip()
     s_cf = s.str.casefold()
@@ -266,7 +269,7 @@ def _conclusao_strict(series: pd.Series) -> pd.Series:
                 dt.loc[non_iso_idx] = pd.to_datetime(s_rest.loc[non_iso_idx], errors="coerce", dayfirst=True)
         good_idx = dt.index[dt.notna()]
         if len(good_idx) > 0:
-            out.loc[good_idx] = dt.loc[good_idx].dt.strftime("%d/%m/%y")
+            out.loc[good_idx] = dt.loc[good_idx].dt.strftime("%d/%m/%Y") ## <-- MUDANÇA AQUI de %y para %Y
     return out
 
 def _parse_dt_cmp(series: pd.Series) -> pd.Series:
@@ -701,6 +704,38 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 logging.info(f"Tratamento 7.8 (prazo_restante p/ concluída) aplicado para {mask_conc.sum()} linhas.")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.8 (Prazo Restante): {e}", exc_info=True)
+
+    # --- NOVO TRATAMENTO 7.9: Padronização adicional para 'responsavel' (Ouvidorias) ---
+    try:
+        if "responsavel" in df_loc.columns:
+            # Garante que a coluna é do tipo string para usar métodos .str
+            df_loc["responsavel"] = df_loc["responsavel"].astype(str)
+
+            # Padroniza "Ouvidoria Geral" (case-insensitive, ignora espaços extras)
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
+                r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
+            )
+
+            # Padroniza "Ouvidoria Setorial de Obras" (case-insensitive, ignora espaços extras)
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
+                r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
+            )
+            logging.info("Tratamento 7.9 (Padronização de Ouvidorias em 'responsavel') aplicado.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.9 (Padronização de Ouvidorias): {e}", exc_info=True)
+
+    # --- NOVO TRATAMENTO 7.10: Padronização da coluna 'canal' ---
+    try:
+        if "canal" in df_loc.columns:
+            df_loc["canal"] = df_loc["canal"].astype(str)
+            # Combina 'Colab Gov' e 'Portal Cidadão' em 'Aplicativo Colab' (case-insensitive)
+            df_loc["canal"] = df_loc["canal"].str.replace(
+                r"^\s*(Colab Gov|Portal Cidadão)\s*$", "Aplicativo Colab", regex=True, case=False
+            )
+            logging.info("Tratamento 7.10 (Padronização de 'canal') aplicado.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.10 (Padronização de 'canal'): {e}", exc_info=True)
+
 
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
     return df_loc
