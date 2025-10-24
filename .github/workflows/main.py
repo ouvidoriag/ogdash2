@@ -1263,24 +1263,6 @@ if "tempo_de_resolucao_em_dias" in df.columns:
 
     df["tempo_de_resolucao_em_dias"] = s_local.map(_fix_zero_keep_text)
 
-
-# ========================================================
-# 9.2) Correção pontual servidor (Raphael)
-# ========================================================
-if "protocolo" in df.columns and "servidor" in df.columns:
-    protos_raphael = (
-        df.loc[df["servidor"].astype(str).str.strip() == "Raphael Pereira de Mello", "protocolo"]
-          .astype(str).str.strip().unique().tolist()
-    )
-    if protos_raphael:
-        df_fix = pd.DataFrame({
-            "protocolo": protos_raphael,
-            "servidor": "Raphael Pereira de Mello"
-        })
-        _patch_grouped_force(df_fix, "protocolo", "servidor", aba_tratada)
-    else:
-        logging.info("Nenhum protocolo local com 'Raphael Pereira de Mello' encontrado.")
-
 # ========================================================
 # 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias)
 # ========================================================
