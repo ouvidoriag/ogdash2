@@ -416,6 +416,16 @@ except Exception as e:
 # ========= INÍCIO DO BLOCO TEMPORÁRIO E DEFINITIVO - INSIRA AQUI ========= #
 # ======================================================================= #
 
+# ========================================================
+# 5) COLETA DE PROTOCOLOS EXISTENTES ...
+# ... (final do seu código do Item 5)
+# ========================================================
+
+
+# ======================================================================= #
+# ========= INÍCIO DO BLOCO TEMPORÁRIO E DEFINITIVO - INSIRA AQUI ========= #
+# ======================================================================= #
+
 # ===================================================================================
 # 5.5) SINCRONIZAÇÃO COMPLETA E TEMPORÁRIA DE 'servidor' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
@@ -425,15 +435,14 @@ logging.info("INICIANDO: Sincronização COMPLETA e temporária da coluna 'servi
 
 try:
     # 1. GARANTE QUE TEMOS OS DOIS DATAFRAMES COMPLETOS
-    # Recarrega a base bruta e a tratada para garantir que temos os dados mais recentes e completos
     _SUB("Carregando e preparando dados para sincronização...")
     
-    # Carrega a base bruta (df_bruta) e normaliza
+    # Carrega a base bruta e normaliza
     latest_file_id_sync, latest_file_name_sync, df_bruta_sync = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
     df_bruta_sync.columns = [normalizar_nome_coluna(c) for c in df_bruta_sync.columns]
     print(f" Base bruta para sincronização carregada: {df_bruta_sync.shape[0]} linhas.")
 
-    # Carrega a base tratada (df_tratada) e normaliza
+    # Carrega a base tratada e normaliza
     df_tratada_sync = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_sync.columns = [normalizar_nome_coluna(c) for c in df_tratada_sync.columns]
     print(f" Base tratada para sincronização carregada: {df_tratada_sync.shape[0]} linhas.")
@@ -442,26 +451,21 @@ try:
         raise ValueError("Colunas 'protocolo' ou 'servidor' não encontradas. Verifique os nomes das colunas nas planilhas.")
 
     # 2. CRIA UM MAPA DE "VERDADE" A PARTIR DA BASE BRUTA
-    # Este mapa terá: {protocolo: servidor_correto}
     _SUB("Criando mapa de servidores corretos a partir da base bruta...")
-    # Remove duplicatas da base bruta para garantir um mapa limpo
     df_bruta_sync.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
     mapa_servidor_correto = df_bruta_sync.set_index('protocolo')['servidor'].to_dict()
     print(f" Mapa de servidores criado com {len(mapa_servidor_correto)} protocolos únicos da base bruta.")
 
     # 3. IDENTIFICA AS DIFERENÇAS NA BASE TRATADA
     _SUB("Identificando registros que precisam de correção na base tratada...")
-    # Aplica o mapa à base tratada para encontrar o valor que 'servidor' deveria ter
     df_tratada_sync['servidor_correto'] = df_tratada_sync['protocolo'].map(mapa_servidor_correto)
-    
-    # Compara o valor atual com o valor correto, ignorando os que não estão na base bruta (NaN)
     df_para_atualizar = df_tratada_sync[
         (df_tratada_sync['servidor_correto'].notna()) & 
         (df_tratada_sync['servidor'] != df_tratada_sync['servidor_correto'])
     ]
     
     if df_para_atualizar.empty:
-        print("✅ Nenhuma divergência encontrada. A coluna 'servidor' já está sincronizada.")
+        print("✅ Nenhuma divergência histórica encontrada. A coluna 'servidor' já está sincronizada.")
         logging.info("Nenhuma divergência encontrada na sincronização de 'servidor'.")
     else:
         print(f" Encontradas {len(df_para_atualizar)} linhas para corrigir na coluna 'servidor'.")
@@ -469,7 +473,7 @@ try:
 
         # 4. PREPARA E EXECUTA A ATUALIZAÇÃO EM LOTE
         _SUB("Preparando e enviando a atualização para o Google Sheets...")
-        TARGET_COL_INDEX = df_tratada_sync.columns.get_loc('servidor') + 1 # Encontra o índice da coluna dinamicamente
+        TARGET_COL_INDEX = df_tratada_sync.columns.get_loc('servidor') + 1 
         
         protocolos_na_sheet = aba_tratada.col_values(1)
         protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
@@ -498,7 +502,6 @@ except Exception as e:
 # ======================================================================= #
 # =================== FIM DO BLOCO TEMPORÁRIO DEFINITIVO ================== #
 # ======================================================================= #
-
 
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
