@@ -5,7 +5,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: "0 12 * * *"   # 12:00 UTC (09:00 BRT / 10:00 BRST)
+    - cron: "0 12 * * *"   # 12:40 UTC (09:00 BRT / 10:00 BRST)
     - cron: "0 17 * * *"  # 17:00 UTC (14:00 BRT / 15:00 BRST)
 jobs:
   rodar_pipeline:
