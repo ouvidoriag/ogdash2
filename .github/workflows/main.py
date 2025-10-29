@@ -334,7 +334,30 @@ def _canon_prazo_restante(v):
     if _looks_like_demanda_concluida(s_clean):
         return "Demanda Concluída"
     return s_clean
+    
+# Normaliza as palavras da coluna "orgaos"
+def _to_proper_case_pt(text: str) -> str:
+    """
+    Converte uma string para o formato 'Title Case' apropriado para o português,
+    mantendo conectivos comuns em minúsculo (a menos que seja a primeira palavra).
+    """
+    if not isinstance(text, str) or not text.strip():
+        return text
 
+    # Lista de palavras que devem permanecer em minúsculo
+    conectivos = ['de', 'da', 'do', 'dos', 'das', 'e', 'a', 'o', 'em']
+    
+    palavras = text.lower().split()
+    palavras_capitalizadas = []
+    
+    for i, palavra in enumerate(palavras):
+        # Capitaliza a palavra se for a primeira da frase ou se não for um conectivo
+        if i == 0 or palavra not in conectivos:
+            palavras_capitalizadas.append(palavra.capitalize())
+        else:
+            palavras_capitalizadas.append(palavra)
+            
+    return ' '.join(palavras_capitalizadas)
 # ============================================= 
 # 5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA - MANTIDO (com ajuste de logging)
 # =============================================
@@ -598,18 +621,28 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
         df_loc["orgaos"] = df_loc["orgaos"].apply(_canon_orgaos).astype(str)
         logging.info("Tratamento 7.4 (Padronização final de órgãos) aplicado.")
 
+        # --- NOVO TRATAMENTO DE CAPITALIZAÇÃO ---
+        # Aplica a função _to_proper_case_pt para padronizar a capitalização
+        df_loc["orgaos"] = df_loc["orgaos"].apply(_to_proper_case_pt)
+        logging.info("Tratamento 7.4 (Capitalização 'Proper Case') aplicado a 'orgaos'.")
+        # --- FIM DO NOVO TRATAMENTO ---
+
         # Fallback adicional para células com TEMA vazio e ORGÃOS ainda vazios
         if "tema" in df_loc.columns: # Condição para evitar erro se 'tema' não existir
             mask_tema_vazio = df_loc["tema"].isna() | (df_loc["tema"].astype(str).str.strip() == "")
             mask_org_vazio  = df_loc["orgaos"].isna() | (df_loc["orgaos"].astype(str).str.strip() == "")
             if (mask_tema_vazio & mask_org_vazio).any():
                 count_fallback = (mask_tema_vazio & mask_org_vazio).sum()
-                df_loc.loc[mask_tema_vazio & mask_org_vazio, "orgaos"] = "Secretaria Municipal de Comunicação e Relações Públicas"
+                # Aplica o fallback e depois a capitalização no valor do fallback
+                fallback_value = _to_proper_case_pt("Secretaria Municipal de Comunicação e Relações Públicas")
+                df_loc.loc[mask_tema_vazio & mask_org_vazio, "orgaos"] = fallback_value
                 logging.warning(f"QA 7.4: {count_fallback} linhas tiveram 'orgaos' preenchido por fallback final (tema e orgaos vazios).")
         else: # Se 'tema' não existe, preenche 'orgaos' onde estiver vazio
             count_fillna = df_loc["orgaos"].isna().sum()
             if count_fillna > 0:
-                df_loc["orgaos"].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
+                # Aplica o fallback e depois a capitalização no valor do fallback
+                fallback_value = _to_proper_case_pt("Secretaria Municipal de Comunicação e Relações Públicas")
+                df_loc["orgaos"].fillna(fallback_value, inplace=True)
                 logging.warning(f"QA 7.4: 'orgaos' preenchido por fallback final para {count_fillna} linhas (tema ausente).")
 
         # QA Final para 'orgaos': verifica valores inesperados (Sim/Não/True/False, etc.)
