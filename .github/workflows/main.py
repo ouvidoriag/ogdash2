@@ -178,7 +178,16 @@ except Exception as e:
 # ========================================================
 _BANNER("4) AUXILIARES (codificação, datas, lotes)")
 
+def _clean_whitespace(v) -> str:
+    """NOVA FUNÇÃO: Limpa apenas espaços extras (início, fim e múltiplos)
+       mas PRESERVA acentuação e capitalização."""
+    if v is None:
+        return ""
+    s = str(v).strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
 # Definição do canon_txt
+
 def _canon_txt(v) -> str:
     """
     Função de canonização de texto: converte para string, remove acentos,
@@ -464,63 +473,54 @@ except Exception as e:
 # ===================================================================================
 # 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (REMOVER DEPOIS)")
-print(" Executando backfill para padronizar a capitalização de TODA a coluna 'orgaos'...")
-logging.info("INICIANDO: Backfill temporário da coluna 'orgaos' usando _to_proper_case_pt.")
+# ===================================================================================
+# 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (PARA ACENTOS) (REMOVER APÓS 1ª EXECUÇÃO)
+# ===================================================================================
+_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (PARA ACENTOS)")
+print(" Executando backfill para corrigir acentuação e capitalização de TODA a coluna 'orgaos'...")
+logging.info("INICIANDO: Backfill de 'orgaos' para corrigir acentos e capitalização.")
 
 try:
-    # 1. CARREGA A TOTALIDADE DA BASE TRATADA
-    _SUB("Carregando base tratada histórica...")
+    _SUB("Carregando bases para o backfill...")
+    # Carrega a base bruta para ter a referência correta de TEMA
+    df_bruta_hist, _, _ = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
+    df_bruta_hist.columns = [normalizar_nome_coluna(c) for c in df_bruta_hist.columns]
+    df_bruta_hist.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
+    mapa_protocolo_tema = df_bruta_hist.set_index('protocolo')['tema'].to_dict()
+
+    # Carrega a base tratada
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
-    print(f" Base tratada carregada com {df_tratada_hist.shape[0]} linhas para análise.")
+
+    _SUB("Recalculando 'orgaos' com a lógica correta...")
+    # Aplica a mesma lógica do novo Item 7.4 a todos os dados históricos
+    df_tratada_hist['tema_correto'] = df_tratada_hist['protocolo'].map(mapa_protocolo_tema)
+    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['tema_correto'].apply(mapear_orgao_exato) # Reusa a função do Item 7.4
+    df_tratada_hist['orgaos_corrigido'].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
+    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['orgaos_corrigido'].apply(_clean_whitespace).apply(_to_proper_case_pt)
     
-    if 'protocolo' not in df_tratada_hist.columns or 'orgaos' not in df_tratada_hist.columns:
-        raise ValueError("Colunas 'protocolo' ou 'orgaos' não encontradas na planilha tratada.")
-
-    # 2. APLICA A LÓGICA DE CAPITALIZAÇÃO CORRETA
-    _SUB("Aplicando a lógica de capitalização '_to_proper_case_pt'...")
-    # Cria uma nova coluna com os valores corrigidos
-    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['orgaos'].apply(_to_proper_case_pt)
-
-    # 3. IDENTIFICA APENAS AS LINHAS QUE PRECISAM SER MUDADAS
-    _SUB("Identificando registros que precisam de atualização...")
+    _SUB("Identificando e atualizando as divergências...")
     df_para_atualizar = df_tratada_hist[df_tratada_hist['orgaos'] != df_tratada_hist['orgaos_corrigido']]
-    
-    if df_para_atualizar.empty:
-        print("✅ Nenhuma correção de capitalização necessária. A coluna 'orgaos' já está padronizada.")
-        logging.info("Backfill: Nenhuma correção de 'orgaos' necessária.")
-    else:
-        print(f" Encontradas {len(df_para_atualizar)} linhas que serão padronizadas na coluna 'orgaos'.")
-        logging.info(f"Backfill: Encontradas {len(df_para_atualizar)} linhas de 'orgaos' para padronizar.")
 
-        # 4. PREPARA E EXECUTA A ATUALIZAÇÃO EM LOTE
-        _SUB("Preparando e enviando a atualização para o Google Sheets...")
-        # Encontra o índice da coluna 'orgaos' dinamicamente
+    if not df_para_atualizar.empty:
+        print(f" Encontradas {len(df_para_atualizar)} linhas em 'orgaos' para corrigir.")
         TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('orgaos') + 1
-        
         protocolos_na_sheet = aba_tratada.col_values(1)
         protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
         
-        cells_to_update = []
-        for _, row in df_para_atualizar.iterrows():
-            protocolo = row['protocolo']
-            orgao_corrigido = row['orgaos_corrigido'] # Pega o valor novo, já tratado
-            if protocolo in protocolo_para_linha:
-                linha_idx = protocolo_para_linha[protocolo]
-                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(orgao_corrigido)))
-
+        cells_to_update = [
+            gspread.Cell(row=protocolo_para_linha[row['protocolo']], col=TARGET_COL_INDEX, value=str(row['orgaos_corrigido']))
+            for _, row in df_para_atualizar.iterrows() if row['protocolo'] in protocolo_para_linha
+        ]
+        
         if cells_to_update:
             aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-            print(f"✅ Backfill da coluna 'orgaos' concluído. {len(cells_to_update)} células foram padronizadas.")
-            print(" AVISO: Lembre-se de remover todo o bloco 'Item 5.5' do script após esta execução.")
-            logging.info(f"CONCLUÍDO: Backfill. {len(cells_to_update)} células de 'orgaos' foram padronizadas.")
-        else:
-            print(" Nenhuma célula pôde ser mapeada para atualização.")
+            print(f"✅ Backfill da coluna 'orgaos' concluído. {len(cells_to_update)} células foram corrigidas.")
+    else:
+        print("✅ Nenhuma divergência histórica encontrada na coluna 'orgaos'.")
 
 except Exception as e:
     print(f"❌ Erro crítico durante o backfill de 'orgaos': {e}")
-    logging.error(f"Erro crítico durante o backfill de 'orgaos': {e}", exc_info=True)
 
 
 # ======================================================================= #
@@ -616,12 +616,12 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # 7.4 Órgãos por tema — MATCH EXATO, fallback apenas se TEMA vazio
 def _canon_orgaos(cell):
   
+    # 7.4 Órgãos por tema — LÓGICA CORRIGIDA PARA ACENTOS E CAPITALIZAÇÃO
     try:
-        # Funções auxiliares locais para este bloco
+        # Funções auxiliares locais
         import unicodedata as _ud, re as _re
 
-        # A função _norm continua usando .lower() porque é apenas para COMPARAÇÃO de chaves do dicionário
-        def _norm(s):
+        def _norm(s): # Usada apenas para comparar chaves, pode remover acentos e ser minúscula
             if pd.isna(s): return ""
             s = str(s).strip().lower()
             s = _ud.normalize("NFD", s)
@@ -635,7 +635,7 @@ def _canon_orgaos(cell):
             partes = [p.strip() for p in t.split(",") if p.strip()]
             return partes if partes else [str(v).strip()]
 
-        # O dicionário agora é usado em seu estado original, com a capitalização correta
+        # O dicionário é a nossa "fonte da verdade" para nomes com acentos
         map_tema_para_orgao = {
             "Administração Pública":"Secretaria de Administração","Agricultura":"Secretaria de Obras e Agricultura",
             "Assistência Social e Direitos Humanos":"Secretaria de Assistência Social e Direitos Humanos",
@@ -674,7 +674,6 @@ def _canon_orgaos(cell):
             "Vetores e Zoonoses (Combate à Dengue":"Secretaria de Saúde",
         }
         
-        # O mapa para busca continua usando chaves minúsculas, mas os VALORES mantêm a capitalização
         map_exact = { _norm(k): v for k, v in map_tema_para_orgao.items() }
 
         def mapear_orgao_exato(celula_tema):
@@ -686,33 +685,25 @@ def _canon_orgaos(cell):
                     orgs.append(map_exact[t_norm])
             return " | ".join(dict.fromkeys(o.strip() for o in orgs if o and str(o).strip())) or None
 
-        # Passo A: Cria a coluna 'orgaos' a partir do mapeamento
         if "tema" in df_loc.columns:
             df_loc["tema"] = df_loc["tema"].astype(str)
             df_loc["orgaos"] = df_loc["tema"].apply(mapear_orgao_exato)
         else:
             df_loc["orgaos"] = None
         
-        logging.info("Tratamento 7.4 (Mapeamento de Órgãos) aplicado.")
-
-        # Passo B: Aplica o fallback para valores nulos/vazios
         fallback_value = "Secretaria Municipal de Comunicação e Relações Públicas"
         df_loc["orgaos"].fillna(fallback_value, inplace=True)
-        # Garante que strings vazias também recebam o fallback
         df_loc.loc[df_loc["orgaos"].str.strip() == '', "orgaos"] = fallback_value
         
-        # Passo C: Executa a sequência de limpeza e capitalização correta
-        # 1. Limpeza que preserva a capitalização (remove acentos, espaços extras)
-        df_loc["orgaos"] = df_loc["orgaos"].apply(_canon_txt_preserve_case).astype(str)
-        # 2. Padronização final da capitalização (o "polimento" final)
+        # --- ALTERAÇÃO PRINCIPAL AQUI ---
+        # 1. Usa a nova função de limpeza que SÓ remove espaços e PRESERVA acentos.
+        df_loc["orgaos"] = df_loc["orgaos"].apply(_clean_whitespace).astype(str)
+        # 2. Aplica a capitalização "Title Case" como passo final.
         df_loc["orgaos"] = df_loc["orgaos"].apply(_to_proper_case_pt)
-        logging.info("Tratamento 7.4 (Limpeza e Capitalização) aplicado a 'orgaos'.")
-        
-        logging.info(f"QA 7.4: value_counts da coluna 'orgaos' após tratamento: \n{df_loc['orgaos'].value_counts(dropna=False).to_string()}")
+        logging.info("Tratamento 7.4 (Limpeza de Espaços e Capitalização com Acentos) aplicado a 'orgaos'.")
 
     except Exception as e:
         logging.error(f"Erro no tratamento 7.4 (Órgãos por tema): {e}", exc_info=True)
-
 
     # 7.5 Padronização 'servidor' (dicionário completo)
     try:
