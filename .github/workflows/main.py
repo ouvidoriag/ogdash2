@@ -196,6 +196,40 @@ def _canon_txt(v) -> str:
     s = re.sub(r"\s+", " ", s)
     return s
     
+#Correção para mudança forçada de caracteres
+def _canon_txt_preserve_case(v) -> str:
+    """
+    NOVA VERSÃO: Canoniza texto (remove acentos, limpa espaços),
+    mas PRESERVA a capitalização original.
+    """
+    if v is None:
+        return ""
+    s = unicodedata.normalize("NFKD", str(v))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.strip() # <-- A MUDANÇA CRÍTICA: NÃO força mais a conversão para minúsculas
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def _to_proper_case_pt(text: str) -> str:
+    """
+    Converte uma string para o formato 'Title Case' apropriado para o português.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return text
+    # Lista de palavras que devem ficar em minúsculo (artigos, preposições, etc.)
+    conectivos = ['de', 'da', 'do', 'dos', 'das', 'e', 'a', 'o', 'em']
+    palavras = text.lower().split() # Primeiro, joga tudo para minúsculo para garantir consistência
+    palavras_capitalizadas = []
+    
+    for i, palavra in enumerate(palavras):
+        # Capitaliza a palavra se for a primeira da frase ou se não for um conectivo
+        if i == 0 or palavra not in conectivos:
+            palavras_capitalizadas.append(palavra.capitalize())
+        else:
+            palavras_capitalizadas.append(palavra)
+            
+    return ' '.join(palavras_capitalizadas)
+    
 # Exemplo para estrutura, você deve ter TODAS as suas funções aqui
 def _canon_responsavel_series(series: pd.Series) -> pd.Series:
     base = pd.Series(series, dtype="object").apply(_canon_txt)
@@ -510,148 +544,100 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
 
 
     # 7.4 Órgãos por tema — MATCH EXATO, fallback apenas se TEMA vazio
-    # Reafirmação das funções auxiliares para garantir auto-suficiência deste bloco
-    import unicodedata as _ud, re as _re
-
-    def _norm(s):
-        if pd.isna(s): return ""
-        s = str(s).strip().lower()
-        s = _ud.normalize("NFD", s)
-        s = "".join(ch for ch in s if _ud.category(ch) != "Mn")
-        return _re.sub(r"\s+", " ", s)
-
-    def _div_temas(v, seps=(",", ";", "|", "/")):
-        if pd.isna(v): return []
-        t = str(v)
-        for s in seps: t = t.replace(s, ",")
-        partes = [p.strip() for p in t.split(",") if p.strip()]
-        return partes if partes else [str(v).strip()]
-
-    map_tema_para_orgao = {
-        "Administração Pública":"Secretaria de Administração","Agricultura":"Secretaria de Obras e Agricultura",
-        "Assistência Social e Direitos Humanos":"Secretaria de Assistência Social e Direitos Humanos",
-        "Assuntos Jurídicos":"Procuradoria Geral","Comunicação Social":"Secretaria de Comunicação Social e Relações Públicas",
-        "Controle Governamental":"Secretaria de Controle Interno","Criança, Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos",
-        "Cultura e Turismo":"Secretaria de Cultura e Turismo","Defesa Civil":"Secretaria de Defesa Civil",
-        "Direitos à Pessoa com Deficiência":"Secretaria de Assistência Social e Direitos Humanos",
-        "Direitos e Vantagens do Servidor":"Secretaria de Administração","Educação":"Secretaria de Educação",
-        "Empresas e Legalizações":"Secretaria de Fazenda","Esporte e Lazer":"Secretaria de Esporte e Lazer",
-        "Fiscalização e tributos":"Secretaria de Fazenda","Fiscalização Urbana, Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação",
-        "FUNDEC":"FUNDEC","Governança":"Secretaria de Governo","Governo Municipal e Enterro Gratuito":"Secretaria de Governo",
-        "Habitação":"Secretaria de Urbanismo e Habitação","Inclusão e Acessibilidade":"Secretaria de Gestão, Inclusão e Mulher",
-        "Meio Ambiente":"Secretaria de Meio Ambiente",
-        "Meio Ambiente (Poluição Sonora, Árvores, Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
-        "Assédio":"Secretaria de Comunicação Social e Relações Públicas","Obras Públicas":"Secretaria de Obras e Agricultura",
-        "Obras, Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura","Proteção Animal":"Secretaria de Proteção Animal",
-        "Saúde":"Secretaria de Saúde","Segurança Pública":"Secretaria de Segurança Pública",
-        "Segurança, Sinalização e Multas":"Secretaria de Segurança Pública",
-        "Trabalho, Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda",
-        "Transportes e Serviços Públicos":"Secretaria de Transportes e Serviços Públicos",
-        "Transportes, Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
-        "Urbanismo":"Secretaria de Urbanismo e Habitação",
-        "Vetores e Zoonoses (Combate à Dengue, Controle de Pragas, Criação Irregular de Animais e etc.)":"Secretaria de Saúde",
-        "Vigilância Sanitária":"Secretaria de Saúde",
-        "Obras":"Secretaria de Obras e Agricultura","Trabalho":"Secretaria de Trabalho, Emprego e Renda",
-        "Segurança":"Secretaria de Segurança Pública","Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
-        "Árvores":"Secretaria de Meio Ambiente","Controle de Pragas":"Secretaria de Saúde","Criação Irregular de Animais":"Secretaria de Saúde",
-        "Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos","Criança":"Secretaria de Assistência Social e Direitos Humanos",
-        "Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda","Fiscalização Urbana":"Secretaria de Urbanismo e Habitação",
-        "Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação","Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura",
-        "Meio Ambiente (Poluição Sonora)":"Secretaria de Meio Ambiente","Licenças e Fiscalizações Ambientais e etc.":"Secretaria de Meio Ambiente",
-        "Vetores e Zoonoses (Combate à Dengue)":"Secretaria de Saúde",
-        "Criação Irregular de Animais e etc.)":"Secretaria de Saúde","Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
-        "Meio Ambiente (Poluição Sonora":"Secretaria de Meio Ambiente","Não se aplica":"Secretaria de Comunicação Social e Relações Públicas",
-        "Sinalização e Multas":"Secretaria de Segurança Pública","Transportes":"Secretaria de Transportes e Serviços Públicos",
-        "Vetores e Zoonoses (Combate à Dengue":"Secretaria de Saúde",
-    }
-    map_tema_para_orgao = {k: _canon_txt(v) for k, v in map_tema_para_orgao.items()}
-    map_exact = { _norm(k): v for k, v in map_tema_para_orgao.items() }
-
-    def mapear_orgao_exato(celula_tema):
-        orgs = []
-        # Garante que celula_tema é string antes de passar para _div_temas
-        tema_as_str = str(celula_tema) if pd.notna(celula_tema) else ""
-        for t in _div_temas(tema_as_str):
-            t_norm = _norm(t)
-            if not t_norm:
-                continue
-            if t_norm in map_exact:
-                orgs.append(map_exact[t_norm])
-        # Garante que sempre retorna uma string ou None, nunca uma lista vazia ou algo booleano
-        return " | ".join(dict.fromkeys(o.strip() for o in orgs if o and str(o).strip())) or None
-
+    def _canon_orgaos(cell):
+  
     try:
+        # Funções auxiliares locais para este bloco
+        import unicodedata as _ud, re as _re
+
+        # A função _norm continua usando .lower() porque é apenas para COMPARAÇÃO de chaves do dicionário
+        def _norm(s):
+            if pd.isna(s): return ""
+            s = str(s).strip().lower()
+            s = _ud.normalize("NFD", s)
+            s = "".join(ch for ch in s if _ud.category(ch) != "Mn")
+            return _re.sub(r"\s+", " ", s)
+
+        def _div_temas(v, seps=(",", ";", "|", "/")):
+            if pd.isna(v): return []
+            t = str(v)
+            for s in seps: t = t.replace(s, ",")
+            partes = [p.strip() for p in t.split(",") if p.strip()]
+            return partes if partes else [str(v).strip()]
+
+        # O dicionário agora é usado em seu estado original, com a capitalização correta
+        map_tema_para_orgao = {
+            "Administração Pública":"Secretaria de Administração","Agricultura":"Secretaria de Obras e Agricultura",
+            "Assistência Social e Direitos Humanos":"Secretaria de Assistência Social e Direitos Humanos",
+            "Assuntos Jurídicos":"Procuradoria Geral","Comunicação Social":"Secretaria de Comunicação Social e Relações Públicas",
+            "Controle Governamental":"Secretaria de Controle Interno","Criança, Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos",
+            "Cultura e Turismo":"Secretaria de Cultura e Turismo","Defesa Civil":"Secretaria de Defesa Civil",
+            "Direitos à Pessoa com Deficiência":"Secretaria de Assistência Social e Direitos Humanos",
+            "Direitos e Vantagens do Servidor":"Secretaria de Administração","Educação":"Secretaria de Educação",
+            "Empresas e Legalizações":"Secretaria de Fazenda","Esporte e Lazer":"Secretaria de Esporte e Lazer",
+            "Fiscalização e tributos":"Secretaria de Fazenda","Fiscalização Urbana, Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação",
+            "FUNDEC":"FUNDEC","Governança":"Secretaria de Governo","Governo Municipal e Enterro Gratuito":"Secretaria de Governo",
+            "Habitação":"Secretaria de Urbanismo e Habitação","Inclusão e Acessibilidade":"Secretaria de Gestão, Inclusão e Mulher",
+            "Meio Ambiente":"Secretaria de Meio Ambiente",
+            "Meio Ambiente (Poluição Sonora, Árvores, Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
+            "Assédio":"Secretaria de Comunicação Social e Relações Públicas","Obras Públicas":"Secretaria de Obras e Agricultura",
+            "Obras, Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura","Proteção Animal":"Secretaria de Proteção Animal",
+            "Saúde":"Secretaria de Saúde","Segurança Pública":"Secretaria de Segurança Pública",
+            "Segurança, Sinalização e Multas":"Secretaria de Segurança Pública",
+            "Trabalho, Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda",
+            "Transportes e Serviços Públicos":"Secretaria de Transportes e Serviços Públicos",
+            "Transportes, Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
+            "Urbanismo":"Secretaria de Urbanismo e Habitação",
+            "Vetores e Zoonoses (Combate à Dengue, Controle de Pragas, Criação Irregular de Animais e etc.)":"Secretaria de Saúde",
+            "Vigilância Sanitária":"Secretaria de Saúde",
+            "Obras":"Secretaria de Obras e Agricultura","Trabalho":"Secretaria de Trabalho, Emprego e Renda",
+            "Segurança":"Secretaria de Segurança Pública","Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
+            "Árvores":"Secretaria de Meio Ambiente","Controle de Pragas":"Secretaria de Saúde","Criação Irregular de Animais":"Secretaria de Saúde",
+            "Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos","Criança":"Secretaria de Assistência Social e Direitos Humanos",
+            "Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda","Fiscalização Urbana":"Secretaria de Urbanismo e Habitação",
+            "Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação","Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura",
+            "Meio Ambiente (Poluição Sonora)":"Secretaria de Meio Ambiente","Licenças e Fiscalizações Ambientais e etc.":"Secretaria de Meio Ambiente",
+            "Vetores e Zoonoses (Combate à Dengue)":"Secretaria de Saúde",
+            "Criação Irregular de Animais e etc.)":"Secretaria de Saúde","Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
+            "Meio Ambiente (Poluição Sonora":"Secretaria de Meio Ambiente","Não se aplica":"Secretaria de Comunicação Social e Relações Públicas",
+            "Sinalização e Multas":"Secretaria de Segurança Pública","Transportes":"Secretaria de Transportes e Serviços Públicos",
+            "Vetores e Zoonoses (Combate à Dengue":"Secretaria de Saúde",
+        }
+        
+        # O mapa para busca continua usando chaves minúsculas, mas os VALORES mantêm a capitalização
+        map_exact = { _norm(k): v for k, v in map_tema_para_orgao.items() }
+
+        def mapear_orgao_exato(celula_tema):
+            orgs = []
+            tema_as_str = str(celula_tema) if pd.notna(celula_tema) else ""
+            for t in _div_temas(tema_as_str):
+                t_norm = _norm(t)
+                if t_norm and t_norm in map_exact:
+                    orgs.append(map_exact[t_norm])
+            return " | ".join(dict.fromkeys(o.strip() for o in orgs if o and str(o).strip())) or None
+
+        # Passo A: Cria a coluna 'orgaos' a partir do mapeamento
         if "tema" in df_loc.columns:
-            # Explicitamente converte 'tema' para string ANTES de aplicar a lógica,
-            # para evitar que booleanos ou outros tipos sejam passados para as funções de mapeamento.
             df_loc["tema"] = df_loc["tema"].astype(str)
-            logging.debug("Coluna 'tema' convertida para string.")
-
-            def atribuir_orgao_para_linha(row):
-                tema_val = row.get("tema") # 'tema_val' será agora uma string
-                orgao = mapear_orgao_exato(tema_val)
-                if not orgao or str(orgao).strip() == "":
-                    # Fallback, garanta que é uma string, não None ou booleano
-                    return "Secretaria Municipal de Comunicação e Relações Públicas"
-                return orgao # <-- CORRETAMENTE INDENTADO!
-
-            # Aplica atribuição de órgãos para TODAS as linhas, garantindo novos protocolos
-            # Cria a coluna 'orgaos' se não existir, ou a preenche se existir
-            df_loc["orgaos"] = df_loc.apply(lambda row: atribuir_orgao_para_linha(row), axis=1)
-            logging.info("Tratamento 7.4 (Órgãos por tema) aplicado.")
+            df_loc["orgaos"] = df_loc["tema"].apply(mapear_orgao_exato)
         else:
-            # Se 'tema' não existe, garante que 'orgaos' é criada ou preenchida com um valor padrão
-            if "orgaos" not in df_loc.columns:
-                df_loc["orgaos"] = "Secretaria Municipal de Comunicação e Relações Públicas"
-                logging.warning("Coluna 'tema' ausente. 'orgaos' criada com valor padrão.")
-            else:
-                df_loc["orgaos"].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
-                df_loc["orgaos"] = df_loc["orgaos"].astype(str) # Garante que a coluna é string
-                logging.warning("Coluna 'tema' ausente. 'orgaos' preenchida com valor padrão e convertida para string.")
+            df_loc["orgaos"] = None
+        
+        logging.info("Tratamento 7.4 (Mapeamento de Órgãos) aplicado.")
 
-        # Padronização final de órgãos
-        def _canon_orgaos(cell):
-            if cell is None or str(cell).strip() == "":
-                return ""
-            partes = [p.strip() for p in str(cell).split("|")]
-            partes = [_canon_txt(p) for p in partes if p]
-            return " | ".join(dict.fromkeys(partes))
-
-        # Aplica canonização final e garante tipo string
-        df_loc["orgaos"] = df_loc["orgaos"].apply(_canon_orgaos).astype(str)
-        logging.info("Tratamento 7.4 (Padronização final de órgãos) aplicado.")
-
-        # --- NOVO TRATAMENTO DE CAPITALIZAÇÃO ---
-        # Aplica a função _to_proper_case_pt para padronizar a capitalização
+        # Passo B: Aplica o fallback para valores nulos/vazios
+        fallback_value = "Secretaria Municipal de Comunicação e Relações Públicas"
+        df_loc["orgaos"].fillna(fallback_value, inplace=True)
+        # Garante que strings vazias também recebam o fallback
+        df_loc.loc[df_loc["orgaos"].str.strip() == '', "orgaos"] = fallback_value
+        
+        # Passo C: Executa a sequência de limpeza e capitalização correta
+        # 1. Limpeza que preserva a capitalização (remove acentos, espaços extras)
+        df_loc["orgaos"] = df_loc["orgaos"].apply(_canon_txt_preserve_case).astype(str)
+        # 2. Padronização final da capitalização (o "polimento" final)
         df_loc["orgaos"] = df_loc["orgaos"].apply(_to_proper_case_pt)
-        logging.info("Tratamento 7.4 (Capitalização 'Proper Case') aplicado a 'orgaos'.")
-        # --- FIM DO NOVO TRATAMENTO ---
-
-        # Fallback adicional para células com TEMA vazio e ORGÃOS ainda vazios
-        if "tema" in df_loc.columns: # Condição para evitar erro se 'tema' não existir
-            mask_tema_vazio = df_loc["tema"].isna() | (df_loc["tema"].astype(str).str.strip() == "")
-            mask_org_vazio  = df_loc["orgaos"].isna() | (df_loc["orgaos"].astype(str).str.strip() == "")
-            if (mask_tema_vazio & mask_org_vazio).any():
-                count_fallback = (mask_tema_vazio & mask_org_vazio).sum()
-                # Aplica o fallback e depois a capitalização no valor do fallback
-                fallback_value = _to_proper_case_pt("Secretaria Municipal de Comunicação e Relações Públicas")
-                df_loc.loc[mask_tema_vazio & mask_org_vazio, "orgaos"] = fallback_value
-                logging.warning(f"QA 7.4: {count_fallback} linhas tiveram 'orgaos' preenchido por fallback final (tema e orgaos vazios).")
-        else: # Se 'tema' não existe, preenche 'orgaos' onde estiver vazio
-            count_fillna = df_loc["orgaos"].isna().sum()
-            if count_fillna > 0:
-                # Aplica o fallback e depois a capitalização no valor do fallback
-                fallback_value = _to_proper_case_pt("Secretaria Municipal de Comunicação e Relações Públicas")
-                df_loc["orgaos"].fillna(fallback_value, inplace=True)
-                logging.warning(f"QA 7.4: 'orgaos' preenchido por fallback final para {count_fillna} linhas (tema ausente).")
-
-        # QA Final para 'orgaos': verifica valores inesperados (Sim/Não/True/False, etc.)
-        unexpected_orgaos = df_loc["orgaos"].astype(str).str.contains(r'(?i)^(sim|nao|true|false|cidadão|\?{2,}|nan)$')
-        if unexpected_orgaos.any():
-            logging.error(f"QA 7.4: Coluna 'orgaos' ainda contém valores inesperados em {unexpected_orgaos.sum()} linhas. Exemplos: {df_loc.loc[unexpected_orgaos, 'orgaos'].unique()[:5].tolist()}",
-                          extra={'data': df_loc.loc[unexpected_orgaos, ['protocolo', 'tema', 'orgaos']].to_dict(orient='records')[:5]})
-            # Considere levantar uma exceção ou tomar uma ação mais drástica aqui se esses valores forem críticos.
-
+        logging.info("Tratamento 7.4 (Limpeza e Capitalização) aplicado a 'orgaos'.")
+        
         logging.info(f"QA 7.4: value_counts da coluna 'orgaos' após tratamento: \n{df_loc['orgaos'].value_counts(dropna=False).to_string()}")
 
     except Exception as e:
