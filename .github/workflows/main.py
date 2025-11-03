@@ -495,53 +495,61 @@ except Exception as e:
 # ===================================================================================
 # 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-# ===================================================================================
-# 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (PARA ACENTOS) (REMOVER APÓS 1ª EXECUÇÃO)
-# ===================================================================================
-_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (PARA ACENTOS E CAPITALIZAÇÃO)")
-print(" Executando backfill para corrigir acentuação e capitalização de TODA a coluna 'orgaos'...")
-logging.info("INICIANDO: Backfill de 'orgaos' para corrigir acentos e capitalização.")
+_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'responsavel' (REMOVER DEPOIS)")
+print(" Executando backfill para padronizar TODA a coluna 'responsavel'...")
+logging.info("INICIANDO: Backfill temporário da coluna 'responsavel'.")
 
 try:
-    _SUB("Carregando bases para o backfill...")
-    # Carrega a base bruta para ter a referência correta de TEMA
-    df_bruta_hist = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)[2]
-    df_bruta_hist.columns = [normalizar_nome_coluna(c) for c in df_bruta_hist.columns]
-    df_bruta_hist.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
-    mapa_protocolo_tema = df_bruta_hist.set_index('protocolo')['tema'].to_dict()
-
-    # Carrega a base tratada
+    _SUB("Carregando base tratada histórica para 'responsavel'...")
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
-
-    _SUB("Recalculando 'orgaos' com a lógica correta...")
-    # Recalcula 'orgaos' com base no tema da bruta, usando as funções globais
-    df_tratada_hist['tema_correto'] = df_tratada_hist['protocolo'].map(mapa_protocolo_tema)
-    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['tema_correto'].apply(mapear_orgao_exato)
-    df_tratada_hist['orgaos_corrigido'].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
-    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['orgaos_corrigido'].apply(_clean_whitespace).apply(_to_proper_case_pt)
     
-    _SUB("Identificando e atualizando as divergências...")
-    df_para_atualizar = df_tratada_hist[df_tratada_hist['orgaos'] != df_tratada_hist['orgaos_corrigido']]
+    if 'protocolo' not in df_tratada_hist.columns or 'responsavel' not in df_tratada_hist.columns:
+        raise ValueError("Colunas 'protocolo' ou 'responsavel' não encontradas na planilha tratada.")
 
+    _SUB("Aplicando a nova lógica de padronização a todos os dados históricos...")
+    
+    # Cria uma nova coluna com os valores corrigidos, aplicando a MESMA lógica do novo Item 7.6
+    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel'].astype(str).apply(_clean_whitespace)
+    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
+        r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
+    )
+    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
+        r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
+    )
+    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
+        r"^\s*ouvidoria\s+setorial\s+da\s+sa(u|ú)de\s*$", "Ouvidoria Setorial da Saúde", regex=True, case=False
+    )
+    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
+        r"^\s*cidadao\s*$", "Cidadão", regex=True, case=False
+    )
+    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
+        r"^\s*(Sim|True)\s*$", "Cidadão", regex=True, case=False
+    )
+    df_tratada_hist.loc[df_tratada_hist["responsavel_corrigido"].str.strip() == '', "responsavel_corrigido"] = "Não Informado"
+
+    _SUB("Identificando e atualizando as divergências...")
+    df_para_atualizar = df_tratada_hist[df_tratada_hist['responsavel'] != df_tratada_hist['responsavel_corrigido']]
+    
     if not df_para_atualizar.empty:
-        print(f" Encontradas {len(df_para_atualizar)} linhas em 'orgaos' para corrigir.")
-        TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('orgaos') + 1
+        print(f" Encontradas {len(df_para_atualizar)} linhas em 'responsavel' para corrigir.")
+        TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('responsavel') + 1
         protocolos_na_sheet = aba_tratada.col_values(1)
         protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
         
         cells_to_update = [
-            gspread.Cell(row=protocolo_para_linha[row['protocolo']], col=TARGET_COL_INDEX, value=str(row['orgaos_corrigido']))
+            gspread.Cell(row=protocolo_para_linha[row['protocolo']], col=TARGET_COL_INDEX, value=str(row['responsavel_corrigido']))
             for _, row in df_para_atualizar.iterrows() if row['protocolo'] in protocolo_para_linha
         ]
         
         if cells_to_update:
             aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-            print(f"✅ Backfill da coluna 'orgaos' concluído. {len(cells_to_update)} células foram corrigidas.")
+            print(f"✅ Backfill da coluna 'responsavel' concluído. {len(cells_to_update)} células foram corrigidas.")
     else:
-        print("✅ Nenhuma divergência histórica encontrada na coluna 'orgaos'.")
+        print("✅ Nenhuma divergência histórica encontrada na coluna 'responsavel'.")
+
 except Exception as e:
-    print(f"❌ Erro crítico durante o backfill de 'orgaos': {e}")
+    print(f"❌ Erro crítico durante o backfill de 'responsavel': {e}")
 
 
 # ======================================================================= #
@@ -681,17 +689,39 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.5 (Padronização 'servidor'): {e}", exc_info=True)
 
-    # 7.6 Responsável (normalização)
+    # 7.6 Responsavel - LÓGICA CORRIGIDA E UNIFICADA
     try:
         if "responsavel" in df_loc.columns:
-            df_loc["responsavel"] = _canon_responsavel_series(df_loc["responsavel"])
-            df_loc["responsavel"] = df_loc["responsavel"].astype(str).replace(
-                {"Sim": "Cidadão", "Não": "Não Informado", "True": "Cidadão", "False": "Não Informado"}, regex=False
+            # Garante que a coluna é string para os tratamentos
+            df_loc["responsavel"] = df_loc["responsavel"].astype(str)
+
+            # Aplica a limpeza "gentil" que só remove espaços extras
+            df_loc["responsavel"] = df_loc["responsavel"].apply(_clean_whitespace)
+
+            # Aplica todas as padronizações usando regex case-insensitive
+            # Esta abordagem é robusta e corrige múltiplos problemas de uma vez
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
+                r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
             )
-            df_loc.loc[df_loc["responsavel"].str.strip() == "", "responsavel"] = "Não Informado"
-            logging.info("Tratamento 7.6 (Responsável) aplicado.")
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
+                r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
+            )
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
+                r"^\s*ouvidoria\s+setorial\s+da\s+sa(u|ú)de\s*$", "Ouvidoria Setorial da Saúde", regex=True, case=False
+            )
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
+                r"^\s*cidadao\s*$", "Cidadão", regex=True, case=False
+            )
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
+                r"^\s*(Sim|True)\s*$", "Cidadão", regex=True, case=False
+            )
+            
+            # Trata valores vazios ou nulos como "Não Informado"
+            df_loc.loc[df_loc["responsavel"].str.strip() == '', "responsavel"] = "Não Informado"
+
+            logging.info("Tratamento 7.6 (Unificado para 'responsavel') aplicado.")
     except Exception as e:
-        logging.error(f"Erro no tratamento 7.6 (Responsável): {e}", exc_info=True)
+        logging.error(f"Erro no tratamento 7.6 (Responsavel): {e}", exc_info=True)
 
     # 7.7 Datas e tipos
     try:
