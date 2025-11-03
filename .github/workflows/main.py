@@ -478,63 +478,6 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
-# ======================================================================= #
-# ========= INÍCIO DO BLOCO TEMPORÁRIO DE BACKFILL - INSIRA AQUI ========= #
-# ======================================================================= #
-
-# ===================================================================================
-# 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' E 'responsavel' (REMOVER APÓS 1ª EXECUÇÃO)
-# ===================================================================================
-_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' E 'responsavel'")
-
-try:
-    _SUB("Carregando dados históricos para o backfill...")
-    df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
-    df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
-
-    # --- Backfill para ORGAOS ---
-    if 'orgaos' in df_tratada_hist.columns:
-        _SUB("Iniciando backfill para 'orgaos'...")
-        df_bruta_hist = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)[2]
-        df_bruta_hist.columns = [normalizar_nome_coluna(c) for c in df_bruta_hist.columns]
-        df_bruta_hist.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
-        mapa_protocolo_tema = df_bruta_hist.set_index('protocolo')['tema'].to_dict()
-
-        df_tratada_hist['tema_correto'] = df_tratada_hist['protocolo'].map(mapa_protocolo_tema)
-        df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['tema_correto'].apply(mapear_orgao_exato)
-        df_tratada_hist['orgaos_corrigido'].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
-        df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['orgaos_corrigido'].apply(_clean_whitespace).apply(_to_proper_case_pt)
-        
-        df_para_atualizar_orgaos = df_tratada_hist[df_tratada_hist['orgaos'] != df_tratada_hist['orgaos_corrigido']]
-
-        if not df_para_atualizar_orgaos.empty:
-            print(f" Encontradas {len(df_para_atualizar_orgaos)} linhas em 'orgaos' para corrigir.")
-            # ... (código de atualização para 'orgaos' como na resposta anterior) ...
-        else:
-            print("✅ Nenhuma divergência histórica encontrada na coluna 'orgaos'.")
-    
-    # --- Backfill para RESPONSAVEL ---
-    if 'responsavel' in df_tratada_hist.columns:
-        _SUB("Iniciando backfill para 'responsavel'...")
-        df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel'].astype(str).apply(_clean_whitespace)
-        # ... (código de replace com regex para 'responsavel' como na resposta anterior) ...
-        
-        df_para_atualizar_resp = df_tratada_hist[df_tratada_hist['responsavel'] != df_tratada_hist['responsavel_corrigido']]
-
-        if not df_para_atualizar_resp.empty:
-            print(f" Encontradas {len(df_para_atualizar_resp)} linhas em 'responsavel' para corrigir.")
-            # ... (código de atualização para 'responsavel' como na resposta anterior) ...
-        else:
-            print("✅ Nenhuma divergência histórica encontrada na coluna 'responsavel'.")
-
-except Exception as e:
-    print(f"❌ Erro crítico durante o backfill: {e}")
-
-
-# ======================================================================= #
-# =================== FIM DO BLOCO TEMPORÁRIO DE BACKFILL ================= #
-# ======================================================================= #
-
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
