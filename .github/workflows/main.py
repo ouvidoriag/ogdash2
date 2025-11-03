@@ -676,32 +676,13 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
         if "responsavel" in df_loc.columns:
             # Garante que a coluna é string e limpa espaços extras, preservando acentos
             df_loc["responsavel"] = df_loc["responsavel"].astype(str).apply(_clean_whitespace)
-
             # Aplica padronizações robustas com regex (case-insensitive)
-            # Corrige "Ouvidoria Geral" (com ou sem acento, maiúsculo ou minúsculo)
-            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
-                r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
-            )
-            # Corrige "Ouvidoria Setorial de Obras"
-            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
-                r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
-            )
-            # Corrige "Ouvidoria Setorial da Saude" (com ou sem 'ú')
-            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
-                r"^\s*ouvidoria\s+setorial\s+da\s+sa(u|ú)de\s*$", "Ouvidoria Setorial da Saúde", regex=True, case=False
-            )
-            # Corrige "Cidadao" (com ou sem 'ã')
-            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
-                r"^\s*cidadao\s*$", "Cidadão", regex=True, case=False
-            )
-            # Corrige "Sim" ou "True" para "Cidadão"
-            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
-                r"^\s*(Sim|True)\s*$", "Cidadão", regex=True, case=False
-            )
-            
-            # Trata valores que se tornaram vazios ou já eram como "Não Informado"
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False)
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False)
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*ouvidoria\s+setorial\s+da\s+sa(u|ú)de\s*$", "Ouvidoria Setorial da Saúde", regex=True, case=False)
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*cidadao\s*$", "Cidadão", regex=True, case=False)
+            df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*(Sim|True)\s*$", "Cidadão", regex=True, case=False)
             df_loc.loc[df_loc["responsavel"].str.strip() == '', "responsavel"] = "Não Informado"
-
             logging.info("Tratamento 7.6 (Unificado para 'responsavel') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.6 (Responsavel): {e}", exc_info=True)
@@ -730,12 +711,12 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.8 (Prazo Restante): {e}", exc_info=True)
 
-    # 7.9 Padronização da coluna 'canal'
+    # 7.9 (Antigo 7.10) Padronização da coluna 'canal'
     try:
         if "canal" in df_loc.columns:
             df_loc["canal"] = df_loc["canal"].astype(str)
             df_loc["canal"] = df_loc["canal"].str.replace(r"^\s*(Colab Gov|Portal Cidadão)\s*$", "Aplicativo Colab", regex=True, case=False)
-            logging.info("Tratamento para 'canal' aplicado.")
+            logging.info("Tratamento 7.9 (Padronização de 'canal') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento de 'canal': {e}", exc_info=True)
 
