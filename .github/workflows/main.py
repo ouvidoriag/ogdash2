@@ -457,6 +457,76 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
+# ======================================================================= #
+# ========= INÍCIO DO BLOCO TEMPORÁRIO DE BACKFILL - INSIRA AQUI ========= #
+# ======================================================================= #
+
+# ===================================================================================
+# 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (REMOVER APÓS 1ª EXECUÇÃO)
+# ===================================================================================
+_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (REMOVER DEPOIS)")
+print(" Executando backfill para padronizar a capitalização de TODA a coluna 'orgaos'...")
+logging.info("INICIANDO: Backfill temporário da coluna 'orgaos' usando _to_proper_case_pt.")
+
+try:
+    # 1. CARREGA A TOTALIDADE DA BASE TRATADA
+    _SUB("Carregando base tratada histórica...")
+    df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
+    df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
+    print(f" Base tratada carregada com {df_tratada_hist.shape[0]} linhas para análise.")
+    
+    if 'protocolo' not in df_tratada_hist.columns or 'orgaos' not in df_tratada_hist.columns:
+        raise ValueError("Colunas 'protocolo' ou 'orgaos' não encontradas na planilha tratada.")
+
+    # 2. APLICA A LÓGICA DE CAPITALIZAÇÃO CORRETA
+    _SUB("Aplicando a lógica de capitalização '_to_proper_case_pt'...")
+    # Cria uma nova coluna com os valores corrigidos
+    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['orgaos'].apply(_to_proper_case_pt)
+
+    # 3. IDENTIFICA APENAS AS LINHAS QUE PRECISAM SER MUDADAS
+    _SUB("Identificando registros que precisam de atualização...")
+    df_para_atualizar = df_tratada_hist[df_tratada_hist['orgaos'] != df_tratada_hist['orgaos_corrigido']]
+    
+    if df_para_atualizar.empty:
+        print("✅ Nenhuma correção de capitalização necessária. A coluna 'orgaos' já está padronizada.")
+        logging.info("Backfill: Nenhuma correção de 'orgaos' necessária.")
+    else:
+        print(f" Encontradas {len(df_para_atualizar)} linhas que serão padronizadas na coluna 'orgaos'.")
+        logging.info(f"Backfill: Encontradas {len(df_para_atualizar)} linhas de 'orgaos' para padronizar.")
+
+        # 4. PREPARA E EXECUTA A ATUALIZAÇÃO EM LOTE
+        _SUB("Preparando e enviando a atualização para o Google Sheets...")
+        # Encontra o índice da coluna 'orgaos' dinamicamente
+        TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('orgaos') + 1
+        
+        protocolos_na_sheet = aba_tratada.col_values(1)
+        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
+        
+        cells_to_update = []
+        for _, row in df_para_atualizar.iterrows():
+            protocolo = row['protocolo']
+            orgao_corrigido = row['orgaos_corrigido'] # Pega o valor novo, já tratado
+            if protocolo in protocolo_para_linha:
+                linha_idx = protocolo_para_linha[protocolo]
+                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(orgao_corrigido)))
+
+        if cells_to_update:
+            aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
+            print(f"✅ Backfill da coluna 'orgaos' concluído. {len(cells_to_update)} células foram padronizadas.")
+            print(" AVISO: Lembre-se de remover todo o bloco 'Item 5.5' do script após esta execução.")
+            logging.info(f"CONCLUÍDO: Backfill. {len(cells_to_update)} células de 'orgaos' foram padronizadas.")
+        else:
+            print(" Nenhuma célula pôde ser mapeada para atualização.")
+
+except Exception as e:
+    print(f"❌ Erro crítico durante o backfill de 'orgaos': {e}")
+    logging.error(f"Erro crítico durante o backfill de 'orgaos': {e}", exc_info=True)
+
+
+# ======================================================================= #
+# =================== FIM DO BLOCO TEMPORÁRIO DE BACKFILL ================= #
+# ======================================================================= #
+
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
