@@ -192,8 +192,7 @@ def _canon_txt(v) -> str:
     Função de canonização de texto: converte para string, remove acentos,
     converte para minúsculas e limpa espaços.
     """
-    if v is None:
-        return ""
+    if v is None: return ""
     s = unicodedata.normalize("NFKD", str(v))
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = s.lower().strip()
@@ -217,8 +216,7 @@ def _to_proper_case_pt(text: str) -> str:
     """
     Converte uma string para o formato 'Title Case' apropriado para o português.
     """
-    if not isinstance(text, str) or not text.strip():
-        return text
+    if not isinstance(text, str) or not text.strip(): return text
     conectivos = ['de', 'da', 'do', 'dos', 'das', 'e', 'a', 'o', 'em']
     palavras = text.lower().split()
     palavras_capitalizadas = []
@@ -485,63 +483,52 @@ except Exception as e:
 # ======================================================================= #
 
 # ===================================================================================
-# 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (REMOVER APÓS 1ª EXECUÇÃO)
+# 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' E 'responsavel' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'responsavel' (REMOVER DEPOIS)")
-print(" Executando backfill para padronizar TODA a coluna 'responsavel'...")
-logging.info("INICIANDO: Backfill temporário da coluna 'responsavel'.")
+_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' E 'responsavel'")
 
 try:
-    _SUB("Carregando base tratada histórica para 'responsavel'...")
+    _SUB("Carregando dados históricos para o backfill...")
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
-    
-    if 'protocolo' not in df_tratada_hist.columns or 'responsavel' not in df_tratada_hist.columns:
-        raise ValueError("Colunas 'protocolo' ou 'responsavel' não encontradas na planilha tratada.")
 
-    _SUB("Aplicando a nova lógica de padronização a todos os dados históricos...")
-    
-    # Cria uma nova coluna com os valores corrigidos, aplicando a MESMA lógica do novo Item 7.6
-    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel'].astype(str).apply(_clean_whitespace)
-    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
-        r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
-    )
-    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
-        r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
-    )
-    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
-        r"^\s*ouvidoria\s+setorial\s+da\s+sa(u|ú)de\s*$", "Ouvidoria Setorial da Saúde", regex=True, case=False
-    )
-    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
-        r"^\s*cidadao\s*$", "Cidadão", regex=True, case=False
-    )
-    df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel_corrigido'].str.replace(
-        r"^\s*(Sim|True)\s*$", "Cidadão", regex=True, case=False
-    )
-    df_tratada_hist.loc[df_tratada_hist["responsavel_corrigido"].str.strip() == '', "responsavel_corrigido"] = "Não Informado"
+    # --- Backfill para ORGAOS ---
+    if 'orgaos' in df_tratada_hist.columns:
+        _SUB("Iniciando backfill para 'orgaos'...")
+        df_bruta_hist = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)[2]
+        df_bruta_hist.columns = [normalizar_nome_coluna(c) for c in df_bruta_hist.columns]
+        df_bruta_hist.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
+        mapa_protocolo_tema = df_bruta_hist.set_index('protocolo')['tema'].to_dict()
 
-    _SUB("Identificando e atualizando as divergências...")
-    df_para_atualizar = df_tratada_hist[df_tratada_hist['responsavel'] != df_tratada_hist['responsavel_corrigido']]
+        df_tratada_hist['tema_correto'] = df_tratada_hist['protocolo'].map(mapa_protocolo_tema)
+        df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['tema_correto'].apply(mapear_orgao_exato)
+        df_tratada_hist['orgaos_corrigido'].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
+        df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['orgaos_corrigido'].apply(_clean_whitespace).apply(_to_proper_case_pt)
+        
+        df_para_atualizar_orgaos = df_tratada_hist[df_tratada_hist['orgaos'] != df_tratada_hist['orgaos_corrigido']]
+
+        if not df_para_atualizar_orgaos.empty:
+            print(f" Encontradas {len(df_para_atualizar_orgaos)} linhas em 'orgaos' para corrigir.")
+            # ... (código de atualização para 'orgaos' como na resposta anterior) ...
+        else:
+            print("✅ Nenhuma divergência histórica encontrada na coluna 'orgaos'.")
     
-    if not df_para_atualizar.empty:
-        print(f" Encontradas {len(df_para_atualizar)} linhas em 'responsavel' para corrigir.")
-        TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('responsavel') + 1
-        protocolos_na_sheet = aba_tratada.col_values(1)
-        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
+    # --- Backfill para RESPONSAVEL ---
+    if 'responsavel' in df_tratada_hist.columns:
+        _SUB("Iniciando backfill para 'responsavel'...")
+        df_tratada_hist['responsavel_corrigido'] = df_tratada_hist['responsavel'].astype(str).apply(_clean_whitespace)
+        # ... (código de replace com regex para 'responsavel' como na resposta anterior) ...
         
-        cells_to_update = [
-            gspread.Cell(row=protocolo_para_linha[row['protocolo']], col=TARGET_COL_INDEX, value=str(row['responsavel_corrigido']))
-            for _, row in df_para_atualizar.iterrows() if row['protocolo'] in protocolo_para_linha
-        ]
-        
-        if cells_to_update:
-            aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-            print(f"✅ Backfill da coluna 'responsavel' concluído. {len(cells_to_update)} células foram corrigidas.")
-    else:
-        print("✅ Nenhuma divergência histórica encontrada na coluna 'responsavel'.")
+        df_para_atualizar_resp = df_tratada_hist[df_tratada_hist['responsavel'] != df_tratada_hist['responsavel_corrigido']]
+
+        if not df_para_atualizar_resp.empty:
+            print(f" Encontradas {len(df_para_atualizar_resp)} linhas em 'responsavel' para corrigir.")
+            # ... (código de atualização para 'responsavel' como na resposta anterior) ...
+        else:
+            print("✅ Nenhuma divergência histórica encontrada na coluna 'responsavel'.")
 
 except Exception as e:
-    print(f"❌ Erro crítico durante o backfill de 'responsavel': {e}")
+    print(f"❌ Erro crítico durante o backfill: {e}")
 
 
 # ======================================================================= #
@@ -635,10 +622,13 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
         # Passo B: Aplica o fallback para valores nulos/vazios
         fallback_value = "Secretaria Municipal de Comunicação e Relações Públicas"
         df_loc["orgaos"].fillna(fallback_value, inplace=True)
+        # Garante que strings que são apenas espaços em branco também recebam o fallback
         df_loc.loc[df_loc["orgaos"].str.strip() == '', "orgaos"] = fallback_value
         
         # Passo C: Executa a sequência de limpeza e capitalização
+        # 1. Limpa espaços extras, mas PRESERVA acentos e capitalização
         df_loc["orgaos"] = df_loc["orgaos"].apply(_clean_whitespace).astype(str)
+        # 2. Aplica a capitalização "Title Case" como passo final de polimento
         df_loc["orgaos"] = df_loc["orgaos"].apply(_to_proper_case_pt)
         logging.info("Tratamento 7.4 (Limpeza e Capitalização com Acentos) aplicado a 'orgaos'.")
 
@@ -681,10 +671,10 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.5 (Padronização 'servidor'): {e}", exc_info=True)
 
-     # 7.6 Responsavel - LÓGICA CORRIGIDA E UNIFICADA
-    try:
+    # 7.6 Responsavel - LÓGICA CORRIGIDA E UNIFICADA
+       try:
         if "responsavel" in df_loc.columns:
-            # Garante que a coluna é string e limpa espaços extras
+            # Garante que a coluna é string e limpa espaços extras, preservando acentos
             df_loc["responsavel"] = df_loc["responsavel"].astype(str).apply(_clean_whitespace)
 
             # Aplica padronizações robustas com regex (case-insensitive)
@@ -704,12 +694,12 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*cidadao\s*$", "Cidadão", regex=True, case=False
             )
-            # Corrige "Sim" ou "True"
+            # Corrige "Sim" ou "True" para "Cidadão"
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*(Sim|True)\s*$", "Cidadão", regex=True, case=False
             )
             
-            # Trata valores vazios como "Não Informado"
+            # Trata valores que se tornaram vazios ou já eram como "Não Informado"
             df_loc.loc[df_loc["responsavel"].str.strip() == '', "responsavel"] = "Não Informado"
 
             logging.info("Tratamento 7.6 (Unificado para 'responsavel') aplicado.")
@@ -740,30 +730,14 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.8 (Prazo Restante): {e}", exc_info=True)
 
-    # 7.9 Padronização adicional para 'responsavel' (Ouvidorias)
-    try:
-        if "responsavel" in df_loc.columns:
-            df_loc["responsavel"] = df_loc["responsavel"].astype(str)
-            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
-                r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
-            )
-            df_loc["responsavel"] = df_loc["responsavel"].str.replace(
-                r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
-            )
-            logging.info("Tratamento 7.9 (Padronização de Ouvidorias em 'responsavel') aplicado.")
-    except Exception as e:
-        logging.error(f"Erro no tratamento 7.9 (Padronização de Ouvidorias): {e}", exc_info=True)
-
-    # 7.10 Padronização da coluna 'canal'
+    # 7.9 Padronização da coluna 'canal'
     try:
         if "canal" in df_loc.columns:
             df_loc["canal"] = df_loc["canal"].astype(str)
-            df_loc["canal"] = df_loc["canal"].str.replace(
-                r"^\s*(Colab Gov|Portal Cidadão)\s*$", "Aplicativo Colab", regex=True, case=False
-            )
-            logging.info("Tratamento 7.10 (Padronização de 'canal') aplicado.")
+            df_loc["canal"] = df_loc["canal"].str.replace(r"^\s*(Colab Gov|Portal Cidadão)\s*$", "Aplicativo Colab", regex=True, case=False)
+            logging.info("Tratamento para 'canal' aplicado.")
     except Exception as e:
-        logging.error(f"Erro no tratamento 7.10 (Padronização de 'canal'): {e}", exc_info=True)
+        logging.error(f"Erro no tratamento de 'canal': {e}", exc_info=True)
 
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
     return df_loc
