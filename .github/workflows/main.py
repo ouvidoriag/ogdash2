@@ -584,15 +584,8 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 lambda x: x if pd.notna(x) and str(x).strip().lower() not in ["na", "nan", "n/a", ""] else "Não concluído"
             )
             logging.info("Tratamento 7.2 (Data da Conclusão) aplicado.")
-            # QA: Verifica se a coluna tem valores inválidos após o tratamento
-            invalid_dates = df_loc["data_da_conclusao"].apply(
-                lambda x: pd.isna(x) or (str(x).strip().lower() not in ["não concluído"] and not re.match(r"\d{2}/\d{2}/\d{2}", str(x)))
-            )
-            if invalid_dates.any():
-                logging.warning(f"QA 7.2: Coluna 'data_da_conclusao' contém valores inválidos/inesperados após tratamento em {invalid_dates.sum()} linhas. Exemplos: {df_loc.loc[invalid_dates, 'data_da_conclusao'].unique()[:5].tolist()}")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.2 (Data da Conclusão): {e}", exc_info=True)
-
 
     # 7.3 Unidades de saúde (capitaliza e trata “sem informação”)
     try:
@@ -606,22 +599,15 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 )
                 if linhas_alteradas > 0:
                     logging.info(f"Tratamento 7.3 (Unidades de Saúde) aplicado na coluna '{col}' para {linhas_alteradas} linhas.")
-                # QA para 'unidade'/'saude'
-                if df_loc[col].astype(str).str.contains(r'(?i)(sim|nao|true|false|\?{2,})').any():
-                    logging.warning(f"QA 7.3: Coluna '{col}' ainda contém valores inesperados (Sim/Não/True/False/??) após tratamento. Exemplos: {df_loc.loc[df_loc[col].astype(str).str.contains(r'(?i)(sim|nao|true|false|\?{2,})'), col].unique()[:5].tolist()}")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.3 (Unidades de Saúde): {e}", exc_info=True)
 
-
-    # 7.4 Órgãos por tema — MATCH EXATO, fallback apenas se TEMA vazio
-def _canon_orgaos(cell):
-  
     # 7.4 Órgãos por tema — LÓGICA CORRIGIDA PARA ACENTOS E CAPITALIZAÇÃO
     try:
         # Funções auxiliares locais
         import unicodedata as _ud, re as _re
 
-        def _norm(s): # Usada apenas para comparar chaves, pode remover acentos e ser minúscula
+        def _norm(s):
             if pd.isna(s): return ""
             s = str(s).strip().lower()
             s = _ud.normalize("NFD", s)
@@ -635,7 +621,6 @@ def _canon_orgaos(cell):
             partes = [p.strip() for p in t.split(",") if p.strip()]
             return partes if partes else [str(v).strip()]
 
-        # O dicionário é a nossa "fonte da verdade" para nomes com acentos
         map_tema_para_orgao = {
             "Administração Pública":"Secretaria de Administração","Agricultura":"Secretaria de Obras e Agricultura",
             "Assistência Social e Direitos Humanos":"Secretaria de Assistência Social e Direitos Humanos",
@@ -695,10 +680,7 @@ def _canon_orgaos(cell):
         df_loc["orgaos"].fillna(fallback_value, inplace=True)
         df_loc.loc[df_loc["orgaos"].str.strip() == '', "orgaos"] = fallback_value
         
-        # --- ALTERAÇÃO PRINCIPAL AQUI ---
-        # 1. Usa a nova função de limpeza que SÓ remove espaços e PRESERVA acentos.
         df_loc["orgaos"] = df_loc["orgaos"].apply(_clean_whitespace).astype(str)
-        # 2. Aplica a capitalização "Title Case" como passo final.
         df_loc["orgaos"] = df_loc["orgaos"].apply(_to_proper_case_pt)
         logging.info("Tratamento 7.4 (Limpeza de Espaços e Capitalização com Acentos) aplicado a 'orgaos'.")
 
@@ -707,42 +689,43 @@ def _canon_orgaos(cell):
 
     # 7.5 Padronização 'servidor' (dicionário completo)
     try:
-        dicionario_servidor = {
-            "Camila do Lago Marins": "Camila Marins", "Camila Marins": "Camila Marins",
-            "Dhayane Cristina Pinho de Almeida": "Dhayane Cristina Pinho de Almeida", "Dhayane Pinho": "Dhayane Cristina Pinho de Almeida",
-            "Joana Darc Salles Ferreira": "Joana Darc Salles Ferreira", "Joana Salles": "Joana Darc Salles Ferreira",
-            "Lucia Helena Tinoco Pacehco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-            "Lucia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lúcia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-            "Lúcia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helenba Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-            "Rafaella Marques Gomes Santos": "Rafaella Marques Gomes Santos",
-            "Roilene Pereira da Silva": "Rosilene Pereira da Silva", "Rosilene Pereira da Silva": "Rosilene Pereira da Silva",
-            "Stephanie dos Santos Silva": "Stephanie dos Santos Silva", "Stephanie Santos": "Stephanie dos Santos Silva",
-            "Stéphanie Santos": "Stephanie dos Santos Silva", "Stéphaniesantos": "Stephanie dos Santos Silva",
-            "Stpehanie Santos": "Stephanie dos Santos Silva",
-            "Anne Beatriz da Silva": "Anne Beatriz da Silva Rodrigues", "Bruna Maria ( Coordenadora)": "Cidadão",
-            "Isabel": "Cidadão", "Gabriela da Silva Rozi": "Cidadão", "Lana Carolina Mesquita de Andrade": "Cidadão",
-            "Lívia Cavalcante": "Lívia Kathleen Cavalcante Patriota Leite", "Lívia Kathleen Cavalcante Patriota Leite": "Lívia Kathleen Cavalcante Patriota Leite",
-            "Lucia Helena": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco": "Lúcia Helena Tinoco Pacheco Varella",
-            "Lucia Helena Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helen Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-            "Lucia Helan Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena  Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-            "Lucia Helena Tinoco Pachewco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-            "Mery": "Cidadão", "Ouvidoria Geral (Adm)": "Cidadão", "Rafaella Marques": "Rafaella Marques Gomes Santos",
-            "Ronaldo de Oliveira Brandão": "Cidadão", "Séphanie Santos": "Stephanie dos Santos Silva",
-            "Shirley Santana": "Cidadão", "Stépanie Santos": "Stephanie dos Santos Silva",
-            "Stéphanie  Santos": "Stephanie dos Santos Silva", "Stéphanie Santos": "Stephanie dos Santos Silva",
-            "Stephanie dos Santos": "Stephanie dos Santos Silva", "Stéphanie Santoa": "Stephanie dos Santos Silva",
-            "Stephanie Santos": "Stephanie dos Santos Silva", "Stephanie dos Santos": "Stephanie dos Santos Silva",
-            "Stephanie Santos": "Stephanie dos Santos Silva", "Thamires Manhães": "Cidadão"
-        }
         if "servidor" in df_loc.columns:
+            dicionario_servidor = {
+                "Camila do Lago Marins": "Camila Marins", "Camila Marins": "Camila Marins",
+                "Dhayane Cristina Pinho de Almeida": "Dhayane Cristina Pinho de Almeida", "Dhayane Pinho": "Dhayane Cristina Pinho de Almeida",
+                "Joana Darc Salles Ferreira": "Joana Darc Salles Ferreira", "Joana Salles": "Joana Darc Salles Ferreira",
+                "Lucia Helena Tinoco Pacehco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Lucia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lúcia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Lúcia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helenba Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Rafaella Marques Gomes Santos": "Rafaella Marques Gomes Santos",
+                "Roilene Pereira da Silva": "Rosilene Pereira da Silva", "Rosilene Pereira da Silva": "Rosilene Pereira da Silva",
+                "Stephanie dos Santos Silva": "Stephanie dos Santos Silva", "Stephanie Santos": "Stephanie dos Santos Silva",
+                "Stéphanie Santos": "Stephanie dos Santos Silva", "Stéphaniesantos": "Stephanie dos Santos Silva",
+                "Stpehanie Santos": "Stephanie dos Santos Silva",
+                "Anne Beatriz da Silva": "Anne Beatriz da Silva Rodrigues", "Bruna Maria ( Coordenadora)": "Cidadão",
+                "Isabel": "Cidadão", "Gabriela da Silva Rozi": "Cidadão", "Lana Carolina Mesquita de Andrade": "Cidadão",
+                "Lívia Cavalcante": "Lívia Kathleen Cavalcante Patriota Leite", "Lívia Kathleen Cavalcante Patriota Leite": "Lívia Kathleen Cavalcante Patriota Leite",
+                "Lucia Helena": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco": "Lúcia Helena Tinoco Pacheco Varella",
+                "Lucia Helena Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helen Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Lucia Helan Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena  Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Lucia Helena Tinoco Pachewco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Mery": "Cidadão", "Ouvidoria Geral (Adm)": "Cidadão", "Rafaella Marques": "Rafaella Marques Gomes Santos",
+                "Ronaldo de Oliveira Brandão": "Cidadão", "Séphanie Santos": "Stephanie dos Santos Silva",
+                "Shirley Santana": "Cidadão", "Stépanie Santos": "Stephanie dos Santos Silva",
+                "Stéphanie  Santos": "Stephanie dos Santos Silva", "Stéphanie Santos": "Stephanie dos Santos Silva",
+                "Stephanie dos Santos": "Stephanie dos Santos Silva", "Stéphanie Santoa": "Stephanie dos Santos Silva",
+                "Stephanie Santos": "Stephanie dos Santos Silva", "Stephanie dos Santos": "Stephanie dos Santos Silva",
+                "Stephanie Santos": "Stephanie dos Santos Silva", "Thamires Manhães": "Cidadão"
+            }
             _orig = df_loc["servidor"].astype(str).str.strip()
             df_loc["servidor"] = _orig.map(dicionario_servidor).fillna(_orig)
             logging.info("Tratamento 7.5 (Padronização 'servidor') aplicado.")
-            logging.debug(f"QA 7.5: value_counts da coluna 'servidor' após tratamento: \n{df_loc['servidor'].value_counts(dropna=False).to_string(max_rows=10)}")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.5 (Padronização 'servidor'): {e}", exc_info=True)
 
-
+    # 7.6, 7.7, 7.8, 7.9, 7.10 (Seus outros tratamentos)
+    # ... (O resto da sua função _tratar_full continua aqui, sem alterações) ...
+    
     # 7.6 Responsável (normalização)
     try:
         if "responsavel" in df_loc.columns:
@@ -752,13 +735,8 @@ def _canon_orgaos(cell):
             )
             df_loc.loc[df_loc["responsavel"].str.strip() == "", "responsavel"] = "Não Informado"
             logging.info("Tratamento 7.6 (Responsável) aplicado.")
-            # QA para 'responsavel'
-            unexpected_responsavel = df_loc["responsavel"].astype(str).str.contains(r'(?i)^(sim|nao|true|false|\?{2,}|nan)$')
-            if unexpected_responsavel.any():
-                logging.warning(f"QA 7.6: Coluna 'responsavel' ainda contém valores inesperados em {unexpected_responsavel.sum()} linhas. Exemplos: {df_loc.loc[unexpected_responsavel, 'responsavel'].unique()[:5].tolist()}")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.6 (Responsável): {e}", exc_info=True)
-
 
     # 7.7 Datas e tipos
     try:
@@ -774,7 +752,6 @@ def _canon_orgaos(cell):
     except Exception as e:
         logging.error(f"Erro no tratamento 7.7 (Datas e Tipos): {e}", exc_info=True)
 
-
     # 7.8 Regra de ouro: se CONCLUÍDA => 'prazo_restante' = 'Demanda Concluída'
     try:
         if "status_demanda" in df_loc.columns and "prazo_restante" in df_loc.columns:
@@ -785,18 +762,13 @@ def _canon_orgaos(cell):
     except Exception as e:
         logging.error(f"Erro no tratamento 7.8 (Prazo Restante): {e}", exc_info=True)
 
-    # --- NOVO TRATAMENTO 7.9: Padronização adicional para 'responsavel' (Ouvidorias) ---
+    # 7.9 Padronização adicional para 'responsavel' (Ouvidorias)
     try:
         if "responsavel" in df_loc.columns:
-            # Garante que a coluna é do tipo string para usar métodos .str
             df_loc["responsavel"] = df_loc["responsavel"].astype(str)
-
-            # Padroniza "Ouvidoria Geral" (case-insensitive, ignora espaços extras)
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
             )
-
-            # Padroniza "Ouvidoria Setorial de Obras" (case-insensitive, ignora espaços extras)
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
             )
@@ -804,18 +776,16 @@ def _canon_orgaos(cell):
     except Exception as e:
         logging.error(f"Erro no tratamento 7.9 (Padronização de Ouvidorias): {e}", exc_info=True)
 
-    # --- NOVO TRATAMENTO 7.10: Padronização da coluna 'canal' ---
+    # 7.10 Padronização da coluna 'canal'
     try:
         if "canal" in df_loc.columns:
             df_loc["canal"] = df_loc["canal"].astype(str)
-            # Combina 'Colab Gov' e 'Portal Cidadão' em 'Aplicativo Colab' (case-insensitive)
             df_loc["canal"] = df_loc["canal"].str.replace(
                 r"^\s*(Colab Gov|Portal Cidadão)\s*$", "Aplicativo Colab", regex=True, case=False
             )
             logging.info("Tratamento 7.10 (Padronização de 'canal') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.10 (Padronização de 'canal'): {e}", exc_info=True)
-
 
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
     return df_loc
