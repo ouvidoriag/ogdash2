@@ -672,7 +672,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
         logging.error(f"Erro no tratamento 7.5 (Padronização 'servidor'): {e}", exc_info=True)
 
     # 7.6 Responsavel - LÓGICA CORRIGIDA E UNIFICADA
-       try:
+    try:
         if "responsavel" in df_loc.columns:
             # Garante que a coluna é string e limpa espaços extras, preservando acentos
             df_loc["responsavel"] = df_loc["responsavel"].astype(str).apply(_clean_whitespace)
