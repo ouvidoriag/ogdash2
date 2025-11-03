@@ -229,14 +229,6 @@ def _to_proper_case_pt(text: str) -> str:
             palavras_capitalizadas.append(palavra)
     return ' '.join(palavras_capitalizadas)
 
-def _canon_responsavel_series(series: pd.Series) -> pd.Series:
-    base = pd.Series(series, dtype="object").apply(_canon_txt)
-    patt_ouvidoria_saude = r"(?i)^ouvidoria setorial da sa(?:u|Ãº|\\u00fa|\?\?|[\ufffd�])?de$"
-    return base.str.strip().replace({
-        patt_ouvidoria_saude: "Ouvidoria Setorial da Saúde",
-        r"(?i)^cidad(?:\u00e3|ã)o$": "Cidadão",
-    }, regex=True)
-
 def _to_ddmmaa_text(series: pd.Series) -> pd.Series:
     EXCEL_BASE = pd.Timestamp("1899-12-30")
     def _one(v):
@@ -689,34 +681,35 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.5 (Padronização 'servidor'): {e}", exc_info=True)
 
-    # 7.6 Responsavel - LÓGICA CORRIGIDA E UNIFICADA
+     # 7.6 Responsavel - LÓGICA CORRIGIDA E UNIFICADA
     try:
         if "responsavel" in df_loc.columns:
-            # Garante que a coluna é string para os tratamentos
-            df_loc["responsavel"] = df_loc["responsavel"].astype(str)
+            # Garante que a coluna é string e limpa espaços extras
+            df_loc["responsavel"] = df_loc["responsavel"].astype(str).apply(_clean_whitespace)
 
-            # Aplica a limpeza "gentil" que só remove espaços extras
-            df_loc["responsavel"] = df_loc["responsavel"].apply(_clean_whitespace)
-
-            # Aplica todas as padronizações usando regex case-insensitive
-            # Esta abordagem é robusta e corrige múltiplos problemas de uma vez
+            # Aplica padronizações robustas com regex (case-insensitive)
+            # Corrige "Ouvidoria Geral" (com ou sem acento, maiúsculo ou minúsculo)
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False
             )
+            # Corrige "Ouvidoria Setorial de Obras"
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False
             )
+            # Corrige "Ouvidoria Setorial da Saude" (com ou sem 'ú')
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*ouvidoria\s+setorial\s+da\s+sa(u|ú)de\s*$", "Ouvidoria Setorial da Saúde", regex=True, case=False
             )
+            # Corrige "Cidadao" (com ou sem 'ã')
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*cidadao\s*$", "Cidadão", regex=True, case=False
             )
+            # Corrige "Sim" ou "True"
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(
                 r"^\s*(Sim|True)\s*$", "Cidadão", regex=True, case=False
             )
             
-            # Trata valores vazios ou nulos como "Não Informado"
+            # Trata valores vazios como "Não Informado"
             df_loc.loc[df_loc["responsavel"].str.strip() == '', "responsavel"] = "Não Informado"
 
             logging.info("Tratamento 7.6 (Unificado para 'responsavel') aplicado.")
