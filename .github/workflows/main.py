@@ -544,7 +544,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
 
 
     # 7.4 Órgãos por tema — MATCH EXATO, fallback apenas se TEMA vazio
-    def _canon_orgaos(cell):
+def _canon_orgaos(cell):
   
     try:
         # Funções auxiliares locais para este bloco
