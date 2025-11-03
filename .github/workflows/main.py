@@ -186,7 +186,6 @@ def _clean_whitespace(v) -> str:
     s = str(v).strip()
     s = re.sub(r"\s+", " ", s)
     return s
-# Definição do canon_txt
 
 def _canon_txt(v) -> str:
     """
@@ -195,17 +194,12 @@ def _canon_txt(v) -> str:
     """
     if v is None:
         return ""
-    # Normaliza para decompor caracteres acentuados (ex: 'á' -> 'a' + '´')
     s = unicodedata.normalize("NFKD", str(v))
-    # Remove os caracteres de combinação (acentos)
     s = "".join(c for c in s if not unicodedata.combining(c))
-    # Converte para minúsculas e remove espaços no início/fim
     s = s.lower().strip()
-    # Substitui múltiplos espaços por um único espaço
     s = re.sub(r"\s+", " ", s)
     return s
-    
-#Correção para mudança forçada de caracteres
+
 def _canon_txt_preserve_case(v) -> str:
     """
     NOVA VERSÃO: Canoniza texto (remove acentos, limpa espaços),
@@ -215,7 +209,7 @@ def _canon_txt_preserve_case(v) -> str:
         return ""
     s = unicodedata.normalize("NFKD", str(v))
     s = "".join(c for c in s if not unicodedata.combining(c))
-    s = s.strip() # <-- A MUDANÇA CRÍTICA: NÃO força mais a conversão para minúsculas
+    s = s.strip()
     s = re.sub(r"\s+", " ", s)
     return s
 
@@ -225,21 +219,16 @@ def _to_proper_case_pt(text: str) -> str:
     """
     if not isinstance(text, str) or not text.strip():
         return text
-    # Lista de palavras que devem ficar em minúsculo (artigos, preposições, etc.)
     conectivos = ['de', 'da', 'do', 'dos', 'das', 'e', 'a', 'o', 'em']
-    palavras = text.lower().split() # Primeiro, joga tudo para minúsculo para garantir consistência
+    palavras = text.lower().split()
     palavras_capitalizadas = []
-    
     for i, palavra in enumerate(palavras):
-        # Capitaliza a palavra se for a primeira da frase ou se não for um conectivo
         if i == 0 or palavra not in conectivos:
             palavras_capitalizadas.append(palavra.capitalize())
         else:
             palavras_capitalizadas.append(palavra)
-            
     return ' '.join(palavras_capitalizadas)
-    
-# Exemplo para estrutura, você deve ter TODAS as suas funções aqui
+
 def _canon_responsavel_series(series: pd.Series) -> pd.Series:
     base = pd.Series(series, dtype="object").apply(_canon_txt)
     patt_ouvidoria_saude = r"(?i)^ouvidoria setorial da sa(?:u|Ãº|\\u00fa|\?\?|[\ufffd�])?de$"
@@ -247,15 +236,14 @@ def _canon_responsavel_series(series: pd.Series) -> pd.Series:
         patt_ouvidoria_saude: "Ouvidoria Setorial da Saúde",
         r"(?i)^cidad(?:\u00e3|ã)o$": "Cidadão",
     }, regex=True)
-    
-# Padroniza data_da_criacao para o formato data DD/MM/AAAA
+
 def _to_ddmmaa_text(series: pd.Series) -> pd.Series:
     EXCEL_BASE = pd.Timestamp("1899-12-30")
     def _one(v):
         if pd.isna(v): return None
         if isinstance(v, (pd.Timestamp, np.datetime64)):
             dt = pd.to_datetime(v, errors="coerce")
-            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else None ## <-- MUDANÇA AQUI de %y para %Y
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else None
         s = str(v).strip()
         if s == "": return None
         s2 = s.replace("T", " ").replace("Z", "")
@@ -264,34 +252,29 @@ def _to_ddmmaa_text(series: pd.Series) -> pd.Series:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 dt = pd.to_datetime(s2, errors="coerce", dayfirst=False)
-            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s
         if re.fullmatch(r"\d{5,6}(\.\d+)?", s2):
-            try: return (EXCEL_BASE + pd.to_timedelta(float(s2), "D")).strftime("%d/%m/%Y") ## <-- MUDANÇA AQUI de %y para %Y
+            try: return (EXCEL_BASE + pd.to_timedelta(float(s2), "D")).strftime("%d/%m/%Y")
             except: pass
         if re.fullmatch(r"\d{13}", s2):
             dt = pd.to_datetime(int(s2), unit="ms", errors="coerce")
-            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s
         if re.fullmatch(r"\d{10}(\.\d+)?", s2):
             dt = pd.to_datetime(float(s2), unit="s", errors="coerce")
-            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
-        for fmt in ["%d/%m/%Y %H:%M:%S","%d/%m/%Y %H:%M","%d/%m/%Y",
-                    "%d/%m/%y %H:%M:%S","%d/%m/%y %H:%M","%d/%m/%y",
-
-                    "%Y-%m-%d %H:%M:%S","%Y-%m-%d %H:%M","%Y-%m-%d"]:
-            try: return pd.to_datetime(s2, format=fmt).strftime("%d/%m/%Y") ## <-- MUDANÇA AQUI de %y para %Y
+            return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s
+        for fmt in ["%d/%m/%Y %H:%M:%S","%d/%m/%Y %H:%M","%d/%m/%Y", "%d/%m/%y %H:%M:%S","%d/%m/%y %H:%M","%d/%m/%y", "%Y-%m-%d %H:%M:%S","%Y-%m-%d %H:%M","%Y-%m-%d"]:
+            try: return pd.to_datetime(s2, format=fmt).strftime("%d/%m/%Y")
             except: pass
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             dt = pd.to_datetime(s2, dayfirst=True, errors="coerce")
-        return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s ## <-- MUDANÇA AQUI de %y para %Y
+        return dt.strftime("%d/%m/%Y") if pd.notna(dt) else s
     return series.apply(_one).astype("object")
 
-# Padroniza data_da_conclusao para o formato data DD/MM/AAAA
 def _conclusao_strict(series: pd.Series) -> pd.Series:
     s = pd.Series(series, dtype="object").astype(str).str.strip()
     s_cf = s.str.casefold()
-    invalid = {"não informado","na","n/a","n\\a","nan","null","none","","-","--",
-               "outro","outros","nat","sem informação","sem informacao"}
+    invalid = {"não informado","na","n/a","n\\a","nan","null","none","","-","--", "outro","outros","nat","sem informação","sem informacao"}
     out = s.copy()
     mask_invalid = s_cf.isin(invalid)
     out.loc[mask_invalid] = "Não concluído"
@@ -312,7 +295,7 @@ def _conclusao_strict(series: pd.Series) -> pd.Series:
                 dt.loc[non_iso_idx] = pd.to_datetime(s_rest.loc[non_iso_idx], errors="coerce", dayfirst=True)
         good_idx = dt.index[dt.notna()]
         if len(good_idx) > 0:
-            out.loc[good_idx] = dt.loc[good_idx].dt.strftime("%d/%m/%Y") ## <-- MUDANÇA AQUI de %y para %Y
+            out.loc[good_idx] = dt.loc[good_idx].dt.strftime("%d/%m/%Y")
     return out
 
 def _parse_dt_cmp(series: pd.Series) -> pd.Series:
@@ -330,9 +313,7 @@ def _parse_dt_cmp(series: pd.Series) -> pd.Series:
             return pd.to_datetime(int(s2), unit="ms", errors="coerce")
         if re.fullmatch(r"\d{10}(\.\d+)?", s2):
             return pd.to_datetime(float(s2), unit="s", errors="coerce")
-        for fmt in ["%d/%m/%Y %H:%M:%S","%d/%m/%Y %H:%M","%d/%m/%Y",
-                    "%d/%m/%y %H:%M:%S","%d/%m/%y %H:%M","%d/%m/%y",
-                    "%Y-%m-%d %H:%M:%S","%Y-%m-%d %H:%M","%Y-%m-%d"]:
+        for fmt in ["%d/%m/%Y %H:%M:%S","%d/%m/%Y %H:%M","%d/%m/%Y", "%d/%m/%y %H:%M:%S","%d/%m/%y %H:%M","%d/%m/%y", "%Y-%m-%d %H:%M:%S","%Y-%m-%d %H:%M","%Y-%m-%d"]:
             try: return pd.to_datetime(s2, format=fmt)
             except: pass
         with warnings.catch_warnings():
@@ -361,7 +342,7 @@ def _looks_like_demanda_concluida(v) -> bool:
     if pd.isna(v): return False
     s = str(v).strip()
     if s == "": return False
-    s = "".join(ch for ch in unicodedata.normalize("NFD", s) if unicodedata.category(ch) != "Mn")
+    s = unicodedata.normalize("NFD", s)
     s = s.replace("�", "i").replace("?", "i")
     s = re.sub(r"i{2,}", "i", s, flags=re.IGNORECASE)
     s = re.sub(r"[^A-Za-z]+", " ", s).strip().casefold()
@@ -377,30 +358,71 @@ def _canon_prazo_restante(v):
     if _looks_like_demanda_concluida(s_clean):
         return "Demanda Concluída"
     return s_clean
-    
-# Normaliza as palavras da coluna "orgaos"
-def _to_proper_case_pt(text: str) -> str:
-    """
-    Converte uma string para o formato 'Title Case' apropriado para o português,
-    mantendo conectivos comuns em minúsculo (a menos que seja a primeira palavra).
-    """
-    if not isinstance(text, str) or not text.strip():
-        return text
 
-    # Lista de palavras que devem permanecer em minúsculo
-    conectivos = ['de', 'da', 'do', 'dos', 'das', 'e', 'a', 'o', 'em']
+# --- LÓGICA DE MAPEAMENTO DE ÓRGÃOS MOVIDA PARA CÁ (ESCOPO GLOBAL) ---
+
+def _norm_tema(s):
+    if pd.isna(s): return ""
+    s = str(s).strip().lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    return re.sub(r"\s+", " ", s)
+
+def _div_temas(v, seps=(",", ";", "|", "/")):
+    if pd.isna(v): return []
+    t = str(v)
+    for s in seps: t = t.replace(s, ",")
+    partes = [p.strip() for p in t.split(",") if p.strip()]
+    return partes if partes else [str(v).strip()]
+
+MAP_TEMA_PARA_ORGAO = {
+    "Administração Pública":"Secretaria de Administração","Agricultura":"Secretaria de Obras e Agricultura",
+    "Assistência Social e Direitos Humanos":"Secretaria de Assistência Social e Direitos Humanos",
+    "Assuntos Jurídicos":"Procuradoria Geral","Comunicação Social":"Secretaria de Comunicação Social e Relações Públicas",
+    "Controle Governamental":"Secretaria de Controle Interno","Criança, Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos",
+    "Cultura e Turismo":"Secretaria de Cultura e Turismo","Defesa Civil":"Secretaria de Defesa Civil",
+    "Direitos à Pessoa com Deficiência":"Secretaria de Assistência Social e Direitos Humanos",
+    "Direitos e Vantagens do Servidor":"Secretaria de Administração","Educação":"Secretaria de Educação",
+    "Empresas e Legalizações":"Secretaria de Fazenda","Esporte e Lazer":"Secretaria de Esporte e Lazer",
+    "Fiscalização e tributos":"Secretaria de Fazenda","Fiscalização Urbana, Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação",
+    "FUNDEC":"FUNDEC","Governança":"Secretaria de Governo","Governo Municipal e Enterro Gratuito":"Secretaria de Governo",
+    "Habitação":"Secretaria de Urbanismo e Habitação","Inclusão e Acessibilidade":"Secretaria de Gestão, Inclusão e Mulher",
+    "Meio Ambiente":"Secretaria de Meio Ambiente",
+    "Meio Ambiente (Poluição Sonora, Árvores, Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
+    "Assédio":"Secretaria de Comunicação Social e Relações Públicas","Obras Públicas":"Secretaria de Obras e Agricultura",
+    "Obras, Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura","Proteção Animal":"Secretaria de Proteção Animal",
+    "Saúde":"Secretaria de Saúde","Segurança Pública":"Secretaria de Segurança Pública",
+    "Segurança, Sinalização e Multas":"Secretaria de Segurança Pública",
+    "Trabalho, Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda",
+    "Transportes e Serviços Públicos":"Secretaria de Transportes e Serviços Públicos",
+    "Transportes, Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
+    "Urbanismo":"Secretaria de Urbanismo e Habitação",
+    "Vetores e Zoonoses (Combate à Dengue, Controle de Pragas, Criação Irregular de Animais e etc.)":"Secretaria de Saúde",
+    "Vigilância Sanitária":"Secretaria de Saúde",
+    "Obras":"Secretaria de Obras e Agricultura","Trabalho":"Secretaria de Trabalho, Emprego e Renda",
+    "Segurança":"Secretaria de Segurança Pública","Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
+    "Árvores":"Secretaria de Meio Ambiente","Controle de Pragas":"Secretaria de Saúde","Criação Irregular de Animais":"Secretaria de Saúde",
+    "Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos","Criança":"Secretaria de Assistência Social e Direitos Humanos",
+    "Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda","Fiscalização Urbana":"Secretaria de Urbanismo e Habitação",
+    "Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação","Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura",
+    "Meio Ambiente (Poluição Sonora)":"Secretaria de Meio Ambiente","Licenças e Fiscalizações Ambientais e etc.":"Secretaria de Meio Ambiente",
+    "Vetores e Zoonoses (Combate à Dengue)":"Secretaria de Saúde",
+    "Criação Irregular de Animais e etc.)":"Secretaria de Saúde","Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
+    "Meio Ambiente (Poluição Sonora":"Secretaria de Meio Ambiente","Não se aplica":"Secretaria de Comunicação Social e Relações Públicas",
+    "Sinalização e Multas":"Secretaria de Segurança Pública","Transportes":"Secretaria de Transportes e Serviços Públicos",
+    "Vetores e Zoonoses (Combate à Dengue":"Secretaria de Saúde",
+}
+MAP_EXACT_ORGAOS = { _norm_tema(k): v for k, v in MAP_TEMA_PARA_ORGAO.items() }
+
+def mapear_orgao_exato(celula_tema):
+    orgs = []
+    tema_as_str = str(celula_tema) if pd.notna(celula_tema) else ""
+    for t in _div_temas(tema_as_str):
+        t_norm = _norm_tema(t)
+        if t_norm and t_norm in MAP_EXACT_ORGAOS:
+            orgs.append(MAP_EXACT_ORGAOS[t_norm])
+    return " | ".join(dict.fromkeys(o.strip() for o in orgs if o and str(o).strip())) or None
     
-    palavras = text.lower().split()
-    palavras_capitalizadas = []
-    
-    for i, palavra in enumerate(palavras):
-        # Capitaliza a palavra se for a primeira da frase ou se não for um conectivo
-        if i == 0 or palavra not in conectivos:
-            palavras_capitalizadas.append(palavra.capitalize())
-        else:
-            palavras_capitalizadas.append(palavra)
-            
-    return ' '.join(palavras_capitalizadas)
 # ============================================= 
 # 5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA - MANTIDO (com ajuste de logging)
 # =============================================
@@ -476,14 +498,14 @@ except Exception as e:
 # ===================================================================================
 # 5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (PARA ACENTOS) (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (PARA ACENTOS)")
+_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'orgaos' (PARA ACENTOS E CAPITALIZAÇÃO)")
 print(" Executando backfill para corrigir acentuação e capitalização de TODA a coluna 'orgaos'...")
 logging.info("INICIANDO: Backfill de 'orgaos' para corrigir acentos e capitalização.")
 
 try:
     _SUB("Carregando bases para o backfill...")
     # Carrega a base bruta para ter a referência correta de TEMA
-    df_bruta_hist, _, _ = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
+    df_bruta_hist = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)[2]
     df_bruta_hist.columns = [normalizar_nome_coluna(c) for c in df_bruta_hist.columns]
     df_bruta_hist.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
     mapa_protocolo_tema = df_bruta_hist.set_index('protocolo')['tema'].to_dict()
@@ -493,9 +515,9 @@ try:
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
 
     _SUB("Recalculando 'orgaos' com a lógica correta...")
-    # Aplica a mesma lógica do novo Item 7.4 a todos os dados históricos
+    # Recalcula 'orgaos' com base no tema da bruta, usando as funções globais
     df_tratada_hist['tema_correto'] = df_tratada_hist['protocolo'].map(mapa_protocolo_tema)
-    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['tema_correto'].apply(mapear_orgao_exato) # Reusa a função do Item 7.4
+    df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['tema_correto'].apply(mapear_orgao_exato)
     df_tratada_hist['orgaos_corrigido'].fillna("Secretaria Municipal de Comunicação e Relações Públicas", inplace=True)
     df_tratada_hist['orgaos_corrigido'] = df_tratada_hist['orgaos_corrigido'].apply(_clean_whitespace).apply(_to_proper_case_pt)
     
@@ -518,7 +540,6 @@ try:
             print(f"✅ Backfill da coluna 'orgaos' concluído. {len(cells_to_update)} células foram corrigidas.")
     else:
         print("✅ Nenhuma divergência histórica encontrada na coluna 'orgaos'.")
-
 except Exception as e:
     print(f"❌ Erro crítico durante o backfill de 'orgaos': {e}")
 
@@ -602,87 +623,24 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.3 (Unidades de Saúde): {e}", exc_info=True)
 
-    # 7.4 Órgãos por tema — LÓGICA CORRIGIDA PARA ACENTOS E CAPITALIZAÇÃO
+    # 7.4 Órgãos por tema — LÓGICA SIMPLIFICADA E CORRIGIDA
     try:
-        # Funções auxiliares locais
-        import unicodedata as _ud, re as _re
-
-        def _norm(s):
-            if pd.isna(s): return ""
-            s = str(s).strip().lower()
-            s = _ud.normalize("NFD", s)
-            s = "".join(ch for ch in s if _ud.category(ch) != "Mn")
-            return _re.sub(r"\s+", " ", s)
-
-        def _div_temas(v, seps=(",", ";", "|", "/")):
-            if pd.isna(v): return []
-            t = str(v)
-            for s in seps: t = t.replace(s, ",")
-            partes = [p.strip() for p in t.split(",") if p.strip()]
-            return partes if partes else [str(v).strip()]
-
-        map_tema_para_orgao = {
-            "Administração Pública":"Secretaria de Administração","Agricultura":"Secretaria de Obras e Agricultura",
-            "Assistência Social e Direitos Humanos":"Secretaria de Assistência Social e Direitos Humanos",
-            "Assuntos Jurídicos":"Procuradoria Geral","Comunicação Social":"Secretaria de Comunicação Social e Relações Públicas",
-            "Controle Governamental":"Secretaria de Controle Interno","Criança, Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos",
-            "Cultura e Turismo":"Secretaria de Cultura e Turismo","Defesa Civil":"Secretaria de Defesa Civil",
-            "Direitos à Pessoa com Deficiência":"Secretaria de Assistência Social e Direitos Humanos",
-            "Direitos e Vantagens do Servidor":"Secretaria de Administração","Educação":"Secretaria de Educação",
-            "Empresas e Legalizações":"Secretaria de Fazenda","Esporte e Lazer":"Secretaria de Esporte e Lazer",
-            "Fiscalização e tributos":"Secretaria de Fazenda","Fiscalização Urbana, Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação",
-            "FUNDEC":"FUNDEC","Governança":"Secretaria de Governo","Governo Municipal e Enterro Gratuito":"Secretaria de Governo",
-            "Habitação":"Secretaria de Urbanismo e Habitação","Inclusão e Acessibilidade":"Secretaria de Gestão, Inclusão e Mulher",
-            "Meio Ambiente":"Secretaria de Meio Ambiente",
-            "Meio Ambiente (Poluição Sonora, Árvores, Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
-            "Assédio":"Secretaria de Comunicação Social e Relações Públicas","Obras Públicas":"Secretaria de Obras e Agricultura",
-            "Obras, Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura","Proteção Animal":"Secretaria de Proteção Animal",
-            "Saúde":"Secretaria de Saúde","Segurança Pública":"Secretaria de Segurança Pública",
-            "Segurança, Sinalização e Multas":"Secretaria de Segurança Pública",
-            "Trabalho, Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda",
-            "Transportes e Serviços Públicos":"Secretaria de Transportes e Serviços Públicos",
-            "Transportes, Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
-            "Urbanismo":"Secretaria de Urbanismo e Habitação",
-            "Vetores e Zoonoses (Combate à Dengue, Controle de Pragas, Criação Irregular de Animais e etc.)":"Secretaria de Saúde",
-            "Vigilância Sanitária":"Secretaria de Saúde",
-            "Obras":"Secretaria de Obras e Agricultura","Trabalho":"Secretaria de Trabalho, Emprego e Renda",
-            "Segurança":"Secretaria de Segurança Pública","Serviços Públicos e Troca de Lâmpadas":"Secretaria de Transportes e Serviços Públicos",
-            "Árvores":"Secretaria de Meio Ambiente","Controle de Pragas":"Secretaria de Saúde","Criação Irregular de Animais":"Secretaria de Saúde",
-            "Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos","Criança":"Secretaria de Assistência Social e Direitos Humanos",
-            "Emprego e Renda":"Secretaria de Trabalho, Emprego e Renda","Fiscalização Urbana":"Secretaria de Urbanismo e Habitação",
-            "Regularização e Registro de Imóveis":"Secretaria de Urbanismo e Habitação","Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura",
-            "Meio Ambiente (Poluição Sonora)":"Secretaria de Meio Ambiente","Licenças e Fiscalizações Ambientais e etc.":"Secretaria de Meio Ambiente",
-            "Vetores e Zoonoses (Combate à Dengue)":"Secretaria de Saúde",
-            "Criação Irregular de Animais e etc.)":"Secretaria de Saúde","Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
-            "Meio Ambiente (Poluição Sonora":"Secretaria de Meio Ambiente","Não se aplica":"Secretaria de Comunicação Social e Relações Públicas",
-            "Sinalização e Multas":"Secretaria de Segurança Pública","Transportes":"Secretaria de Transportes e Serviços Públicos",
-            "Vetores e Zoonoses (Combate à Dengue":"Secretaria de Saúde",
-        }
-        
-        map_exact = { _norm(k): v for k, v in map_tema_para_orgao.items() }
-
-        def mapear_orgao_exato(celula_tema):
-            orgs = []
-            tema_as_str = str(celula_tema) if pd.notna(celula_tema) else ""
-            for t in _div_temas(tema_as_str):
-                t_norm = _norm(t)
-                if t_norm and t_norm in map_exact:
-                    orgs.append(map_exact[t_norm])
-            return " | ".join(dict.fromkeys(o.strip() for o in orgs if o and str(o).strip())) or None
-
+        # Passo A: Cria a coluna 'orgaos' chamando a função global
         if "tema" in df_loc.columns:
             df_loc["tema"] = df_loc["tema"].astype(str)
             df_loc["orgaos"] = df_loc["tema"].apply(mapear_orgao_exato)
         else:
             df_loc["orgaos"] = None
         
+        # Passo B: Aplica o fallback para valores nulos/vazios
         fallback_value = "Secretaria Municipal de Comunicação e Relações Públicas"
         df_loc["orgaos"].fillna(fallback_value, inplace=True)
         df_loc.loc[df_loc["orgaos"].str.strip() == '', "orgaos"] = fallback_value
         
+        # Passo C: Executa a sequência de limpeza e capitalização
         df_loc["orgaos"] = df_loc["orgaos"].apply(_clean_whitespace).astype(str)
         df_loc["orgaos"] = df_loc["orgaos"].apply(_to_proper_case_pt)
-        logging.info("Tratamento 7.4 (Limpeza de Espaços e Capitalização com Acentos) aplicado a 'orgaos'.")
+        logging.info("Tratamento 7.4 (Limpeza e Capitalização com Acentos) aplicado a 'orgaos'.")
 
     except Exception as e:
         logging.error(f"Erro no tratamento 7.4 (Órgãos por tema): {e}", exc_info=True)
@@ -723,9 +681,6 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.5 (Padronização 'servidor'): {e}", exc_info=True)
 
-    # 7.6, 7.7, 7.8, 7.9, 7.10 (Seus outros tratamentos)
-    # ... (O resto da sua função _tratar_full continua aqui, sem alterações) ...
-    
     # 7.6 Responsável (normalização)
     try:
         if "responsavel" in df_loc.columns:
