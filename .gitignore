@@ -9,11 +9,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
-# Database
-prisma/dev.db
-prisma/dev.db-journal
-*.db
+# Database journals (mantém o .db, mas ignora journals)
 *.db-journal
+prisma/dev.db-journal
 
 # Logs
 logs

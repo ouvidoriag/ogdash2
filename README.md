@@ -4,15 +4,39 @@ Ouvidoria - Duque de Caxias/RJ - Dashboard
 Requisitos:
 - Node.js 18+
 
-Configuração rápida (Windows PowerShell):
+## 🚀 Instalação e Uso Rápido
 
-```powershell
-cd C:\Users\478423\Desktop\Dashboard
+### Instalação Automática (Recomendado)
+
+```bash
+# 1. Clone o repositório
+git clone https://github.com/ouvidoriag/ogdash.git
+cd ogdash
+
+# 2. Instale as dependências (setup automático roda após npm install)
 npm install
-npm run db:reset   # gera cliente e cria o banco SQLite
-npm run import:excel  # importa a planilha definida no .env
-npm run dev       # inicia API e frontend em http://localhost:3000
+
+# 3. Inicie o sistema
+npm start
 ```
+
+O sistema estará disponível em: **http://localhost:3000**
+
+### Configuração Manual (Opcional)
+
+Se precisar importar dados do Excel:
+
+```bash
+npm run import:excel  # importa a planilha definida no .env
+```
+
+### Scripts Disponíveis
+
+- `npm start` - Inicia o servidor (configura automaticamente se necessário)
+- `npm run dev` - Modo desenvolvimento
+- `npm run setup` - Executa setup manual (gera Prisma Client e cria banco)
+- `npm run import:excel` - Importa dados do arquivo Excel
+- `npm run db:reset` - Reseta o banco de dados
 
 Arquivos importantes:
 - `.env`: configura `DATABASE_URL`, `PORT` e `EXCEL_FILE` (já aponta para a planilha na pasta).

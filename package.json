@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/setup.js",
+    "prestart": "node scripts/setup.js",
     "dev": "node src/server.js",
     "build": "echo 'No build step required'",
     "start": "node src/server.js",
+    "setup": "node scripts/setup.js",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate deploy",
     "import:excel": "node scripts/importExcel.js",
