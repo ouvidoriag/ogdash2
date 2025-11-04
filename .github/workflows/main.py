@@ -606,7 +606,8 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 "Stéphanie  Santos": "Stephanie dos Santos Silva", "Stéphanie Santos": "Stephanie dos Santos Silva",
                 "Stephanie dos Santos": "Stephanie dos Santos Silva", "Stéphanie Santoa": "Stephanie dos Santos Silva",
                 "Stephanie Santos": "Stephanie dos Santos Silva", "Stephanie dos Santos": "Stephanie dos Santos Silva",
-                "Stephanie Santos": "Stephanie dos Santos Silva", "Thamires Manhães": "Cidadão"
+                "Stephanie Santos": "Stephanie dos Santos Silva", "Stéphanie dos Santos Silva": "Stephanie dos Santos Silva", "Thamires Manhães": "Cidadão",
+                "Alexsandra de Castro Freire": "Cidadão"
             }
             _orig = df_loc["servidor"].astype(str).str.strip()
             df_loc["servidor"] = _orig.map(dicionario_servidor).fillna(_orig)
