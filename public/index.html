@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ouvidoria - Duque de Caxias - Dashboard</title>
+    <link rel="icon" type="image/png" href="/dc-logo.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #0f172a;
+        --muted: #94a3b8;
+        --primary: #22d3ee; /* cyan */
+        --accent: #a78bfa;  /* violet */
+        --success: #34d399; /* green */
+        --danger: #fb7185;  /* rose */
+      }
+      body { background: radial-gradient(1200px 600px at top left, rgba(34,211,238,0.08), transparent 60%), radial-gradient(1200px 600px at bottom right, rgba(167,139,250,0.08), transparent 60%), var(--bg); }
+      .glass { background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.08); }
+      .neon { text-shadow: 0 0 12px rgba(34,211,238,0.65), 0 0 24px rgba(167,139,250,0.45); }
+      .glow-ring { box-shadow: 0 0 0 2px rgba(34,211,238,0.15), 0 0 32px rgba(34,211,238,0.25); }
+      .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.06) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
+      @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+      canvas { max-height: 340px; }
+    </style>
+  </head>
+  <body class="text-slate-100">
+    <div class="min-h-screen grid grid-cols-12 gap-6 p-6">
+      <aside class="col-span-12 lg:col-span-3 xl:col-span-2 glass rounded-2xl p-5 animate__animated animate__fadeIn">
+        <div class="flex items-center gap-3 mb-6">
+          <img src="/dc-logo.png" alt="Duque de Caxias" class="h-12 w-auto object-contain" />
+          <div>
+            <div class="text-lg font-semibold">Ouvidoria Caxias</div>
+            <div class="text-xs text-slate-400">Dashboard Futurista</div>
+          </div>
+        </div>
+        <nav id="sideMenu" class="space-y-2 text-sm">
+          <div data-page="main" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Visão Geral</div>
+          <div data-page="secretaria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Secretarias</div>
+          <div data-page="tipo" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Tipos de Manifestação</div>
+          <div data-page="setor" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Setores</div>
+          <div data-page="categoria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Categorias</div>
+          <div data-page="status" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Status</div>
+          <div data-page="bairro" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Bairros</div>
+        </nav>
+        <div class="mt-8 text-xs text-slate-400">Secretaria de Ouvidoria Geral • Duque de Caxias/RJ</div>
+      </aside>
+
+      <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">
+        <!-- Painel principal: Visão Geral -->
+        <section id="page-main">
+          <header class="glass rounded-2xl p-6 relative overflow-hidden">
+            <div class="absolute inset-0 opacity-30" style="background: radial-gradient(600px 200px at 10% 0%, rgba(34,211,238,0.25), transparent 60%), radial-gradient(600px 200px at 90% 100%, rgba(167,139,250,0.25), transparent 60%)"></div>
+            <div class="relative flex flex-wrap items-center justify-between gap-4">
+              <div class="flex items-center gap-4">
+                <img src="/dc-logo.png" alt="Duque de Caxias" class="h-16 w-auto object-contain" />
+              <div>
+                <h1 class="text-2xl font-bold neon">Ouvidoria Geral - Duque de Caxias/RJ</h1>
+                <p class="text-slate-400">Analytics em tempo real com visual futurista</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="countBy" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none glow-ring" placeholder="Contagem por: Categoria, Bairro..." />
+                <button id="btnCountBy" class="px-3 py-2 text-sm rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 glow-ring">Aplicar</button>
+                <input id="dateField" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none glow-ring" placeholder="Série temporal: Data, Abertura..." />
+                <button id="btnTime" class="px-3 py-2 text-sm rounded-lg bg-violet-500/20 text-violet-300 hover:bg-violet-500/30 glow-ring">Aplicar</button>
+              </div>
+            </div>
+          </header>
+
+        <section class="grid grid-cols-12 gap-6">
+          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp">
+            <div class="text-slate-400 text-sm">Total</div>
+            <div id="kpiTotal" class="text-3xl font-extrabold mt-2">—</div>
+            <div class="text-xs text-slate-500">Registros na base</div>
+          </div>
+          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="text-slate-400 text-sm">Últimos 7 dias</div>
+            <div id="kpi7" class="text-3xl font-extrabold mt-2">—</div>
+            <div class="text-xs text-slate-500">Tendência semanal</div>
+          </div>
+          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-2s">
+            <div class="text-slate-400 text-sm">Últimos 30 dias</div>
+            <div id="kpi30" class="text-3xl font-extrabold mt-2">—</div>
+            <div class="text-xs text-slate-500">Tendência mensal</div>
+          </div>
+          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-3s">
+            <div class="text-slate-400 text-sm">Status principal</div>
+            <div id="kpiTopStatus" class="text-3xl font-extrabold mt-2">—</div>
+            <div class="text-xs text-slate-500">Situação mais frequente</div>
+          </div>
+        </section>
+
+          <section class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-slate-200">Contagem por campo</h3>
+              </div>
+            <div class="rounded-xl overflow-hidden bg-slate-900/30">
+              <canvas id="chartCount" class="skeleton"></canvas>
+            </div>
+            </div>
+            <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-slate-200">Série temporal</h3>
+              </div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30">
+                <canvas id="chartTime" class="skeleton"></canvas>
+              </div>
+            </div>
+          </section>
+          <!-- Heatmap Geral: Mês x Categoria -->
+          <section class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-slate-200">Heatmap por Mês x Categoria (Top 10)</h3>
+                <div>
+                  <select id="heatmapDim" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm glow-ring">
+                    <option>Categoria</option>
+                    <option>Secretaria</option>
+                    <option>Setor</option>
+                    <option>Tipo</option>
+                    <option>Status</option>
+                    <option>Bairro</option>
+                  </select>
+                </div>
+              </div>
+              <div id="heatmap" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+          </section>
+        <section class="grid grid-cols-12 gap-6">
+          <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-slate-200">Distribuição por Status</h3>
+            </div>
+            <div class="rounded-xl overflow-hidden bg-slate-900/30">
+              <canvas id="chartStatus" class="skeleton"></canvas>
+            </div>
+          </div>
+          <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-slate-200">Registros por Mês (12M)</h3>
+            </div>
+            <div class="rounded-xl overflow-hidden bg-slate-900/30">
+              <canvas id="chartMonth" class="skeleton"></canvas>
+            </div>
+          </div>
+        </section>
+        <section class="grid grid-cols-12 gap-6">
+          <div class="col-span-12 glass rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-slate-200">SLA (e-SIC e Outros)</h3>
+            </div>
+            <div class="rounded-xl overflow-hidden bg-slate-900/30">
+              <canvas id="chartSla" class="skeleton"></canvas>
+            </div>
+          </div>
+        </section>
+
+          <section class="glass rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-slate-200">Tabela (primeiros registros)</h3>
+              <button id="btnExport" class="px-3 py-2 text-sm rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 glow-ring">Exportar CSV</button>
+            </div>
+            <div class="overflow-auto rounded-xl border border-white/10">
+              <table class="min-w-full text-sm">
+                <thead class="bg-slate-900/40">
+                  <tr id="thead"></tr>
+                </thead>
+                <tbody id="tbody" class="divide-y divide-white/5"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+        <!-- Página por Categoria -->
+        <section id="page-categoria" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Categorias</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-fuchsia-400">Top Categorias</h3>
+              <canvas id="chartCategoria"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-fuchsia-400">Heatmap Mês x Categoria</h3>
+              <div id="heatmapCategoria" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Status -->
+        <section id="page-status" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Status</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-sky-400">Distribuição por Status</h3>
+              <canvas id="chartStatusPage"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-sky-400">Heatmap Mês x Status</h3>
+              <div id="heatmapStatus" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Bairro -->
+        <section id="page-bairro" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Bairros</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-amber-400">Top Bairros</h3>
+              <canvas id="chartBairro"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-amber-400">Heatmap Mês x Bairro</h3>
+              <div id="heatmapBairro" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Secretaria -->
+        <section id="page-secretaria" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Análise por Secretaria (Órgão)</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+              <h3 class="font-semibold mb-2 text-cyan-400">Registros por Secretaria</h3>
+              <canvas id="chartSecretaria"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <h3 class="font-semibold mb-2 text-cyan-400">Top 10 Secretarias (Rank)</h3>
+              <ul id="rankSecretaria" class="space-y-2"></ul>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Tipo de Manifestação -->
+        <section id="page-tipo" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Tipos de Manifestação</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+              <h3 class="font-semibold mb-2 text-violet-400">Distribuição por Tipo (Reclamação/Elogio/...)</h3>
+              <canvas id="chartTipo"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <h3 class="font-semibold mb-2 text-violet-400">Top Tipos (Rank)</h3>
+              <ul id="rankTipo" class="space-y-2"></ul>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Setor -->
+        <section id="page-setor" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Análise por Setor/Departamento</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+              <h3 class="font-semibold mb-2 text-emerald-400">Registros por Setor</h3>
+              <canvas id="chartSetor"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <h3 class="font-semibold mb-2 text-emerald-400">Top 10 Setores (Rank)</h3>
+              <ul id="rankSetor" class="space-y-2"></ul>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script>
+      function gradient(ctx, from, to) {
+        const g = ctx.createLinearGradient(0, 0, 0, 300);
+        g.addColorStop(0, from);
+        g.addColorStop(1, to);
+        return g;
+      }
+
+      async function fetchJSON(url, opts) {
+        const res = await fetch(url, opts);
+        if (!res.ok) throw new Error('Request failed');
+        return res.json();
+      }
+
+      function buildHeatmap(containerId, labels, rows) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const max = Math.max(1, ...rows.flatMap(r => r.values));
+        const toBg = (v) => {
+          const alpha = v === 0 ? 0.05 : Math.min(0.9, 0.15 + 0.75 * (v / max));
+          return `rgba(34,211,238,${alpha})`;
+        };
+        let html = '<div class="min-w-max"><table class="text-xs w-full">';
+        html += '<thead><tr><th class="px-2 py-1 text-left text-slate-400">Chave</th>' + labels.map(l=>`<th class="px-2 py-1 text-slate-400">${l}</th>`).join('') + '</tr></thead>';
+        html += '<tbody>' + rows.map(r=>{
+          const cells = r.values.map(v=>`<td class="px-2 py-1" style="background:${toBg(v)}">${v}</td>`).join('');
+          return `<tr><td class="px-2 py-1 text-slate-300">${r.key}</td>${cells}</tr>`;
+        }).join('') + '</tbody></table></div>';
+        container.innerHTML = html;
+      }
+
+      async function loadKpis(defaultCountField, defaultDateField) {
+        const sum = await fetchJSON('/api/summary');
+        document.getElementById('kpiTotal').textContent = (sum.total ?? 0).toLocaleString('pt-BR');
+        document.getElementById('kpi7').textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
+        document.getElementById('kpi30').textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
+        if (sum.statusCounts && sum.statusCounts.length) {
+          document.getElementById('kpiTopStatus').textContent = `${sum.statusCounts[0].status} (${sum.statusCounts[0].count})`;
+          // Monta gráfico de status
+          const ctx = document.getElementById('chartStatus').getContext('2d');
+          if (window.chartStatus instanceof Chart) window.chartStatus.destroy();
+          window.chartStatus = new Chart(ctx, { type: 'doughnut', data: {
+            labels: sum.statusCounts.map(s=>s.status),
+            datasets: [{ data: sum.statusCounts.map(s=>s.count), backgroundColor: ['#22d3ee','#a78bfa','#34d399','#f59e0b','#fb7185','#f472b6'] }]
+          }, options: { responsive: true } });
+        }
+        // Série temporal mensal 12M
+        const byMonth = await fetchJSON('/api/aggregate/by-month');
+        const ctxM = document.getElementById('chartMonth').getContext('2d');
+        if (window.chartMonth instanceof Chart) window.chartMonth.destroy();
+        window.chartMonth = new Chart(ctxM, { type:'bar', data:{ labels: byMonth.map(x=>x.ym), datasets:[{ data: byMonth.map(x=>x.count), backgroundColor: 'rgba(167,139,250,0.6)' }] }, options:{ responsive:true } });
+
+        // SLA chart
+        const sla = await fetchJSON('/api/sla/summary');
+        const ctxS = document.getElementById('chartSla').getContext('2d');
+        if (window.chartSla instanceof Chart) window.chartSla.destroy();
+        window.chartSla = new Chart(ctxS, {
+          type: 'bar',
+          data: {
+            labels: ['e-SIC Dentro', 'e-SIC Atraso', 'Outros Verde', 'Outros Amarelo', 'Outros Atraso'],
+            datasets: [{
+              data: [sla.esic?.dentro||0, sla.esic?.atraso||0, sla.outros?.verde||0, sla.outros?.amarelo||0, sla.outros?.atraso||0],
+              backgroundColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185']
+            }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } } }
+        });
+      }
+
+      async function loadTable() {
+        const data = await fetchJSON('/api/records?page=1&pageSize=50');
+        const rows = data.rows || [];
+        const tbody = document.getElementById('tbody');
+        const thead = document.getElementById('thead');
+        tbody.innerHTML = '';
+        thead.innerHTML = '';
+        if (rows.length === 0) return;
+        const first = rows[0].data || {};
+        const keys = Object.keys(first);
+        for (const k of keys) {
+          const th = document.createElement('th'); th.textContent = k; th.className = 'px-3 py-2 text-left font-semibold text-slate-300'; thead.appendChild(th);
+        }
+        for (const r of rows) {
+          const tr = document.createElement('tr'); tr.className = 'hover:bg-white/5 transition-colors';
+          for (const k of keys) {
+            const td = document.createElement('td'); td.textContent = r.data?.[k] ?? ''; td.className = 'px-3 py-2 text-slate-300'; tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        }
+      }
+
+      function exportCSV() {
+        const rows = Array.from(document.querySelectorAll('#tbody tr')).map(tr => Array.from(tr.children).map(td => td.textContent));
+        const headers = Array.from(document.querySelectorAll('#thead th')).map(th => th.textContent);
+        const all = [headers, ...rows];
+        const csv = all.map(r => r.map(v => '"' + String(v).replaceAll('"','""') + '"').join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'export.csv'; a.click(); URL.revokeObjectURL(url);
+      }
+
+      let chartCount, chartTime;
+
+      async function loadCountChart(field) {
+        const data = await fetchJSON(`/api/aggregate/count-by?field=${encodeURIComponent(field)}`);
+        const labels = data.slice(0, 20).map(x => x.key);
+        const values = data.slice(0, 20).map(x => x.count);
+        const ctx = document.getElementById('chartCount').getContext('2d');
+        if (chartCount) chartCount.destroy();
+        chartCount = new Chart(ctx, {
+          type: 'bar',
+          data: { labels, datasets: [{
+            label: `Contagem por ${field}`,
+            data: values,
+            borderRadius: 8,
+            backgroundColor: gradient(ctx, 'rgba(34,211,238,0.8)', 'rgba(167,139,250,0.2)')
+          }]},
+          options: {
+            responsive: true,
+            animation: { duration: 800, easing: 'easeOutQuart' },
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.06)' } },
+              y: { grid: { color: 'rgba(255,255,255,0.06)' } }
+            }
+          }
+        });
+        document.getElementById('chartCount').classList.remove('skeleton');
+      }
+
+      async function loadTimeChart(field) {
+        const data = await fetchJSON(`/api/aggregate/time-series?field=${encodeURIComponent(field)}`);
+        const labels = data.map(x => x.date);
+        const values = data.map(x => x.count);
+        const ctx = document.getElementById('chartTime').getContext('2d');
+        if (chartTime) chartTime.destroy();
+        chartTime = new Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets: [{
+            label: `Registros por dia (${field})`,
+            data: values,
+            fill: true,
+            borderWidth: 2,
+            tension: 0.35,
+            borderColor: 'rgba(52,211,153,1)',
+            backgroundColor: gradient(ctx, 'rgba(52,211,153,0.35)', 'rgba(52,211,153,0.05)')
+          }]},
+          options: {
+            responsive: true,
+            animation: { duration: 900, easing: 'easeOutCubic' },
+            plugins: { legend: { labels: { color: '#cbd5e1' } } },
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 } },
+              y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94a3b8' } }
+            }
+          }
+        });
+        document.getElementById('chartTime').classList.remove('skeleton');
+      }
+
+      document.getElementById('btnCountBy').addEventListener('click', () => {
+        const f = document.getElementById('countBy').value.trim() || 'Secretaria';
+        if (f) {
+          loadCountChart(f);
+          // atualizar KPI top
+          fetchJSON(`/api/aggregate/count-by?field=${encodeURIComponent(f)}`).then(agg => {
+            const el = document.getElementById('kpiTopKey');
+            if (el && agg.length) el.textContent = `${agg[0].key} (${agg[0].count})`;
+          }).catch(()=>{});
+        }
+      });
+      document.getElementById('btnTime').addEventListener('click', () => {
+        const f = document.getElementById('dateField').value.trim() || 'Data';
+        if (f) {
+          loadTimeChart(f);
+          // atualizar KPI pico
+          fetchJSON(`/api/aggregate/time-series?field=${encodeURIComponent(f)}`).then(ts => {
+            if (ts.length) {
+              const peak = ts.reduce((a,b) => a.count > b.count ? a : b);
+              const el = document.getElementById('kpiPeak');
+              if (el) el.textContent = `${peak.count} em ${peak.date}`;
+            }
+          }).catch(()=>{});
+        }
+      });
+
+      // Heatmap main interactions
+      document.getElementById('heatmapDim').addEventListener('change', async (e) => {
+        const dim = e.target.value;
+        const hm = await fetchJSON(`/api/aggregate/heatmap?dim=${encodeURIComponent(dim)}`);
+        buildHeatmap('heatmap', hm.labels, hm.rows);
+      });
+      document.getElementById('btnExport').addEventListener('click', exportCSV);
+
+      // initial load
+      loadKpis('Secretaria', 'Data');
+      // carregar gráficos principais com defaults para evitar telas vazias
+      loadCountChart('Secretaria');
+      loadTimeChart('Data');
+      loadTable();
+      fetchJSON('/api/aggregate/heatmap?dim=Categoria').then(hm => buildHeatmap('heatmap', hm.labels, hm.rows)).catch(()=>{});
+    </script>
+    <script>
+      // SPA Page switch
+      const sideMenu = document.getElementById('sideMenu');
+      const pages = document.getElementById('pages').children;
+      sideMenu.querySelectorAll('div[data-page]').forEach(btn => {
+        btn.onclick = () => {
+          sideMenu.querySelectorAll('div[data-page]').forEach(b=>b.classList.remove('active','bg-white/10'));
+          btn.classList.add('active','bg-white/10');
+          Array.from(pages).forEach(page => page.style.display = 'none');
+          document.getElementById('page-'+btn.getAttribute('data-page')).style.display='block';
+          // Carrega conteúdo específico
+          loadSection(btn.getAttribute('data-page'));
+        };
+      });
+      function loadSection(page) {
+        if(page==='secretaria') loadSecretaria();
+        if(page==='tipo') loadTipo();
+        if(page==='setor') loadSetor();
+        if(page==='categoria') loadCategoria();
+        if(page==='status') loadStatusPage();
+        if(page==='bairro') loadBairro();
+      }
+      // Funções para carregar cada seção temática
+      enableCharts(); // chamada para garantir que gráficos não quebrem
+      async function loadSecretaria() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Secretaria');
+        const labels = data.slice(0, 10).map(x=>x.key);
+        const values = data.slice(0, 10).map(x=>x.count);
+        if (window.chartSecretaria instanceof Chart) window.chartSecretaria.destroy();
+        const ctx = document.getElementById('chartSecretaria').getContext('2d');
+        window.chartSecretaria = new Chart(ctx, {
+          type:'bar', data:{labels,datasets:[{label:'Secretaria',data:values,backgroundColor:'#22d3ee'}]},
+          options: {responsive:true, animation:{duration:1000}, plugins:{legend:{display:false}}}
+        });
+        document.getElementById('rankSecretaria').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
+      }
+      async function loadTipo() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Tipo');
+        const labels = data.slice(0, 10).map(x=>x.key);
+        const values = data.slice(0, 10).map(x=>x.count);
+        if(window.chartTipo instanceof Chart) window.chartTipo.destroy();
+        const ctx = document.getElementById('chartTipo').getContext('2d');
+        window.chartTipo = new Chart(ctx, {type:'pie', data:{labels,datasets:[{label:'Tipo Manifestação',data:values,backgroundColor:['#c084fc','#22d3ee','#facc15','#fb7185']}]}, options:{responsive:true,animation:{duration:1000}} });
+        document.getElementById('rankTipo').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
+      }
+      async function loadSetor() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Setor');
+        const labels = data.slice(0, 10).map(x=>x.key);
+        const values = data.slice(0, 10).map(x=>x.count);
+        if(window.chartSetor instanceof Chart) window.chartSetor.destroy();
+        const ctx = document.getElementById('chartSetor').getContext('2d');
+        window.chartSetor = new Chart(ctx, {type:'bar', data:{labels,datasets:[{label:'Setor',data:values,backgroundColor:'#34d399'}]}, options:{responsive:true,animation:{duration:1000}, indexAxis:'y', plugins:{legend:{display:false}}}} );
+        document.getElementById('rankSetor').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
+      }
+      function enableCharts() {
+        // dummy para garantir que não quebre ao carregar direto
+      }
+
+      async function loadCategoria() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Categoria');
+        const labels = data.slice(0, 15).map(x=>x.key);
+        const values = data.slice(0, 15).map(x=>x.count);
+        if (window.chartCategoria instanceof Chart) window.chartCategoria.destroy();
+        const ctx = document.getElementById('chartCategoria').getContext('2d');
+        window.chartCategoria = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Categoria', data: values, backgroundColor:'#f472b6' }] }, options:{ responsive:true, plugins:{ legend:{ display:false } } } });
+        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Categoria');
+        buildHeatmap('heatmapCategoria', hm.labels, hm.rows);
+      }
+
+      async function loadStatusPage() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Status');
+        const labels = data.slice(0, 10).map(x=>x.key);
+        const values = data.slice(0, 10).map(x=>x.count);
+        if (window.chartStatusPage instanceof Chart) window.chartStatusPage.destroy();
+        const ctx = document.getElementById('chartStatusPage').getContext('2d');
+        window.chartStatusPage = new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: values, backgroundColor:['#38bdf8','#22d3ee','#fbbf24','#34d399','#fb7185','#e879f9'] }] }, options:{ responsive:true } });
+        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Status');
+        buildHeatmap('heatmapStatus', hm.labels, hm.rows);
+      }
+
+      async function loadBairro() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Bairro');
+        const labels = data.slice(0, 15).map(x=>x.key);
+        const values = data.slice(0, 15).map(x=>x.count);
+        if (window.chartBairro instanceof Chart) window.chartBairro.destroy();
+        const ctx = document.getElementById('chartBairro').getContext('2d');
+        window.chartBairro = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Bairro', data: values, backgroundColor:'#f59e0b' }] }, options:{ responsive:true, plugins:{ legend:{ display:false } }, indexAxis:'y' } });
+        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Bairro');
+        buildHeatmap('heatmapBairro', hm.labels, hm.rows);
+      }
+    </script>
+  </body>
+  </html>
+
+

@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Record {
+  id        Int      @id @default(autoincrement())
+  data      String // Armazena o JSON serializado
+  createdAt DateTime @default(now())
+  // Campos normalizados (opcionais) para relatórios consistentes e rápidos
+  secretaria String?
+  setor      String?
+  tipo       String?
+  categoria  String?
+  bairro     String?
+  status     String?
+  dataIso    String? // YYYY-MM-DD
+
+  @@index([secretaria])
+  @@index([setor])
+  @@index([tipo])
+  @@index([categoria])
+  @@index([bairro])
+  @@index([status])
+  @@index([dataIso])
+}
+
+

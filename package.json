@@ -1,0 +1,28 @@
+{
+  "name": "ouvidoria-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "build": "echo 'No build step required'",
+    "start": "node src/server.js",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate deploy",
+    "import:excel": "node scripts/importExcel.js",
+    "db:backfill": "node scripts/backfillNormalized.js",
+    "db:reset": "node scripts/resetDb.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "chart.js": "^4.4.3",
+    "cors": "^2.8.5",
+    "datatables.net": "^2.0.8",
+    "dotenv": "^17.2.3",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "node-cache": "^5.1.2",
+    "prisma": "^5.20.0",
+    "xlsx": "^0.18.5"
+  }
+}
