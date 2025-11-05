@@ -259,17 +259,54 @@ error: Environment variable not found: DATABASE_URL.
 - Você deve ver `DATABASE_URL` listada com valor `file:./prisma/dev.db`
 - Se não estiver lá, **adicione agora** e aguarde o redeploy
 
+#### ❌ Erro: "Unable to open the database file" (Error code 14)
+
+**Sintomas:**
+```
+PrismaClientInitializationError: 
+Error querying the database: Error code 14: Unable to open the database file
+```
+
+**Causas possíveis:**
+1. O banco de dados não existe no caminho especificado
+2. O caminho relativo no `DATABASE_URL` não está correto
+3. Permissões de arquivo incorretas
+
+**Solução:**
+1. **Verifique os logs** durante o build/start:
+   - Procure por `📁 Caminho do banco: ...`
+   - Procure por `📁 DATABASE_URL: ...`
+   - Verifique se o banco foi encontrado ou criado
+
+2. **Confirme que `DATABASE_URL` está correto:**
+   - Deve ser: `file:./prisma/dev.db` (relativo ao diretório raiz do projeto)
+   - O caminho é relativo ao diretório onde o `package.json` está
+
+3. **Se o banco não existir**, o `setup.js` deve criá-lo automaticamente
+   - Verifique os logs para ver se `✅ Banco de dados criado!` aparece
+
+4. **No Render**, o banco será criado em:
+   - `/opt/render/project/src/prisma/dev.db`
+   - O caminho relativo `file:./prisma/dev.db` deve funcionar
+
+5. **Se o problema persistir:**
+   - Verifique se o diretório `prisma/` existe
+   - Verifique permissões do arquivo/diretório
+   - Considere usar um caminho absoluto se necessário
+
 #### ❌ Serviço não inicia / Erro no build
 
 **Verifique nos logs:**
 - Se o Prisma Client foi gerado: procure por `✅ Prisma Client gerado com sucesso!`
-- Se o banco foi criado: procure por `✅ Banco de dados criado!`
+- Se o banco foi criado: procure por `✅ Banco de dados criado!` ou `✅ Banco de dados encontrado!`
 - Se há erros de permissão ou caminho
+- Verifique o valor de `DATABASE_URL` nos logs
 
 **Solução:**
-- Certifique-se de que `DATABASE_URL` está configurada corretamente
+- Certifique-se de que `DATABASE_URL` está configurada corretamente (`file:./prisma/dev.db`)
 - Verifique se o Build Command é apenas `npm install` (sem `npm run build`)
 - Verifique se o Start Command é `npm run start`
+- Certifique-se de que o banco de dados está commitado no repositório (se usar dados pré-carregados)
 
 #### ❌ Banco de dados não persiste
 
