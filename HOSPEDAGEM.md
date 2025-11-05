@@ -187,13 +187,22 @@ Após o deploy, verifique:
 1. **Durante o Build** (`npm install`):
    - Instala todas as dependências do `package.json`
    - **Automaticamente** executa `postinstall` → `node scripts/setup.js`
+   - O `setup.js` carrega variáveis do `.env` (via `dotenv/config`)
    - O `setup.js` gera o Prisma Client (`npx prisma generate`)
    - O `setup.js` verifica/cria o banco SQLite (`npx prisma db push`)
 
 2. **Durante o Start** (`npm run start`):
    - **Automaticamente** executa `prestart` → `node scripts/setup.js` (garantia extra)
+   - O `server.js` carrega variáveis do `.env` (via `dotenv/config`)
    - Inicia o servidor Express (`node src/server.js`)
    - O servidor usa `process.env.PORT` (definido pelo Render)
+
+**📝 Sobre variáveis de ambiente:**
+- O código usa `dotenv` para carregar o arquivo `.env` automaticamente
+- **No Render**, você pode usar **ambos**:
+  - Variáveis configuradas no painel do Render (recomendado)
+  - OU o arquivo `.env` commitado no repositório
+- **Recomendação**: Configure no painel do Render para maior segurança
 
 #### Sobre o Banco de Dados
 
