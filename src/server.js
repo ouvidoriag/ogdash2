@@ -377,6 +377,248 @@ app.post('/api/filter', async (req, res) => {
   res.json(rowsRaw.map(r => ({ ...r, data: safeParse(r.data) })));
 });
 
+// Tempo médio de atendimento por órgão/unidade
+app.get('/api/stats/average-time', async (_req, res) => {
+  const key = 'avgTime:v1';
+  const cached = cache.get(key);
+  if (cached) return withCache(key, 300, res, async () => cached);
+  
+  const rows = await prisma.record.findMany({
+    where: {
+      dataIso: { not: null },
+      dataConclusaoIso: { not: null }
+    },
+    select: {
+      responsavel: true,
+      uac: true,
+      dataIso: true,
+      dataConclusaoIso: true
+    }
+  });
+  
+  // Agrupar por órgão/unidade e calcular média
+  const map = new Map();
+  for (const r of rows) {
+    const org = r.responsavel || r.uac || 'Não informado';
+    const start = new Date(r.dataIso + 'T00:00:00');
+    const end = new Date(r.dataConclusaoIso + 'T00:00:00');
+    if (isNaN(start) || isNaN(end)) continue;
+    const days = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+    if (days < 0 || days > 1000) continue; // Filtrar outliers
+    
+    if (!map.has(org)) map.set(org, { total: 0, sum: 0 });
+    const stats = map.get(org);
+    stats.total += 1;
+    stats.sum += days;
+  }
+  
+  const result = Array.from(map.entries())
+    .map(([org, stats]) => ({ org, dias: Number((stats.sum / stats.total).toFixed(2)) }))
+    .sort((a, b) => b.dias - a.dias);
+  
+  return withCache(key, 300, res, async () => result);
+});
+
+// Total por Tema
+app.get('/api/aggregate/by-theme', async (_req, res) => {
+  const key = 'byTheme:v1';
+  const cached = cache.get(key);
+  if (cached) return withCache(key, 300, res, async () => cached);
+  
+  const rows = await prisma.record.groupBy({ by: ['tema'], _count: { _all: true } });
+  const result = rows
+    .map(r => ({ tema: r.tema ?? 'Não informado', quantidade: r._count._all }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  
+  return withCache(key, 300, res, async () => result);
+});
+
+// Total por Assunto
+app.get('/api/aggregate/by-subject', async (_req, res) => {
+  const key = 'bySubject:v1';
+  const cached = cache.get(key);
+  if (cached) return withCache(key, 300, res, async () => cached);
+  
+  const rows = await prisma.record.groupBy({ by: ['assunto'], _count: { _all: true } });
+  const result = rows
+    .map(r => ({ assunto: r.assunto ?? 'Não informado', quantidade: r._count._all }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  
+  return withCache(key, 300, res, async () => result);
+});
+
+// Por Servidor/Cadastrante
+app.get('/api/aggregate/by-server', async (_req, res) => {
+  const key = 'byServer:v1';
+  const cached = cache.get(key);
+  if (cached) return withCache(key, 300, res, async () => cached);
+  
+  const rows = await prisma.record.groupBy({ by: ['servidor'], _count: { _all: true } });
+  const result = rows
+    .map(r => ({ servidor: r.servidor ?? 'Não informado', quantidade: r._count._all }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  
+  return withCache(key, 300, res, async () => result);
+});
+
+// Status geral (percentuais)
+app.get('/api/stats/status-overview', async (_req, res) => {
+  const key = 'statusOverview:v1';
+  const cached = cache.get(key);
+  if (cached) return withCache(key, 300, res, async () => cached);
+  
+  const total = await prisma.record.count();
+  // SQLite não tem mode: 'insensitive', então buscamos todas as variações
+  const allRecords = await prisma.record.findMany({ select: { status: true } });
+  let concluidas = 0;
+  let emAtendimento = 0;
+  
+  for (const r of allRecords) {
+    const status = (r.status || '').toLowerCase();
+    if (status.includes('concluída') || status.includes('concluida') || status.includes('encerrada')) {
+      concluidas++;
+    } else if (status.includes('em atendimento') || status.includes('aberto') || status.includes('pendente')) {
+      emAtendimento++;
+    }
+  }
+  
+  const result = {
+    total,
+    concluida: {
+      quantidade: concluidas,
+      percentual: total > 0 ? Number(((concluidas / total) * 100).toFixed(1)) : 0
+    },
+    emAtendimento: {
+      quantidade: emAtendimento,
+      percentual: total > 0 ? Number(((emAtendimento / total) * 100).toFixed(1)) : 0
+    }
+  };
+  
+  return withCache(key, 300, res, async () => result);
+});
+
+// Endpoint para dados filtrados por unidade (UAC ou Responsável)
+app.get('/api/unit/:unitName', async (req, res) => {
+  const unitName = decodeURIComponent(req.params.unitName);
+  const key = `unit:${unitName}:v1`;
+  const cached = cache.get(key);
+  if (cached) return withCache(key, 300, res, async () => cached);
+  
+  // Buscar registros que tenham a unidade no UAC ou Responsável
+  // SQLite não tem contains, então usamos busca em todos os registros
+  const allRecords = await prisma.record.findMany({
+    select: { assunto: true, tipo: true, data: true, uac: true, responsavel: true, secretaria: true, setor: true }
+  });
+  
+  const records = allRecords.filter(r => {
+    const uac = (r.uac || '').toLowerCase();
+    const responsavel = (r.responsavel || '').toLowerCase();
+    const secretaria = (r.secretaria || '').toLowerCase();
+    const setor = (r.setor || '').toLowerCase();
+    const searchLower = unitName.toLowerCase();
+    
+    return uac.includes(searchLower) || 
+           responsavel.includes(searchLower) || 
+           secretaria.includes(searchLower) || 
+           setor.includes(searchLower);
+  });
+  
+  // Agrupar por assunto
+  const assuntoMap = new Map();
+  const tipoMap = new Map();
+  
+  for (const r of records) {
+    // Assunto normalizado ou buscar no JSON
+    const assunto = r.assunto || (() => {
+      try {
+        const data = JSON.parse(r.data);
+        return data['Assunto'] || data['assunto'] || data['Categoria'] || data['categoria'] || 'Não informado';
+      } catch {
+        return 'Não informado';
+      }
+    })();
+    
+    // Tipo de ação normalizado ou buscar no JSON
+    const tipo = r.tipo || (() => {
+      try {
+        const data = JSON.parse(r.data);
+        return data['Tipo'] || data['Tipo Manifestação'] || data['TipoManifestacao'] || data['tipo_de_manifestacao'] || 'Não informado';
+      } catch {
+        return 'Não informado';
+      }
+    })();
+    
+    assuntoMap.set(assunto, (assuntoMap.get(assunto) || 0) + 1);
+    tipoMap.set(tipo, (tipoMap.get(tipo) || 0) + 1);
+  }
+  
+  const assuntos = Array.from(assuntoMap.entries())
+    .map(([assunto, count]) => ({ assunto, quantidade: count }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  
+  const tipos = Array.from(tipoMap.entries())
+    .map(([tipo, count]) => ({ tipo, quantidade: count }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  
+  const result = { assuntos, tipos };
+  return withCache(key, 300, res, async () => result);
+});
+
+// Endpoint para reclamações e denúncias (filtro por tipo)
+app.get('/api/complaints-denunciations', async (_req, res) => {
+  const key = 'complaints:v1';
+  const cached = cache.get(key);
+  if (cached) return withCache(key, 300, res, async () => cached);
+  
+  // Buscar todos os registros
+  const records = await prisma.record.findMany({
+    select: { assunto: true, tipo: true, data: true }
+  });
+  
+  const assuntoMap = new Map();
+  const tipoMap = new Map();
+  
+  for (const r of records) {
+    let tipo = r.tipo;
+    if (!tipo) {
+      try {
+        const data = JSON.parse(r.data);
+        tipo = data['Tipo'] || data['Tipo Manifestação'] || data['TipoManifestacao'] || data['tipo_de_manifestacao'] || '';
+      } catch {
+        tipo = '';
+      }
+    }
+    
+    // Filtrar apenas Reclamação e Denúncia
+    const tipoLower = (tipo || '').toLowerCase();
+    if (!tipoLower.includes('reclamação') && !tipoLower.includes('reclamacao') && !tipoLower.includes('denúncia') && !tipoLower.includes('denuncia')) {
+      continue;
+    }
+    
+    const assunto = r.assunto || (() => {
+      try {
+        const data = JSON.parse(r.data);
+        return data['Assunto'] || data['assunto'] || data['Categoria'] || data['categoria'] || 'Não informado';
+      } catch {
+        return 'Não informado';
+      }
+    })();
+    
+    assuntoMap.set(assunto, (assuntoMap.get(assunto) || 0) + 1);
+    tipoMap.set(tipo || 'Não informado', (tipoMap.get(tipo || 'Não informado') || 0) + 1);
+  }
+  
+  const assuntos = Array.from(assuntoMap.entries())
+    .map(([assunto, count]) => ({ assunto, quantidade: count }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  
+  const tipos = Array.from(tipoMap.entries())
+    .map(([tipo, count]) => ({ tipo, quantidade: count }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  
+  return withCache(key, 300, res, async () => ({ assuntos, tipos }));
+});
+
 // Metadados: retornar aliases e colunas disponíveis
 app.get('/api/meta/aliases', (_req, res) => {
   res.json({

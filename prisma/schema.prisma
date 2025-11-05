@@ -24,6 +24,10 @@ model Record {
   responsavel String? // Responsável pelo tratamento (Ouvidorias)
   canal       String? // Canal de entrada (Presencial, Telefone, etc.)
   prioridade  String? // Prioridade (Alta, Média, Baixa)
+  servidor    String? // Servidor/Cadastrante
+  tema        String? // Tema (ex: Saúde, Educação, etc.)
+  assunto     String? // Assunto específico (ex: Atendimento, Marcação de Consulta, etc.)
+  dataConclusaoIso String? // YYYY-MM-DD - Data de conclusão para calcular tempo médio
 
   @@index([secretaria])
   @@index([setor])
@@ -36,6 +40,10 @@ model Record {
   @@index([responsavel])
   @@index([canal])
   @@index([prioridade])
+  @@index([servidor])
+  @@index([tema])
+  @@index([assunto])
+  @@index([dataConclusaoIso])
 }
 
 

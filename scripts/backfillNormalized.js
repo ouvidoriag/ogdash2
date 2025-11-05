@@ -75,10 +75,29 @@ async function main() {
       const prioridade = pick(data, [
         'Prioridade', 'prioridade', 'Prioridade da Demanda'
       ]);
+      
+      // Campos adicionais para visualizações do Looker Studio
+      const servidor = pick(data, [
+        'Servidor', 'servidor', 'Cadastrante', 'cadastrante'
+      ]);
+      
+      // Tema e Assunto podem vir do mesmo campo ou separados
+      const tema = pick(data, [
+        'Tema', 'tema', 'Categoria', 'categoria'
+      ]);
+      const assunto = pick(data, [
+        'Assunto', 'assunto', 'Categoria', 'categoria'
+      ]);
+      
+      // Data de conclusão para calcular tempo médio
+      const dataConclusaoIso = toIsoDate(pick(data, [
+        'Data Conclusão', 'Data Conclusao', 'Data da Conclusão', 'Data da Conclusao',
+        'data_da_conclusao', 'DataConclusao'
+      ]));
 
       updates.push(prisma.record.update({
         where: { id: r.id },
-        data: { secretaria, setor, tipo, categoria, bairro, status, dataIso, uac, responsavel, canal, prioridade }
+        data: { secretaria, setor, tipo, categoria, bairro, status, dataIso, uac, responsavel, canal, prioridade, servidor, tema, assunto, dataConclusaoIso }
       }));
     }
     await prisma.$transaction(updates, { timeout: 60000 });
