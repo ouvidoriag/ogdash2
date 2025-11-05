@@ -19,6 +19,11 @@ model Record {
   bairro     String?
   status     String?
   dataIso    String? // YYYY-MM-DD
+  // Novos campos alinhados com painel Looker Studio
+  uac         String? // Unidade de Atendimento ao Cidadão
+  responsavel String? // Responsável pelo tratamento (Ouvidorias)
+  canal       String? // Canal de entrada (Presencial, Telefone, etc.)
+  prioridade  String? // Prioridade (Alta, Média, Baixa)
 
   @@index([secretaria])
   @@index([setor])
@@ -27,6 +32,10 @@ model Record {
   @@index([bairro])
   @@index([status])
   @@index([dataIso])
+  @@index([uac])
+  @@index([responsavel])
+  @@index([canal])
+  @@index([prioridade])
 }
 
 

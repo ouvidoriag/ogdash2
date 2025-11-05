@@ -59,10 +59,26 @@ async function main() {
         'Data', 'Data Abertura', 'DataAbertura', 'Abertura',
         'data_da_criacao'
       ]));
+      
+      // Novos campos alinhados com painel Looker Studio
+      const uac = pick(data, [
+        'UAC', 'Unidade de Atendimento', 'Unidade de Atendimento ao Cidadão',
+        'unidade_cadastro', 'Unidade Cadastro'
+      ]);
+      const responsavel = pick(data, [
+        'Responsável', 'responsavel', 'Ouvidoria Responsável',
+        'Responsável pelo Tratamento', 'Ouvidoria'
+      ]);
+      const canal = pick(data, [
+        'Canal', 'canal', 'Canal de Entrada', 'Canal de Atendimento'
+      ]);
+      const prioridade = pick(data, [
+        'Prioridade', 'prioridade', 'Prioridade da Demanda'
+      ]);
 
       updates.push(prisma.record.update({
         where: { id: r.id },
-        data: { secretaria, setor, tipo, categoria, bairro, status, dataIso }
+        data: { secretaria, setor, tipo, categoria, bairro, status, dataIso, uac, responsavel, canal, prioridade }
       }));
     }
     await prisma.$transaction(updates, { timeout: 60000 });

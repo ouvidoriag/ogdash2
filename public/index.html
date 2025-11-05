@@ -44,6 +44,10 @@
           <div data-page="categoria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Categorias</div>
           <div data-page="status" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Status</div>
           <div data-page="bairro" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Bairros</div>
+          <div data-page="uac" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Unidades (UAC)</div>
+          <div data-page="responsavel" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Responsáveis</div>
+          <div data-page="canal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Canais</div>
+          <div data-page="prioridade" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Prioridades</div>
         </nav>
         <div class="mt-8 text-xs text-slate-400">Secretaria de Ouvidoria Geral • Duque de Caxias/RJ</div>
       </aside>
@@ -124,6 +128,10 @@
                     <option>Tipo</option>
                     <option>Status</option>
                     <option>Bairro</option>
+                    <option>UAC</option>
+                    <option>Responsavel</option>
+                    <option>Canal</option>
+                    <option>Prioridade</option>
                   </select>
                 </div>
               </div>
@@ -255,6 +263,78 @@
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
               <h3 class="font-semibold mb-2 text-emerald-400">Top 10 Setores (Rank)</h3>
               <ul id="rankSetor" class="space-y-2"></ul>
+            </div>
+          </div>
+        </section>
+        <!-- Página por UAC (Unidade de Atendimento ao Cidadão) -->
+        <section id="page-uac" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Unidades de Atendimento ao Cidadão (UAC)</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+              <h3 class="font-semibold mb-2 text-cyan-400">Total por UAC</h3>
+              <canvas id="chartUAC"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <h3 class="font-semibold mb-2 text-cyan-400">Top 10 UACs (Rank)</h3>
+              <ul id="rankUAC" class="space-y-2"></ul>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-cyan-400">Heatmap Mês x UAC</h3>
+              <div id="heatmapUAC" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Responsáveis -->
+        <section id="page-responsavel" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Responsáveis pelo Tratamento da Demanda</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+              <h3 class="font-semibold mb-2 text-violet-400">Distribuição por Responsável</h3>
+              <canvas id="chartResponsavel"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <h3 class="font-semibold mb-2 text-violet-400">Top Responsáveis (Rank)</h3>
+              <ul id="rankResponsavel" class="space-y-2"></ul>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-violet-400">Heatmap Mês x Responsável</h3>
+              <div id="heatmapResponsavel" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Canal -->
+        <section id="page-canal" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Canais de Atendimento</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+              <h3 class="font-semibold mb-2 text-emerald-400">Distribuição por Canal</h3>
+              <canvas id="chartCanal"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <h3 class="font-semibold mb-2 text-emerald-400">Top Canais (Rank)</h3>
+              <ul id="rankCanal" class="space-y-2"></ul>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-emerald-400">Heatmap Mês x Canal</h3>
+              <div id="heatmapCanal" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+          </div>
+        </section>
+        <!-- Página por Prioridade -->
+        <section id="page-prioridade" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Prioridades das Demandas</h2></header>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+              <h3 class="font-semibold mb-2 text-rose-400">Distribuição por Prioridade</h3>
+              <canvas id="chartPrioridade"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <h3 class="font-semibold mb-2 text-rose-400">Ranking de Prioridades</h3>
+              <ul id="rankPrioridade" class="space-y-2"></ul>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-2 text-rose-400">Heatmap Mês x Prioridade</h3>
+              <div id="heatmapPrioridade" class="overflow-auto rounded-xl border border-white/10"></div>
             </div>
           </div>
         </section>
@@ -485,6 +565,10 @@
         if(page==='categoria') loadCategoria();
         if(page==='status') loadStatusPage();
         if(page==='bairro') loadBairro();
+        if(page==='uac') loadUAC();
+        if(page==='responsavel') loadResponsavel();
+        if(page==='canal') loadCanal();
+        if(page==='prioridade') loadPrioridade();
       }
       // Funções para carregar cada seção temática
       enableCharts(); // chamada para garantir que gráficos não quebrem
@@ -553,6 +637,62 @@
         window.chartBairro = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Bairro', data: values, backgroundColor:'#f59e0b' }] }, options:{ responsive:true, plugins:{ legend:{ display:false } }, indexAxis:'y' } });
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Bairro');
         buildHeatmap('heatmapBairro', hm.labels, hm.rows);
+      }
+
+      async function loadUAC() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=UAC');
+        const labels = data.slice(0, 15).map(x=>x.key);
+        const values = data.slice(0, 15).map(x=>x.count);
+        if (window.chartUAC instanceof Chart) window.chartUAC.destroy();
+        const ctx = document.getElementById('chartUAC').getContext('2d');
+        window.chartUAC = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'UAC', data: values, backgroundColor:'#22d3ee' }] }, options:{ responsive:true, animation:{duration:1000}, indexAxis:'y', plugins:{legend:{display:false}}} });
+        document.getElementById('rankUAC').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
+        const hm = await fetchJSON('/api/aggregate/heatmap?dim=UAC');
+        buildHeatmap('heatmapUAC', hm.labels, hm.rows);
+      }
+
+      async function loadResponsavel() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Responsavel');
+        const labels = data.slice(0, 15).map(x=>x.key);
+        const values = data.slice(0, 15).map(x=>x.count);
+        if (window.chartResponsavel instanceof Chart) window.chartResponsavel.destroy();
+        const ctx = document.getElementById('chartResponsavel').getContext('2d');
+        window.chartResponsavel = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Responsável', data: values, backgroundColor:'#a78bfa' }] }, options:{ responsive:true, animation:{duration:1000}, indexAxis:'y', plugins:{legend:{display:false}}} });
+        document.getElementById('rankResponsavel').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
+        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Responsavel');
+        buildHeatmap('heatmapResponsavel', hm.labels, hm.rows);
+      }
+
+      async function loadCanal() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Canal');
+        const labels = data.map(x=>x.key);
+        const values = data.map(x=>x.count);
+        if (window.chartCanal instanceof Chart) window.chartCanal.destroy();
+        const ctx = document.getElementById('chartCanal').getContext('2d');
+        window.chartCanal = new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: values, backgroundColor:['#34d399','#22d3ee','#fbbf24','#a78bfa','#fb7185','#e879f9'] }] }, options:{ responsive:true, plugins:{legend:{display:true, position:'right'}}} });
+        document.getElementById('rankCanal').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
+        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Canal');
+        buildHeatmap('heatmapCanal', hm.labels, hm.rows);
+      }
+
+      async function loadPrioridade() {
+        const data = await fetchJSON('/api/aggregate/count-by?field=Prioridade');
+        const labels = data.map(x=>x.key);
+        const values = data.map(x=>x.count);
+        if (window.chartPrioridade instanceof Chart) window.chartPrioridade.destroy();
+        const ctx = document.getElementById('chartPrioridade').getContext('2d');
+        // Cores específicas por prioridade: Alta=vermelho, Média=amarelo, Baixa=verde
+        const colors = labels.map(l => {
+          const low = l.toLowerCase();
+          if(low.includes('alta')) return '#fb7185';
+          if(low.includes('média') || low.includes('media')) return '#fbbf24';
+          if(low.includes('baixa')) return '#34d399';
+          return '#94a3b8';
+        });
+        window.chartPrioridade = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Prioridade', data: values, backgroundColor: colors }] }, options:{ responsive:true, plugins:{legend:{display:false}}} });
+        document.getElementById('rankPrioridade').innerHTML=data.map(e=>`<li><span class='text-rose-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
+        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Prioridade');
+        buildHeatmap('heatmapPrioridade', hm.labels, hm.rows);
       }
     </script>
   </body>

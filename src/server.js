@@ -162,7 +162,11 @@ app.get('/api/aggregate/count-by', async (req, res) => {
     Categoria: 'categoria',
     Bairro: 'bairro',
     Status: 'status',
-    Data: 'dataIso'
+    Data: 'dataIso',
+    UAC: 'uac',
+    Responsavel: 'responsavel',
+    Canal: 'canal',
+    Prioridade: 'prioridade'
   };
   const col = fieldMap[field];
   if (col) {
@@ -260,10 +264,14 @@ app.get('/api/aggregate/heatmap', async (req, res) => {
     Tipo: 'tipo',
     Categoria: 'categoria',
     Bairro: 'bairro',
-    Status: 'status'
+    Status: 'status',
+    UAC: 'uac',
+    Responsavel: 'responsavel',
+    Canal: 'canal',
+    Prioridade: 'prioridade'
   };
   const col = fieldMap[dimReq];
-  if (!col) return res.status(400).json({ error: 'dim must be one of Secretaria, Setor, Tipo, Categoria, Bairro, Status' });
+  if (!col) return res.status(400).json({ error: 'dim must be one of Secretaria, Setor, Tipo, Categoria, Bairro, Status, UAC, Responsavel, Canal, Prioridade' });
 
   // Construir últimos 12 meses como labels YYYY-MM
   const labels = [];
@@ -341,7 +349,7 @@ app.get('/api/sla/summary', async (_req, res) => {
 app.post('/api/filter', async (req, res) => {
   const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
   // Tentar filtrar usando colunas normalizadas quando possível
-  const fieldMap = { Secretaria: 'secretaria', Setor: 'setor', Tipo: 'tipo', Categoria: 'categoria', Bairro: 'bairro', Status: 'status', Data: 'dataIso' };
+  const fieldMap = { Secretaria: 'secretaria', Setor: 'setor', Tipo: 'tipo', Categoria: 'categoria', Bairro: 'bairro', Status: 'status', Data: 'dataIso', UAC: 'uac', Responsavel: 'responsavel', Canal: 'canal', Prioridade: 'prioridade' };
   const where = {};
   const fallback = [];
   for (const f of filters) {
@@ -379,7 +387,11 @@ app.get('/api/meta/aliases', (_req, res) => {
       Categoria: ['Categoria', 'Assunto', 'Tema'],
       Bairro: ['Bairro', 'Localidade'],
       Status: ['Status', 'Situação', 'Situacao'],
-      Data: ['Data', 'Data Abertura', 'DataAbertura', 'Abertura']
+      Data: ['Data', 'Data Abertura', 'DataAbertura', 'Abertura'],
+      UAC: ['UAC', 'Unidade de Atendimento', 'Unidade de Atendimento ao Cidadão', 'unidade_cadastro', 'Unidade Cadastro'],
+      Responsavel: ['Responsável', 'responsavel', 'Ouvidoria Responsável', 'Responsável pelo Tratamento', 'Ouvidoria'],
+      Canal: ['Canal', 'canal', 'Canal de Entrada', 'Canal de Atendimento'],
+      Prioridade: ['Prioridade', 'prioridade', 'Prioridade da Demanda']
     }
   });
 });
