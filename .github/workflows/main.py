@@ -477,7 +477,73 @@ except Exception as e:
     df["eh_novo"] = True
     novos_protos = []
     nao_enviados = []
+# ===================================================================================
+# 5.5) BACKFILL TEMPORÁRIO DE 'tempo_de_resolucao_em_dias' (REMOVER APÓS 1ª EXECUÇÃO)
+# ===================================================================================
+_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'tempo_de_resolucao_em_dias' (REMOVER DEPOIS)")
+print(" Executando backfill para sincronizar TODA a coluna 'tempo_de_resolucao_em_dias'...")
+logging.info("INICIANDO: Backfill temporário da coluna 'tempo_de_resolucao_em_dias'.")
 
+try:
+    _SUB("Carregando bases para o backfill...")
+    # Carrega a base bruta para ser a "fonte da verdade"
+    df_bruta_hist = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)[2]
+    df_bruta_hist.columns = [normalizar_nome_coluna(c) for c in df_bruta_hist.columns]
+    df_bruta_hist.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
+    
+    # Carrega a base tratada para comparação
+    df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
+    df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
+    
+    if 'protocolo' not in df_bruta_hist.columns or 'tempo_de_resolucao_em_dias' not in df_bruta_hist.columns or 'protocolo' not in df_tratada_hist.columns:
+        raise ValueError("Colunas 'protocolo' ou 'tempo_de_resolucao_em_dias' não encontradas. Verifique as planilhas.")
+
+    _SUB("Criando mapa de valores corretos a partir da base bruta...")
+    # Cria um mapa de {protocolo: tempo_correto}
+    mapa_tempo_correto = df_bruta_hist.set_index('protocolo')['tempo_de_resolucao_em_dias'].to_dict()
+
+    _SUB("Identificando registros que precisam de correção na base tratada...")
+    # Aplica o mapa para encontrar o valor que a coluna deveria ter
+    df_tratada_hist['tempo_corrigido'] = df_tratada_hist['protocolo'].map(mapa_tempo_correto)
+    # Garante que os tipos sejam comparáveis (ambos como string)
+    df_tratada_hist['tempo_de_resolucao_em_dias'] = df_tratada_hist['tempo_de_resolucao_em_dias'].astype(str)
+    df_tratada_hist['tempo_corrigido'] = df_tratada_hist['tempo_corrigido'].astype(str)
+    
+    # Compara a coluna atual com a coluna corrigida para encontrar divergências
+    df_para_atualizar = df_tratada_hist[df_tratada_hist['tempo_de_resolucao_em_dias'] != df_tratada_hist['tempo_corrigido']]
+    
+    if not df_para_atualizar.empty:
+        print(f" Encontradas {len(df_para_atualizar)} linhas em 'tempo_de_resolucao_em_dias' para corrigir.")
+        logging.info(f"Backfill: Encontradas {len(df_para_atualizar)} linhas de 'tempo_de_resolucao_em_dias' para corrigir.")
+
+        _SUB("Preparando e enviando a atualização para o Google Sheets...")
+        # Encontra o índice da coluna 'tempo_de_resolucao_em_dias' dinamicamente
+        TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('tempo_de_resolucao_em_dias') + 1
+        
+        protocolos_na_sheet = aba_tratada.col_values(1)
+        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
+        
+        cells_to_update = []
+        for _, row in df_para_atualizar.iterrows():
+            protocolo = row['protocolo']
+            tempo_corrigido = row['tempo_corrigido']
+            if protocolo in protocolo_para_linha:
+                linha_idx = protocolo_para_linha[protocolo]
+                # Prepara a célula para atualização com o valor correto
+                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(tempo_corrigido)))
+
+        if cells_to_update:
+            aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
+            print(f"✅ Backfill da coluna 'tempo_de_resolucao_em_dias' concluído. {len(cells_to_update)} células foram sincronizadas.")
+            logging.info(f"CONCLUÍDO: Backfill. {len(cells_to_update)} células de 'tempo_de_resolucao_em_dias' foram sincronizadas.")
+    else:
+        print("✅ Nenhuma divergência histórica encontrada na coluna 'tempo_de_resolucao_em_dias'.")
+        logging.info("Backfill: Nenhuma correção de 'tempo_de_resolucao_em_dias' necessária.")
+
+except Exception as e:
+    print(f"❌ Erro crítico durante o backfill de 'tempo_de_resolucao_em_dias': {e}")
+    logging.error(f"Erro crítico durante o backfill de 'tempo_de_resolucao_em_dias': {e}", exc_info=True)
+    
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
@@ -1094,27 +1160,6 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
     if total_updated == 0:
         logging.info("Nenhuma linha atualizada diretamente. Enviando via _post_lotes como fallback.")
         _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
-
-
-# ========================================================
-# 9.1) Delta TEMPO_RESOLUCAO local (0 → 1)
-# ========================================================
-if "tempo_de_resolucao_em_dias" in df.columns:
-    s_local = df["tempo_de_resolucao_em_dias"].astype("object")
-
-    def _fix_zero_keep_text(v):
-        if pd.isna(v):
-            return v
-        sv = str(v).strip()
-        try:
-            num = pd.to_numeric(sv, errors="coerce")
-            if pd.notna(num) and float(num) == 0.0:
-                return "1"
-        except Exception:
-            pass
-        return sv
-
-    df["tempo_de_resolucao_em_dias"] = s_local.map(_fix_zero_keep_text)
 
 # ========================================================
 # 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias)
