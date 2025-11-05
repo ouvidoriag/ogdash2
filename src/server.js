@@ -6,6 +6,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import NodeCache from 'node-cache';
 import { PrismaClient } from '@prisma/client';
+import { existsSync } from 'fs';
+
+// Verificar se DATABASE_URL está configurado
+if (!process.env.DATABASE_URL) {
+  console.error('❌ ERRO: DATABASE_URL não está definido!');
+  console.error('Configure a variável DATABASE_URL no .env ou nas variáveis de ambiente do Render');
+  process.exit(1);
+}
+
+console.log(`📁 DATABASE_URL: ${process.env.DATABASE_URL}`);
 
 const prisma = new PrismaClient();
 const app = express();
