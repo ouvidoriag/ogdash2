@@ -477,65 +477,6 @@ except Exception as e:
     df["eh_novo"] = True
     novos_protos = []
     nao_enviados = []
-# ===================================================================================
-# 5.5) BACKFILL TEMPORÁRIO DE 'tempo_de_resolucao_em_dias' (REMOVER APÓS 1ª EXECUÇÃO)
-# ===================================================================================
-_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'tempo_de_resolucao_em_dias' (REMOVER DEPOIS)")
-print(" Executando backfill para padronizar valores nulos/vazios para '0' na coluna 'tempo_de_resolucao_em_dias'...")
-logging.info("INICIANDO: Backfill para 'tempo_de_resolucao_em_dias' (nulos -> 0).")
-
-try:
-    _SUB("Carregando base tratada histórica...")
-    df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
-    df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
-    
-    if 'protocolo' not in df_tratada_hist.columns or 'tempo_de_resolucao_em_dias' not in df_tratada_hist.columns:
-        raise ValueError("Colunas 'protocolo' ou 'tempo_de_resolucao_em_dias' não encontradas na planilha tratada.")
-
-    _SUB("Identificando registros que precisam de limpeza...")
-    
-    # Define a lista de valores a serem substituídos por '0'
-    valores_para_zerar = ['nan', '', 'Não há dados']
-    
-    # Garante que a coluna seja do tipo string para comparação segura, e limpa espaços
-    coluna_original = df_tratada_hist['tempo_de_resolucao_em_dias'].astype(str).str.strip()
-    
-    # Cria uma máscara booleana para encontrar as células que correspondem aos critérios
-    mask_para_atualizar = coluna_original.isin(valores_para_zerar)
-    
-    # Filtra o DataFrame para obter apenas as linhas que serão alteradas
-    df_para_atualizar = df_tratada_hist[mask_para_atualizar].copy()
-    
-    if not df_para_atualizar.empty:
-        print(f" Encontradas {len(df_para_atualizar)} linhas em 'tempo_de_resolucao_em_dias' para padronizar para '0'.")
-        logging.info(f"Backfill: Encontradas {len(df_para_atualizar)} linhas de 'tempo_de_resolucao_em_dias' para zerar.")
-
-        _SUB("Preparando e enviando a atualização para o Google Sheets...")
-        # Encontra o índice da coluna 'tempo_de_resolucao_em_dias' dinamicamente
-        TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('tempo_de_resolucao_em_dias') + 1
-        
-        protocolos_na_sheet = aba_tratada.col_values(1)
-        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
-        
-        cells_to_update = []
-        for _, row in df_para_atualizar.iterrows():
-            protocolo = row['protocolo']
-            if protocolo in protocolo_para_linha:
-                linha_idx = protocolo_para_linha[protocolo]
-                # Prepara a célula para atualização com o valor '0'
-                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value='0'))
-
-        if cells_to_update:
-            aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-            print(f"✅ Backfill da coluna 'tempo_de_resolucao_em_dias' concluído. {len(cells_to_update)} células foram atualizadas para '0'.")
-            logging.info(f"CONCLUÍDO: Backfill. {len(cells_to_update)} células de 'tempo_de_resolucao_em_dias' foram atualizadas para '0'.")
-    else:
-        print("✅ Nenhuma célula com 'nan', vazio ou 'Não há dados' encontrada na coluna 'tempo_de_resolucao_em_dias'.")
-        logging.info("Backfill: Nenhuma correção de 'tempo_de_resolucao_em_dias' necessária.")
-
-except Exception as e:
-    print(f"❌ Erro crítico durante o backfill de 'tempo_de_resolucao_em_dias': {e}")
-    logging.error(f"Erro crítico durante o backfill de 'tempo_de_resolucao_em_dias': {e}", exc_info=True)
     
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
@@ -693,8 +634,9 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # 7.7 Datas e tipos
     try:
         if "data_da_criacao" in df_loc.columns:
-            df_loc["data_da_criacao"] = _to_ddmmaa_text(df_loc["data_da_criacao"]).astype(str)
-            logging.info("Tratamento 7.7 (data_da_criacao) aplicado.")
+            # --- FAÇA A ALTERAÇÃO APENAS NESTA LINHA ABAIXO ---
+            df_loc["data_da_criacao"] = _parse_dt_cmp(df_loc["data_da_criacao"]) # <-- Retorna objeto de data
+            logging.info("Tratamento 7.7 (data_da_criacao para objeto datetime) aplicado.")
         if "status_demanda" in df_loc.columns:
             df_loc["status_demanda"] = df_loc["status_demanda"].astype(str)
             logging.info("Tratamento 7.7 (status_demanda) tipo aplicado.")
@@ -860,12 +802,7 @@ try:
                     logging.error(f"QA Pré-Envio (df_send): Coluna '{col_qa}' contém valores inesperados em {unexpected_values.sum()} linhas. Exemplos: {df_send_final.loc[unexpected_values, col_qa].unique()[:5].tolist()}",
                                   extra={'data': df_send_final.loc[unexpected_values, ['protocolo', col_qa]].to_dict(orient='records')[:5]})
                     # Considerar um raise SystemExit aqui se a qualidade do dado for crítica
-
-        # Garante que todas as colunas sejam strings para evitar problemas de tipo no GSpread
-        for col in df_send_final.columns:
-            df_send_final[col] = df_send_final[col].astype(str)
-        logging.info("Todas as colunas de df_send_final convertidas para string.")
-
+       
         df_send = df_send_final.copy() # Atribui o DataFrame final preparado para df_send
 
 except Exception as e:
