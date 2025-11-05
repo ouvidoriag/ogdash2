@@ -212,6 +212,21 @@ Após o deploy, verifique:
 - **Migrações**: O sistema usa `prisma db push` (via setup.js) em vez de migrações tradicionais
   - Se precisar usar migrações, altere o build command para: `npm install && npx prisma generate && npx prisma migrate deploy`
 
+#### Arquivos Estáticos e Banco de Dados
+
+✅ **Logo e Arquivos Estáticos:**
+- O logo `dc-logo.png` está na pasta `public/` e está commitado no repositório
+- O servidor serve arquivos estáticos da pasta `public/` automaticamente
+- O logo está acessível em: `https://seu-app.onrender.com/dc-logo.png`
+- Todos os arquivos da pasta `public/` estão sendo rastreados pelo git
+
+✅ **Banco de Dados:**
+- O banco de dados `prisma/dev.db` está commitado no repositório
+- **Tamanho atual**: ~46 MB (com todos os dados)
+- **Os dados serão carregados no deploy** - o banco completo está no repositório
+- Quando o Render fizer o deploy, o banco será copiado junto com o código
+- ⚠️ **Importante**: No plano Free, se o serviço reiniciar, o banco pode ser perdido, mas será recriado do repositório no próximo deploy
+
 #### Outras Configurações
 
 - **Auto-deploy**: O Render faz deploy automático quando você faz push para a branch `main`
