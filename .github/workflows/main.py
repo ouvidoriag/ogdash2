@@ -655,11 +655,11 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.8 (Prazo Restante): {e}", exc_info=True)
 
-    # 7.9 (Antigo 7.10) Padronização da coluna 'canal'
+    # 7.9 Padronização da coluna 'canal'
     try:
         if "canal" in df_loc.columns:
             df_loc["canal"] = df_loc["canal"].astype(str)
-            df_loc["canal"] = df_loc["canal"].str.replace(r"^\s*(Colab Gov|Portal Cidadão)\s*$", "Aplicativo Colab", regex=True, case=False)
+            df_loc["canal"] = df_loc["canal"].str.replace(r"^\s*(Colab Gov|Portal Cidadão|Fala.BR)\s*$", "Aplicativo Colab", regex=True, case=False)
             logging.info("Tratamento 7.9 (Padronização de 'canal') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento de 'canal': {e}", exc_info=True)
