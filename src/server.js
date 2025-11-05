@@ -8,14 +8,37 @@ import NodeCache from 'node-cache';
 import { PrismaClient } from '@prisma/client';
 import { existsSync } from 'fs';
 
-// Verificar se DATABASE_URL está configurado
-if (!process.env.DATABASE_URL) {
+// Resolver caminho absoluto do banco de dados
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.join(__dirname, '..');
+
+// Se DATABASE_URL for relativo, converter para absoluto
+let databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
   console.error('❌ ERRO: DATABASE_URL não está definido!');
   console.error('Configure a variável DATABASE_URL no .env ou nas variáveis de ambiente do Render');
   process.exit(1);
 }
 
-console.log(`📁 DATABASE_URL: ${process.env.DATABASE_URL}`);
+// Se o caminho for relativo (começa com file:./), converter para absoluto
+if (databaseUrl.startsWith('file:./')) {
+  const relativePath = databaseUrl.replace('file:', '');
+  const absolutePath = path.resolve(projectRoot, relativePath);
+  databaseUrl = `file:${absolutePath}`;
+  // Atualizar a variável de ambiente para o Prisma usar
+  process.env.DATABASE_URL = databaseUrl;
+  console.log(`📁 DATABASE_URL convertido para absoluto: ${databaseUrl}`);
+} else {
+  console.log(`📁 DATABASE_URL: ${databaseUrl}`);
+}
+
+// Verificar se o banco existe
+const dbPath = databaseUrl.replace('file:', '');
+if (!existsSync(dbPath)) {
+  console.error(`❌ ERRO: Banco de dados não encontrado em: ${dbPath}`);
+  console.error('O banco deve existir ou ser criado pelo setup.js');
+}
 
 const prisma = new PrismaClient();
 const app = express();
