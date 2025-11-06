@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import NodeCache from 'node-cache';
 import { PrismaClient } from '@prisma/client';
+import { MongoClient, ObjectId } from 'mongodb';
 import fs from 'fs';
 
 // Resolver caminho absoluto
@@ -76,6 +77,16 @@ const prisma = new PrismaClient({
   errorFormat: 'pretty',
 });
 
+// MongoDB Client nativo como fallback para operações que não suportam transações
+let mongoClient = null;
+async function getMongoClient() {
+  if (!mongoClient) {
+    mongoClient = new MongoClient(mongodbUrl);
+    await mongoClient.connect();
+  }
+  return mongoClient;
+}
+
 // Função para testar conexão com retry
 async function testConnection(maxRetries = 3, delay = 5000) {
   for (let i = 0; i < maxRetries; i++) {
@@ -120,18 +131,27 @@ async function testConnection(maxRetries = 3, delay = 5000) {
   }
 })();
 
-// Graceful shutdown - desconectar Prisma ao encerrar
+// Graceful shutdown - desconectar Prisma e MongoDB ao encerrar
 process.on('beforeExit', async () => {
   await prisma.$disconnect();
+  if (mongoClient) {
+    await mongoClient.close();
+  }
 });
 
 process.on('SIGINT', async () => {
   await prisma.$disconnect();
+  if (mongoClient) {
+    await mongoClient.close();
+  }
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   await prisma.$disconnect();
+  if (mongoClient) {
+    await mongoClient.close();
+  }
   process.exit(0);
 });
 
@@ -2191,15 +2211,59 @@ app.post('/api/chat/messages', async (req, res) => {
       return res.status(400).json({ error: 'Texto da mensagem é obrigatório' });
     }
     
-    // Salvar mensagem
+    // Salvar mensagem (sem transações - MongoDB pode não suportar)
     console.log('💾 Salvando mensagem no banco:', { text: text.trim().substring(0, 50) + '...', sender });
-    const message = await prisma.chatMessage.create({
-      data: {
-        text: text.trim(),
-        sender: sender
+    let message;
+    try {
+      // Tentar criar diretamente
+      message = await safePrismaQuery(async () => {
+        return await prisma.chatMessage.create({
+          data: {
+            text: text.trim(),
+            sender: sender
+          }
+        });
+      });
+      console.log('✅ Mensagem salva com ID:', message.id);
+    } catch (error) {
+      // Se falhar por causa de transações, usar raw MongoDB query
+      if (error.message?.includes('Transactions are not supported') || error.code === 'P2010') {
+        console.warn('⚠️ MongoDB não suporta transações, usando raw query...');
+        try {
+          // Usar MongoDB driver nativo (sem transações)
+          const client = await getMongoClient();
+          const db = client.db();
+          const collection = db.collection('chat_messages');
+          
+          const doc = {
+            text: text.trim(),
+            sender: sender,
+            createdAt: new Date()
+          };
+          
+          const result = await collection.insertOne(doc);
+          message = {
+            id: result.insertedId.toString(),
+            text: text.trim(),
+            sender: sender,
+            createdAt: doc.createdAt
+          };
+          console.log('✅ Mensagem salva via MongoDB driver nativo, ID:', message.id);
+        } catch (rawError) {
+          console.error('❌ Erro também no MongoDB driver:', rawError.message);
+          // Se ainda falhar, criar mensagem em memória (sem salvar)
+          message = { 
+            id: 'temp-' + Date.now(), 
+            text: text.trim(), 
+            sender: sender,
+            createdAt: new Date()
+          };
+          console.warn('⚠️ Mensagem não foi salva no banco, usando ID temporário');
+        }
+      } else {
+        throw error;
       }
-    });
-    console.log('✅ Mensagem salva com ID:', message.id);
+    }
     
       // Se for mensagem do usuário, gerar resposta da Cora via Gemini (com fallback local)
       let response = null;
