@@ -14,16 +14,23 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.join(__dirname, '..');
 
 // Verificar MongoDB Atlas connection string
-const mongodbUrl = process.env.MONGODB_ATLAS_URL;
+let mongodbUrl = process.env.MONGODB_ATLAS_URL;
 if (!mongodbUrl) {
   console.error('❌ ERRO: MONGODB_ATLAS_URL não está definido!');
   console.error('Configure a variável MONGODB_ATLAS_URL no .env ou nas variáveis de ambiente');
   process.exit(1);
 }
 
-// Configurar DATABASE_URL para o Prisma (usa MONGODB_ATLAS_URL)
+// Adicionar parâmetros de conexão otimizados para evitar timeouts
+// Se a URL já não tiver esses parâmetros, adiciona
+if (!mongodbUrl.includes('serverSelectionTimeoutMS')) {
+  const separator = mongodbUrl.includes('?') ? '&' : '?';
+  mongodbUrl += `${separator}serverSelectionTimeoutMS=30000&connectTimeoutMS=30000&socketTimeoutMS=30000&retryWrites=true&w=majority`;
+}
+
+// Configurar DATABASE_URL para o Prisma (usa MONGODB_ATLAS_URL otimizada)
 process.env.DATABASE_URL = mongodbUrl;
-console.log(`📁 MongoDB Atlas conectado: ${mongodbUrl.replace(/:[^:@]+@/, ':****@')}`);
+console.log(`📁 MongoDB Atlas: ${mongodbUrl.replace(/:[^:@]+@/, ':****@').substring(0, 80)}...`);
 
 // Sistema de rotação de chaves da API Gemini
 const GEMINI_API_KEYS = [
@@ -63,17 +70,70 @@ function resetToFirstKey() {
   }
 }
 
-const prisma = new PrismaClient();
+// Configurar Prisma Client com opções de conexão otimizadas
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  errorFormat: 'pretty',
+});
 
-// Verificar mensagens existentes no banco ao iniciar
+// Função para testar conexão com retry
+async function testConnection(maxRetries = 3, delay = 5000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await prisma.$connect();
+      console.log('✅ Conexão com MongoDB Atlas estabelecida com sucesso!');
+      return true;
+    } catch (error) {
+      console.error(`❌ Tentativa ${i + 1}/${maxRetries} falhou:`, error.message);
+      if (i < maxRetries - 1) {
+        console.log(`⏳ Aguardando ${delay/1000}s antes de tentar novamente...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error('❌ Não foi possível conectar ao MongoDB Atlas após', maxRetries, 'tentativas');
+        console.error('💡 Verifique:');
+        console.error('   1. A string de conexão MONGODB_ATLAS_URL está correta');
+        console.error('   2. O IP do servidor está na whitelist do MongoDB Atlas');
+        console.error('   3. As credenciais estão corretas');
+        console.error('   4. A rede permite conexões SSL/TLS na porta 27017');
+        // Não encerra o processo, permite que o servidor inicie mesmo sem conexão
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+// Verificar mensagens existentes no banco ao iniciar (com tratamento de erro)
 (async () => {
   try {
-    const count = await prisma.chatMessage.count();
-    console.log(`💬 Mensagens no banco de dados: ${count} mensagens`);
+    const connected = await testConnection();
+    if (connected) {
+      try {
+        const count = await prisma.chatMessage.count();
+        console.log(`💬 Mensagens no banco de dados: ${count} mensagens`);
+      } catch (error) {
+        console.warn('⚠️ Não foi possível contar mensagens (banco pode estar indisponível):', error.message);
+      }
+    }
   } catch (error) {
-    console.error('❌ Erro ao verificar mensagens:', error);
+    console.error('❌ Erro ao verificar conexão:', error.message);
   }
 })();
+
+// Graceful shutdown - desconectar Prisma ao encerrar
+process.on('beforeExit', async () => {
+  await prisma.$disconnect();
+});
+
+process.on('SIGINT', async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
 
 const app = express();
 // Cache otimizado: TTL padrão de 1 hora (3600s) para dados que mudam pouco
@@ -88,16 +148,61 @@ function setCacheHeaders(res, seconds = 3600) {
   res.set('Cache-Control', `public, max-age=${seconds}`);
 }
 
+// Wrapper para queries do Prisma com retry em caso de erro de conexão
+async function safePrismaQuery(fn, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isConnectionError = error.code === 'P2010' || 
+                                error.message?.includes('Server selection timeout') ||
+                                error.message?.includes('No available servers') ||
+                                error.message?.includes('I/O error');
+      
+      if (isConnectionError && i < retries) {
+        console.warn(`⚠️ Erro de conexão (tentativa ${i + 1}/${retries + 1}), tentando novamente...`);
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1))); // Backoff exponencial
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 async function withCache(key, ttlSeconds, res, fn) {
   const cached = cache.get(key);
   if (cached) {
     setCacheHeaders(res, ttlSeconds);
     return res.json(cached);
   }
-  const data = await fn();
-  cache.set(key, data, ttlSeconds);
-  setCacheHeaders(res, ttlSeconds);
-  return res.json(data);
+  
+  try {
+    // Usar safePrismaQuery se a função envolve queries do Prisma
+    const data = await safePrismaQuery(fn);
+    cache.set(key, data, ttlSeconds);
+    setCacheHeaders(res, ttlSeconds);
+    return res.json(data);
+  } catch (error) {
+    // Se houver erro de conexão, retornar dados em cache se disponível, ou erro
+    const cached = cache.get(key);
+    if (cached) {
+      console.warn(`⚠️ Erro ao buscar dados, usando cache: ${error.message}`);
+      setCacheHeaders(res, ttlSeconds);
+      return res.json(cached);
+    }
+    
+    // Se não houver cache e houver erro de conexão, retornar erro apropriado
+    if (error.code === 'P2010' || error.message?.includes('Server selection timeout')) {
+      console.error('❌ Erro de conexão com MongoDB:', error.message);
+      return res.status(503).json({ 
+        error: 'Serviço temporariamente indisponível',
+        message: 'Não foi possível conectar ao banco de dados. Tente novamente em alguns instantes.',
+        code: 'DATABASE_CONNECTION_ERROR'
+      });
+    }
+    
+    throw error;
+  }
 }
 
 // ========== CONTEXTO (CÉREBRO + WELLINGTON + DADOS DO BANCO) ==========

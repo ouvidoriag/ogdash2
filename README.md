@@ -518,13 +518,40 @@ npm run db:analyze        # Analisa estrutura do banco de dados
 2. Verifique se `MONGODB_ATLAS_URL` está configurado
 3. Reinicie o servidor após alterar `.env`
 
-#### ❌ Erro: "Unable to connect to MongoDB"
+#### ❌ Erro: "Unable to connect to MongoDB" ou "Server selection timeout"
+
+**Sintomas:**
+- `Server selection timeout: No available servers`
+- `I/O error: received fatal alert: InternalError`
+- `P2010` (Prisma error code)
 
 **Solução:**
-1. Verifique se a string de conexão está correta
-2. Verifique se o IP está autorizado no MongoDB Atlas
-3. Verifique se o usuário e senha estão corretos
-4. Teste a conexão: `node scripts/testMongoConnection.js`
+1. **Verifique a string de conexão** no `.env`:
+   ```env
+   MONGODB_ATLAS_URL="mongodb+srv://usuario:senha@cluster.mongodb.net/ouvidoria?retryWrites=true&w=majority"
+   ```
+
+2. **Verifique o IP na whitelist do MongoDB Atlas**:
+   - Acesse MongoDB Atlas → Network Access
+   - Adicione `0.0.0.0/0` (qualquer IP) para desenvolvimento
+   - Ou adicione o IP específico do servidor em produção
+
+3. **Verifique credenciais**:
+   - Usuário e senha corretos
+   - Usuário tem permissões no banco
+
+4. **O sistema agora inclui**:
+   - ✅ Retry automático (3 tentativas)
+   - ✅ Timeouts otimizados (30s)
+   - ✅ Fallback para cache quando disponível
+   - ✅ Mensagens de erro mais claras
+
+5. **Teste a conexão**:
+   ```bash
+   node scripts/testMongoConnection.js
+   ```
+
+**Nota:** O sistema agora tenta reconectar automaticamente e usa cache quando o banco está temporariamente indisponível.
 
 #### ❌ Gráficos não aparecem
 
