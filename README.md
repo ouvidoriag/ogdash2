@@ -1,382 +1,612 @@
-# 🏛️ Ouvidoria - Duque de Caxias/RJ - Dashboard
+# 🏛️ Dashboard de Ouvidoria - Duque de Caxias/RJ
 
-Dashboard interativo para visualização e análise de dados da Ouvidoria de Duque de Caxias. Sistema desenvolvido com Node.js, Express, Prisma e SQLite.
+<div align="center">
 
-## 📋 Sobre o Projeto
+![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=for-the-badge&logo=node.js)
+![Express](https://img.shields.io/badge/Express-4.19-black?style=for-the-badge&logo=express)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-brightgreen?style=for-the-badge&logo=mongodb)
+![Prisma](https://img.shields.io/badge/Prisma-5.20-2D3748?style=for-the-badge&logo=prisma)
+![License](https://img.shields.io/badge/License-Internal-red?style=for-the-badge)
 
-Este sistema permite:
-- **Importar dados** de planilhas Excel automaticamente
-- **Visualizar dados** em dashboards interativos com gráficos e tabelas
-- **Analisar dados** com agregações, filtros e séries temporais
-- **API REST** completa para integração com outros sistemas
-- **Cache inteligente** para melhor performance
-- **Deploy automático** em plataformas cloud (Render, Railway, etc.)
+**Sistema completo de análise e visualização de dados de manifestações da Ouvidoria Municipal**
 
-## 🚀 Instalação e Uso Rápido
+[🚀 Começar](#-instalação-rápida) • [📖 Documentação](#-documentação) • [🔧 API](#-api-rest) • [🐛 Problemas](#-troubleshooting)
+
+</div>
+
+---
+
+## 📋 Índice
+
+- [✨ Características](#-características)
+- [🎯 Sobre o Projeto](#-sobre-o-projeto)
+- [🚀 Instalação Rápida](#-instalação-rápida)
+- [⚙️ Configuração](#️-configuração)
+- [📊 Funcionalidades](#-funcionalidades)
+- [🌐 API REST](#-api-rest)
+- [🎨 Frontend](#-frontend)
+- [🔧 Scripts Disponíveis](#-scripts-disponíveis)
+- [🚀 Deploy](#-deploy)
+- [🐛 Troubleshooting](#-troubleshooting)
+- [📚 Documentação Adicional](#-documentação-adicional)
+- [🤝 Contribuindo](#-contribuindo)
+
+---
+
+## ✨ Características
+
+### 🎯 Principais Funcionalidades
+
+- 📥 **Importação Automática**: Importa dados de planilhas Excel automaticamente
+- 💾 **Armazenamento Flexível**: MongoDB Atlas com campos normalizados para performance
+- 📊 **Dashboard Interativo**: Interface moderna com gráficos interativos (Chart.js)
+- 🔍 **Análises Avançadas**: KPIs, séries temporais, heatmaps, análises multidimensionais
+- ⚡ **Performance Otimizada**: Cache em memória e índices no banco de dados
+- 🌐 **API REST Completa**: 18+ endpoints para integração
+- 📱 **Design Responsivo**: Interface adaptável a diferentes tamanhos de tela
+- 🎨 **UI Moderna**: Design futurista com glass morphism e efeitos neon
+
+### 🛠️ Stack Tecnológico
+
+**Backend:**
+- Node.js 18+ com Express.js
+- Prisma ORM para gerenciamento de banco
+- MongoDB Atlas (cloud database)
+- Node-Cache para cache em memória
+- XLSX para leitura de arquivos Excel
+
+**Frontend:**
+- HTML5/CSS3 com Tailwind CSS
+- Chart.js para gráficos interativos
+- JavaScript Vanilla (SPA)
+- Animate.css para animações
+
+---
+
+## 🎯 Sobre o Projeto
+
+O **Dashboard de Ouvidoria de Duque de Caxias** é um sistema completo desenvolvido para a **Secretaria de Ouvidoria Geral** do município. O sistema permite:
+
+- ✅ Importar e processar dados de manifestações da Ouvidoria
+- ✅ Visualizar dados através de dashboards interativos
+- ✅ Analisar tendências e padrões com múltiplas visualizações
+- ✅ Monitorar KPIs e métricas em tempo real
+- ✅ Gerar relatórios e análises por múltiplas dimensões
+- ✅ Integrar com outros sistemas via API REST
+
+### 📈 Casos de Uso
+
+- **Gestores**: Monitorar performance e tendências
+- **Analistas**: Analisar dados e gerar insights
+- **Desenvolvedores**: Integrar dados via API
+- **Cidadãos**: Visualizar transparência (se público)
+
+---
+
+## 🚀 Instalação Rápida
 
 ### Pré-requisitos
 
-- **Node.js** 18+ (recomendado: 20+)
+- **Node.js** 18+ ([Download](https://nodejs.org/))
 - **npm** ou **yarn**
+- **MongoDB Atlas** (conta gratuita disponível)
 
-### Instalação Automática (Recomendado)
+### Passo a Passo
+
+#### 1️⃣ Clone o Repositório
 
 ```bash
-# 1. Clone o repositório
 git clone https://github.com/ouvidoriag/ogdash.git
 cd ogdash
-
-# 2. Instale as dependências (setup automático roda após npm install)
-npm install
-
-# 3. Inicie o sistema
-npm start
 ```
 
-O sistema estará disponível em: **http://localhost:3000**
+#### 2️⃣ Instale as Dependências
 
-### O que acontece automaticamente:
+```bash
+npm install
+```
 
-1. **Durante `npm install`**:
-   - Instala todas as dependências
-   - Executa `postinstall` → `scripts/setup.js`
-   - Gera o Prisma Client automaticamente
-   - Cria o banco de dados SQLite se não existir
+> ⚡ **Automático**: O setup roda automaticamente após `npm install` (via `postinstall`)
 
-2. **Durante `npm start`**:
-   - Executa `prestart` → `scripts/setup.js` (garantia extra)
-   - Verifica se tudo está configurado
-   - Inicia o servidor Express na porta configurada
+#### 3️⃣ Configure as Variáveis de Ambiente
 
-## ⚙️ Configuração
-
-### Arquivo `.env`
-
-Crie um arquivo `.env` na raiz do projeto (ou copie de `.env.example`):
+Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-DATABASE_URL="file:./prisma/dev.db"
+# MongoDB Atlas
+MONGODB_ATLAS_URL="mongodb+srv://usuario:senha@cluster.mongodb.net/ouvidoria?retryWrites=true&w=majority"
+
+# Servidor
 PORT=3000
+
+# Arquivo Excel (opcional)
 EXCEL_FILE="./Dashboard_Duque_de_Caxias_Ouvidoria_Duque_de_Caxias_Tabela_ATUALIZADA.xlsx"
 ```
 
-**Variáveis de ambiente:**
-- `DATABASE_URL`: Caminho do banco SQLite (relativo ao diretório raiz)
-- `PORT`: Porta do servidor (padrão: 3000)
-- `EXCEL_FILE`: Caminho do arquivo Excel para importação
+> 🔐 **Importante**: Substitua `MONGODB_ATLAS_URL` pela sua string de conexão do MongoDB Atlas
+
+#### 4️⃣ Inicie o Servidor
+
+```bash
+npm start
+```
+
+> ✅ O sistema estará disponível em: **http://localhost:3000**
+
+### 🎉 Pronto!
+
+O sistema está configurado e rodando. Acesse o dashboard no navegador.
+
+---
+
+## ⚙️ Configuração
+
+### Variáveis de Ambiente
+
+| Variável | Descrição | Obrigatório | Padrão |
+|----------|-----------|-------------|--------|
+| `MONGODB_ATLAS_URL` | String de conexão do MongoDB Atlas | ✅ Sim | - |
+| `PORT` | Porta do servidor Express | ❌ Não | `3000` |
+| `EXCEL_FILE` | Caminho do arquivo Excel para importação | ❌ Não | - |
+
+### MongoDB Atlas Setup
+
+1. **Crie uma conta** em [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. **Crie um cluster** (Free tier disponível)
+3. **Configure acesso**:
+   - Adicione seu IP ou `0.0.0.0/0` para permitir qualquer IP
+   - Crie um usuário de banco de dados
+4. **Obtenha a connection string**:
+   - Clique em "Connect" → "Connect your application"
+   - Copie a string de conexão
+   - Substitua `<password>` pela senha do usuário
 
 ### Estrutura do Banco de Dados
 
-O sistema usa **SQLite** com Prisma ORM. O modelo `Record` armazena:
-- **JSON flexível**: Cada registro pode ter qualquer estrutura de colunas
-- **Campos normalizados**: Secretaria, Setor, Tipo, Categoria, Bairro, Status, Data (para consultas rápidas)
+O sistema usa **MongoDB** com Prisma ORM. O modelo `Record` armazena:
+
+- **JSON flexível**: Campo `data` com todos os dados originais
+- **Campos normalizados**: Para consultas rápidas (protocolo, status, tema, etc.)
 - **Índices**: Otimizados para agregações e filtros frequentes
 
-## 📊 Scripts Disponíveis
+---
 
-### Scripts Principais
+## 📊 Funcionalidades
 
-```bash
-npm start          # Inicia o servidor (configura automaticamente se necessário)
-npm run dev        # Modo desenvolvimento (mesmo que start)
-npm run setup      # Executa setup manual (gera Prisma Client e cria banco)
-```
-
-### Scripts de Importação
+### 📥 Importação de Dados
 
 ```bash
-npm run import:excel     # Importa dados do arquivo Excel definido no .env
-npm run db:backfill      # Preenche campos normalizados dos registros existentes
+# Importar dados do Excel
+npm run import:excel
+
+# Normalizar campos após importação
+npm run db:backfill
 ```
 
-### Scripts de Gerenciamento do Banco
+### 📈 Dashboard Interativo
 
-```bash
-npm run db:reset         # Reseta o banco (recria schema)
-npm run prisma:generate  # Gera Prisma Client manualmente
-npm run prisma:migrate    # Aplica migrações (se usando migrations)
+O dashboard inclui:
+
+- **KPIs Principais**: Total, últimos 7/30 dias, status
+- **Gráficos Dinâmicos**: Barras, linhas, pizza, doughnut
+- **Séries Temporais**: Análise por data
+- **Heatmaps**: Visualização multidimensional
+- **Tabelas Dinâmicas**: Com paginação e exportação CSV
+- **Filtros Avançados**: Por múltiplas dimensões
+
+### 🔍 Análises Disponíveis
+
+- ✅ **Por Órgão**: Manifestações por secretaria/órgão
+- ✅ **Por Tema**: Agrupamento por tema
+- ✅ **Por Assunto**: Detalhamento por assunto
+- ✅ **Por Unidade**: Análise por UAC/unidade de saúde
+- ✅ **Tempo Médio**: Análise de tempo de atendimento
+- ✅ **SLA**: Monitoramento de prazos
+- ✅ **Reclamações e Denúncias**: Filtro específico
+- ✅ **Por Cadastrante**: Análise por servidor
+
+---
+
+## 🌐 API REST
+
+### Base URL
+
+```
+http://localhost:3000/api
 ```
 
-### Scripts de Utilidade
+### Endpoints Principais
 
-Os seguintes scripts estão disponíveis em `scripts/`:
-- `clearDb.js`: Limpa todos os registros do banco
-- `compareExcelDb.js`: Compara dados do Excel com o banco
-- `listExcelColumns.js`: Lista colunas disponíveis no Excel
+#### 🏥 Health Check
 
-## 🌐 API Endpoints
-
-### Endpoints de Dados
-
-#### `GET /api/health`
-Verifica se o servidor está funcionando.
-
-**Resposta:**
-```json
-{ "status": "ok" }
+```http
+GET /api/health
 ```
-
-#### `GET /api/summary`
-Retorna KPIs e insights críticos do dashboard.
 
 **Resposta:**
 ```json
 {
-  "total": 42630,
-  "last7": 1234,
-  "last30": 5678,
-  "statusCounts": [...],
-  "topSecretaria": [...],
-  "topSetor": [...],
-  "topTipo": [...],
-  "topCategoria": [...]
+  "status": "ok"
 }
 ```
 
-#### `GET /api/records`
-Lista registros paginados.
+#### 📊 Resumo (KPIs)
+
+```http
+GET /api/summary
+```
+
+**Resposta:**
+```json
+{
+  "total": 14795,
+  "last7": 1234,
+  "last30": 5678,
+  "statusCounts": [
+    { "status": "Concluída", "count": 10770 },
+    { "status": "Em atendimento", "count": 4025 }
+  ],
+  "topOrgaos": [
+    { "key": "Saúde", "count": 10202 }
+  ],
+  "topUnidadeCadastro": [...],
+  "topTipoManifestacao": [...],
+  "topTema": [...]
+}
+```
+
+**Cache**: 300 segundos
+
+#### 📋 Listar Registros (Paginado)
+
+```http
+GET /api/records?page=1&pageSize=50
+```
 
 **Query Parameters:**
 - `page` (padrão: 1): Número da página
 - `pageSize` (padrão: 50, máximo: 500): Itens por página
 
-**Exemplo:**
-```
-GET /api/records?page=1&pageSize=50
+#### 🔍 Valores Distintos
+
+```http
+GET /api/distinct?field=tema
 ```
 
-#### `GET /api/distinct?field=NomeCampo`
 Retorna valores únicos de um campo específico.
 
-**Exemplo:**
-```
-GET /api/distinct?field=Bairro
-```
+#### 📊 Agregação por Contagem
 
-#### `GET /api/aggregate/count-by?field=Categoria`
-Conta registros agrupados por um campo.
-
-**Exemplo:**
-```
-GET /api/aggregate/count-by?field=Categoria
+```http
+GET /api/aggregate/count-by?field=tema
 ```
 
 **Resposta:**
 ```json
 [
-  { "key": "Reclamação", "count": 1234 },
-  { "key": "Sugestão", "count": 567 }
+  { "key": "Saúde", "count": 10202 },
+  { "key": "Educação", "count": 2500 }
 ]
 ```
 
-#### `GET /api/aggregate/time-series?field=Data`
-Série temporal de registros por data.
+#### 📈 Série Temporal
 
-**Exemplo:**
-```
+```http
 GET /api/aggregate/time-series?field=Data
 ```
 
 **Resposta:**
 ```json
 [
-  { "date": "2024-01-01", "count": 45 },
-  { "date": "2024-01-02", "count": 67 }
+  { "date": "2025-01-01", "count": 45 },
+  { "date": "2025-01-02", "count": 67 }
 ]
 ```
 
-#### `GET /api/aggregate/by-month`
-Série mensal dos últimos 12 meses.
+#### 📅 Agregação Mensal
 
-#### `GET /api/aggregate/heatmap?dim=Categoria`
-Heatmap por mês (últimos 12) x dimensão.
+```http
+GET /api/aggregate/by-month
+```
+
+Retorna os últimos 12 meses.
+
+#### 🔥 Heatmap
+
+```http
+GET /api/aggregate/heatmap?dim=tema
+```
 
 **Query Parameters:**
-- `dim`: Dimensão (Secretaria, Setor, Tipo, Categoria, Bairro, Status)
+- `dim`: Dimensão (tema, orgaos, unidadeCadastro, tipoDeManifestacao, etc.)
 
-#### `GET /api/sla/summary`
-Resumo de SLA (e-SIC >20 dias = atraso; outros: <=30 verde, 30-60 amarelo, >60 vermelho).
+#### ⏱️ Resumo de SLA
 
-#### `POST /api/filter`
-Filtra registros com múltiplos critérios.
+```http
+GET /api/sla/summary
+```
 
-**Body:**
+**Resposta:**
 ```json
 {
+  "esic": {
+    "dentro": 100,
+    "atraso": 50
+  },
+  "outros": {
+    "verde": 5000,
+    "amarelo": 2000,
+    "atraso": 1000
+  }
+}
+```
+
+**Regras SLA:**
+- **e-SIC**: >20 dias = atraso
+- **Outros**: ≤30 dias = verde, 30-60 dias = amarelo, >60 dias = atraso
+
+#### 🔎 Filtro Avançado
+
+```http
+POST /api/filter
+Content-Type: application/json
+
+{
   "filters": [
-    { "field": "Categoria", "op": "eq", "value": "Reclamação" },
-    { "field": "Status", "op": "contains", "value": "Aberto" }
+    { "field": "tema", "op": "eq", "value": "Saúde" },
+    { "field": "status", "op": "contains", "value": "Concluída" }
   ]
 }
 ```
 
 **Operadores:**
-- `eq`: Igual
+- `eq`: Igual (exato)
 - `contains`: Contém (case-insensitive)
 
-#### `GET /api/meta/aliases`
-Retorna aliases de campos para mapeamento de colunas.
+### 📚 Outros Endpoints
+
+- `GET /api/stats/average-time` - Tempo médio de atendimento
+- `GET /api/aggregate/by-theme` - Agregação por tema
+- `GET /api/aggregate/by-subject` - Agregação por assunto
+- `GET /api/aggregate/by-server` - Agregação por servidor
+- `GET /api/stats/status-overview` - Status geral (percentuais)
+- `GET /api/unit/:unitName` - Dados por unidade
+- `GET /api/complaints-denunciations` - Reclamações e denúncias
+- `GET /api/meta/aliases` - Metadados (aliases de campos)
+
+### 💾 Cache
+
+O sistema utiliza cache em memória (`node-cache`) com:
+- **TTL padrão**: 60 segundos
+- **TTL para endpoints pesados**: 300 segundos (5 minutos)
+- **Headers HTTP**: `Cache-Control: public, max-age=X`
+
+---
 
 ## 🎨 Frontend
 
-O dashboard está em `public/index.html` e inclui:
+### Estrutura
 
-- **Interface moderna** com design futurista
-- **Gráficos interativos** (Chart.js)
-- **Tabelas dinâmicas** (DataTables)
-- **Filtros avançados**
-- **Visualizações**:
-  - KPIs principais
-  - Gráficos de barras/pizza
-  - Séries temporais
-  - Heatmaps
-  - Tabelas paginadas
+O frontend é uma **Single Page Application (SPA)** construída em um único arquivo HTML (`public/index.html`) com:
 
-**Arquivos estáticos** servidos de `public/`:
-- Logo: `/dc-logo.png`
-- HTML: `/` (index.html)
+- ✅ JavaScript inline
+- ✅ CSS inline (Tailwind via CDN)
+- ✅ Chart.js para gráficos
+- ✅ Navegação por seções (sem recarregar página)
 
-## 🔧 Arquitetura e Funcionamento
+### Design
 
-### Como Funciona
+- **Tema**: Dark mode futurista
+- **Cores principais**:
+  - Cyan (`#22d3ee`): Primária
+  - Violet (`#a78bfa`): Accent
+  - Green (`#34d399`): Success
+  - Rose (`#fb7185`): Danger
+- **Efeitos**: Glass morphism, neons, gradientes
+- **Responsivo**: Grid adaptativo (Tailwind)
 
-1. **Importação de Dados**:
-   - Lê arquivo Excel usando `xlsx`
-   - Converte cada linha em JSON
-   - Armazena no banco SQLite via Prisma
-   - Normaliza campos comuns (Secretaria, Setor, etc.)
+### Seções do Dashboard
 
-2. **Armazenamento**:
-   - **JSON flexível**: Campo `data` armazena toda a estrutura original
-   - **Campos normalizados**: Para consultas rápidas e agregações
-   - **Índices**: Otimizam buscas por campos frequentes
+1. **Visão Geral**: KPIs, gráficos dinâmicos, heatmap, tabela
+2. **Por Órgão e Mês**: Lista de órgãos com gráficos
+3. **Tempo Médio**: Análise de tempo de atendimento
+4. **Por Tema**: Agrupamento por tema
+5. **Por Assunto**: Detalhamento por assunto
+6. **Por Cadastrante**: Análise por servidor/unidade
+7. **Reclamações e Denúncias**: Filtro específico
+8. **Páginas de Unidades**: Páginas específicas para cada unidade
 
-3. **API**:
-   - Express.js com endpoints RESTful
-   - Cache em memória (node-cache) para melhor performance
-   - Middleware CORS habilitado
-   - Logs com Morgan
+---
 
-4. **Cache**:
-   - Cache automático de 60 segundos (configurável)
-   - Headers HTTP Cache-Control
-   - Reduz carga no banco de dados
+## 🔧 Scripts Disponíveis
 
-### Estrutura de Arquivos
+### Scripts NPM
 
-```
-Dashboard/
-├── prisma/
-│   ├── schema.prisma      # Modelo Prisma
-│   └── dev.db             # Banco SQLite (commitado no repo)
-├── public/
-│   ├── index.html         # Dashboard frontend
-│   └── dc-logo.png        # Logo Duque de Caxias
-├── scripts/
-│   ├── setup.js           # Setup automático (Prisma + DB)
-│   ├── importExcel.js     # Importação de Excel
-│   ├── clearDb.js         # Limpar banco
-│   ├── backfillNormalized.js  # Preencher campos normalizados
-│   └── ...
-├── src/
-│   └── server.js          # Servidor Express + API
-├── .env                   # Variáveis de ambiente (commitado)
-├── package.json
-├── Procfile               # Para deploy (Railway/Render)
-└── README.md
+```bash
+# Instalação e Setup
+npm install          # Instala dependências e roda setup automático
+npm run setup        # Executa setup manual (Prisma + DB)
+
+# Servidor
+npm start            # Inicia servidor (porta 3000 ou PORT)
+npm run dev          # Mesmo que start
+
+# Banco de Dados
+npm run prisma:generate  # Gera Prisma Client
+npm run prisma:migrate    # Aplica migrações
+
+# Importação
+npm run import:excel      # Importa dados do Excel
+npm run db:backfill       # Normaliza campos dos registros
 ```
 
-## 🚀 Deploy em Produção
+### Scripts Node (scripts/)
 
-### Render (Configurado)
+- **`setup.js`**: Configuração inicial (gera Prisma Client, cria DB)
+- **`importExcel.js`**: Importa dados do arquivo Excel
+- **`backfillNormalized.js`**: Preenche campos normalizados
+- **`clearDb.js`**: Limpa todos os registros
+- **`checkDb.js`**: Verifica estado do banco de dados
+- **`compareExcelDb.js`**: Compara dados do Excel com banco
+- **`listExcelColumns.js`**: Lista colunas disponíveis no Excel
+- **`testEndpoints.js`**: Testa endpoints da API
 
-O projeto está configurado para deploy no Render. Veja instruções detalhadas em [HOSPEDAGEM.md](./HOSPEDAGEM.md).
+---
 
-**Configuração rápida:**
-- **Name**: `ogdash`
-- **Language**: `Node`
-- **Branch**: `main`
-- **Build Command**: `npm install`
-- **Start Command**: `npm run start`
-- **Instance Type**: `Free` (ou pago)
+## 🚀 Deploy
 
-**Variáveis de ambiente no Render:**
-- `DATABASE_URL`: `file:./prisma/dev.db`
-- `NODE_ENV`: `production`
+### Render.com (Recomendado)
+
+1. **Criar novo Web Service**
+   - **Name**: `ogdash`
+   - **Language**: `Node`
+   - **Branch**: `main`
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+   - **Instance Type**: `Free` (ou pago)
+
+2. **Variáveis de Ambiente**
+   - `MONGODB_ATLAS_URL`: Sua string de conexão
+   - `NODE_ENV`: `production`
+   - `PORT`: (gerenciado pelo Render)
+
+3. **Características**
+   - ✅ Setup automático via `postinstall` e `prestart`
+   - ✅ Caminho absoluto resolvido automaticamente
+   - ✅ Arquivos estáticos servidos corretamente
 
 ### Outras Plataformas
 
 - **Railway**: Detecta automaticamente Node.js
-- **Fly.io**: Requer configuração de Docker ou buildpack
-- **Heroku**: Usa Procfile
+- **Fly.io**: Requer Dockerfile ou buildpack Node.js
+- **Heroku**: Usa `Procfile` para start command
 
-### Características do Deploy
+### ⚠️ Considerações de Deploy
 
-✅ **Setup automático**: `postinstall` e `prestart` configuram tudo  
-✅ **Caminho absoluto**: Resolução automática de caminhos do banco  
-✅ **Variáveis de ambiente**: Suporte a `.env` e variáveis do sistema  
-✅ **Banco commitado**: Dados pré-carregados no repositório  
-✅ **Logo e estáticos**: Todos os arquivos públicos commitados  
-
-## 🔍 Troubleshooting
-
-### Problemas Comuns
-
-#### Erro: "Environment variable not found: DATABASE_URL"
-**Solução**: Configure `DATABASE_URL` no `.env` ou nas variáveis de ambiente.
-
-#### Erro: "Unable to open the database file"
-**Solução**: O código já resolve caminhos relativos automaticamente. Verifique se o banco existe em `prisma/dev.db`.
-
-#### Banco não carrega dados no deploy
-**Solução**: O banco está commitado no repositório. Se precisar recriar, execute `npm run db:reset`.
-
-### Logs
-
-O sistema mostra logs detalhados:
-- `📁 DATABASE_URL`: Caminho do banco configurado
-- `✅ Banco de dados encontrado!`: Banco existe
-- `🎉 Setup concluído!`: Sistema pronto
-
-## 📝 Notas Técnicas
-
-### Performance
-
-- **Cache em memória**: Reduz queries ao banco
-- **Índices Prisma**: Otimizam agregações
-- **Campos normalizados**: Evitam parsing de JSON em queries frequentes
-
-### Segurança
-
-- CORS habilitado (pode restringir em produção)
-- Validação de inputs nos endpoints
-- Sanitização de dados JSON
-
-### Escalabilidade
-
-- SQLite funciona bem para até ~100K registros
-- Para mais dados, considere migrar para PostgreSQL
-- Cache pode ser substituído por Redis em produção
-
-## 🤝 Contribuindo
-
-1. Faça fork do projeto
-2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`)
-3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
-4. Push para a branch (`git push origin feature/nova-funcionalidade`)
-5. Abra um Pull Request
-
-## 📄 Licença
-
-Este projeto é de uso interno da Secretaria de Ouvidoria Geral de Duque de Caxias.
-
-## 📞 Suporte
-
-Para questões sobre o sistema, consulte:
-- [HOSPEDAGEM.md](./HOSPEDAGEM.md) - Guia de deploy
-- Issues do GitHub
-- Documentação do Prisma: https://www.prisma.io/docs
+- **MongoDB Atlas**: Funciona perfeitamente em produção (cloud)
+- **Cache**: Cache em memória é perdido ao reiniciar (considere Redis para produção)
+- **HTTPS**: Configure HTTPS na plataforma de deploy
+- **CORS**: Configure CORS restritivo em produção
 
 ---
 
-**Desenvolvido para** Secretaria de Ouvidoria Geral • Duque de Caxias/RJ
+## 🐛 Troubleshooting
+
+### Problemas Comuns
+
+#### ❌ Erro: "MONGODB_ATLAS_URL não está definido"
+
+**Solução:**
+1. Verifique se o arquivo `.env` existe
+2. Verifique se `MONGODB_ATLAS_URL` está configurado
+3. Reinicie o servidor após alterar `.env`
+
+#### ❌ Erro: "Unable to connect to MongoDB"
+
+**Solução:**
+1. Verifique se a string de conexão está correta
+2. Verifique se o IP está autorizado no MongoDB Atlas
+3. Verifique se o usuário e senha estão corretos
+4. Teste a conexão: `node scripts/testMongoConnection.js`
+
+#### ❌ Gráficos não aparecem
+
+**Solução:**
+1. Abra o console do navegador (F12)
+2. Verifique se há erros JavaScript
+3. Verifique se a API está respondendo: `GET /api/health`
+4. Verifique se há dados no banco
+
+#### ❌ Importação falha
+
+**Solução:**
+1. Verifique se o arquivo Excel existe no caminho configurado
+2. Verifique o formato do arquivo (deve ser `.xlsx`)
+3. Verifique permissões de leitura
+4. Execute `node scripts/findExcel.js` para localizar arquivo
+
+#### ❌ Campos normalizados vazios
+
+**Solução:**
+1. Execute `npm run db:backfill` após importação
+2. Verifique aliases em `/api/meta/aliases`
+3. Verifique se nomes de colunas no Excel correspondem aos aliases
+
+### 🔍 Verificação de Saúde
+
+```bash
+# Verificar se servidor está rodando
+curl http://localhost:3000/api/health
+
+# Verificar banco de dados
+node scripts/checkDb.js
+
+# Testar conexão MongoDB
+node scripts/testMongoConnection.js
+
+# Testar endpoints
+node scripts/testEndpoints.js
+```
+
+### 📝 Logs
+
+O sistema mostra logs detalhados:
+- `📁 MongoDB Atlas conectado`: Conexão estabelecida
+- `✅ Banco de dados encontrado!`: Banco existe
+- `🎉 Setup concluído!`: Sistema pronto
+- `❌ ERRO`: Erros com descrição
+
+---
+
+## 📚 Documentação Adicional
+
+- **[DOCUMENTACAO_COMPLETA.md](./DOCUMENTACAO_COMPLETA.md)**: Documentação técnica completa
+- **[GUIA_MIGRACAO_MONGODB.md](./GUIA_MIGRACAO_MONGODB.md)**: Guia de migração para MongoDB
+- **[HOSPEDAGEM.md](./HOSPEDAGEM.md)**: Guia detalhado de deploy
+- **[ANALISE_BANCO_DADOS.md](./ANALISE_BANCO_DADOS.md)**: Análise do banco de dados
+
+---
+
+## 🤝 Contribuindo
+
+Contribuições são bem-vindas! Para contribuir:
+
+1. **Fork** o projeto
+2. **Crie** uma branch para sua feature (`git checkout -b feature/nova-funcionalidade`)
+3. **Commit** suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
+4. **Push** para a branch (`git push origin feature/nova-funcionalidade`)
+5. **Abra** um Pull Request
+
+### 📋 Padrões de Código
+
+- Use **ES6+** (async/await, arrow functions, etc.)
+- Siga o padrão de código existente
+- Adicione comentários para código complexo
+- Teste suas mudanças antes de fazer commit
+
+---
+
+## 📄 Licença
+
+Este projeto é de uso interno da **Secretaria de Ouvidoria Geral de Duque de Caxias**.
+
+---
+
+## 📞 Suporte
+
+Para questões sobre o sistema:
+
+- 📧 **Email**: [seu-email@duquedecaxias.rj.gov.br]
+- 📱 **Telefone**: [seu-telefone]
+- 🐛 **Issues**: [GitHub Issues](https://github.com/ouvidoriag/ogdash/issues)
+- 📖 **Documentação**: Consulte [DOCUMENTACAO_COMPLETA.md](./DOCUMENTACAO_COMPLETA.md)
+
+---
+
+<div align="center">
+
+**Desenvolvido com ❤️ para Secretaria de Ouvidoria Geral • Duque de Caxias/RJ**
+
+[⬆ Voltar ao topo](#-dashboard-de-ouvidoria---duque-de-caxiasrj)
+
+</div>

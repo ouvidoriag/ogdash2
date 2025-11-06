@@ -23,87 +23,75 @@ function toIsoDate(val) {
 
 async function main() {
   const total = await prisma.record.count();
-  console.log(`Registros totais: ${total}`);
+  console.log(`📊 Registros totais: ${total}`);
   const pageSize = 1000;
+  
   for (let skip = 0; skip < total; skip += pageSize) {
-    const rows = await prisma.record.findMany({ skip, take: pageSize, orderBy: { id: 'asc' } });
+    const rows = await prisma.record.findMany({ skip, take: pageSize });
     const updates = [];
+    
     for (const r of rows) {
-      let data;
-      try { data = JSON.parse(r.data); } catch { data = {}; }
-      // Mapeamento antigo + novos nomes da planilha atual
-      const secretaria = pick(data, [
-        'Secretaria', 'Órgão', 'Orgao', 'Secretaria/Órgão',
-        'orgaos', 'unidade_cadastro'
-      ]);
-      const setor = pick(data, [
-        'Setor', 'Departamento', 'Unidade',
-        'unidade_saude', 'unidade_cadastro'
-      ]);
-      const tipo = pick(data, [
-        'Tipo', 'Tipo Manifestação', 'TipoManifestacao',
-        'tipo_de_manifestacao'
-      ]);
-      const categoria = pick(data, [
-        'Categoria', 'Assunto', 'Tema',
-        'tema', 'assunto'
-      ]);
-      const bairro = pick(data, [
-        'Bairro', 'Localidade' // planilha atual não traz bairro explicitamente
-      ]);
-      const status = pick(data, [
-        'Status', 'Situação', 'Situacao',
-        'status_demanda', 'status'
-      ]);
-      const dataIso = toIsoDate(pick(data, [
-        'Data', 'Data Abertura', 'DataAbertura', 'Abertura',
-        'data_da_criacao'
-      ]));
+      // MongoDB já armazena JSON diretamente, não precisa fazer parse
+      const data = r.data || {};
       
-      // Novos campos alinhados com painel Looker Studio
-      const uac = pick(data, [
-        'UAC', 'Unidade de Atendimento', 'Unidade de Atendimento ao Cidadão',
-        'unidade_cadastro', 'Unidade Cadastro'
-      ]);
-      const responsavel = pick(data, [
-        'Responsável', 'responsavel', 'Ouvidoria Responsável',
-        'Responsável pelo Tratamento', 'Ouvidoria'
-      ]);
-      const canal = pick(data, [
-        'Canal', 'canal', 'Canal de Entrada', 'Canal de Atendimento'
-      ]);
-      const prioridade = pick(data, [
-        'Prioridade', 'prioridade', 'Prioridade da Demanda'
-      ]);
+      // Mapeamento direto das colunas da planilha atual
+      const protocolo = pick(data, ['protocolo']);
+      const dataDaCriacao = pick(data, ['data_da_criacao']);
+      const statusDemanda = pick(data, ['status_demanda']);
+      const prazoRestante = pick(data, ['prazo_restante']);
+      const dataDaConclusao = pick(data, ['data_da_conclusao']);
+      const tempoDeResolucaoEmDias = pick(data, ['tempo_de_resolucao_em_dias']);
+      const prioridade = pick(data, ['prioridade']);
+      const tipoDeManifestacao = pick(data, ['tipo_de_manifestacao']);
+      const tema = pick(data, ['tema']);
+      const assunto = pick(data, ['assunto']);
+      const canal = pick(data, ['canal']);
+      const endereco = pick(data, ['endereco']);
+      const unidadeCadastro = pick(data, ['unidade_cadastro']);
+      const unidadeSaude = pick(data, ['unidade_saude']);
+      const status = pick(data, ['status']);
+      const servidor = pick(data, ['servidor']);
+      const responsavel = pick(data, ['responsavel']);
+      const verificado = pick(data, ['verificado']);
+      const orgaos = pick(data, ['orgaos']);
       
-      // Campos adicionais para visualizações do Looker Studio
-      const servidor = pick(data, [
-        'Servidor', 'servidor', 'Cadastrante', 'cadastrante'
-      ]);
-      
-      // Tema e Assunto podem vir do mesmo campo ou separados
-      const tema = pick(data, [
-        'Tema', 'tema', 'Categoria', 'categoria'
-      ]);
-      const assunto = pick(data, [
-        'Assunto', 'assunto', 'Categoria', 'categoria'
-      ]);
-      
-      // Data de conclusão para calcular tempo médio
-      const dataConclusaoIso = toIsoDate(pick(data, [
-        'Data Conclusão', 'Data Conclusao', 'Data da Conclusão', 'Data da Conclusao',
-        'data_da_conclusao', 'DataConclusao'
-      ]));
+      // Normalizar datas para formato ISO
+      const dataCriacaoIso = toIsoDate(dataDaCriacao);
+      const dataConclusaoIso = toIsoDate(dataDaConclusao);
 
       updates.push(prisma.record.update({
         where: { id: r.id },
-        data: { secretaria, setor, tipo, categoria, bairro, status, dataIso, uac, responsavel, canal, prioridade, servidor, tema, assunto, dataConclusaoIso }
+        data: {
+          protocolo,
+          dataDaCriacao,
+          statusDemanda,
+          prazoRestante,
+          dataDaConclusao,
+          tempoDeResolucaoEmDias,
+          prioridade,
+          tipoDeManifestacao,
+          tema,
+          assunto,
+          canal,
+          endereco,
+          unidadeCadastro,
+          unidadeSaude,
+          status,
+          servidor,
+          responsavel,
+          verificado,
+          orgaos,
+          dataCriacaoIso,
+          dataConclusaoIso
+        }
       }));
     }
-    await prisma.$transaction(updates, { timeout: 60000 });
-    console.log(`Atualizados: ${Math.min(skip + pageSize, total)}/${total}`);
+    
+    await Promise.all(updates);
+    console.log(`✅ Atualizados: ${Math.min(skip + pageSize, total)}/${total} (${Math.round(Math.min(skip + pageSize, total)/total*100)}%)`);
   }
-  console.log('Backfill concluído.');
+  
+  console.log('✅ Backfill concluído!');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });

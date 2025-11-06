@@ -10,6 +10,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function main() {
+  console.log('🗑️  Limpando banco de dados...');
+  const countBefore = await prisma.record.count();
+  console.log(`📊 Registros antes: ${countBefore}`);
+  
+  // Limpar todos os registros
+  await prisma.record.deleteMany({});
+  console.log('✅ Banco limpo!');
+  
+  // Importar nova planilha
   const fileFromEnv = process.env.EXCEL_FILE;
   const excelPath = path.isAbsolute(fileFromEnv)
     ? fileFromEnv
@@ -27,7 +36,6 @@ async function main() {
   
   for (let i = 0; i < json.length; i += batchSize) {
     const slice = json.slice(i, i + batchSize);
-    // MongoDB aceita JSON diretamente, não precisa serializar
     await prisma.record.createMany({ 
       data: slice.map((row) => ({ 
         data: row // JSON direto para MongoDB
@@ -37,17 +45,18 @@ async function main() {
     console.log(`📦 Inseridos: ${inserted}/${json.length} (${Math.round(inserted/json.length*100)}%)`);
   }
 
+  const countAfter = await prisma.record.count();
   console.log('✅ Importação concluída!');
+  console.log(`📊 Registros após importação: ${countAfter}`);
   console.log('💡 Execute: npm run db:backfill para normalizar os campos');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('❌ Erro:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-
 

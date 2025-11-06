@@ -6,39 +6,23 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import NodeCache from 'node-cache';
 import { PrismaClient } from '@prisma/client';
-import { existsSync } from 'fs';
 
-// Resolver caminho absoluto do banco de dados
+// Resolver caminho absoluto
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.join(__dirname, '..');
 
-// Se DATABASE_URL for relativo, converter para absoluto
-let databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  console.error('❌ ERRO: DATABASE_URL não está definido!');
-  console.error('Configure a variável DATABASE_URL no .env ou nas variáveis de ambiente do Render');
+// Verificar MongoDB Atlas connection string
+const mongodbUrl = process.env.MONGODB_ATLAS_URL;
+if (!mongodbUrl) {
+  console.error('❌ ERRO: MONGODB_ATLAS_URL não está definido!');
+  console.error('Configure a variável MONGODB_ATLAS_URL no .env ou nas variáveis de ambiente');
   process.exit(1);
 }
 
-// Se o caminho for relativo (começa com file:./), converter para absoluto
-if (databaseUrl.startsWith('file:./')) {
-  const relativePath = databaseUrl.replace('file:', '');
-  const absolutePath = path.resolve(projectRoot, relativePath);
-  databaseUrl = `file:${absolutePath}`;
-  // Atualizar a variável de ambiente para o Prisma usar
-  process.env.DATABASE_URL = databaseUrl;
-  console.log(`📁 DATABASE_URL convertido para absoluto: ${databaseUrl}`);
-} else {
-  console.log(`📁 DATABASE_URL: ${databaseUrl}`);
-}
-
-// Verificar se o banco existe
-const dbPath = databaseUrl.replace('file:', '');
-if (!existsSync(dbPath)) {
-  console.error(`❌ ERRO: Banco de dados não encontrado em: ${dbPath}`);
-  console.error('O banco deve existir ou ser criado pelo setup.js');
-}
+// Configurar DATABASE_URL para o Prisma (usa MONGODB_ATLAS_URL)
+process.env.DATABASE_URL = mongodbUrl;
+console.log(`📁 MongoDB Atlas conectado: ${mongodbUrl.replace(/:[^:@]+@/, ':****@')}`);
 
 const prisma = new PrismaClient();
 const app = express();
@@ -84,25 +68,25 @@ app.get('/api/summary', async (_req, res) => {
   const statusCounts = byStatus.map(r => ({ status: r.status ?? 'Não informado', count: r._count._all }))
     .sort((a,b) => b.count - a.count);
 
-  // Últimos 7 e 30 dias usando dataIso
+  // Últimos 7 e 30 dias usando dataCriacaoIso
   const today = new Date();
   const toIso = (d) => d.toISOString().slice(0,10);
   const d7 = new Date(today); d7.setDate(today.getDate() - 7);
   const d30 = new Date(today); d30.setDate(today.getDate() - 30);
-  const last7 = await prisma.record.count({ where: { dataIso: { gte: toIso(d7) } } });
-  const last30 = await prisma.record.count({ where: { dataIso: { gte: toIso(d30) } } });
+  const last7 = await prisma.record.count({ where: { dataCriacaoIso: { gte: toIso(d7) } } });
+  const last30 = await prisma.record.count({ where: { dataCriacaoIso: { gte: toIso(d30) } } });
 
-  // Top dimensões normalizadas
+  // Top dimensões normalizadas (usando novos campos)
   const top = async (col) => {
     const rows = await prisma.record.groupBy({ by: [col], _count: { _all: true } });
     return rows.map(r => ({ key: r[col] ?? 'Não informado', count: r._count._all }))
       .sort((a,b) => b.count - a.count).slice(0,10);
   };
-  const [topSecretaria, topSetor, topTipo, topCategoria] = await Promise.all([
-    top('secretaria'), top('setor'), top('tipo'), top('categoria')
+  const [topOrgaos, topUnidadeCadastro, topTipoManifestacao, topTema] = await Promise.all([
+    top('orgaos'), top('unidadeCadastro'), top('tipoDeManifestacao'), top('tema')
   ]);
 
-  return withCache(key, 300, res, async () => ({ total, last7, last30, statusCounts, topSecretaria, topSetor, topTipo, topCategoria }));
+  return withCache(key, 300, res, async () => ({ total, last7, last30, statusCounts, topOrgaos, topUnidadeCadastro, topTipoManifestacao, topTema }));
 });
 
 // List records (paginated)
@@ -115,15 +99,10 @@ app.get('/api/records', async (req, res) => {
     prisma.record.count(),
     prisma.record.findMany({ orderBy: { id: 'asc' }, skip, take: pageSize })
   ]);
-  // Parse 'data' string
-  const rows = rowsRaw.map(r => ({ ...r, data: safeParse(r.data) }));
+  // MongoDB já armazena JSON diretamente, não precisa fazer parse
+  const rows = rowsRaw.map(r => ({ ...r, data: r.data || {} }));
   res.json({ total, page, pageSize, rows });
 });
-
-// Util para parse seguro
-function safeParse(str) {
-  try { return JSON.parse(str); } catch (_) { return {}; }
-}
 // Distinct values for a field inside JSON data
 app.get('/api/distinct', async (req, res) => {
   const field = String(req.query.field ?? '').trim();
@@ -136,8 +115,9 @@ app.get('/api/distinct', async (req, res) => {
   const rows = await prisma.record.findMany({ select: { data: true } });
   const values = new Set();
   for (const r of rows) {
-    const dat = safeParse(r.data);
-    const val = dat?.[field];
+    const dat = r.data || {};
+    // Tentar diferentes variações do nome do campo
+    const val = dat?.[field] ?? dat?.[field.toLowerCase()] ?? dat?.[field.replace(/\s+/g, '_')];
     if (val !== undefined && val !== null && `${val}`.trim() !== '') values.add(`${val}`);
   }
   const result = Array.from(values).sort();
@@ -156,17 +136,44 @@ app.get('/api/aggregate/count-by', async (req, res) => {
 
   // Preferir coluna normalizada quando corresponder a um dos campos conhecidos
   const fieldMap = {
-    Secretaria: 'secretaria',
-    Setor: 'setor',
-    Tipo: 'tipo',
-    Categoria: 'categoria',
-    Bairro: 'bairro',
+    Secretaria: 'orgaos',
+    Setor: 'unidadeCadastro',
+    Tipo: 'tipoDeManifestacao',
+    Categoria: 'tema',
+    Bairro: 'endereco',
     Status: 'status',
-    Data: 'dataIso',
-    UAC: 'uac',
+    StatusDemanda: 'statusDemanda',
+    Data: 'dataCriacaoIso',
+    UAC: 'unidadeCadastro',
     Responsavel: 'responsavel',
     Canal: 'canal',
-    Prioridade: 'prioridade'
+    Prioridade: 'prioridade',
+    // Aliases para compatibilidade
+    Orgaos: 'orgaos',
+    UnidadeCadastro: 'unidadeCadastro',
+    TipoManifestacao: 'tipoDeManifestacao',
+    Tema: 'tema',
+    Assunto: 'assunto',
+    // Nomes exatos da planilha
+    'protocolo': 'protocolo',
+    'data_da_criacao': 'dataDaCriacao',
+    'status_demanda': 'statusDemanda',
+    'prazo_restante': 'prazoRestante',
+    'data_da_conclusao': 'dataDaConclusao',
+    'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
+    'prioridade': 'prioridade',
+    'tipo_de_manifestacao': 'tipoDeManifestacao',
+    'tema': 'tema',
+    'assunto': 'assunto',
+    'canal': 'canal',
+    'endereco': 'endereco',
+    'unidade_cadastro': 'unidadeCadastro',
+    'unidade_saude': 'unidadeSaude',
+    'status': 'status',
+    'servidor': 'servidor',
+    'responsavel': 'responsavel',
+    'verificado': 'verificado',
+    'orgaos': 'orgaos'
   };
   const col = fieldMap[field];
   if (col) {
@@ -182,8 +189,9 @@ app.get('/api/aggregate/count-by', async (req, res) => {
   const rows = await prisma.record.findMany({ select: { data: true } });
   const map = new Map();
   for (const r of rows) {
-    const dat = safeParse(r.data);
-    const key = dat?.[field] ?? 'Não informado';
+    const dat = r.data || {};
+    // Tentar diferentes variações do nome do campo
+    const key = dat?.[field] ?? dat?.[field.toLowerCase()] ?? dat?.[field.replace(/\s+/g, '_')] ?? 'Não informado';
     const k = `${key}`;
     map.set(k, (map.get(k) ?? 0) + 1);
   }
@@ -201,10 +209,10 @@ app.get('/api/aggregate/time-series', async (req, res) => {
   const cached = cache.get(cacheKey);
   if (cached) return res.json(cached);
 
-  // Se pediram Data, usar coluna normalizada dataIso
-  if (field === 'Data') {
-    const rows = await prisma.record.groupBy({ by: ['dataIso'], _count: { _all: true } });
-    const result = rows.map(r => ({ date: r.dataIso ?? 'Sem data', count: r._count._all }))
+  // Se pediram Data, usar coluna normalizada dataCriacaoIso
+  if (field === 'Data' || field === 'data_da_criacao') {
+    const rows = await prisma.record.groupBy({ by: ['dataCriacaoIso'], _count: { _all: true } });
+    const result = rows.map(r => ({ date: r.dataCriacaoIso ?? 'Sem data', count: r._count._all }))
       .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
     cache.set(cacheKey, result);
     return res.json(result);
@@ -226,7 +234,7 @@ app.get('/api/aggregate/time-series', async (req, res) => {
   };
 
   for (const r of rows) {
-    const dat = safeParse(r.data);
+    const dat = r.data || {};
     const d = normalize(dat?.[field]);
     const key = d ?? 'Sem data';
     map.set(key, (map.get(key) ?? 0) + 1);
@@ -242,10 +250,10 @@ app.get('/api/aggregate/time-series', async (req, res) => {
 // Série mensal últimos 12 meses (usa dataIso)
 app.get('/api/aggregate/by-month', async (_req, res) => {
   const key = 'byMonth:v1';
-  const rows = await prisma.record.findMany({ select: { dataIso: true } });
+  const rows = await prisma.record.findMany({ select: { dataCriacaoIso: true } });
   const map = new Map();
   for (const r of rows) {
-    const d = r.dataIso;
+    const d = r.dataCriacaoIso;
     if (!d || d.length < 7) continue;
     const ym = d.slice(0,7); // YYYY-MM
     map.set(ym, (map.get(ym) ?? 0) + 1);
@@ -259,16 +267,42 @@ app.get('/api/aggregate/by-month', async (_req, res) => {
 app.get('/api/aggregate/heatmap', async (req, res) => {
   const dimReq = String(req.query.dim ?? 'Categoria');
   const fieldMap = {
-    Secretaria: 'secretaria',
-    Setor: 'setor',
-    Tipo: 'tipo',
-    Categoria: 'categoria',
-    Bairro: 'bairro',
+    Secretaria: 'orgaos',
+    Setor: 'unidadeCadastro',
+    Tipo: 'tipoDeManifestacao',
+    Categoria: 'tema',
+    Bairro: 'endereco',
     Status: 'status',
-    UAC: 'uac',
+    StatusDemanda: 'statusDemanda',
+    UAC: 'unidadeCadastro',
     Responsavel: 'responsavel',
     Canal: 'canal',
-    Prioridade: 'prioridade'
+    Prioridade: 'prioridade',
+    Orgaos: 'orgaos',
+    UnidadeCadastro: 'unidadeCadastro',
+    TipoManifestacao: 'tipoDeManifestacao',
+    Tema: 'tema',
+    Assunto: 'assunto',
+    // Nomes exatos da planilha
+    'protocolo': 'protocolo',
+    'data_da_criacao': 'dataDaCriacao',
+    'status_demanda': 'statusDemanda',
+    'prazo_restante': 'prazoRestante',
+    'data_da_conclusao': 'dataDaConclusao',
+    'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
+    'prioridade': 'prioridade',
+    'tipo_de_manifestacao': 'tipoDeManifestacao',
+    'tema': 'tema',
+    'assunto': 'assunto',
+    'canal': 'canal',
+    'endereco': 'endereco',
+    'unidade_cadastro': 'unidadeCadastro',
+    'unidade_saude': 'unidadeSaude',
+    'status': 'status',
+    'servidor': 'servidor',
+    'responsavel': 'responsavel',
+    'verificado': 'verificado',
+    'orgaos': 'orgaos'
   };
   const col = fieldMap[dimReq];
   if (!col) return res.status(400).json({ error: 'dim must be one of Secretaria, Setor, Tipo, Categoria, Bairro, Status, UAC, Responsavel, Canal, Prioridade' });
@@ -284,10 +318,10 @@ app.get('/api/aggregate/heatmap', async (req, res) => {
   }
 
   // Buscar apenas colunas necessárias
-  const rows = await prisma.record.findMany({ select: { dataIso: true, [col]: true } });
+  const rows = await prisma.record.findMany({ select: { dataCriacaoIso: true, [col]: true } });
   const matrix = new Map(); // key: dim value -> Map(ym -> count)
   for (const r of rows) {
-    const d = r.dataIso;
+    const d = r.dataCriacaoIso;
     if (!d || d.length < 7) continue;
     const ym = d.slice(0,7);
     if (!labels.includes(ym)) continue;
@@ -311,15 +345,15 @@ app.get('/api/sla/summary', async (_req, res) => {
   const key = 'sla:v1';
   const today = new Date();
   const toIso = (d) => d.toISOString().slice(0,10);
-  const rows = await prisma.record.findMany({ select: { dataIso: true, tipo: true, data: true } });
+  const rows = await prisma.record.findMany({ select: { dataCriacaoIso: true, tipoDeManifestacao: true, data: true } });
   const buckets = { esic: { dentro: 0, atraso: 0 }, outros: { verde: 0, amarelo: 0, atraso: 0 } };
 
   const isEsic = (row) => {
-    const t = (row.tipo ?? '').toLowerCase();
+    const t = (row.tipoDeManifestacao ?? '').toLowerCase();
     if (t.includes('e-sic') || t.includes('esic') || t.includes('e sic')) return true;
     // fallback: olhar JSON bruto
-    let json; try { json = JSON.parse(row.data); } catch { json = {}; }
-    const tv = `${json['Tipo'] ?? json['Tipo Manifestação'] ?? json['TipoManifestacao'] ?? ''}`.toLowerCase();
+    const json = row.data || {};
+    const tv = `${json['tipo_de_manifestacao'] ?? json['Tipo'] ?? ''}`.toLowerCase();
     return tv.includes('e-sic') || tv.includes('esic') || tv.includes('e sic');
   };
 
@@ -331,7 +365,7 @@ app.get('/api/sla/summary', async (_req, res) => {
   };
 
   for (const r of rows) {
-    const days = daysBetween(r.dataIso);
+    const days = daysBetween(r.dataCriacaoIso);
     if (days === null) continue;
     if (isEsic(r)) {
       if (days > 20) buckets.esic.atraso += 1; else buckets.esic.dentro += 1;
@@ -349,32 +383,65 @@ app.get('/api/sla/summary', async (_req, res) => {
 app.post('/api/filter', async (req, res) => {
   const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
   // Tentar filtrar usando colunas normalizadas quando possível
-  const fieldMap = { Secretaria: 'secretaria', Setor: 'setor', Tipo: 'tipo', Categoria: 'categoria', Bairro: 'bairro', Status: 'status', Data: 'dataIso', UAC: 'uac', Responsavel: 'responsavel', Canal: 'canal', Prioridade: 'prioridade' };
-  const where = {};
-  const fallback = [];
-  for (const f of filters) {
-    const col = fieldMap[f.field];
-    if (col) {
-      if (f.op === 'eq') where[col] = `${f.value}`;
-      if (f.op === 'contains') where[col] = { contains: `${f.value}` };
-    } else {
-      fallback.push(f);
-    }
-  }
-  let rowsRaw = await prisma.record.findMany({ where, select: { id: true, data: true } });
-  if (fallback.length > 0) {
-    const rows = rowsRaw.map(r => ({ ...r, data: safeParse(r.data) }));
-    const ok = (row) => {
-      for (const f of fallback) {
-        const v = row.data?.[f.field];
-        if (f.op === 'eq' && `${v}` !== `${f.value}`) return false;
-        if (f.op === 'contains' && !(`${v}`.toLowerCase().includes(`${f.value}`.toLowerCase()))) return false;
+  const fieldMap = { 
+    Secretaria: 'orgaos', 
+    Setor: 'unidadeCadastro', 
+    Tipo: 'tipoDeManifestacao', 
+    Categoria: 'tema', 
+    Bairro: 'endereco', 
+    Status: 'status', 
+    StatusDemanda: 'statusDemanda',
+    Data: 'dataCriacaoIso', 
+    UAC: 'unidadeCadastro', 
+    Responsavel: 'responsavel', 
+    Canal: 'canal', 
+    Prioridade: 'prioridade', 
+    Orgaos: 'orgaos', 
+    UnidadeCadastro: 'unidadeCadastro', 
+    TipoManifestacao: 'tipoDeManifestacao', 
+    Tema: 'tema', 
+    Assunto: 'assunto',
+    // Nomes exatos da planilha
+    'protocolo': 'protocolo',
+    'data_da_criacao': 'dataDaCriacao',
+    'status_demanda': 'statusDemanda',
+    'prazo_restante': 'prazoRestante',
+    'data_da_conclusao': 'dataDaConclusao',
+    'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
+    'prioridade': 'prioridade',
+    'tipo_de_manifestacao': 'tipoDeManifestacao',
+    'tema': 'tema',
+    'assunto': 'assunto',
+    'canal': 'canal',
+    'endereco': 'endereco',
+    'unidade_cadastro': 'unidadeCadastro',
+    'unidade_saude': 'unidadeSaude',
+    'status': 'status',
+    'servidor': 'servidor',
+    'responsavel': 'responsavel',
+    'verificado': 'verificado',
+    'orgaos': 'orgaos'
+  };
+  // MongoDB não suporta contains diretamente, então buscamos todos e filtramos
+  const allRows = await prisma.record.findMany({ select: { id: true, data: true, ...Object.fromEntries(Object.values(fieldMap).map(col => [col, true])) } });
+  
+  const filtered = allRows.filter(r => {
+    for (const f of filters) {
+      const col = fieldMap[f.field];
+      if (col) {
+        const value = r[col] || (r.data || {})[f.field] || '';
+        if (f.op === 'eq' && `${value}` !== `${f.value}`) return false;
+        if (f.op === 'contains' && !(`${value}`.toLowerCase().includes(`${f.value}`.toLowerCase()))) return false;
+      } else {
+        const value = (r.data || {})[f.field] || '';
+        if (f.op === 'eq' && `${value}` !== `${f.value}`) return false;
+        if (f.op === 'contains' && !(`${value}`.toLowerCase().includes(`${f.value}`.toLowerCase()))) return false;
       }
-      return true;
-    };
-    return res.json(rows.filter(ok));
-  }
-  res.json(rowsRaw.map(r => ({ ...r, data: safeParse(r.data) })));
+    }
+    return true;
+  });
+  
+  res.json(filtered.map(r => ({ ...r, data: r.data || {} })));
 });
 
 // Tempo médio de atendimento por órgão/unidade
@@ -385,13 +452,13 @@ app.get('/api/stats/average-time', async (_req, res) => {
   
   const rows = await prisma.record.findMany({
     where: {
-      dataIso: { not: null },
+      dataCriacaoIso: { not: null },
       dataConclusaoIso: { not: null }
     },
     select: {
       responsavel: true,
-      uac: true,
-      dataIso: true,
+      unidadeCadastro: true,
+      dataCriacaoIso: true,
       dataConclusaoIso: true
     }
   });
@@ -399,8 +466,8 @@ app.get('/api/stats/average-time', async (_req, res) => {
   // Agrupar por órgão/unidade e calcular média
   const map = new Map();
   for (const r of rows) {
-    const org = r.responsavel || r.uac || 'Não informado';
-    const start = new Date(r.dataIso + 'T00:00:00');
+    const org = r.responsavel || r.unidadeCadastro || 'Não informado';
+    const start = new Date(r.dataCriacaoIso + 'T00:00:00');
     const end = new Date(r.dataConclusaoIso + 'T00:00:00');
     if (isNaN(start) || isNaN(end)) continue;
     const days = Math.floor((end - start) / (1000 * 60 * 60 * 24));
@@ -468,16 +535,27 @@ app.get('/api/stats/status-overview', async (_req, res) => {
   if (cached) return withCache(key, 300, res, async () => cached);
   
   const total = await prisma.record.count();
-  // SQLite não tem mode: 'insensitive', então buscamos todas as variações
-  const allRecords = await prisma.record.findMany({ select: { status: true } });
+  // Buscar status e statusDemanda para análise completa
+  const allRecords = await prisma.record.findMany({ select: { status: true, statusDemanda: true, data: true } });
   let concluidas = 0;
   let emAtendimento = 0;
   
   for (const r of allRecords) {
-    const status = (r.status || '').toLowerCase();
-    if (status.includes('concluída') || status.includes('concluida') || status.includes('encerrada')) {
+    // Verificar status normalizado primeiro, depois statusDemanda, depois JSON
+    const statusValue = r.status || r.statusDemanda || (r.data || {})['status'] || (r.data || {})['status_demanda'] || '';
+    const status = `${statusValue}`.toLowerCase();
+    
+    // Detectar status concluído
+    if (status.includes('concluída') || status.includes('concluida') || 
+        status.includes('encerrada') || status.includes('arquivamento') ||
+        status.includes('resposta final')) {
       concluidas++;
-    } else if (status.includes('em atendimento') || status.includes('aberto') || status.includes('pendente')) {
+    } 
+    // Detectar status em atendimento
+    else if (status.includes('em atendimento') || status.includes('aberto') || 
+             status.includes('pendente') || status.includes('análise') ||
+             status.includes('departamento') || status.includes('ouvidoria') ||
+             status.length > 0) {
       emAtendimento++;
     }
   }
@@ -507,20 +585,20 @@ app.get('/api/unit/:unitName', async (req, res) => {
   // Buscar registros que tenham a unidade no UAC ou Responsável
   // SQLite não tem contains, então usamos busca em todos os registros
   const allRecords = await prisma.record.findMany({
-    select: { assunto: true, tipo: true, data: true, uac: true, responsavel: true, secretaria: true, setor: true }
+    select: { assunto: true, tipoDeManifestacao: true, data: true, unidadeCadastro: true, responsavel: true, orgaos: true, unidadeSaude: true }
   });
   
   const records = allRecords.filter(r => {
-    const uac = (r.uac || '').toLowerCase();
+    const unidadeCadastro = (r.unidadeCadastro || '').toLowerCase();
     const responsavel = (r.responsavel || '').toLowerCase();
-    const secretaria = (r.secretaria || '').toLowerCase();
-    const setor = (r.setor || '').toLowerCase();
+    const orgaos = (r.orgaos || '').toLowerCase();
+    const unidadeSaude = (r.unidadeSaude || '').toLowerCase();
     const searchLower = unitName.toLowerCase();
     
-    return uac.includes(searchLower) || 
+    return unidadeCadastro.includes(searchLower) || 
            responsavel.includes(searchLower) || 
-           secretaria.includes(searchLower) || 
-           setor.includes(searchLower);
+           orgaos.includes(searchLower) || 
+           unidadeSaude.includes(searchLower);
   });
   
   // Agrupar por assunto
@@ -530,22 +608,14 @@ app.get('/api/unit/:unitName', async (req, res) => {
   for (const r of records) {
     // Assunto normalizado ou buscar no JSON
     const assunto = r.assunto || (() => {
-      try {
-        const data = JSON.parse(r.data);
-        return data['Assunto'] || data['assunto'] || data['Categoria'] || data['categoria'] || 'Não informado';
-      } catch {
-        return 'Não informado';
-      }
+      const data = r.data || {};
+      return data['assunto'] || data['Assunto'] || data['Categoria'] || data['categoria'] || 'Não informado';
     })();
     
     // Tipo de ação normalizado ou buscar no JSON
-    const tipo = r.tipo || (() => {
-      try {
-        const data = JSON.parse(r.data);
-        return data['Tipo'] || data['Tipo Manifestação'] || data['TipoManifestacao'] || data['tipo_de_manifestacao'] || 'Não informado';
-      } catch {
-        return 'Não informado';
-      }
+    const tipo = r.tipoDeManifestacao || (() => {
+      const data = r.data || {};
+      return data['tipo_de_manifestacao'] || data['Tipo'] || data['Tipo Manifestação'] || data['TipoManifestacao'] || 'Não informado';
     })();
     
     assuntoMap.set(assunto, (assuntoMap.get(assunto) || 0) + 1);
@@ -572,21 +642,17 @@ app.get('/api/complaints-denunciations', async (_req, res) => {
   
   // Buscar todos os registros
   const records = await prisma.record.findMany({
-    select: { assunto: true, tipo: true, data: true }
+    select: { assunto: true, tipoDeManifestacao: true, data: true }
   });
   
   const assuntoMap = new Map();
   const tipoMap = new Map();
   
   for (const r of records) {
-    let tipo = r.tipo;
+    let tipo = r.tipoDeManifestacao;
     if (!tipo) {
-      try {
-        const data = JSON.parse(r.data);
-        tipo = data['Tipo'] || data['Tipo Manifestação'] || data['TipoManifestacao'] || data['tipo_de_manifestacao'] || '';
-      } catch {
-        tipo = '';
-      }
+      const data = r.data || {};
+      tipo = data['tipo_de_manifestacao'] || data['Tipo'] || data['Tipo Manifestação'] || data['TipoManifestacao'] || '';
     }
     
     // Filtrar apenas Reclamação e Denúncia
@@ -596,12 +662,8 @@ app.get('/api/complaints-denunciations', async (_req, res) => {
     }
     
     const assunto = r.assunto || (() => {
-      try {
-        const data = JSON.parse(r.data);
-        return data['Assunto'] || data['assunto'] || data['Categoria'] || data['categoria'] || 'Não informado';
-      } catch {
-        return 'Não informado';
-      }
+      const data = r.data || {};
+      return data['assunto'] || data['Assunto'] || data['Categoria'] || data['categoria'] || 'Não informado';
     })();
     
     assuntoMap.set(assunto, (assuntoMap.get(assunto) || 0) + 1);
@@ -630,7 +692,7 @@ app.get('/api/meta/aliases', (_req, res) => {
       Bairro: ['Bairro', 'Localidade'],
       Status: ['Status', 'Situação', 'Situacao'],
       Data: ['Data', 'Data Abertura', 'DataAbertura', 'Abertura'],
-      UAC: ['UAC', 'Unidade de Atendimento', 'Unidade de Atendimento ao Cidadão', 'unidade_cadastro', 'Unidade Cadastro'],
+      UAC: ['UAC', 'Unidade de Atendimento', 'Unidade de Atendimento ao Cidadão', 'unidade_cadastro', 'Unidade Cadastro', 'unidadeCadastro'],
       Responsavel: ['Responsável', 'responsavel', 'Ouvidoria Responsável', 'Responsável pelo Tratamento', 'Ouvidoria'],
       Canal: ['Canal', 'canal', 'Canal de Entrada', 'Canal de Atendimento'],
       Prioridade: ['Prioridade', 'prioridade', 'Prioridade da Demanda']

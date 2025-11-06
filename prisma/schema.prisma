@@ -3,47 +3,56 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "mongodb"
+  url      = env("MONGODB_ATLAS_URL")
 }
 
 model Record {
-  id        Int      @id @default(autoincrement())
-  data      String // Armazena o JSON serializado
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  data      Json     // Armazena o JSON completo da planilha
   createdAt DateTime @default(now())
-  // Campos normalizados (opcionais) para relatórios consistentes e rápidos
-  secretaria String?
-  setor      String?
-  tipo       String?
-  categoria  String?
-  bairro     String?
-  status     String?
-  dataIso    String? // YYYY-MM-DD
-  // Novos campos alinhados com painel Looker Studio
-  uac         String? // Unidade de Atendimento ao Cidadão
-  responsavel String? // Responsável pelo tratamento (Ouvidorias)
-  canal       String? // Canal de entrada (Presencial, Telefone, etc.)
-  prioridade  String? // Prioridade (Alta, Média, Baixa)
-  servidor    String? // Servidor/Cadastrante
-  tema        String? // Tema (ex: Saúde, Educação, etc.)
-  assunto     String? // Assunto específico (ex: Atendimento, Marcação de Consulta, etc.)
-  dataConclusaoIso String? // YYYY-MM-DD - Data de conclusão para calcular tempo médio
+  
+  // Campos normalizados baseados nas colunas exatas da planilha
+  protocolo              String? // protocolo
+  dataDaCriacao          String? // data_da_criacao
+  statusDemanda          String? // status_demanda
+  prazoRestante          String? // prazo_restante
+  dataDaConclusao        String? // data_da_conclusao
+  tempoDeResolucaoEmDias String? // tempo_de_resolucao_em_dias
+  prioridade             String? // prioridade
+  tipoDeManifestacao     String? // tipo_de_manifestacao
+  tema                   String? // tema
+  assunto                String? // assunto
+  canal                  String? // canal
+  endereco               String? // endereco
+  unidadeCadastro        String? // unidade_cadastro
+  unidadeSaude           String? // unidade_saude
+  status                 String? // status
+  servidor               String? // servidor
+  responsavel            String? // responsavel
+  verificado             String? // verificado
+  orgaos                 String? // orgaos
+  
+  // Campos ISO para queries de data (normalizados de data_da_criacao e data_da_conclusao)
+  dataCriacaoIso    String? // YYYY-MM-DD
+  dataConclusaoIso  String? // YYYY-MM-DD
 
-  @@index([secretaria])
-  @@index([setor])
-  @@index([tipo])
-  @@index([categoria])
-  @@index([bairro])
-  @@index([status])
-  @@index([dataIso])
-  @@index([uac])
-  @@index([responsavel])
-  @@index([canal])
-  @@index([prioridade])
-  @@index([servidor])
+  @@index([protocolo])
+  @@index([statusDemanda])
+  @@index([tipoDeManifestacao])
   @@index([tema])
   @@index([assunto])
+  @@index([canal])
+  @@index([unidadeCadastro])
+  @@index([unidadeSaude])
+  @@index([status])
+  @@index([servidor])
+  @@index([responsavel])
+  @@index([prioridade])
+  @@index([orgaos])
+  @@index([dataCriacaoIso])
   @@index([dataConclusaoIso])
+  @@map("records")
 }
 
 

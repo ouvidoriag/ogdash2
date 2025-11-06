@@ -76,7 +76,34 @@
           <div data-page="canal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Canais</div>
           <div data-page="prioridade" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Prioridades</div>
         </nav>
-        <div class="mt-8 text-xs text-slate-400">Secretaria de Ouvidoria Geral • Duque de Caxias/RJ</div>
+        <div class="mt-8 pt-6 border-t border-white/10">
+          <div class="text-xs font-semibold text-slate-300 mb-4 uppercase tracking-wider">Equipe Responsável</div>
+          <div class="space-y-3 text-xs">
+            <div class="pb-2 border-b border-white/5">
+              <div class="text-slate-400 mb-1">Ouvidoria Geral</div>
+              <div class="text-slate-200 font-medium">Edrisio Avelino</div>
+              <div class="text-slate-500 text-[10px] mt-0.5">Ouvidor Geral</div>
+            </div>
+            <div class="space-y-2">
+              <div>
+                <div class="text-slate-200 font-medium">Nilton Quaresma</div>
+                <div class="text-slate-500 text-[10px]">Diretor de Ouvidoria</div>
+              </div>
+              <div>
+                <div class="text-slate-200 font-medium">David Freitas</div>
+                <div class="text-slate-500 text-[10px]">Diretor de Análise de Dados</div>
+              </div>
+            </div>
+            <div class="pt-2 mt-2 border-t border-white/5">
+              <div class="text-slate-400 mb-2 text-[10px] uppercase tracking-wide">Analistas de Ouvidoria</div>
+              <div class="space-y-1 text-slate-300">
+                <div class="text-[11px]">• Nikolas Brian</div>
+                <div class="text-[11px]">• Rildo Luiz</div>
+                <div class="text-[11px]">• Wellington Ribeiro</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">
@@ -88,15 +115,38 @@
               <div class="flex items-center gap-4">
                 <img src="/dc-logo.png" alt="Duque de Caxias" class="h-16 w-auto object-contain" />
               <div>
-                <h1 class="text-2xl font-bold neon">Ouvidoria Geral - Duque de Caxias/RJ</h1>
-                <p class="text-slate-400">Analytics em tempo real com visual futurista</p>
+                <h1 class="text-2xl font-bold neon">Análise avançada de ouvidorias</h1>
+                <p class="text-slate-400">• Edrisio Avelino • Ouvidor Geral •</p>
                 </div>
               </div>
-              <div class="flex items-center gap-2">
-                <input id="countBy" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none glow-ring" placeholder="Contagem por: Categoria, Bairro..." />
-                <button id="btnCountBy" class="px-3 py-2 text-sm rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 glow-ring">Aplicar</button>
-                <input id="dateField" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none glow-ring" placeholder="Série temporal: Data, Abertura..." />
-                <button id="btnTime" class="px-3 py-2 text-sm rounded-lg bg-violet-500/20 text-violet-300 hover:bg-violet-500/30 glow-ring">Aplicar</button>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2">
+                  <label class="text-sm text-slate-400 whitespace-nowrap">Contagem por:</label>
+                  <select id="countBy" onchange="if(this.value) loadCountChart(this.value)" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none glow-ring cursor-pointer hover:bg-slate-800/60 transition-colors">
+                    <option value="Secretaria">Secretaria</option>
+                    <option value="Setor">Setor</option>
+                    <option value="Tipo">Tipo</option>
+                    <option value="Categoria" selected>Categoria</option>
+                    <option value="Bairro">Bairro</option>
+                    <option value="Status">Status</option>
+                    <option value="UAC">UAC</option>
+                    <option value="Responsavel">Responsável</option>
+                    <option value="Canal">Canal</option>
+                    <option value="Prioridade">Prioridade</option>
+                    <option value="Tema">Tema</option>
+                    <option value="Assunto">Assunto</option>
+                    <option value="Servidor">Servidor</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="text-sm text-slate-400 whitespace-nowrap">Série temporal:</label>
+                  <select id="dateField" onchange="if(this.value) loadTimeChart(this.value)" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none glow-ring cursor-pointer hover:bg-slate-800/60 transition-colors">
+                    <option value="Data" selected>Data</option>
+                    <option value="Data Abertura">Data Abertura</option>
+                    <option value="Data Conclusão">Data Conclusão</option>
+                    <option value="Abertura">Abertura</option>
+                  </select>
+                </div>
               </div>
             </div>
           </header>
@@ -742,7 +792,92 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
     <script>
+      // Registrar plugin de datalabels
+      if (typeof ChartDataLabels !== 'undefined') {
+        Chart.register(ChartDataLabels);
+      }
+      
+      // Função helper para criar tooltips melhorados
+      function createEnhancedTooltip() {
+        return {
+          enabled: true,
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(34, 211, 238, 0.3)',
+          borderWidth: 1,
+          padding: 12,
+          displayColors: true,
+          callbacks: {
+            title: function(context) {
+              return context[0].label || '';
+            },
+            label: function(context) {
+              const label = context.dataset.label || '';
+              const value = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+              const total = context.dataset.data.reduce((a, b) => a + (b || 0), 0);
+              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+              return `${label}: ${value.toLocaleString('pt-BR')} (${percentage}%)`;
+            }
+          }
+        };
+      }
+      
+      // Função helper para configurar datalabels
+      function createDataLabelsConfig(showPercentage = false) {
+        return {
+          anchor: 'end',
+          align: 'top',
+          color: '#e2e8f0',
+          font: {
+            size: 11,
+            weight: 'bold'
+          },
+          formatter: function(value, context) {
+            if (showPercentage && context.dataset.data) {
+              const total = context.dataset.data.reduce((a, b) => a + (b || 0), 0);
+              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+              return value.toLocaleString('pt-BR') + '\n(' + percentage + '%)';
+            }
+            return value.toLocaleString('pt-BR');
+          },
+          padding: 4,
+          backgroundColor: 'rgba(15, 23, 42, 0.7)',
+          borderRadius: 4
+        };
+      }
+      
+      // Função helper para adicionar eventos de clique
+      function addChartClickHandler(chart, onClickCallback) {
+        chart.canvas.style.cursor = 'pointer';
+        chart.canvas.onclick = function(evt) {
+          const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+          if (points.length) {
+            const firstPoint = points[0];
+            const label = chart.data.labels[firstPoint.index];
+            const value = chart.data.datasets[firstPoint.datasetIndex].data[firstPoint.index];
+            onClickCallback(label, value, firstPoint.index);
+          }
+        };
+      }
+      
+      // Função para mostrar feedback visual ao clicar
+      function showClickFeedback(element, label, value) {
+        const feedback = document.createElement('div');
+        feedback.className = 'fixed top-4 right-4 glass rounded-lg p-4 z-50 animate__animated animate__fadeInRight';
+        feedback.innerHTML = `
+          <div class="text-cyan-300 font-bold text-lg">${label}</div>
+          <div class="text-slate-300 text-sm">Valor: ${value.toLocaleString('pt-BR')}</div>
+        `;
+        document.body.appendChild(feedback);
+        setTimeout(() => {
+          feedback.classList.add('animate__fadeOutRight');
+          setTimeout(() => feedback.remove(), 300);
+        }, 2000);
+      }
+      
       function gradient(ctx, from, to) {
         const g = ctx.createLinearGradient(0, 0, 0, 300);
         g.addColorStop(0, from);
@@ -783,16 +918,65 @@
           // Monta gráfico de status
           const ctx = document.getElementById('chartStatus').getContext('2d');
           if (window.chartStatus instanceof Chart) window.chartStatus.destroy();
-          window.chartStatus = new Chart(ctx, { type: 'doughnut', data: {
-            labels: sum.statusCounts.map(s=>s.status),
-            datasets: [{ data: sum.statusCounts.map(s=>s.count), backgroundColor: ['#22d3ee','#a78bfa','#34d399','#f59e0b','#fb7185','#f472b6'] }]
-          }, options: { responsive: true } });
+          window.chartStatus = new Chart(ctx, { 
+            type: 'doughnut', 
+            data: {
+              labels: sum.statusCounts.map(s=>s.status),
+              datasets: [{ 
+                data: sum.statusCounts.map(s=>s.count), 
+                backgroundColor: ['#22d3ee','#a78bfa','#34d399','#f59e0b','#fb7185','#f472b6'] 
+              }]
+            }, 
+            options: { 
+              responsive: true,
+              plugins: {
+                tooltip: createEnhancedTooltip(),
+                datalabels: {
+                  ...createDataLabelsConfig(true),
+                  anchor: 'center',
+                  align: 'center'
+                }
+              },
+              onClick: (evt, elements) => {
+                if (elements.length > 0) {
+                  const idx = elements[0].index;
+                  const label = sum.statusCounts[idx].status;
+                  const value = sum.statusCounts[idx].count;
+                  showClickFeedback(null, label, value);
+                }
+              }
+            } 
+          });
+          addChartClickHandler(window.chartStatus, (label, value) => showClickFeedback(null, label, value));
         }
         // Série temporal mensal 12M
         const byMonth = await fetchJSON('/api/aggregate/by-month');
         const ctxM = document.getElementById('chartMonth').getContext('2d');
         if (window.chartMonth instanceof Chart) window.chartMonth.destroy();
-        window.chartMonth = new Chart(ctxM, { type:'bar', data:{ labels: byMonth.map(x=>x.ym), datasets:[{ data: byMonth.map(x=>x.count), backgroundColor: 'rgba(167,139,250,0.6)' }] }, options:{ responsive:true } });
+        window.chartMonth = new Chart(ctxM, { 
+          type:'bar', 
+          data:{ 
+            labels: byMonth.map(x=>x.ym), 
+            datasets:[{ 
+              data: byMonth.map(x=>x.count), 
+              backgroundColor: 'rgba(167,139,250,0.6)',
+              borderColor: 'rgba(167,139,250,1)',
+              borderWidth: 1
+            }] 
+          }, 
+          options:{ 
+            responsive:true,
+            plugins: {
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig()
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartMonth, (label, value) => showClickFeedback(null, label, value));
 
         // SLA chart
         const sla = await fetchJSON('/api/sla/summary');
@@ -804,11 +988,25 @@
             labels: ['e-SIC Dentro', 'e-SIC Atraso', 'Outros Verde', 'Outros Amarelo', 'Outros Atraso'],
             datasets: [{
               data: [sla.esic?.dentro||0, sla.esic?.atraso||0, sla.outros?.verde||0, sla.outros?.amarelo||0, sla.outros?.atraso||0],
-              backgroundColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185']
+              backgroundColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185'],
+              borderColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185'],
+              borderWidth: 1
             }]
           },
-          options: { responsive: true, plugins: { legend: { display: false } } }
+          options: { 
+            responsive: true, 
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig()
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
         });
+        addChartClickHandler(window.chartSla, (label, value) => showClickFeedback(null, label, value));
       }
 
       async function loadTable() {
@@ -846,39 +1044,74 @@
       let chartCount, chartTime;
 
       async function loadCountChart(field) {
-        const data = await fetchJSON(`/api/aggregate/count-by?field=${encodeURIComponent(field)}`);
-        const labels = data.slice(0, 20).map(x => x.key);
-        const values = data.slice(0, 20).map(x => x.count);
-        const ctx = document.getElementById('chartCount').getContext('2d');
-        if (chartCount) chartCount.destroy();
-        chartCount = new Chart(ctx, {
+        try {
+          console.log('Carregando gráfico de contagem para campo:', field);
+          const data = await fetchJSON(`/api/aggregate/count-by?field=${encodeURIComponent(field)}`);
+          console.log('Dados recebidos:', data.length, 'itens');
+          const labels = data.slice(0, 20).map(x => x.key);
+          const values = data.slice(0, 20).map(x => x.count);
+          const ctx = document.getElementById('chartCount');
+          if (!ctx) {
+            console.error('Canvas chartCount não encontrado!');
+            return;
+          }
+          const ctx2d = ctx.getContext('2d');
+          if (chartCount) chartCount.destroy();
+        chartCount = new Chart(ctx2d, {
           type: 'bar',
           data: { labels, datasets: [{
             label: `Contagem por ${field}`,
             data: values,
             borderRadius: 8,
-            backgroundColor: gradient(ctx, 'rgba(34,211,238,0.8)', 'rgba(167,139,250,0.2)')
+            backgroundColor: gradient(ctx2d, 'rgba(34,211,238,0.8)', 'rgba(167,139,250,0.2)'),
+            borderColor: 'rgba(34,211,238,1)',
+            borderWidth: 1
           }]},
           options: {
             responsive: true,
             animation: { duration: 800, easing: 'easeOutQuart' },
-            plugins: { legend: { display: false } },
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig()
+            },
             scales: {
-              x: { grid: { color: 'rgba(255,255,255,0.06)' } },
-              y: { grid: { color: 'rgba(255,255,255,0.06)' } }
+              x: { 
+                grid: { color: 'rgba(255,255,255,0.06)' },
+                ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }
+              },
+              y: { 
+                grid: { color: 'rgba(255,255,255,0.06)' },
+                ticks: { color: '#94a3b8' },
+                beginAtZero: true
+              }
             }
           }
         });
+        addChartClickHandler(chartCount, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('chartCount').classList.remove('skeleton');
+        console.log('Gráfico de contagem criado com sucesso');
+        } catch (error) {
+          console.error('Erro em loadCountChart:', error);
+          throw error;
+        }
       }
 
       async function loadTimeChart(field) {
-        const data = await fetchJSON(`/api/aggregate/time-series?field=${encodeURIComponent(field)}`);
-        const labels = data.map(x => x.date);
-        const values = data.map(x => x.count);
-        const ctx = document.getElementById('chartTime').getContext('2d');
-        if (chartTime) chartTime.destroy();
-        chartTime = new Chart(ctx, {
+        try {
+          console.log('Carregando gráfico de série temporal para campo:', field);
+          const data = await fetchJSON(`/api/aggregate/time-series?field=${encodeURIComponent(field)}`);
+          console.log('Dados recebidos:', data.length, 'itens');
+          const labels = data.map(x => x.date);
+          const values = data.map(x => x.count);
+          const ctx = document.getElementById('chartTime');
+          if (!ctx) {
+            console.error('Canvas chartTime não encontrado!');
+            return;
+          }
+          const ctx2d = ctx.getContext('2d');
+          if (chartTime) chartTime.destroy();
+        chartTime = new Chart(ctx2d, {
           type: 'line',
           data: { labels, datasets: [{
             label: `Registros por dia (${field})`,
@@ -887,46 +1120,42 @@
             borderWidth: 2,
             tension: 0.35,
             borderColor: 'rgba(52,211,153,1)',
-            backgroundColor: gradient(ctx, 'rgba(52,211,153,0.35)', 'rgba(52,211,153,0.05)')
+            backgroundColor: gradient(ctx2d, 'rgba(52,211,153,0.35)', 'rgba(52,211,153,0.05)'),
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: 'rgba(52,211,153,1)',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2
           }]},
           options: {
             responsive: true,
             animation: { duration: 900, easing: 'easeOutCubic' },
-            plugins: { legend: { labels: { color: '#cbd5e1' } } },
+            plugins: { 
+              legend: { labels: { color: '#cbd5e1' } },
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                display: function(context) {
+                  // Mostrar apenas em alguns pontos para não poluir
+                  return context.dataIndex % Math.ceil(context.dataset.data.length / 10) === 0;
+                }
+              }
+            },
             scales: {
               x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 } },
-              y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94a3b8' } }
+              y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94a3b8' }, beginAtZero: true }
             }
           }
         });
+        addChartClickHandler(chartTime, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('chartTime').classList.remove('skeleton');
+        console.log('Gráfico de série temporal criado com sucesso');
+        } catch (error) {
+          console.error('Erro em loadTimeChart:', error);
+          throw error;
+        }
       }
 
-      document.getElementById('btnCountBy').addEventListener('click', () => {
-        const f = document.getElementById('countBy').value.trim() || 'Secretaria';
-        if (f) {
-          loadCountChart(f);
-          // atualizar KPI top
-          fetchJSON(`/api/aggregate/count-by?field=${encodeURIComponent(f)}`).then(agg => {
-            const el = document.getElementById('kpiTopKey');
-            if (el && agg.length) el.textContent = `${agg[0].key} (${agg[0].count})`;
-          }).catch(()=>{});
-        }
-      });
-      document.getElementById('btnTime').addEventListener('click', () => {
-        const f = document.getElementById('dateField').value.trim() || 'Data';
-        if (f) {
-          loadTimeChart(f);
-          // atualizar KPI pico
-          fetchJSON(`/api/aggregate/time-series?field=${encodeURIComponent(f)}`).then(ts => {
-            if (ts.length) {
-              const peak = ts.reduce((a,b) => a.count > b.count ? a : b);
-              const el = document.getElementById('kpiPeak');
-              if (el) el.textContent = `${peak.count} em ${peak.date}`;
-            }
-          }).catch(()=>{});
-        }
-      });
 
       // Heatmap main interactions
       document.getElementById('heatmapDim').addEventListener('change', async (e) => {
@@ -937,12 +1166,67 @@
       document.getElementById('btnExport').addEventListener('click', exportCSV);
 
       // initial load
-      loadKpis('Secretaria', 'Data');
-      // carregar gráficos principais com defaults para evitar telas vazias
-      loadCountChart('Secretaria');
+      loadKpis('Categoria', 'Data');
+      // carregar gráficos principais com defaults dos dropdowns
+      loadCountChart('Categoria');
       loadTimeChart('Data');
       loadTable();
       fetchJSON('/api/aggregate/heatmap?dim=Categoria').then(hm => buildHeatmap('heatmap', hm.labels, hm.rows)).catch(()=>{});
+      
+      // Adicionar eventos aos dropdowns - usar onchange diretamente no HTML ou aguardar DOM
+      (function setupDropdowns() {
+        function attachCountByEvent() {
+          const countBySelect = document.getElementById('countBy');
+          if (countBySelect && !countBySelect.dataset.listenerAttached) {
+            countBySelect.dataset.listenerAttached = 'true';
+            countBySelect.addEventListener('change', async (e) => {
+              const f = e.target.value.trim() || 'Categoria';
+              console.log('🔄 Dropdown contagem mudou para:', f);
+              if (f) {
+                try {
+                  await loadCountChart(f);
+                  console.log('✅ Gráfico de contagem atualizado');
+                } catch (error) {
+                  console.error('❌ Erro ao atualizar gráfico de contagem:', error);
+                }
+              }
+            });
+            console.log('✅ Event listener adicionado ao dropdown de contagem');
+          }
+        }
+        
+        function attachDateFieldEvent() {
+          const dateFieldSelect = document.getElementById('dateField');
+          if (dateFieldSelect && !dateFieldSelect.dataset.listenerAttached) {
+            dateFieldSelect.dataset.listenerAttached = 'true';
+            dateFieldSelect.addEventListener('change', async (e) => {
+              const f = e.target.value.trim() || 'Data';
+              console.log('🔄 Dropdown série temporal mudou para:', f);
+              if (f) {
+                try {
+                  await loadTimeChart(f);
+                  console.log('✅ Gráfico de série temporal atualizado');
+                } catch (error) {
+                  console.error('❌ Erro ao atualizar gráfico de série temporal:', error);
+                }
+              }
+            });
+            console.log('✅ Event listener adicionado ao dropdown de série temporal');
+          }
+        }
+        
+        // Tentar adicionar eventos imediatamente
+        attachCountByEvent();
+        attachDateFieldEvent();
+        
+        // Se não encontrou, tentar novamente após um pequeno delay
+        if (!document.getElementById('countBy') || !document.getElementById('dateField')) {
+          setTimeout(() => {
+            attachCountByEvent();
+            attachDateFieldEvent();
+          }, 200);
+        }
+      })();
     </script>
     <script>
       // SPA Page switch
@@ -1036,12 +1320,11 @@
             indexAxis: 'y',
             plugins: {
               legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function(context) {
-                    return `${context.parsed.x} manifestações`;
-                  }
-                }
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end'
               }
             },
             scales: {
@@ -1057,6 +1340,7 @@
             }
           }
         });
+        addChartClickHandler(window.chartOrgaoMes, (label, value) => showClickFeedback(null, label, value));
         
         // Atualizar KPI total
         const total = dataOrgaos.reduce((sum, item) => sum + item.count, 0);
@@ -1070,9 +1354,23 @@
         if (window.chartSecretaria instanceof Chart) window.chartSecretaria.destroy();
         const ctx = document.getElementById('chartSecretaria').getContext('2d');
         window.chartSecretaria = new Chart(ctx, {
-          type:'bar', data:{labels,datasets:[{label:'Secretaria',data:values,backgroundColor:'#22d3ee'}]},
-          options: {responsive:true, animation:{duration:1000}, plugins:{legend:{display:false}}}
+          type:'bar', 
+          data:{labels,datasets:[{label:'Secretaria',data:values,backgroundColor:'#22d3ee',borderColor:'#22d3ee',borderWidth:1}]},
+          options: {
+            responsive:true, 
+            animation:{duration:1000}, 
+            plugins:{
+              legend:{display:false},
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig()
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
         });
+        addChartClickHandler(window.chartSecretaria, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('rankSecretaria').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       async function loadTipo() {
@@ -1081,7 +1379,23 @@
         const values = data.slice(0, 10).map(x=>x.count);
         if(window.chartTipo instanceof Chart) window.chartTipo.destroy();
         const ctx = document.getElementById('chartTipo').getContext('2d');
-        window.chartTipo = new Chart(ctx, {type:'pie', data:{labels,datasets:[{label:'Tipo Manifestação',data:values,backgroundColor:['#c084fc','#22d3ee','#facc15','#fb7185']}]}, options:{responsive:true,animation:{duration:1000}} });
+        window.chartTipo = new Chart(ctx, {
+          type:'pie', 
+          data:{labels,datasets:[{label:'Tipo Manifestação',data:values,backgroundColor:['#c084fc','#22d3ee','#facc15','#fb7185']}]}, 
+          options:{
+            responsive:true,
+            animation:{duration:1000},
+            plugins: {
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(true),
+                anchor: 'center',
+                align: 'center'
+              }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartTipo, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('rankTipo').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       async function loadSetor() {
@@ -1090,7 +1404,29 @@
         const values = data.slice(0, 10).map(x=>x.count);
         if(window.chartSetor instanceof Chart) window.chartSetor.destroy();
         const ctx = document.getElementById('chartSetor').getContext('2d');
-        window.chartSetor = new Chart(ctx, {type:'bar', data:{labels,datasets:[{label:'Setor',data:values,backgroundColor:'#34d399'}]}, options:{responsive:true,animation:{duration:1000}, indexAxis:'y', plugins:{legend:{display:false}}}} );
+        window.chartSetor = new Chart(ctx, {
+          type:'bar', 
+          data:{labels,datasets:[{label:'Setor',data:values,backgroundColor:'#34d399',borderColor:'#34d399',borderWidth:1}]}, 
+          options:{
+            responsive:true,
+            animation:{duration:1000}, 
+            indexAxis:'y', 
+            plugins:{
+              legend:{display:false},
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end'
+              }
+            },
+            scales: {
+              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        });
+        addChartClickHandler(window.chartSetor, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('rankSetor').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       function enableCharts() {
@@ -1103,7 +1439,23 @@
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartCategoria instanceof Chart) window.chartCategoria.destroy();
         const ctx = document.getElementById('chartCategoria').getContext('2d');
-        window.chartCategoria = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Categoria', data: values, backgroundColor:'#f472b6' }] }, options:{ responsive:true, plugins:{ legend:{ display:false } } } });
+        window.chartCategoria = new Chart(ctx, { 
+          type:'bar', 
+          data:{ labels, datasets:[{ label:'Categoria', data: values, backgroundColor:'#f472b6', borderColor:'#f472b6', borderWidth:1 }] }, 
+          options:{ 
+            responsive:true, 
+            plugins:{ 
+              legend:{ display:false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig()
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartCategoria, (label, value) => showClickFeedback(null, label, value));
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Categoria');
         buildHeatmap('heatmapCategoria', hm.labels, hm.rows);
       }
@@ -1114,7 +1466,22 @@
         const values = data.slice(0, 10).map(x=>x.count);
         if (window.chartStatusPage instanceof Chart) window.chartStatusPage.destroy();
         const ctx = document.getElementById('chartStatusPage').getContext('2d');
-        window.chartStatusPage = new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: values, backgroundColor:['#38bdf8','#22d3ee','#fbbf24','#34d399','#fb7185','#e879f9'] }] }, options:{ responsive:true } });
+        window.chartStatusPage = new Chart(ctx, { 
+          type:'doughnut', 
+          data:{ labels, datasets:[{ data: values, backgroundColor:['#38bdf8','#22d3ee','#fbbf24','#34d399','#fb7185','#e879f9'] }] }, 
+          options:{ 
+            responsive:true,
+            plugins: {
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(true),
+                anchor: 'center',
+                align: 'center'
+              }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartStatusPage, (label, value) => showClickFeedback(null, label, value));
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Status');
         buildHeatmap('heatmapStatus', hm.labels, hm.rows);
       }
@@ -1125,7 +1492,28 @@
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartBairro instanceof Chart) window.chartBairro.destroy();
         const ctx = document.getElementById('chartBairro').getContext('2d');
-        window.chartBairro = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Bairro', data: values, backgroundColor:'#f59e0b' }] }, options:{ responsive:true, plugins:{ legend:{ display:false } }, indexAxis:'y' } });
+        window.chartBairro = new Chart(ctx, { 
+          type:'bar', 
+          data:{ labels, datasets:[{ label:'Bairro', data: values, backgroundColor:'#f59e0b', borderColor:'#f59e0b', borderWidth:1 }] }, 
+          options:{ 
+            responsive:true, 
+            plugins:{ 
+              legend:{ display:false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end'
+              }
+            }, 
+            indexAxis:'y',
+            scales: {
+              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartBairro, (label, value) => showClickFeedback(null, label, value));
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Bairro');
         buildHeatmap('heatmapBairro', hm.labels, hm.rows);
       }
@@ -1136,7 +1524,29 @@
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartUAC instanceof Chart) window.chartUAC.destroy();
         const ctx = document.getElementById('chartUAC').getContext('2d');
-        window.chartUAC = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'UAC', data: values, backgroundColor:'#22d3ee' }] }, options:{ responsive:true, animation:{duration:1000}, indexAxis:'y', plugins:{legend:{display:false}}} });
+        window.chartUAC = new Chart(ctx, { 
+          type:'bar', 
+          data:{ labels, datasets:[{ label:'UAC', data: values, backgroundColor:'#22d3ee', borderColor:'#22d3ee', borderWidth:1 }] }, 
+          options:{ 
+            responsive:true, 
+            animation:{duration:1000}, 
+            indexAxis:'y', 
+            plugins:{
+              legend:{display:false},
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end'
+              }
+            },
+            scales: {
+              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartUAC, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('rankUAC').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=UAC');
         buildHeatmap('heatmapUAC', hm.labels, hm.rows);
@@ -1148,7 +1558,29 @@
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartResponsavel instanceof Chart) window.chartResponsavel.destroy();
         const ctx = document.getElementById('chartResponsavel').getContext('2d');
-        window.chartResponsavel = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Responsável', data: values, backgroundColor:'#a78bfa' }] }, options:{ responsive:true, animation:{duration:1000}, indexAxis:'y', plugins:{legend:{display:false}}} });
+        window.chartResponsavel = new Chart(ctx, { 
+          type:'bar', 
+          data:{ labels, datasets:[{ label:'Responsável', data: values, backgroundColor:'#a78bfa', borderColor:'#a78bfa', borderWidth:1 }] }, 
+          options:{ 
+            responsive:true, 
+            animation:{duration:1000}, 
+            indexAxis:'y', 
+            plugins:{
+              legend:{display:false},
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end'
+              }
+            },
+            scales: {
+              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartResponsavel, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('rankResponsavel').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Responsavel');
         buildHeatmap('heatmapResponsavel', hm.labels, hm.rows);
@@ -1160,7 +1592,23 @@
         const values = data.map(x=>x.count);
         if (window.chartCanal instanceof Chart) window.chartCanal.destroy();
         const ctx = document.getElementById('chartCanal').getContext('2d');
-        window.chartCanal = new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: values, backgroundColor:['#34d399','#22d3ee','#fbbf24','#a78bfa','#fb7185','#e879f9'] }] }, options:{ responsive:true, plugins:{legend:{display:true, position:'right'}}} });
+        window.chartCanal = new Chart(ctx, { 
+          type:'doughnut', 
+          data:{ labels, datasets:[{ data: values, backgroundColor:['#34d399','#22d3ee','#fbbf24','#a78bfa','#fb7185','#e879f9'] }] }, 
+          options:{ 
+            responsive:true, 
+            plugins:{
+              legend:{display:true, position:'right'},
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(true),
+                anchor: 'center',
+                align: 'center'
+              }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartCanal, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('rankCanal').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Canal');
         buildHeatmap('heatmapCanal', hm.labels, hm.rows);
@@ -1180,7 +1628,23 @@
           if(low.includes('baixa')) return '#34d399';
           return '#94a3b8';
         });
-        window.chartPrioridade = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Prioridade', data: values, backgroundColor: colors }] }, options:{ responsive:true, plugins:{legend:{display:false}}} });
+        window.chartPrioridade = new Chart(ctx, { 
+          type:'bar', 
+          data:{ labels, datasets:[{ label:'Prioridade', data: values, backgroundColor: colors, borderColor: colors, borderWidth: 1 }] }, 
+          options:{ 
+            responsive:true, 
+            plugins:{
+              legend:{display:false},
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig()
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          } 
+        });
+        addChartClickHandler(window.chartPrioridade, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('rankPrioridade').innerHTML=data.map(e=>`<li><span class='text-rose-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Prioridade');
         buildHeatmap('heatmapPrioridade', hm.labels, hm.rows);
@@ -1209,13 +1673,22 @@
           options: {
             responsive: true,
             indexAxis: 'y',
-            plugins: { legend: { display: false } },
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end'
+              }
+            },
             scales: {
               x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
               y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           }
         });
+        addChartClickHandler(window.chartTempoMedio, (label, value) => showClickFeedback(null, label, value));
         
         // Lista de ranking
         document.getElementById('listaTempoMedio').innerHTML = data.map((item, idx) => `
@@ -1251,13 +1724,18 @@
           },
           options: {
             responsive: true,
-            plugins: { legend: { display: false } },
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig()
+            },
             scales: {
               y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
               x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           }
         });
+        addChartClickHandler(window.chartTempoMedioMes, (label, value) => showClickFeedback(null, label, value));
       }
 
       async function loadTema() {
@@ -1283,13 +1761,22 @@
           options: {
             responsive: true,
             indexAxis: 'y',
-            plugins: { legend: { display: false } },
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end'
+              }
+            },
             scales: {
               x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
               y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           }
         });
+        addChartClickHandler(window.chartTema, (label, value) => showClickFeedback(null, label, value));
         
         // Status geral
         const status = await fetchJSON('/api/stats/status-overview');
@@ -1304,8 +1791,19 @@
               backgroundColor: ['#38bdf8', '#fbbf24']
             }]
           },
-          options: { responsive: true }
+          options: { 
+            responsive: true,
+            plugins: {
+              tooltip: createEnhancedTooltip(),
+              datalabels: {
+                ...createDataLabelsConfig(true),
+                anchor: 'center',
+                align: 'center'
+              }
+            }
+          }
         });
+        addChartClickHandler(window.chartStatusTema, (label, value) => showClickFeedback(null, label, value));
         document.getElementById('statusTemaInfo').innerHTML = `
           <div class="text-cyan-300">Concluída: ${status.concluida.percentual}%</div>
           <div class="text-amber-300">Em atendimento: ${status.emAtendimento.percentual}%</div>
