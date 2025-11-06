@@ -5,7 +5,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Environment variables
-# .env  # Comentado para permitir commit (solicitado pelo usuário)
+# .env está permitido para facilitar deploy e conexão com bancos
 # .env.local
 # .env.*.local
 

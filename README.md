@@ -107,23 +107,31 @@ npm install
 ```
 
 > ⚡ **Automático**: O setup roda automaticamente após `npm install` (via `postinstall`)
+> 
+> O script `postinstall` executa:
+> - ✅ Gera o Prisma Client
+> - ✅ Verifica/cria o banco de dados SQLite
+> - ✅ Prepara o ambiente para rodar
 
 #### 3️⃣ Configure as Variáveis de Ambiente
 
-Crie um arquivo `.env` na raiz do projeto:
+O arquivo `.env` já está incluído no repositório com as configurações de conexão aos bancos de dados. 
 
+> ✅ **Pronto para usar**: O `.env` já contém as credenciais necessárias para conectar ao MongoDB Atlas e outros serviços.
+
+Se precisar personalizar, você pode:
+- Usar o arquivo `.env` existente (já configurado)
+- Ou copiar `.env.example` para criar um novo: `cp .env.example .env`
+
+**Variáveis disponíveis:**
 ```env
-# MongoDB Atlas
-MONGODB_ATLAS_URL="mongodb+srv://usuario:senha@cluster.mongodb.net/ouvidoria?retryWrites=true&w=majority"
-
-# Servidor
-PORT=3000
-
-# Arquivo Excel (opcional)
-EXCEL_FILE="./Dashboard_Duque_de_Caxias_Ouvidoria_Duque_de_Caxias_Tabela_ATUALIZADA.xlsx"
+MONGODB_ATLAS_URL="..."  # Conexão MongoDB Atlas
+PORT=3000                 # Porta do servidor
+EXCEL_FILE="..."          # Caminho do arquivo Excel
+GEMINI_API_KEY="..."      # Chave API Google Gemini (para IA Cora)
+WELLINGTON_DIR=./Wellington  # Diretório de contexto
+DATABASE_URL="file:./prisma/dev.db"  # SQLite local (Prisma)
 ```
-
-> 🔐 **Importante**: Substitua `MONGODB_ATLAS_URL` pela sua string de conexão do MongoDB Atlas
 
 #### 4️⃣ Inicie o Servidor
 
@@ -132,6 +140,8 @@ npm start
 ```
 
 > ✅ O sistema estará disponível em: **http://localhost:3000**
+> 
+> O script `prestart` garante que tudo está configurado antes de iniciar o servidor.
 
 ### 🎉 Pronto!
 
@@ -148,6 +158,9 @@ O sistema está configurado e rodando. Acesse o dashboard no navegador.
 | `MONGODB_ATLAS_URL` | String de conexão do MongoDB Atlas | ✅ Sim | - |
 | `PORT` | Porta do servidor Express | ❌ Não | `3000` |
 | `EXCEL_FILE` | Caminho do arquivo Excel para importação | ❌ Não | - |
+| `GEMINI_API_KEY` | Chave da API Google Gemini (para IA Cora) | ❌ Não | - |
+| `WELLINGTON_DIR` | Diretório com contexto adicional para IA | ❌ Não | `./Wellington` |
+| `DATABASE_URL` | URL do banco SQLite (Prisma) | ❌ Não | `file:./prisma/dev.db` |
 
 ### MongoDB Atlas Setup
 
@@ -424,20 +437,24 @@ O frontend é uma **Single Page Application (SPA)** construída em um único arq
 
 ```bash
 # Instalação e Setup
-npm install          # Instala dependências e roda setup automático
+npm install          # Instala dependências e roda setup automático (postinstall)
 npm run setup        # Executa setup manual (Prisma + DB)
 
 # Servidor
-npm start            # Inicia servidor (porta 3000 ou PORT)
+npm start            # Inicia servidor (porta 3000 ou PORT) - roda prestart automaticamente
 npm run dev          # Mesmo que start
 
-# Banco de Dados
+# Banco de Dados (Prisma)
 npm run prisma:generate  # Gera Prisma Client
-npm run prisma:migrate    # Aplica migrações
+npm run prisma:migrate    # Aplica migrações do Prisma
+npm run prisma:push       # Faz push do schema para o banco (cria/atualiza)
+npm run prisma:studio     # Abre Prisma Studio (interface visual do banco)
 
-# Importação
-npm run import:excel      # Importa dados do Excel
-npm run db:backfill       # Normaliza campos dos registros
+# Dados
+npm run import:excel      # Importa dados do Excel para MongoDB
+npm run db:backfill       # Normaliza campos dos registros no MongoDB
+npm run db:reset          # Reseta banco de dados (cuidado!)
+npm run db:analyze        # Analisa estrutura do banco de dados
 ```
 
 ### Scripts Node (scripts/)
