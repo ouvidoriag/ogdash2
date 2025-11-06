@@ -55,4 +55,14 @@ model Record {
   @@map("records")
 }
 
+model ChatMessage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  text      String
+  sender    String   // 'user' ou 'cora'
+  createdAt DateTime @default(now())
+  
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
 

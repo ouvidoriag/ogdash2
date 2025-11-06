@@ -31,3 +31,6 @@ Thumbs.db
 dist/
 build/
 
+# Dados exportados do banco (podem ser grandes)
+db-data/
+

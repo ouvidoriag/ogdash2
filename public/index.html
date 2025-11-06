@@ -7,6 +7,7 @@
     <link rel="icon" type="image/png" href="/dc-logo.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
       :root {
         --bg: #0b1020;
@@ -24,6 +25,64 @@
       .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.06) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
       @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
       canvas { max-height: 340px; }
+      
+      /* Animações para a página Home */
+      @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); }
+      }
+      .cora-avatar {
+        animation: float 3s ease-in-out infinite;
+        position: relative;
+      }
+      .cora-avatar::before {
+        content: '';
+        position: absolute;
+        inset: -10px;
+        border-radius: 50%;
+        background: linear-gradient(45deg, rgba(34,211,238,0.3), rgba(167,139,250,0.3));
+        filter: blur(20px);
+        z-index: -1;
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.5; transform: scale(1); }
+        50% { opacity: 0.8; transform: scale(1.1); }
+      }
+      .glow-text {
+        text-shadow: 0 0 20px rgba(34,211,238,0.5), 0 0 40px rgba(167,139,250,0.3);
+      }
+
+      /* Scrollbar moderna global: preta e levemente deslocada para fora dos cards */
+      :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll) {
+        padding-right: 12px;
+        margin-right: -12px;
+      }
+      body { scrollbar-gutter: stable; }
+
+      /* WebKit (Chrome, Safari, Edge) */
+      :where(html, body, .overflow-y-auto, .overflow-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll)::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+      }
+      :where(html, body, .overflow-y-auto, .overflow-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll)::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      :where(html, body, .overflow-y-auto, .overflow-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll)::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #0a0a0a, #1a1a1a);
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      :where(html, body, .overflow-y-auto, .overflow-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll)::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #111, #222);
+      }
+
+      /* Firefox */
+      :where(html, body, .overflow-y-auto, .overflow-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll) {
+        scrollbar-width: thin;
+        scrollbar-color: #000000 transparent;
+      }
     </style>
   </head>
   <body class="text-slate-100">
@@ -37,7 +96,9 @@
           </div>
         </div>
         <nav id="sideMenu" class="space-y-2 text-sm">
-          <div data-page="main" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Visão Geral</div>
+          <div data-page="home" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">🏠 Home</div>
+          <div data-page="main" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Visão Geral</div>
+          <a href="/chat" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer block">💬 Cora - Chat</a>
           <div data-page="orgao-mes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Por Órgão e Mês</div>
           <div data-page="tempo-medio" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Tempo Médio</div>
           <div data-page="tema" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Por Tema</div>
@@ -46,24 +107,64 @@
           <div data-page="reclamacoes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Reclamações e Denúncias</div>
           <div class="mt-4 pt-4 border-t border-white/10">
             <div class="text-xs text-slate-500 mb-2 px-3">Unidades</div>
-            <div data-page="unit-adao" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">ADÃO</div>
-            <div data-page="unit-cer-iv" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">CER IV</div>
-            <div data-page="unit-hospital-olho" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital do Olho</div>
-            <div data-page="unit-hospital-duque" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Duque</div>
-            <div data-page="unit-hospital-infantil" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Infantil</div>
-            <div data-page="unit-hospital-moacyr" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Moacyr</div>
-            <div data-page="unit-maternidade-santa-cruz" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Maternidade Santa Cruz</div>
-            <div data-page="unit-upa-beira-mar" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Beira Mar</div>
-            <div data-page="unit-uph-pilar" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Pilar</div>
-            <div data-page="unit-uph-saracuruna" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Saracuruna</div>
-            <div data-page="unit-uph-xerem" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Xerém</div>
-            <div data-page="unit-hospital-veterinario" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Veterinário</div>
-            <div data-page="unit-upa-walter-garcia" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Walter Garcia</div>
-            <div data-page="unit-uph-campos-eliseos" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Campos Elíseos</div>
-            <div data-page="unit-uph-parque-equitativa" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Parque Equitativa</div>
-            <div data-page="unit-ubs-antonio-granja" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UBS Antonio Granja</div>
-            <div data-page="unit-upa-sarapui" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Sarapuí</div>
-            <div data-page="unit-uph-imbarie" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Imbariê</div>
+            
+            <!-- Hospitais -->
+            <div class="mb-2">
+              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="hospitais">
+                <span>🏥 Hospitais</span>
+                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+              </div>
+              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="hospitais" style="display: none;">
+                <div data-page="unit-hospital-olho" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital do Olho</div>
+                <div data-page="unit-hospital-duque" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Duque</div>
+                <div data-page="unit-hospital-infantil" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Infantil</div>
+                <div data-page="unit-hospital-moacyr" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Moacyr</div>
+                <div data-page="unit-hospital-veterinario" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Veterinário</div>
+                <div data-page="unit-maternidade-santa-cruz" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Maternidade Santa Cruz</div>
+              </div>
+            </div>
+            
+            <!-- UPH -->
+            <div class="mb-2">
+              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="uph">
+                <span>🏥 UPH</span>
+                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+              </div>
+              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="uph" style="display: none;">
+                <div data-page="unit-uph-pilar" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Pilar</div>
+                <div data-page="unit-uph-saracuruna" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Saracuruna</div>
+                <div data-page="unit-uph-xerem" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Xerém</div>
+                <div data-page="unit-uph-campos-eliseos" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Campos Elíseos</div>
+                <div data-page="unit-uph-parque-equitativa" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Parque Equitativa</div>
+                <div data-page="unit-uph-imbarie" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Imbariê</div>
+              </div>
+            </div>
+            
+            <!-- UPA -->
+            <div class="mb-2">
+              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="upa">
+                <span>🚑 UPA</span>
+                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+              </div>
+              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="upa" style="display: none;">
+                <div data-page="unit-upa-beira-mar" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Beira Mar</div>
+                <div data-page="unit-upa-walter-garcia" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Walter Garcia</div>
+                <div data-page="unit-upa-sarapui" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Sarapuí</div>
+              </div>
+            </div>
+            
+            <!-- Outros -->
+            <div class="mb-2">
+              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="outros">
+                <span>📍 Outros</span>
+                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+              </div>
+              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="outros" style="display: none;">
+                <div data-page="unit-adao" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">ADÃO</div>
+                <div data-page="unit-cer-iv" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">CER IV</div>
+                <div data-page="unit-ubs-antonio-granja" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UBS Antonio Granja</div>
+              </div>
+            </div>
           </div>
           <div data-page="secretaria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Secretarias</div>
           <div data-page="tipo" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Tipos de Manifestação</div>
@@ -95,7 +196,7 @@
               </div>
             </div>
             <div class="pt-2 mt-2 border-t border-white/5">
-              <div class="text-slate-400 mb-2 text-[10px] uppercase tracking-wide">Analistas de Ouvidoria</div>
+              <div class="text-slate-400 mb-2 text-[10px] uppercase tracking-wide">Analistas Estratégicos da Ouvidoria</div>
               <div class="space-y-1 text-slate-300">
                 <div class="text-[11px]">• Nikolas Brian</div>
                 <div class="text-[11px]">• Rildo Luiz</div>
@@ -107,96 +208,258 @@
       </aside>
 
       <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">
-        <!-- Painel principal: Visão Geral -->
-        <section id="page-main">
-          <header class="glass rounded-2xl p-6 relative overflow-hidden">
-            <div class="absolute inset-0 opacity-30" style="background: radial-gradient(600px 200px at 10% 0%, rgba(34,211,238,0.25), transparent 60%), radial-gradient(600px 200px at 90% 100%, rgba(167,139,250,0.25), transparent 60%)"></div>
-            <div class="relative flex flex-wrap items-center justify-between gap-4">
-              <div class="flex items-center gap-4">
-                <img src="/dc-logo.png" alt="Duque de Caxias" class="h-16 w-auto object-contain" />
-              <div>
-                <h1 class="text-2xl font-bold neon">Análise avançada de ouvidorias</h1>
-                <p class="text-slate-400">• Edrisio Avelino • Ouvidor Geral •</p>
+        <!-- Indicador de Filtros Ativos -->
+        <div id="filterIndicator" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate__animated animate__fadeInDown"></div>
+        
+        <!-- Página Home: Apresentação da Cora -->
+        <section id="page-home" class="animate__animated animate__fadeIn">
+          <div class="glass rounded-2xl p-8 md:p-12 text-center">
+            <!-- Logo/Ícone da Cora com animação -->
+            <div class="mb-8">
+              <div class="inline-block relative">
+                <div class="cora-avatar w-32 h-32 md:w-40 md:h-40 mx-auto rounded-full bg-gradient-to-br from-cyan-400 via-purple-500 to-pink-500 flex items-center justify-center text-6xl md:text-7xl animate__animated animate__pulse animate__infinite" style="animation-duration: 2s;">
+                  🤖
+                </div>
+                <div class="absolute inset-0 rounded-full bg-cyan-400/20 blur-2xl animate-pulse"></div>
+              </div>
+            </div>
+            
+            <!-- Título principal -->
+            <h1 class="text-4xl md:text-6xl font-extrabold mb-4 neon animate__animated animate__fadeInDown">
+              Olá, Prefeito! 👋
+            </h1>
+            <h2 class="text-2xl md:text-4xl font-bold text-cyan-300 mb-8 animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
+              Eu sou a <span class="text-purple-400">Cora</span>
+            </h2>
+            
+            <!-- Subtítulo -->
+            <p class="text-lg md:text-xl text-slate-300 mb-12 max-w-3xl mx-auto animate__animated animate__fadeIn" style="animation-delay: 0.4s;">
+              Sua assistente virtual inteligente especializada em análises de ouvidoria
+            </p>
+            
+            <!-- Cards de funcionalidades -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+              <!-- Card 1: Chat Inteligente -->
+              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-300 animate__animated animate__fadeInLeft" style="animation-delay: 0.6s;">
+                <div class="text-4xl mb-4">💬</div>
+                <h3 class="text-xl font-bold text-cyan-300 mb-2">Chat Inteligente</h3>
+                <p class="text-sm text-slate-400">
+                  Faça perguntas em linguagem natural e receba respostas precisas baseadas em dados reais do banco de dados
+                </p>
+              </div>
+              
+              <!-- Card 2: Análises em Tempo Real -->
+              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-300 animate__animated animate__fadeInUp" style="animation-delay: 0.8s;">
+                <div class="text-4xl mb-4">📊</div>
+                <h3 class="text-xl font-bold text-purple-300 mb-2">Análises em Tempo Real</h3>
+                <p class="text-sm text-slate-400">
+                  Acesso direto ao banco de dados MongoDB para fornecer informações atualizadas e precisas
+                </p>
+              </div>
+              
+              <!-- Card 3: IA Avançada -->
+              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-300 animate__animated animate__fadeInRight" style="animation-delay: 1s;">
+                <div class="text-4xl mb-4">🧠</div>
+                <h3 class="text-xl font-bold text-pink-300 mb-2">IA Avançada</h3>
+                <p class="text-sm text-slate-400">
+                  Powered by Google Gemini 2.0, com capacidade de cálculos matemáticos e análises estatísticas
+                </p>
+              </div>
+            </div>
+            
+            <!-- Como funciona -->
+            <div class="glass rounded-xl p-8 mb-8 max-w-4xl mx-auto animate__animated animate__fadeIn" style="animation-delay: 1.2s;">
+              <h3 class="text-2xl font-bold text-cyan-300 mb-6 flex items-center justify-center gap-2">
+                <span>⚡</span> Como Funciona
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                <div class="flex items-start gap-4">
+                  <div class="flex-shrink-0 w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-300 font-bold text-lg">
+                    1
+                  </div>
+                  <div>
+                    <h4 class="font-semibold text-white mb-1">Você faz uma pergunta</h4>
+                    <p class="text-sm text-slate-400">
+                      Pergunte sobre secretarias, setores, temas, protocolos, bairros, ou qualquer informação da ouvidoria
+                    </p>
+                  </div>
+                </div>
+                
+                <div class="flex items-start gap-4">
+                  <div class="flex-shrink-0 w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-300 font-bold text-lg">
+                    2
+                  </div>
+                  <div>
+                    <h4 class="font-semibold text-white mb-1">Cora busca no banco</h4>
+                    <p class="text-sm text-slate-400">
+                      Sistema inteligente identifica palavras-chave e busca dados relevantes automaticamente no MongoDB
+                    </p>
+                  </div>
+                </div>
+                
+                <div class="flex items-start gap-4">
+                  <div class="flex-shrink-0 w-10 h-10 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-300 font-bold text-lg">
+                    3
+                  </div>
+                  <div>
+                    <h4 class="font-semibold text-white mb-1">IA processa e responde</h4>
+                    <p class="text-sm text-slate-400">
+                      Gemini 2.0 analisa os dados, faz cálculos quando necessário e formata uma resposta clara e objetiva
+                    </p>
+                  </div>
+                </div>
+                
+                <div class="flex items-start gap-4">
+                  <div class="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-300 font-bold text-lg">
+                    4
+                  </div>
+                  <div>
+                    <h4 class="font-semibold text-white mb-1">Resposta formatada</h4>
+                    <p class="text-sm text-slate-400">
+                      Receba respostas em Markdown com formatação profissional, números destacados e informações organizadas
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div class="flex items-center gap-3">
-                <div class="flex items-center gap-2">
-                  <label class="text-sm text-slate-400 whitespace-nowrap">Contagem por:</label>
-                  <select id="countBy" onchange="if(this.value) loadCountChart(this.value)" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none glow-ring cursor-pointer hover:bg-slate-800/60 transition-colors">
-                    <option value="Secretaria">Secretaria</option>
-                    <option value="Setor">Setor</option>
-                    <option value="Tipo">Tipo</option>
-                    <option value="Categoria" selected>Categoria</option>
-                    <option value="Bairro">Bairro</option>
-                    <option value="Status">Status</option>
-                    <option value="UAC">UAC</option>
-                    <option value="Responsavel">Responsável</option>
-                    <option value="Canal">Canal</option>
-                    <option value="Prioridade">Prioridade</option>
-                    <option value="Tema">Tema</option>
-                    <option value="Assunto">Assunto</option>
-                    <option value="Servidor">Servidor</option>
-                  </select>
+            </div>
+            
+            <!-- Exemplos de perguntas -->
+            <div class="glass rounded-xl p-8 max-w-4xl mx-auto mb-8 animate__animated animate__fadeIn" style="animation-delay: 1.4s;">
+              <h3 class="text-xl font-bold text-purple-300 mb-4">💡 Exemplos de Perguntas</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                <div class="bg-slate-800/50 rounded-lg p-4 border border-cyan-500/20">
+                  <p class="text-sm text-cyan-200">"Qual a secretaria com mais reclamações?"</p>
                 </div>
-                <div class="flex items-center gap-2">
-                  <label class="text-sm text-slate-400 whitespace-nowrap">Série temporal:</label>
-                  <select id="dateField" onchange="if(this.value) loadTimeChart(this.value)" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none glow-ring cursor-pointer hover:bg-slate-800/60 transition-colors">
-                    <option value="Data" selected>Data</option>
-                    <option value="Data Abertura">Data Abertura</option>
-                    <option value="Data Conclusão">Data Conclusão</option>
-                    <option value="Abertura">Abertura</option>
-                  </select>
+                <div class="bg-slate-800/50 rounded-lg p-4 border border-purple-500/20">
+                  <p class="text-sm text-purple-200">"Quantas UPAs temos?"</p>
                 </div>
+                <div class="bg-slate-800/50 rounded-lg p-4 border border-pink-500/20">
+                  <p class="text-sm text-pink-200">"O que tem no protocolo 00719.2025.000011-41?"</p>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4 border border-emerald-500/20">
+                  <p class="text-sm text-emerald-200">"Qual o bairro com mais reclamações?"</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Botão de ação -->
+            <div class="animate__animated animate__fadeInUp" style="animation-delay: 1.6s;">
+              <a href="/chat" class="inline-block px-8 py-4 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl font-bold text-lg hover:scale-105 transition-transform duration-300 glow-ring">
+                🚀 Começar a Conversar com a Cora
+              </a>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Painel principal: Visão Geral (refatorado) -->
+        <section id="page-main" style="display: none;">
+          <header class="glass rounded-2xl p-6 relative overflow-hidden">
+            <div class="absolute inset-0 opacity-30" style="background: radial-gradient(600px 220px at 8% 0%, rgba(34,211,238,0.22), transparent 60%), radial-gradient(600px 220px at 92% 100%, rgba(167,139,250,0.22), transparent 60%)"></div>
+            <div class="relative flex flex-wrap items-center justify-between gap-4">
+              <div class="flex items-center gap-4">
+                <img src="/dc-logo.png" alt="Duque de Caxias" class="h-14 w-auto object-contain" />
+              <div>
+                  <h1 class="text-xl md:text-2xl font-bold neon">Visão Geral • Inteligência Estratégicas</h1>
+                  <div class="text-slate-400 text-xs">Dados interligados: clique para filtrar todo o painel</div>
+                </div>
+              </div>
+                <div class="flex items-center gap-2">
+                <button class="px-3 py-1.5 text-xs rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-800 glow-ring" onclick="applyGlobalFilter('Status','Concluída','quick')">Concluídas</button>
+                <button class="px-3 py-1.5 text-xs rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-800 glow-ring" onclick="applyGlobalFilter('Status','Em atendimento','quick')">Ativas</button>
+                <button class="px-3 py-1.5 text-xs rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-800 glow-ring" onclick="applyGlobalFilter('Data', new Date().toISOString().slice(0,7),'quick')">Mês atual</button>
+                <button class="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/30 glow-ring" onclick="clearGlobalFilters()">Limpar filtros</button>
               </div>
             </div>
           </header>
 
+          <!-- KPIs + Mini Tendências -->
         <section class="grid grid-cols-12 gap-6">
-          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp">
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
             <div class="text-slate-400 text-sm">Total</div>
-            <div id="kpiTotal" class="text-3xl font-extrabold mt-2">—</div>
-            <div class="text-xs text-slate-500">Registros na base</div>
+              <div class="flex items-end gap-3 mt-2">
+                <div id="kpiTotal" class="text-3xl font-extrabold">—</div>
+                <div id="kpiTotalDelta" class="text-xs text-slate-400 mb-1">—</div>
           </div>
-          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+              <canvas id="sparkTotal" height="32" class="mt-2"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
             <div class="text-slate-400 text-sm">Últimos 7 dias</div>
-            <div id="kpi7" class="text-3xl font-extrabold mt-2">—</div>
-            <div class="text-xs text-slate-500">Tendência semanal</div>
+              <div class="flex items-end gap-3 mt-2">
+                <div id="kpi7" class="text-3xl font-extrabold">—</div>
+                <div id="kpi7Delta" class="text-xs text-slate-400 mb-1">—</div>
           </div>
-          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-2s">
+              <canvas id="spark7" height="32" class="mt-2"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
             <div class="text-slate-400 text-sm">Últimos 30 dias</div>
-            <div id="kpi30" class="text-3xl font-extrabold mt-2">—</div>
-            <div class="text-xs text-slate-500">Tendência mensal</div>
+              <div class="flex items-end gap-3 mt-2">
+                <div id="kpi30" class="text-3xl font-extrabold">—</div>
+                <div id="kpi30Delta" class="text-xs text-slate-400 mb-1">—</div>
           </div>
-          <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-3s">
+              <canvas id="spark30" height="32" class="mt-2"></canvas>
+            </div>
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
             <div class="text-slate-400 text-sm">Status principal</div>
             <div id="kpiTopStatus" class="text-3xl font-extrabold mt-2">—</div>
-            <div class="text-xs text-slate-500">Situação mais frequente</div>
+              <div id="kpiTopStatusHint" class="text-xs text-slate-500">—</div>
           </div>
         </section>
 
+          <!-- Linha de Insights + SLA -->
           <section class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
+            <div class="col-span-12 xl:col-span-8 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-emerald-300">Insights automáticos</h3>
+              <div id="insightsBox" class="text-sm text-slate-300 space-y-2">
+                <!-- preenchido dinamicamente -->
+              </div>
+            </div>
+            <div class="col-span-12 xl:col-span-4 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-cyan-300">SLA Geral</h3>
+              <canvas id="chartSlaOverview"></canvas>
+            </div>
+          </section>
+
+          <!-- Principais gráficos -->
+          <section class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
               <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Contagem por campo</h3>
+                <h3 class="font-semibold text-slate-200">Tendência mensal (12M)</h3>
               </div>
             <div class="rounded-xl overflow-hidden bg-slate-900/30">
-              <canvas id="chartCount" class="skeleton"></canvas>
+                <canvas id="chartTrend"></canvas>
             </div>
             </div>
-            <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
               <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Série temporal</h3>
+                <h3 class="font-semibold text-slate-200">Top Órgãos (Top 10)</h3>
               </div>
               <div class="rounded-xl overflow-hidden bg-slate-900/30">
-                <canvas id="chartTime" class="skeleton"></canvas>
+                <canvas id="chartTopOrgaos"></canvas>
+              </div>
+            </div>
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-slate-200">Top Temas</h3>
+              </div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30">
+                <canvas id="chartTopTemas"></canvas>
+              </div>
+            </div>
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-slate-200">Funil por Status</h3>
+              </div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30">
+                <canvas id="chartFunnelStatus"></canvas>
               </div>
             </div>
           </section>
-          <!-- Heatmap Geral: Mês x Categoria -->
+
+          <!-- Heatmap dinâmico -->
           <section class="grid grid-cols-12 gap-6">
             <div class="col-span-12 glass rounded-2xl p-5">
               <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Heatmap por Mês x Categoria (Top 10)</h3>
+                <h3 class="font-semibold text-slate-200">Heatmap: Mês × Dimensão</h3>
                 <div>
                   <select id="heatmapDim" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm glow-ring">
                     <option>Categoria</option>
@@ -216,20 +479,40 @@
             </div>
           </section>
         <section class="grid grid-cols-12 gap-6">
-          <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-3">
+          <div class="col-span-12 glass rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-4">
               <h3 class="font-semibold text-slate-200">Distribuição por Status</h3>
+              <div class="flex items-center gap-2">
+                <button id="btnMarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition-colors">
+                  ✓ Marcar Todos
+                </button>
+                <button id="btnDesmarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-slate-500/20 text-slate-300 hover:bg-slate-500/30 border border-slate-500/30 transition-colors">
+                  ✗ Desmarcar Todos
+                </button>
+              </div>
             </div>
-            <div class="rounded-xl overflow-hidden bg-slate-900/30">
-              <canvas id="chartStatus" class="skeleton"></canvas>
-            </div>
-          </div>
-          <div class="col-span-12 xl:col-span-6 glass rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="font-semibold text-slate-200">Registros por Mês (12M)</h3>
-            </div>
-            <div class="rounded-xl overflow-hidden bg-slate-900/30">
-              <canvas id="chartMonth" class="skeleton"></canvas>
+            <div class="grid grid-cols-12 gap-4">
+              <div class="col-span-12 lg:col-span-5 rounded-xl overflow-hidden bg-slate-900/30 flex items-center justify-center">
+                <canvas id="chartStatus"></canvas>
+              </div>
+              <div class="col-span-12 lg:col-span-7">
+                <div class="mb-3 flex items-center gap-4 text-xs px-2 py-2 rounded-lg bg-slate-900/30 border border-white/5">
+                  <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
+                    <span class="text-slate-300 font-medium">Encerradas</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50"></div>
+                    <span class="text-slate-300 font-medium">Ativas</span>
+                  </div>
+                  <div class="ml-auto text-slate-500 text-[10px]">
+                    Clique nos itens para mostrar/ocultar
+                  </div>
+                </div>
+                <div id="statusLegend" class="max-h-[400px] overflow-y-auto pr-2 space-y-1 text-xs">
+                  <!-- Legenda será preenchida dinamicamente -->
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -239,26 +522,60 @@
               <h3 class="font-semibold text-slate-200">SLA (e-SIC e Outros)</h3>
             </div>
             <div class="rounded-xl overflow-hidden bg-slate-900/30">
-              <canvas id="chartSla" class="skeleton"></canvas>
+              <canvas id="chartSla"></canvas>
             </div>
           </div>
         </section>
-
-          <section class="glass rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="font-semibold text-slate-200">Tabela (primeiros registros)</h3>
-              <button id="btnExport" class="px-3 py-2 text-sm rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 glow-ring">Exportar CSV</button>
-            </div>
-            <div class="overflow-auto rounded-xl border border-white/10">
-              <table class="min-w-full text-sm">
-                <thead class="bg-slate-900/40">
-                  <tr id="thead"></tr>
-                </thead>
-                <tbody id="tbody" class="divide-y divide-white/5"></tbody>
-              </table>
-            </div>
-          </section>
+        
         </section>
+        
+        <!-- Página Cora - Chat -->
+        <section id="page-cora-chat" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6 relative overflow-hidden">
+            <div class="absolute inset-0 opacity-30" style="background: radial-gradient(600px 200px at 10% 0%, rgba(167,139,250,0.25), transparent 60%)"></div>
+            <div class="relative">
+              <h2 class="neon text-xl font-bold mb-2">💬 Cora - Chat</h2>
+              <p class="text-slate-400 text-sm">Assistente virtual para dúvidas e suporte</p>
+            </div>
+          </header>
+          <div class="glass rounded-2xl p-5">
+            <div id="chatContainer" class="flex flex-col h-[600px] bg-slate-900/30 rounded-xl border border-white/10 overflow-hidden">
+              <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-3">
+                <div class="flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                    <span class="text-white text-sm font-bold">C</span>
+                  </div>
+                  <div class="flex-1">
+                    <div class="bg-slate-800/60 rounded-lg p-3 text-sm text-slate-200">
+                      <div class="font-semibold text-purple-300 mb-1">Cora</div>
+                      <div>Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje Prefeito?</div>
+                    </div>
+                    <div class="text-xs text-slate-500 mt-1 ml-1">Agora</div>
+                  </div>
+                </div>
+              </div>
+              <div class="border-t border-white/10 p-4">
+                <form id="chatForm" class="flex gap-2" onsubmit="return false;">
+                  <input 
+                    type="text" 
+                    id="chatInput" 
+                    placeholder="Digite sua mensagem..." 
+                    class="flex-1 bg-slate-800/60 border border-white/10 rounded-lg px-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    autocomplete="off"
+                  />
+                  <button 
+                    type="button" 
+                    id="chatSubmitBtn"
+                    class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white font-semibold hover:from-purple-600 hover:to-pink-600 transition-all glow-ring"
+                  >
+                    Enviar
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+        
         <!-- Página por Categoria -->
         <section id="page-categoria" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Categorias</h2></header>
@@ -789,6 +1106,61 @@
           </div>
         </section>
       </main>
+      
+      <!-- Widget de Chat Flutuante (sempre visível) -->
+      <div id="chatWidget" class="fixed bottom-6 right-6 z-50">
+        <div id="chatWidgetToggle" class="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg cursor-pointer flex items-center justify-center hover:scale-110 transition-transform glow-ring">
+          <span class="text-white text-2xl">💬</span>
+        </div>
+        <div id="chatWidgetWindow" class="hidden absolute bottom-20 right-0 w-80 h-96 glass rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+          <div class="bg-gradient-to-r from-purple-500/20 to-pink-500/20 p-4 border-b border-white/10 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <span class="text-white text-sm font-bold">C</span>
+              </div>
+              <div>
+                <div class="font-semibold text-slate-200">Cora</div>
+                <div class="text-xs text-slate-400">Online</div>
+              </div>
+            </div>
+            <button id="chatWidgetClose" class="text-slate-400 hover:text-slate-200 transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="chatWidgetMessages" class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div class="flex items-start gap-2">
+              <div class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                <span class="text-white text-xs font-bold">C</span>
+              </div>
+              <div class="flex-1">
+                <div class="bg-slate-800/60 rounded-lg p-2 text-xs text-slate-200">
+                  Olá! Como posso ajudar?
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="border-t border-white/10 p-3">
+            <form id="chatWidgetForm" class="flex gap-2" onsubmit="return false;">
+              <input 
+                type="text" 
+                id="chatWidgetInput" 
+                placeholder="Digite..." 
+                class="flex-1 bg-slate-800/60 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                autocomplete="off"
+              />
+              <button 
+                type="button" 
+                id="chatWidgetSubmitBtn"
+                class="px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white text-xs font-semibold hover:from-purple-600 hover:to-pink-600 transition-all"
+              >
+                →
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -850,7 +1222,7 @@
       }
       
       // Função helper para adicionar eventos de clique
-      function addChartClickHandler(chart, onClickCallback) {
+      function addChartClickHandler(chart, onClickCallback, chartId = null) {
         chart.canvas.style.cursor = 'pointer';
         chart.canvas.onclick = function(evt) {
           const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
@@ -858,7 +1230,18 @@
             const firstPoint = points[0];
             const label = chart.data.labels[firstPoint.index];
             const value = chart.data.datasets[firstPoint.datasetIndex].data[firstPoint.index];
+            
+            // Aplicar filtro global se chartId for fornecido
+            if (chartId && chartFieldMap[chartId]) {
+              const fieldConfig = chartFieldMap[chartId];
+              if (fieldConfig.field) {
+                applyGlobalFilter(fieldConfig.field, label, chartId);
+              }
+            }
+            
+            if (onClickCallback) {
             onClickCallback(label, value, firstPoint.index);
+            }
           }
         };
       }
@@ -891,21 +1274,316 @@
         return res.json();
       }
 
+      // ========== SISTEMA DE FILTROS GLOBAL ==========
+      // Estado global de filtros
+      window.globalFilters = {
+        filters: [],
+        activeField: null,
+        activeValue: null
+      };
+
+      // Mapeamento de campos de gráficos para campos de filtro
+      const chartFieldMap = {
+        'chartStatus': { field: 'Status', op: 'eq' },
+        'chartStatusPage': { field: 'Status', op: 'eq' },
+        'chartStatusTema': { field: 'Status', op: 'eq' },
+        'chartStatusAssunto': { field: 'Status', op: 'eq' },
+        'chartTrend': { field: 'Data', op: 'contains' },
+        'chartTopOrgaos': { field: 'Orgaos', op: 'contains' },
+        'chartTopTemas': { field: 'Tema', op: 'eq' },
+        'chartFunnelStatus': { field: 'Status', op: 'eq' },
+        'chartSlaOverview': { field: null, op: null },
+        'chartOrgaoMes': { field: 'Orgaos', op: 'contains' },
+        'chartSecretaria': { field: 'Secretaria', op: 'contains' },
+        'chartTipo': { field: 'Tipo', op: 'eq' },
+        'chartSetor': { field: 'Setor', op: 'contains' },
+        'chartCategoria': { field: 'Categoria', op: 'eq' },
+        'chartBairro': { field: 'Bairro', op: 'contains' },
+        'chartUAC': { field: 'UAC', op: 'contains' },
+        'chartResponsavel': { field: 'Responsavel', op: 'contains' },
+        'chartCanal': { field: 'Canal', op: 'eq' },
+        'chartPrioridade': { field: 'Prioridade', op: 'eq' },
+        'chartTema': { field: 'Tema', op: 'eq' },
+        'chartAssunto': { field: 'Assunto', op: 'contains' },
+        'chartMonth': { field: 'Data', op: 'contains' },
+        'chartTempoMedio': { field: 'Orgaos', op: 'contains' },
+        'chartTempoMedioMes': { field: 'Data', op: 'contains' },
+        'chartCount': { field: null, op: null }, // Campo dinâmico
+        'chartTime': { field: null, op: null }, // Campo dinâmico
+        'chartSla': { field: null, op: null } // Não filtra
+      };
+
+      // Função para aplicar filtro
+      function applyGlobalFilter(field, value, chartId = null) {
+        if (!field || !value) return;
+        
+        // Determinar operação baseado no tipo de campo
+        let op = 'contains';
+        if (chartId && chartFieldMap[chartId]) {
+          op = chartFieldMap[chartId].op || 'contains';
+          field = chartFieldMap[chartId].field || field;
+        }
+        
+        // Remover filtros anteriores do mesmo campo
+        window.globalFilters.filters = window.globalFilters.filters.filter(f => f.field !== field);
+        
+        // Adicionar novo filtro
+        window.globalFilters.filters.push({ field, value, op });
+        window.globalFilters.activeField = field;
+        window.globalFilters.activeValue = value;
+        
+        // Atualizar indicador visual
+        updateFilterIndicator();
+        
+        // Recarregar todos os dados
+        reloadAllData();
+      }
+
+      // Função para limpar todos os filtros (global)
+      window.clearGlobalFilters = function() {
+        window.globalFilters.filters = [];
+        window.globalFilters.activeField = null;
+        window.globalFilters.activeValue = null;
+        updateFilterIndicator();
+        reloadAllData();
+      }
+
+      // Função para atualizar indicador visual de filtros
+      function updateFilterIndicator() {
+        const indicator = document.getElementById('filterIndicator');
+        if (!indicator) return;
+        
+        if (window.globalFilters.filters.length > 0) {
+          const filterText = window.globalFilters.filters.map(f => `${f.field}: ${f.value}`).join(', ');
+          indicator.innerHTML = `
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-500/20 border border-cyan-500/30">
+              <span class="text-cyan-300 text-sm">🔍 Filtro ativo:</span>
+              <span class="text-slate-200 text-sm">${filterText}</span>
+              <button onclick="clearGlobalFilters()" class="ml-2 text-cyan-300 hover:text-cyan-100 text-sm font-bold">✕</button>
+            </div>
+          `;
+          indicator.classList.remove('hidden');
+        } else {
+          indicator.classList.add('hidden');
+        }
+      }
+
+      // Função para recarregar todos os dados com filtros
+      async function reloadAllData() {
+        const currentPage = document.querySelector('[data-page].active')?.getAttribute('data-page') || 'main';
+        
+        // Recarregar dados da página principal (usar Overview completo)
+        if (currentPage === 'main' || currentPage === '') {
+          await loadOverview();
+        }
+        
+        // Recarregar dados específicos da página atual
+        if (currentPage === 'orgao-mes') await loadOrgaoMes();
+        if (currentPage === 'tempo-medio') await loadTempoMedio();
+        if (currentPage === 'tema') await loadTema();
+        if (currentPage === 'assunto') await loadAssunto();
+        if (currentPage === 'cadastrante') await loadCadastrante();
+        if (currentPage === 'reclamacoes') await loadReclamacoes();
+        if (currentPage === 'status') await loadStatusPage();
+        if (currentPage === 'bairro') await loadBairro();
+        if (currentPage === 'uac') await loadUAC();
+        if (currentPage === 'responsavel') await loadResponsavel();
+        if (currentPage === 'canal') await loadCanal();
+        if (currentPage === 'prioridade') await loadPrioridade();
+        if (currentPage === 'categoria') await loadCategoria();
+      }
+
+      // Função para buscar dados com filtros aplicados
+      async function fetchJSONWithFilters(url, opts = {}) {
+        if (window.globalFilters.filters.length === 0) {
+          return await fetchJSON(url, opts);
+        }
+        
+        // Se há filtros, usar endpoint de filtro
+        const filterUrl = '/api/filter';
+        const filterOpts = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filters: window.globalFilters.filters })
+        };
+        
+        const filteredData = await fetchJSON(filterUrl, filterOpts);
+        
+        // Para endpoints de agregação, precisamos processar os dados filtrados
+        // Por enquanto, retornamos os dados filtrados e processamos no cliente
+        return filteredData;
+      }
+
+      // ========== Carregamento da Visão Geral ==========
+      async function loadOverview() {
+        try {
+          // KPIs e status principal já tratados por loadKpis (mantemos)
+          await loadKpis();
+
+          // Tendência mensal (12M) usando /api/aggregate/by-month
+          const byMonth = await fetchJSON('/api/aggregate/by-month');
+          const labels = byMonth.map(x => x.month);
+          const values = byMonth.map(x => x.count);
+          if (window.chartTrend instanceof Chart) window.chartTrend.destroy();
+          const ctxTrend = document.getElementById('chartTrend')?.getContext('2d');
+          if (ctxTrend) {
+            window.chartTrend = new Chart(ctxTrend, {
+              type: 'line',
+              data: { labels, datasets: [{
+                label: 'Manifestações',
+                data: values,
+                fill: true,
+                borderColor: '#22d3ee',
+                backgroundColor: gradient(ctxTrend, 'rgba(34,211,238,0.35)', 'rgba(34,211,238,0.05)'),
+                tension: 0.35,
+                borderWidth: 2,
+                pointRadius: 3
+              }]},
+              options: {
+                responsive: true,
+                plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: { display: false } },
+                scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } }
+              }
+            });
+            addChartClickHandler(window.chartTrend, (label, value) => showClickFeedback(null, label, value), 'chartTrend');
+          }
+
+          // Top Órgãos
+          const orgaos = await fetchJSON('/api/aggregate/count-by?field=Orgaos');
+          const orgLabels = orgaos.slice(0, 10).map(x => x.key);
+          const orgValues = orgaos.slice(0, 10).map(x => x.count);
+          if (window.chartTopOrgaos instanceof Chart) window.chartTopOrgaos.destroy();
+          const ctxOrg = document.getElementById('chartTopOrgaos')?.getContext('2d');
+          if (ctxOrg) {
+            window.chartTopOrgaos = new Chart(ctxOrg, {
+              type: 'bar',
+              data: { labels: orgLabels, datasets: [{ data: orgValues, backgroundColor: 'rgba(167,139,250,0.7)', borderColor: 'rgba(167,139,250,1)', borderWidth: 1 }] },
+              options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+            });
+            addChartClickHandler(window.chartTopOrgaos, (label, value) => showClickFeedback(null, label, value), 'chartTopOrgaos');
+          }
+
+          // Top Temas
+          const temas = await fetchJSON('/api/aggregate/by-theme');
+          const temaLabels = temas.slice(0, 10).map(x => x.tema);
+          const temaValues = temas.slice(0, 10).map(x => x.quantidade);
+          if (window.chartTopTemas instanceof Chart) window.chartTopTemas.destroy();
+          const ctxTemas = document.getElementById('chartTopTemas')?.getContext('2d');
+          if (ctxTemas) {
+            window.chartTopTemas = new Chart(ctxTemas, {
+              type: 'bar',
+              data: { labels: temaLabels, datasets: [{ data: temaValues, backgroundColor: 'rgba(34,211,238,0.7)', borderColor: 'rgba(34,211,238,1)', borderWidth: 1 }] },
+              options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+            });
+            addChartClickHandler(window.chartTopTemas, (label, value) => showClickFeedback(null, label, value), 'chartTopTemas');
+          }
+
+          // Funil por status (usa summary.statusCounts se disponível)
+          const summary = await fetchJSON('/api/summary');
+          const statusCounts = (summary.statusCounts || []).slice(0, 6);
+          const funilLabels = statusCounts.map(s => s.status);
+          const funilValues = statusCounts.map(s => s.count);
+          if (window.chartFunnelStatus instanceof Chart) window.chartFunnelStatus.destroy();
+          const ctxFunnel = document.getElementById('chartFunnelStatus')?.getContext('2d');
+          if (ctxFunnel) {
+            window.chartFunnelStatus = new Chart(ctxFunnel, {
+              type: 'bar',
+              data: { labels: funilLabels, datasets: [{ data: funilValues, backgroundColor: ['#22d3ee','#a78bfa','#34d399','#f59e0b','#fb7185','#e879f9'] }] },
+              options: { responsive: true, plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } }
+            });
+            addChartClickHandler(window.chartFunnelStatus, (label, value) => showClickFeedback(null, label, value), 'chartFunnelStatus');
+          }
+
+          // SLA Overview (reuso de /api/sla/summary)
+          const sla = await fetchJSON('/api/sla/summary');
+          const ctxSla = document.getElementById('chartSlaOverview')?.getContext('2d');
+          if (ctxSla) {
+            if (window.chartSlaOverview instanceof Chart) window.chartSlaOverview.destroy();
+            window.chartSlaOverview = new Chart(ctxSla, {
+              type: 'bar',
+              data: { labels: ['e-SIC Dentro', 'e-SIC Atraso', 'Outros Verde', 'Outros Amarelo', 'Outros Atraso'], datasets: [{ data: [sla.esic?.dentro||0, sla.esic?.atraso||0, sla.outros?.verde||0, sla.outros?.amarelo||0, sla.outros?.atraso||0], backgroundColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185'] }] },
+              options: { responsive: true, plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } }
+            });
+            addChartClickHandler(window.chartSlaOverview, (label, value) => showClickFeedback(null, label, value), 'chartSlaOverview');
+          }
+
+          // Sparks e deltas rápidos usando byMonth
+          const totalNow = values[values.length-1] || 0;
+          const totalPrev = values[values.length-2] || 0;
+          const delta = totalPrev ? (((totalNow-totalPrev)/totalPrev)*100).toFixed(1) : 0;
+          const deltaEl = document.getElementById('kpiTotalDelta');
+          if (deltaEl) deltaEl.textContent = `${delta>=0?'+':''}${delta}% vs mês anterior`;
+
+          // Desenhar sparks simples
+          const drawSpark = (canvasId, data, color) => {
+            const c = document.getElementById(canvasId);
+            if (!c) return;
+            const ctx = c.getContext('2d');
+            ctx.clearRect(0,0,c.width,c.height);
+            const w = c.width || c.offsetWidth; const h = c.height || 32;
+            const max = Math.max(...data,1); const step = w/(data.length-1 || 1);
+            ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+            data.forEach((v,i)=>{ const x=i*step; const y=h - (v/max)*h; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+            ctx.stroke();
+          };
+          drawSpark('sparkTotal', values.slice(-12), '#22d3ee');
+          drawSpark('spark7', values.slice(-7), '#a78bfa');
+          drawSpark('spark30', values.slice(-12), '#34d399');
+
+          // Insights automáticos
+          const insights = [];
+          if (orgaos.length) insights.push(`Maior volume: ${orgaos[0].key} (${orgaos[0].count.toLocaleString('pt-BR')}).`);
+          const upIdx = values.length>2 ? values[values.length-1] - values[values.length-2] : 0;
+          if (upIdx>0) insights.push(`Crescimento de ${upIdx.toLocaleString('pt-BR')} em relação ao mês anterior.`);
+          if (statusCounts.length) insights.push(`Status dominante: ${statusCounts[0].status}.`);
+          const insightsBox = document.getElementById('insightsBox');
+          if (insightsBox) {
+            insightsBox.innerHTML = insights.length ? insights.map(t=>`<div>• ${t}</div>`).join('') : '<div class="text-slate-500">Sem insights no momento.</div>';
+          }
+
+          // Heatmap dinâmico já conectado ao seletor (reuso existente)
+          const dimSel = document.getElementById('heatmapDim');
+          if (dimSel) dimSel.dispatchEvent(new Event('change'));
+        } catch (e) {
+          console.error('Erro ao carregar Visão Geral', e);
+        }
+      }
+
       function buildHeatmap(containerId, labels, rows) {
         const container = document.getElementById(containerId);
         if (!container) return;
-        const max = Math.max(1, ...rows.flatMap(r => r.values));
+        
+        // Verificar se há dados válidos
+        if (!rows || rows.length === 0 || !labels || labels.length === 0) {
+          container.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">Nenhum dado disponível para o heatmap</div>';
+          return;
+        }
+        
+        try {
+          const validRows = rows.filter(r => r && r.values && Array.isArray(r.values));
+          if (validRows.length === 0) {
+            container.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">Nenhum dado válido para o heatmap</div>';
+            return;
+          }
+          
+          const max = Math.max(1, ...validRows.flatMap(r => r.values || []));
         const toBg = (v) => {
-          const alpha = v === 0 ? 0.05 : Math.min(0.9, 0.15 + 0.75 * (v / max));
+            const numValue = Number(v) || 0;
+            const alpha = numValue === 0 ? 0.05 : Math.min(0.9, 0.15 + 0.75 * (numValue / max));
           return `rgba(34,211,238,${alpha})`;
         };
+          
         let html = '<div class="min-w-max"><table class="text-xs w-full">';
-        html += '<thead><tr><th class="px-2 py-1 text-left text-slate-400">Chave</th>' + labels.map(l=>`<th class="px-2 py-1 text-slate-400">${l}</th>`).join('') + '</tr></thead>';
-        html += '<tbody>' + rows.map(r=>{
-          const cells = r.values.map(v=>`<td class="px-2 py-1" style="background:${toBg(v)}">${v}</td>`).join('');
-          return `<tr><td class="px-2 py-1 text-slate-300">${r.key}</td>${cells}</tr>`;
+          html += '<thead><tr><th class="px-2 py-1 text-left text-slate-400">Chave</th>' + labels.map(l=>`<th class="px-2 py-1 text-slate-400">${l || ''}</th>`).join('') + '</tr></thead>';
+          html += '<tbody>' + validRows.map(r=>{
+            const cells = (r.values || []).map(v=>`<td class="px-2 py-1" style="background:${toBg(v)}">${v || 0}</td>`).join('');
+            return `<tr><td class="px-2 py-1 text-slate-300">${r.key || 'Não informado'}</td>${cells}</tr>`;
         }).join('') + '</tbody></table></div>';
         container.innerHTML = html;
+        } catch (error) {
+          console.error('Erro ao construir heatmap:', error);
+          container.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">Erro ao carregar heatmap</div>';
+        }
       }
 
       async function loadKpis(defaultCountField, defaultDateField) {
@@ -915,7 +1593,41 @@
         document.getElementById('kpi30').textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
         if (sum.statusCounts && sum.statusCounts.length) {
           document.getElementById('kpiTopStatus').textContent = `${sum.statusCounts[0].status} (${sum.statusCounts[0].count})`;
-          // Monta gráfico de status
+          
+          // Cores para o gráfico (expandido para mais status)
+          const colors = [
+            '#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#f472b6',
+            '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1',
+            '#14b8a6', '#eab308', '#ef4444', '#84cc16', '#3b82f6', '#a855f7'
+          ];
+          
+          // Inicializar visibilidade dos status (todos visíveis por padrão)
+          if (!window.statusVisibility) {
+          window.statusVisibility = {};
+            sum.statusCounts.forEach(status => {
+              window.statusVisibility[status.status] = true;
+          });
+          }
+          
+          // Função para atualizar o gráfico baseado na visibilidade
+          const updateStatusChart = () => {
+            const visibleStatuses = sum.statusCounts.filter(s => window.statusVisibility[s.status]);
+            const visibleLabels = visibleStatuses.map(s => s.status);
+            const visibleData = visibleStatuses.map(s => s.count);
+            const visibleColors = visibleStatuses.map((s, idx) => {
+              const originalIdx = sum.statusCounts.findIndex(orig => orig.status === s.status);
+              return colors[originalIdx % colors.length];
+            });
+            
+            if (window.chartStatus instanceof Chart) {
+              window.chartStatus.data.labels = visibleLabels;
+              window.chartStatus.data.datasets[0].data = visibleData;
+              window.chartStatus.data.datasets[0].backgroundColor = visibleColors;
+              window.chartStatus.update('active');
+            }
+          };
+          
+          // Monta gráfico de status inicialmente com todos os status
           const ctx = document.getElementById('chartStatus').getContext('2d');
           if (window.chartStatus instanceof Chart) window.chartStatus.destroy();
           window.chartStatus = new Chart(ctx, { 
@@ -924,41 +1636,130 @@
               labels: sum.statusCounts.map(s=>s.status),
               datasets: [{ 
                 data: sum.statusCounts.map(s=>s.count), 
-                backgroundColor: ['#22d3ee','#a78bfa','#34d399','#f59e0b','#fb7185','#f472b6'] 
+                backgroundColor: sum.statusCounts.map((s, idx) => colors[idx % colors.length])
               }]
             }, 
             options: { 
               responsive: true,
+              maintainAspectRatio: true,
               plugins: {
+                legend: {
+                  display: false // Desabilitar legenda padrão do Chart.js
+                },
                 tooltip: createEnhancedTooltip(),
-                datalabels: {
-                  ...createDataLabelsConfig(true),
-                  anchor: 'center',
-                  align: 'center'
-                }
+                datalabels: createDataLabelsConfig(true, 'doughnut')
               },
               onClick: (evt, elements) => {
                 if (elements.length > 0) {
                   const idx = elements[0].index;
-                  const label = sum.statusCounts[idx].status;
-                  const value = sum.statusCounts[idx].count;
+                  const label = window.chartStatus.data.labels[idx];
+                  const value = window.chartStatus.data.datasets[0].data[idx];
                   showClickFeedback(null, label, value);
                 }
               }
             } 
           });
-          addChartClickHandler(window.chartStatus, (label, value) => showClickFeedback(null, label, value));
+          addChartClickHandler(window.chartStatus, (label, value) => showClickFeedback(null, label, value), 'chartStatus');
+          
+          // Criar legenda customizada organizada com checkboxes
+          const legendContainer = document.getElementById('statusLegend');
+          if (legendContainer) {
+            const total = sum.statusCounts.reduce((acc, s) => acc + s.count, 0);
+            
+            const renderLegend = () => {
+              legendContainer.innerHTML = sum.statusCounts.map((status, idx) => {
+                const percent = ((status.count / total) * 100).toFixed(1);
+                const color = colors[idx % colors.length];
+                const isVisible = window.statusVisibility[status.status];
+                
+                // Determinar se é encerrada ou ativa (baseado em palavras-chave comuns)
+                const statusLower = status.status.toLowerCase();
+                const isEncerrada = statusLower.includes('concluída') || statusLower.includes('encerrada') || 
+                                   statusLower.includes('finalizada') || statusLower.includes('resolvida');
+                const isAtiva = statusLower.includes('em atendimento') || statusLower.includes('ativa') || 
+                               statusLower.includes('pendente') || statusLower.includes('em andamento');
+                
+                return `
+                  <div 
+                    class="status-legend-item flex items-center gap-2 p-2 rounded hover:bg-white/5 transition-all cursor-pointer border ${isVisible ? 'border-transparent opacity-100' : 'border-white/20 opacity-40'}"
+                    data-status="${status.status.replace(/"/g, '&quot;')}"
+                  >
+                    <div 
+                      class="w-4 h-4 rounded flex-shrink-0 border-2 transition-all relative ${isVisible ? 'border-white/30' : 'border-white/50'}" 
+                      style="background-color: ${isVisible ? color : 'transparent'}; ${!isVisible ? `border-color: ${color}; border-style: dashed;` : ''}"
+                    >
+                      ${isVisible ? '' : '<div class="w-full h-0.5 bg-white/50 absolute top-1/2 left-0 transform rotate-45"></div>'}
+                    </div>
+                    <div class="flex-1 min-w-0 ${!isVisible ? 'line-through' : ''}">
+                      <div class="text-slate-300 truncate" title="${status.status}">${status.status}</div>
+                      <div class="text-slate-500 text-[10px]">${status.count.toLocaleString('pt-BR')} (${percent}%)</div>
+                    </div>
+                  </div>
+                `;
+              }).join('');
+              
+              // Adicionar event listeners após renderizar
+              legendContainer.querySelectorAll('.status-legend-item').forEach((item) => {
+                item.addEventListener('click', () => {
+                  const statusName = item.getAttribute('data-status');
+                  window.statusVisibility[statusName] = !window.statusVisibility[statusName];
+                  updateStatusChart();
+                  renderLegend();
+                });
+              });
+            };
+            
+            renderLegend();
+            
+            // Event listeners para os botões
+            const btnMarcarTodos = document.getElementById('btnMarcarTodosStatus');
+            const btnDesmarcarTodos = document.getElementById('btnDesmarcarTodosStatus');
+            
+            if (btnMarcarTodos) {
+              btnMarcarTodos.addEventListener('click', () => {
+                sum.statusCounts.forEach(status => {
+                  window.statusVisibility[status.status] = true;
+                });
+                updateStatusChart();
+                renderLegend();
+              });
+            }
+            
+            if (btnDesmarcarTodos) {
+              btnDesmarcarTodos.addEventListener('click', () => {
+                sum.statusCounts.forEach(status => {
+                  window.statusVisibility[status.status] = false;
+                });
+                updateStatusChart();
+                renderLegend();
+              });
+            }
+          }
+          
+          // Remover skeleton após carregar
+          document.getElementById('chartStatus').classList.remove('skeleton');
         }
         // Série temporal mensal 12M
         const byMonth = await fetchJSON('/api/aggregate/by-month');
-        const ctxM = document.getElementById('chartMonth').getContext('2d');
+        const monthCanvas = document.getElementById('chartMonth');
+        if (monthCanvas) {
+        const ctxM = monthCanvas.getContext('2d');
         if (window.chartMonth instanceof Chart) window.chartMonth.destroy();
+        
+        // Formatar labels do mês corretamente
+        const monthLabels = byMonth.map(x => {
+          if (!x.ym) return '';
+          const [year, month] = x.ym.split('-');
+          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+          return monthNames[parseInt(month) - 1] + '/' + year.slice(2);
+        });
+        
         window.chartMonth = new Chart(ctxM, { 
           type:'bar', 
           data:{ 
-            labels: byMonth.map(x=>x.ym), 
+            labels: monthLabels.filter(l => l), 
             datasets:[{ 
-              data: byMonth.map(x=>x.count), 
+              data: byMonth.filter(x => x.ym).map(x=>x.count), 
               backgroundColor: 'rgba(167,139,250,0.6)',
               borderColor: 'rgba(167,139,250,1)',
               borderWidth: 1
@@ -968,15 +1769,18 @@
             responsive:true,
             plugins: {
               tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig()
+              datalabels: createDataLabelsConfig(false, 'bar', false)
             },
             scales: {
               y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+              x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           } 
         });
-        addChartClickHandler(window.chartMonth, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartMonth, (label, value) => showClickFeedback(null, label, value), 'chartMonth');
+        // Remover skeleton após carregar
+        monthCanvas.classList.remove('skeleton');
+        }
 
         // SLA chart
         const sla = await fetchJSON('/api/sla/summary');
@@ -998,47 +1802,316 @@
             plugins: { 
               legend: { display: false },
               tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig()
+              datalabels: createDataLabelsConfig(false, 'bar', false)
             },
             scales: {
               y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+              x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           }
         });
         addChartClickHandler(window.chartSla, (label, value) => showClickFeedback(null, label, value));
+        // Remover skeleton após carregar
+        document.getElementById('chartSla').classList.remove('skeleton');
       }
 
-      async function loadTable() {
-        const data = await fetchJSON('/api/records?page=1&pageSize=50');
+      let currentTableData = [];
+      let currentTableHeaders = [];
+
+      async function loadTable(limit = 50) {
+        try {
+          const pageSize = limit === 'all' ? 10000 : parseInt(limit) || 50;
+          const data = await fetchJSON(`/api/records?page=1&pageSize=${pageSize}`);
         const rows = data.rows || [];
+          currentTableData = rows;
+          
         const tbody = document.getElementById('tbody');
         const thead = document.getElementById('thead');
+          const tableInfo = document.getElementById('tableInfo');
+          
         tbody.innerHTML = '';
         thead.innerHTML = '';
-        if (rows.length === 0) return;
+          
+          if (rows.length === 0) {
+            tableInfo.textContent = 'Nenhum registro encontrado';
+            return;
+          }
+          
         const first = rows[0].data || {};
         const keys = Object.keys(first);
-        for (const k of keys) {
-          const th = document.createElement('th'); th.textContent = k; th.className = 'px-3 py-2 text-left font-semibold text-slate-300'; thead.appendChild(th);
-        }
+          currentTableHeaders = keys;
+          
+          // Ordenar colunas por importância
+          const priorityOrder = ['protocolo', 'data_da_criacao', 'status_demanda', 'tipo_de_manifestacao', 
+            'tema', 'assunto', 'orgaos', 'unidade_cadastro', 'responsavel', 'canal', 'prioridade', 'status'];
+          const sortedKeys = [...priorityOrder.filter(k => keys.includes(k)), ...keys.filter(k => !priorityOrder.includes(k))];
+          
+          for (const k of sortedKeys) {
+            const th = document.createElement('th'); 
+            th.textContent = k; 
+            th.className = 'px-3 py-2 text-left font-semibold text-slate-300 sticky top-0 bg-slate-900/95'; 
+            thead.appendChild(th);
+          }
+          
         for (const r of rows) {
-          const tr = document.createElement('tr'); tr.className = 'hover:bg-white/5 transition-colors';
-          for (const k of keys) {
-            const td = document.createElement('td'); td.textContent = r.data?.[k] ?? ''; td.className = 'px-3 py-2 text-slate-300'; tr.appendChild(td);
+            const tr = document.createElement('tr'); 
+            tr.className = 'hover:bg-white/5 transition-colors';
+            for (const k of sortedKeys) {
+              const td = document.createElement('td'); 
+              const value = r.data?.[k] ?? '';
+              td.textContent = value; 
+              td.className = 'px-3 py-2 text-slate-300'; 
+              tr.appendChild(td);
           }
           tbody.appendChild(tr);
+          }
+          
+          tableInfo.textContent = `Mostrando ${rows.length} de ${data.total || rows.length} registros`;
+        } catch (error) {
+          console.error('Erro ao carregar tabela:', error);
+          document.getElementById('tableInfo').textContent = 'Erro ao carregar dados';
         }
       }
 
-      function exportCSV() {
-        const rows = Array.from(document.querySelectorAll('#tbody tr')).map(tr => Array.from(tr.children).map(td => td.textContent));
-        const headers = Array.from(document.querySelectorAll('#thead th')).map(th => th.textContent);
-        const all = [headers, ...rows];
-        const csv = all.map(r => r.map(v => '"' + String(v).replaceAll('"','""') + '"').join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      // Função melhorada de exportação CSV
+      async function exportCSV() {
+        const limit = document.getElementById('exportLimit')?.value || '50';
+        const pageSize = limit === 'all' ? 10000 : parseInt(limit) || 50;
+        
+        try {
+          const data = await fetchJSON(`/api/records?page=1&pageSize=${pageSize}`);
+          const rows = data.rows || [];
+          
+          if (rows.length === 0) {
+            alert('Nenhum dado para exportar');
+            return;
+          }
+          
+          const first = rows[0].data || {};
+          const keys = Object.keys(first);
+          const priorityOrder = ['protocolo', 'data_da_criacao', 'status_demanda', 'tipo_de_manifestacao', 
+            'tema', 'assunto', 'orgaos', 'unidade_cadastro', 'responsavel', 'canal', 'prioridade', 'status'];
+          const sortedKeys = [...priorityOrder.filter(k => keys.includes(k)), ...keys.filter(k => !priorityOrder.includes(k))];
+          
+          const headers = sortedKeys;
+          const csvRows = rows.map(r => sortedKeys.map(k => r.data?.[k] ?? ''));
+          const all = [headers, ...csvRows];
+          
+          const csv = all.map(r => r.map(v => {
+            const str = String(v || '').replaceAll('"', '""');
+            return `"${str}"`;
+          }).join(',')).join('\n');
+          
+          // Adicionar BOM para Excel reconhecer UTF-8
+          const BOM = '\uFEFF';
+          const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'export.csv'; a.click(); URL.revokeObjectURL(url);
+          const a = document.createElement('a'); 
+          a.href = url; 
+          a.download = `ouvidoria_export_${new Date().toISOString().split('T')[0]}.csv`; 
+          a.click(); 
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          console.error('Erro ao exportar CSV:', error);
+          alert('Erro ao exportar CSV: ' + error.message);
+        }
+      }
+
+      // Função de exportação Excel (XLSX)
+      async function exportExcel() {
+        const limit = document.getElementById('exportLimit')?.value || '50';
+        const pageSize = limit === 'all' ? 10000 : parseInt(limit) || 50;
+        
+        try {
+          // Carregar biblioteca XLSX via CDN se não estiver disponível
+          if (typeof XLSX === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+            script.onload = () => exportExcel();
+            document.head.appendChild(script);
+            return;
+          }
+          
+          const data = await fetchJSON(`/api/records?page=1&pageSize=${pageSize}`);
+          const rows = data.rows || [];
+          
+          if (rows.length === 0) {
+            alert('Nenhum dado para exportar');
+            return;
+          }
+          
+          const first = rows[0].data || {};
+          const keys = Object.keys(first);
+          const priorityOrder = ['protocolo', 'data_da_criacao', 'status_demanda', 'tipo_de_manifestacao', 
+            'tema', 'assunto', 'orgaos', 'unidade_cadastro', 'responsavel', 'canal', 'prioridade', 'status'];
+          const sortedKeys = [...priorityOrder.filter(k => keys.includes(k)), ...keys.filter(k => !priorityOrder.includes(k))];
+          
+          // Preparar dados para Excel
+          const excelData = rows.map(r => {
+            const row = {};
+            sortedKeys.forEach(k => {
+              row[k] = r.data?.[k] ?? '';
+            });
+            return row;
+          });
+          
+          // Criar workbook
+          const wb = XLSX.utils.book_new();
+          const ws = XLSX.utils.json_to_sheet(excelData);
+          
+          // Ajustar largura das colunas
+          const colWidths = sortedKeys.map(k => ({
+            wch: Math.max(k.length, 15)
+          }));
+          ws['!cols'] = colWidths;
+          
+          // Adicionar worksheet ao workbook
+          XLSX.utils.book_append_sheet(wb, ws, 'Registros');
+          
+          // Gerar arquivo
+          XLSX.writeFile(wb, `ouvidoria_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+        } catch (error) {
+          console.error('Erro ao exportar Excel:', error);
+          alert('Erro ao exportar Excel: ' + error.message);
+        }
+      }
+
+      // Função para exportar dados dos gráficos
+      async function exportChartData() {
+        try {
+          if (typeof XLSX === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+            script.onload = () => exportChartData();
+            document.head.appendChild(script);
+            return;
+          }
+          
+          const wb = XLSX.utils.book_new();
+          const date = new Date().toISOString().split('T')[0];
+          
+          // Dados do gráfico de contagem
+          const countField = document.getElementById('countBy')?.value || 'Categoria';
+          const countData = await fetchJSON(`/api/aggregate/count-by?field=${encodeURIComponent(countField)}`);
+          const countSheet = XLSX.utils.aoa_to_sheet([
+            [`Contagem por ${countField}`],
+            ['Item', 'Quantidade'],
+            ...countData.map(d => [d.key, d.count])
+          ]);
+          XLSX.utils.book_append_sheet(wb, countSheet, `Contagem_${countField}`);
+          
+          // Dados da série temporal
+          const timeField = document.getElementById('dateField')?.value || 'Data';
+          const timeData = await fetchJSON(`/api/aggregate/time-series?field=${encodeURIComponent(timeField)}`);
+          const timeSheet = XLSX.utils.aoa_to_sheet([
+            [`Série Temporal - ${timeField}`],
+            ['Data', 'Quantidade'],
+            ...timeData.map(d => [d.date, d.count])
+          ]);
+          XLSX.utils.book_append_sheet(wb, timeSheet, `Serie_Temporal`);
+          
+          // Dados mensais
+          const monthData = await fetchJSON('/api/aggregate/by-month');
+          const monthSheet = XLSX.utils.aoa_to_sheet([
+            ['Registros por Mês'],
+            ['Mês', 'Quantidade'],
+            ...monthData.map(d => [d.ym, d.count])
+          ]);
+          XLSX.utils.book_append_sheet(wb, monthSheet, 'Mensal');
+          
+          // Heatmap
+          const heatmapDim = document.getElementById('heatmapDim')?.value || 'Categoria';
+          const heatmapData = await fetchJSON(`/api/aggregate/heatmap?dim=${encodeURIComponent(heatmapDim)}`);
+          const heatmapRows = [
+            [heatmapDim, ...heatmapData.labels],
+            ...heatmapData.rows.map(r => [r.key, ...r.values])
+          ];
+          const heatmapSheet = XLSX.utils.aoa_to_sheet(heatmapRows);
+          XLSX.utils.book_append_sheet(wb, heatmapSheet, `Heatmap_${heatmapDim}`);
+          
+          XLSX.writeFile(wb, `ouvidoria_graficos_${date}.xlsx`);
+        } catch (error) {
+          console.error('Erro ao exportar dados dos gráficos:', error);
+          alert('Erro ao exportar dados dos gráficos: ' + error.message);
+        }
+      }
+
+      // Função para exportar resumo executivo
+      async function exportSummary() {
+        try {
+          if (typeof XLSX === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+            script.onload = () => exportSummary();
+            document.head.appendChild(script);
+            return;
+          }
+          
+          const summary = await fetchJSON('/api/summary');
+          const sla = await fetchJSON('/api/sla/summary');
+          const statusOverview = await fetchJSON('/api/stats/status-overview');
+          
+          const wb = XLSX.utils.book_new();
+          const date = new Date().toISOString().split('T')[0];
+          
+          // Resumo Executivo
+          const summarySheet = XLSX.utils.aoa_to_sheet([
+            ['RESUMO EXECUTIVO - OUVIDORIA DUQUE DE CAXIAS'],
+            ['Data de Exportação', date],
+            [''],
+            ['INDICADORES GERAIS'],
+            ['Total de Registros', summary.total],
+            ['Últimos 7 dias', summary.last7],
+            ['Últimos 30 dias', summary.last30],
+            [''],
+            ['STATUS PRINCIPAL'],
+            ...summary.statusCounts.slice(0, 10).map(s => [s.status, s.count]),
+            [''],
+            ['SLA - e-SIC'],
+            ['Dentro do Prazo', sla.esic?.dentro || 0],
+            ['Atrasado', sla.esic?.atraso || 0],
+            [''],
+            ['SLA - Outros'],
+            ['Verde (≤30 dias)', sla.outros?.verde || 0],
+            ['Amarelo (31-60 dias)', sla.outros?.amarelo || 0],
+            ['Vermelho (>60 dias)', sla.outros?.atraso || 0],
+            [''],
+            ['STATUS GERAL'],
+            ['Total', statusOverview.total],
+            ['Concluídas', statusOverview.concluida?.quantidade || 0, `${statusOverview.concluida?.percentual || 0}%`],
+            ['Em Atendimento', statusOverview.emAtendimento?.quantidade || 0, `${statusOverview.emAtendimento?.percentual || 0}%`]
+          ]);
+          XLSX.utils.book_append_sheet(wb, summarySheet, 'Resumo_Executivo');
+          
+          // Top Órgãos
+          const topOrgaosSheet = XLSX.utils.aoa_to_sheet([
+            ['Top Órgãos'],
+            ['Órgão', 'Quantidade'],
+            ...summary.topOrgaos.map(o => [o.key, o.count])
+          ]);
+          XLSX.utils.book_append_sheet(wb, topOrgaosSheet, 'Top_Orgaos');
+          
+          // Top Tipos
+          const topTiposSheet = XLSX.utils.aoa_to_sheet([
+            ['Top Tipos de Manifestação'],
+            ['Tipo', 'Quantidade'],
+            ...summary.topTipoManifestacao.map(t => [t.key, t.count])
+          ]);
+          XLSX.utils.book_append_sheet(wb, topTiposSheet, 'Top_Tipos');
+          
+          // Top Temas
+          const topTemasSheet = XLSX.utils.aoa_to_sheet([
+            ['Top Temas'],
+            ['Tema', 'Quantidade'],
+            ...summary.topTema.map(t => [t.key, t.count])
+          ]);
+          XLSX.utils.book_append_sheet(wb, topTemasSheet, 'Top_Temas');
+          
+          XLSX.writeFile(wb, `ouvidoria_resumo_executivo_${date}.xlsx`);
+        } catch (error) {
+          console.error('Erro ao exportar resumo:', error);
+          alert('Erro ao exportar resumo executivo: ' + error.message);
+        }
       }
 
       let chartCount, chartTime;
@@ -1073,7 +2146,7 @@
             plugins: { 
               legend: { display: false },
               tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig()
+              datalabels: createDataLabelsConfig(false, 'bar', false)
             },
             scales: {
               x: { 
@@ -1158,20 +2231,101 @@
 
 
       // Heatmap main interactions
-      document.getElementById('heatmapDim').addEventListener('change', async (e) => {
-        const dim = e.target.value;
-        const hm = await fetchJSON(`/api/aggregate/heatmap?dim=${encodeURIComponent(dim)}`);
-        buildHeatmap('heatmap', hm.labels, hm.rows);
-      });
-      document.getElementById('btnExport').addEventListener('click', exportCSV);
+      const heatmapDimSelect = document.getElementById('heatmapDim');
+      if (heatmapDimSelect) {
+        heatmapDimSelect.addEventListener('change', async (e) => {
+          try {
+            const dim = e.target.value;
+            const hm = await fetchJSON(`/api/aggregate/heatmap?dim=${encodeURIComponent(dim)}`);
+            if (hm && hm.labels && hm.rows) {
+              buildHeatmap('heatmap', hm.labels, hm.rows);
+            } else {
+              buildHeatmap('heatmap', [], []);
+            }
+          } catch (error) {
+            console.error('Erro ao carregar heatmap:', error);
+            buildHeatmap('heatmap', [], []);
+          }
+        });
+      }
+      
+      // Menu de exportação (com verificação de existência dos elementos)
+      const btnExport = document.getElementById('btnExport');
+      const exportMenu = document.getElementById('exportMenu');
+      
+      if (btnExport && exportMenu) {
+        btnExport.addEventListener('click', (e) => {
+          e.stopPropagation();
+          exportMenu.classList.toggle('hidden');
+        });
+        
+        document.addEventListener('click', (e) => {
+          if (!btnExport.contains(e.target) && !exportMenu.contains(e.target)) {
+            exportMenu.classList.add('hidden');
+          }
+        });
+      }
+      
+      // Eventos dos botões de exportação
+      const btnExportCSV = document.getElementById('btnExportCSV');
+      if (btnExportCSV) {
+        btnExportCSV.addEventListener('click', async () => {
+          if (exportMenu) exportMenu.classList.add('hidden');
+          await exportCSV();
+        });
+      }
+      
+      const btnExportExcel = document.getElementById('btnExportExcel');
+      if (btnExportExcel) {
+        btnExportExcel.addEventListener('click', async () => {
+          if (exportMenu) exportMenu.classList.add('hidden');
+          await exportExcel();
+        });
+      }
+      
+      const btnExportChartData = document.getElementById('btnExportChartData');
+      if (btnExportChartData) {
+        btnExportChartData.addEventListener('click', async () => {
+          if (exportMenu) exportMenu.classList.add('hidden');
+          await exportChartData();
+        });
+      }
+      
+      const btnExportSummary = document.getElementById('btnExportSummary');
+      if (btnExportSummary) {
+        btnExportSummary.addEventListener('click', async () => {
+          if (exportMenu) exportMenu.classList.add('hidden');
+          await exportSummary();
+        });
+      }
+      
+      // Atualizar tabela quando mudar o limite
+      const exportLimit = document.getElementById('exportLimit');
+      if (exportLimit) {
+        exportLimit.addEventListener('change', (e) => {
+          loadTable(e.target.value);
+        });
+      }
 
       // initial load
       loadKpis('Categoria', 'Data');
       // carregar gráficos principais com defaults dos dropdowns
       loadCountChart('Categoria');
       loadTimeChart('Data');
-      loadTable();
-      fetchJSON('/api/aggregate/heatmap?dim=Categoria').then(hm => buildHeatmap('heatmap', hm.labels, hm.rows)).catch(()=>{});
+      loadTable(50);
+      // Carregar heatmap inicial com tratamento de erro
+      fetchJSON('/api/aggregate/heatmap?dim=Categoria')
+        .then(hm => {
+          if (hm && hm.labels && hm.rows) {
+            buildHeatmap('heatmap', hm.labels, hm.rows);
+          } else {
+            buildHeatmap('heatmap', [], []);
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao carregar heatmap inicial:', error);
+          buildHeatmap('heatmap', [], []);
+        });
       
       // Adicionar eventos aos dropdowns - usar onchange diretamente no HTML ou aguardar DOM
       (function setupDropdowns() {
@@ -1227,8 +2381,346 @@
           }, 200);
         }
       })();
+      
+      // ========== CORA CHAT - Sistema de Chat ==========
+      let chatMessages = [];
+      
+      // Função para formatar data/hora
+      function formatChatTime(date) {
+        const now = new Date();
+        const msgDate = new Date(date);
+        const diffMs = now - msgDate;
+        const diffMins = Math.floor(diffMs / 60000);
+        
+        if (diffMins < 1) return 'Agora';
+        if (diffMins < 60) return `${diffMins}min atrás`;
+        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h atrás`;
+        return msgDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      }
+      
+      // Função para renderizar mensagens
+      function renderMessages(containerId, messages) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        container.innerHTML = messages.map(msg => {
+          const isUser = msg.sender === 'user';
+          return `
+            <div class="flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}">
+              ${!isUser ? `
+                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                  <span class="text-white text-sm font-bold">C</span>
+                </div>
+              ` : `
+                <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+                  <span class="text-white text-xs">Você</span>
+                </div>
+              `}
+              <div class="flex-1 ${isUser ? 'text-right' : ''}">
+                <div class="bg-slate-800/60 rounded-lg p-3 text-sm text-slate-200 inline-block ${isUser ? 'bg-cyan-500/20' : ''}">
+                  ${!isUser ? `<div class="font-semibold text-purple-300 mb-1">Cora</div>` : ''}
+                  <div>${msg.text}</div>
+                </div>
+                <div class="text-xs text-slate-500 mt-1 ${isUser ? 'text-right' : 'ml-1'}">${formatChatTime(msg.createdAt)}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+        
+        // Scroll para o final
+        container.scrollTop = container.scrollHeight;
+      }
+      
+      // Função para enviar mensagem
+      async function sendMessage(text, isWidget = false) {
+        console.log('🚀 sendMessage chamada', { text, isWidget });
+        if (!text.trim()) {
+          console.warn('⚠️ Texto vazio, ignorando');
+          return;
+        }
+        
+        const message = {
+          text: text.trim(),
+          sender: 'user',
+          createdAt: new Date().toISOString()
+        };
+        
+        console.log('💬 Adicionando mensagem do usuário', message);
+        
+        // Adicionar mensagem do usuário
+        chatMessages.push(message);
+        renderMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
+        
+        // Limpar input
+        const inputId = isWidget ? 'chatWidgetInput' : 'chatInput';
+        const inputEl = document.getElementById(inputId);
+        if (inputEl) {
+          inputEl.value = '';
+        }
+        
+        try {
+          console.log('📡 Enviando para backend...');
+          // Salvar no backend
+          const response = await fetch('/api/chat/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text.trim() })
+          });
+          
+          if (!response.ok) {
+            console.error('❌ Erro na resposta do backend', response.status);
+            throw new Error('Erro ao enviar mensagem');
+          }
+          
+          const data = await response.json();
+          console.log('✅ Resposta recebida do backend', data);
+          
+          // Adicionar resposta da Cora
+          const coraMessage = {
+            text: data.response || 'Obrigada pela sua mensagem! Como posso ajudar?',
+            sender: 'cora',
+            createdAt: new Date().toISOString()
+          };
+          
+          console.log('🤖 Adicionando resposta da Cora', coraMessage);
+          chatMessages.push(coraMessage);
+          renderMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
+          
+          // Salvar resposta também
+          await fetch('/api/chat/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: coraMessage.text, sender: 'cora' })
+          });
+        } catch (error) {
+          console.error('❌ Erro ao enviar mensagem:', error);
+          const errorMsg = {
+            text: 'Desculpe, ocorreu um erro. Tente novamente.',
+            sender: 'cora',
+            createdAt: new Date().toISOString()
+          };
+          chatMessages.push(errorMsg);
+          renderMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
+        }
+      }
+      
+      // Função para carregar mensagens do banco
+      async function loadChatMessages() {
+        try {
+          const response = await fetch('/api/chat/messages');
+          if (response.ok) {
+            const data = await response.json();
+            chatMessages = data.messages || [];
+            if (chatMessages.length === 0) {
+              // Mensagem inicial
+              chatMessages.push({
+                text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
+                sender: 'cora',
+                createdAt: new Date().toISOString()
+              });
+            }
+          } else {
+            chatMessages = [{
+              text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
+              sender: 'cora',
+              createdAt: new Date().toISOString()
+            }];
+          }
+        } catch (error) {
+          console.error('Erro ao carregar mensagens:', error);
+          chatMessages = [{
+            text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
+            sender: 'cora',
+            createdAt: new Date().toISOString()
+          }];
+        }
+      }
+      
+      // Função para carregar página do chat
+      async function loadCoraChat() {
+        await loadChatMessages();
+        renderMessages('chatMessages', chatMessages);
+      }
+      
+      // Inicializar widget flutuante
+      function initChatWidget() {
+        const toggle = document.getElementById('chatWidgetToggle');
+        const window = document.getElementById('chatWidgetWindow');
+        const close = document.getElementById('chatWidgetClose');
+        const form = document.getElementById('chatWidgetForm');
+        const input = document.getElementById('chatWidgetInput');
+        const submitBtn = document.getElementById('chatWidgetSubmitBtn');
+        
+        if (!form || !input) {
+          console.warn('Elementos do widget de chat não encontrados');
+          return;
+        }
+        
+        console.log('✅ Widget de chat inicializado', { form: !!form, input: !!input, submitBtn: !!submitBtn });
+        
+        if (toggle) {
+          toggle.addEventListener('click', async () => {
+            if (window.classList.contains('hidden')) {
+              await loadChatMessages();
+              renderMessages('chatWidgetMessages', chatMessages);
+            }
+            window.classList.toggle('hidden');
+          });
+        }
+        
+        if (close) {
+          close.addEventListener('click', () => {
+            window.classList.add('hidden');
+          });
+        }
+        
+        const sendWidgetMessage = (e) => {
+          console.log('📤 Tentando enviar mensagem do widget', input.value);
+          if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          const text = input.value.trim();
+          if (text) {
+            sendMessage(text, true);
+            input.value = '';
+          }
+          return false;
+        };
+        
+        // Adicionar listeners
+        form.onsubmit = sendWidgetMessage;
+        
+        if (submitBtn) {
+          submitBtn.onclick = sendWidgetMessage;
+        }
+        
+        input.onkeydown = (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            console.log('⌨️ Enter pressionado no widget');
+            e.preventDefault();
+            e.stopPropagation();
+            sendWidgetMessage(e);
+          }
+        };
+        
+        // Carregar mensagens iniciais
+        loadChatMessages();
+      }
+      
+      // Inicializar formulário da página do chat
+      function initChatPage() {
+        const form = document.getElementById('chatForm');
+        const input = document.getElementById('chatInput');
+        const submitBtn = document.getElementById('chatSubmitBtn');
+        
+        if (!form || !input) {
+          console.warn('Elementos da página de chat não encontrados');
+          return;
+        }
+        
+        console.log('✅ Página de chat inicializada', { form: !!form, input: !!input, submitBtn: !!submitBtn });
+        
+        const sendPageMessage = (e) => {
+          console.log('📤 Tentando enviar mensagem da página', input.value);
+          if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          const text = input.value.trim();
+          console.log('📝 Texto capturado:', text);
+          if (text) {
+            console.log('✅ Chamando sendMessage...');
+            sendMessage(text, false);
+          } else {
+            console.warn('⚠️ Texto vazio, não enviando');
+          }
+          return false;
+        };
+        
+        // Adicionar listeners
+        console.log('🔗 Anexando listeners ao formulário da página');
+        form.onsubmit = sendPageMessage;
+        
+        if (submitBtn) {
+          submitBtn.onclick = (e) => {
+            console.log('🖱️ Botão Enviar clicado');
+            sendPageMessage(e);
+          };
+        }
+        
+        input.onkeydown = (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            console.log('⌨️ Enter pressionado na página');
+            e.preventDefault();
+            e.stopPropagation();
+            sendPageMessage(e);
+          }
+        };
+      }
+      
+      // Inicializar quando o DOM estiver pronto e re-inicializar quando a página do chat for carregada
+      function initChat() {
+        initChatWidget();
+        // Só inicializar página se estiver visível
+        if (document.getElementById('page-cora-chat') && document.getElementById('page-cora-chat').style.display !== 'none') {
+          initChatPage();
+        }
+      }
+      
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initChat);
+      } else {
+        initChat();
+      }
+      
+      // Re-inicializar quando a página do chat for carregada
+      const originalLoadCoraChat = loadCoraChat;
+      loadCoraChat = async function() {
+        await originalLoadCoraChat();
+        // Aguardar um pouco para garantir que o DOM foi atualizado
+        setTimeout(() => {
+          console.log('🔄 Re-inicializando página do chat após loadCoraChat');
+          initChatPage();
+        }, 200);
+      };
+      
     </script>
     <script>
+      // Toggle para listas suspensas de unidades
+      function initUnitCategoryToggles() {
+        const categoryHeaders = document.querySelectorAll('.unit-category-header');
+        categoryHeaders.forEach(header => {
+          // Verificar se já tem listener
+          if (header.dataset.hasListener === 'true') return;
+          header.dataset.hasListener = 'true';
+          
+          header.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const category = this.getAttribute('data-category');
+            const content = document.querySelector(`[data-category-content="${category}"]`);
+            const arrow = this.querySelector('.unit-category-arrow');
+            
+            if (content.style.display === 'none') {
+              content.style.display = 'block';
+              arrow.style.transform = 'rotate(0deg)';
+              arrow.textContent = '▼';
+            } else {
+              content.style.display = 'none';
+              arrow.style.transform = 'rotate(-90deg)';
+              arrow.textContent = '▶';
+            }
+          });
+        });
+      }
+      
+      // Inicializar quando o DOM estiver pronto
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initUnitCategoryToggles);
+      } else {
+        initUnitCategoryToggles();
+      }
+      
       // SPA Page switch
       const sideMenu = document.getElementById('sideMenu');
       const pages = document.getElementById('pages').children;
@@ -1237,12 +2729,35 @@
           sideMenu.querySelectorAll('div[data-page]').forEach(b=>b.classList.remove('active','bg-white/10'));
           btn.classList.add('active','bg-white/10');
           Array.from(pages).forEach(page => page.style.display = 'none');
-          document.getElementById('page-'+btn.getAttribute('data-page')).style.display='block';
+          const pageId = 'page-'+btn.getAttribute('data-page');
+          const targetPage = document.getElementById(pageId);
+          if (targetPage) {
+            targetPage.style.display='block';
+          }
           // Carrega conteúdo específico
-          loadSection(btn.getAttribute('data-page'));
+          const pageName = btn.getAttribute('data-page');
+          loadSection(pageName);
+          // Re-inicializar chat se necessário
+          if (pageName === 'cora-chat') {
+            setTimeout(() => {
+              console.log('🔄 Re-inicializando página do chat após navegação');
+              if (typeof initChatPage === 'function') {
+                initChatPage();
+              }
+            }, 300);
+          }
         };
       });
+      // Função para carregar a página Home (não precisa carregar dados)
+      function loadHome() {
+        // A página home é estática, não precisa carregar dados
+        console.log('🏠 Página Home carregada');
+      }
+      
       function loadSection(page) {
+        if(page==='home') loadHome();
+        if(page==='main') loadOverview();
+        if(page==='cora-chat') loadCoraChat();
         if(page==='orgao-mes') loadOrgaoMes();
         if(page==='tempo-medio') loadTempoMedio();
         if(page==='tema') loadTema();
@@ -1266,6 +2781,37 @@
       }
       // Funções para carregar cada seção temática
       enableCharts(); // chamada para garantir que gráficos não quebrem
+      
+      // Carregar Home automaticamente ao abrir a página
+      function initPage() {
+        // Garantir que todas as outras páginas estão ocultas
+        const allPages = document.getElementById('pages').children;
+        Array.from(allPages).forEach(page => {
+          if (page.id !== 'page-home') {
+            page.style.display = 'none';
+          }
+        });
+        
+        // Garantir que a página home está visível
+        const homePage = document.getElementById('page-home');
+        if (homePage) {
+          homePage.style.display = 'block';
+        }
+        
+        // Garantir que o botão "Home" está ativo
+        const homeBtn = sideMenu.querySelector('[data-page="home"]');
+        if (homeBtn) {
+          sideMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active', 'bg-white/10'));
+          homeBtn.classList.add('active', 'bg-white/10');
+        }
+      }
+      
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+      } else {
+        // DOM já carregado
+        initPage();
+      }
       
       async function loadOrgaoMes() {
         // Carregar dados de secretarias/órgãos
@@ -1340,7 +2886,7 @@
             }
           }
         });
-        addChartClickHandler(window.chartOrgaoMes, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartOrgaoMes, (label, value) => showClickFeedback(null, label, value), 'chartOrgaoMes');
         
         // Atualizar KPI total
         const total = dataOrgaos.reduce((sum, item) => sum + item.count, 0);
@@ -1362,7 +2908,7 @@
             plugins:{
               legend:{display:false},
               tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig()
+              datalabels: createDataLabelsConfig(false, 'bar', false)
             },
             scales: {
               y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
@@ -1370,7 +2916,7 @@
             }
           }
         });
-        addChartClickHandler(window.chartSecretaria, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartSecretaria, (label, value) => showClickFeedback(null, label, value), 'chartSecretaria');
         document.getElementById('rankSecretaria').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       async function loadTipo() {
@@ -1387,15 +2933,11 @@
             animation:{duration:1000},
             plugins: {
               tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(true),
-                anchor: 'center',
-                align: 'center'
-              }
+              datalabels: createDataLabelsConfig(true, 'pie')
             }
           } 
         });
-        addChartClickHandler(window.chartTipo, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartTipo, (label, value) => showClickFeedback(null, label, value), 'chartTipo');
         document.getElementById('rankTipo').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       async function loadSetor() {
@@ -1426,7 +2968,7 @@
             }
           }
         });
-        addChartClickHandler(window.chartSetor, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartSetor, (label, value) => showClickFeedback(null, label, value), 'chartSetor');
         document.getElementById('rankSetor').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       function enableCharts() {
@@ -1443,11 +2985,12 @@
           type:'bar', 
           data:{ labels, datasets:[{ label:'Categoria', data: values, backgroundColor:'#f472b6', borderColor:'#f472b6', borderWidth:1 }] }, 
           options:{ 
-            responsive:true, 
+            responsive:true,
+            indexAxis:'y',
             plugins:{ 
               legend:{ display:false },
               tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig()
+              datalabels: createDataLabelsConfig(false, 'bar', true)
             },
             scales: {
               y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
@@ -1455,7 +2998,7 @@
             }
           } 
         });
-        addChartClickHandler(window.chartCategoria, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartCategoria, (label, value) => showClickFeedback(null, label, value), 'chartCategoria');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Categoria');
         buildHeatmap('heatmapCategoria', hm.labels, hm.rows);
       }
@@ -1473,15 +3016,11 @@
             responsive:true,
             plugins: {
               tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(true),
-                anchor: 'center',
-                align: 'center'
-              }
+              datalabels: createDataLabelsConfig(true, 'doughnut')
             }
           } 
         });
-        addChartClickHandler(window.chartStatusPage, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartStatusPage, (label, value) => showClickFeedback(null, label, value), 'chartStatusPage');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Status');
         buildHeatmap('heatmapStatus', hm.labels, hm.rows);
       }
@@ -1513,7 +3052,7 @@
             }
           } 
         });
-        addChartClickHandler(window.chartBairro, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartBairro, (label, value) => showClickFeedback(null, label, value), 'chartBairro');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Bairro');
         buildHeatmap('heatmapBairro', hm.labels, hm.rows);
       }
@@ -1546,7 +3085,7 @@
             }
           } 
         });
-        addChartClickHandler(window.chartUAC, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartUAC, (label, value) => showClickFeedback(null, label, value), 'chartUAC');
         document.getElementById('rankUAC').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=UAC');
         buildHeatmap('heatmapUAC', hm.labels, hm.rows);
@@ -1580,7 +3119,7 @@
             }
           } 
         });
-        addChartClickHandler(window.chartResponsavel, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartResponsavel, (label, value) => showClickFeedback(null, label, value), 'chartResponsavel');
         document.getElementById('rankResponsavel').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Responsavel');
         buildHeatmap('heatmapResponsavel', hm.labels, hm.rows);
@@ -1608,7 +3147,7 @@
             }
           } 
         });
-        addChartClickHandler(window.chartCanal, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartCanal, (label, value) => showClickFeedback(null, label, value), 'chartCanal');
         document.getElementById('rankCanal').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Canal');
         buildHeatmap('heatmapCanal', hm.labels, hm.rows);
@@ -1636,7 +3175,7 @@
             plugins:{
               legend:{display:false},
               tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig()
+              datalabels: createDataLabelsConfig(false, 'bar', false)
             },
             scales: {
               y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
@@ -1644,98 +3183,120 @@
             }
           } 
         });
-        addChartClickHandler(window.chartPrioridade, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartPrioridade, (label, value) => showClickFeedback(null, label, value), 'chartPrioridade');
         document.getElementById('rankPrioridade').innerHTML=data.map(e=>`<li><span class='text-rose-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
         const hm = await fetchJSON('/api/aggregate/heatmap?dim=Prioridade');
         buildHeatmap('heatmapPrioridade', hm.labels, hm.rows);
       }
 
       async function loadTempoMedio() {
-        const data = await fetchJSON('/api/stats/average-time');
-        const labels = data.map(x => x.org);
-        const values = data.map(x => x.dias);
-        
-        // Gráfico de barras horizontais
-        if (window.chartTempoMedio instanceof Chart) window.chartTempoMedio.destroy();
-        const ctx = document.getElementById('chartTempoMedio').getContext('2d');
-        window.chartTempoMedio = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Dias',
-              data: values,
-              backgroundColor: 'rgba(34,211,238,0.7)',
-              borderColor: 'rgba(34,211,238,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            indexAxis: 'y',
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end'
+        try {
+          const data = await fetchJSON('/api/stats/average-time');
+          
+          // Verificar se há dados
+          if (!data || !Array.isArray(data) || data.length === 0) {
+            console.warn('⚠️ Nenhum dado de tempo médio disponível');
+            document.getElementById('chartTempoMedio').getContext('2d').clearRect(0, 0, 0, 0);
+            document.getElementById('listaTempoMedio').innerHTML = '<div class="text-slate-400 text-center py-8">Nenhum dado disponível. Verifique se há registros com data de criação e conclusão.</div>';
+            document.getElementById('chartTempoMedioMes').getContext('2d').clearRect(0, 0, 0, 0);
+            return;
+          }
+          
+          const labels = data.map(x => x.org);
+          const values = data.map(x => x.dias);
+          
+          // Gráfico de barras horizontais
+          if (window.chartTempoMedio instanceof Chart) window.chartTempoMedio.destroy();
+          const ctx = document.getElementById('chartTempoMedio').getContext('2d');
+          window.chartTempoMedio = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Dias',
+                data: values,
+                backgroundColor: 'rgba(34,211,238,0.7)',
+                borderColor: 'rgba(34,211,238,1)',
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              indexAxis: 'y',
+              plugins: { 
+                legend: { display: false },
+                tooltip: createEnhancedTooltip(),
+                datalabels: {
+                  ...createDataLabelsConfig(),
+                  anchor: 'start',
+                  align: 'end'
+                }
+              },
+              scales: {
+                x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
               }
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
-          }
-        });
-        addChartClickHandler(window.chartTempoMedio, (label, value) => showClickFeedback(null, label, value));
-        
-        // Lista de ranking
-        document.getElementById('listaTempoMedio').innerHTML = data.map((item, idx) => `
-          <div class="flex items-center gap-3 py-2 border-b border-white/5">
-            <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-            <div class="flex-1 text-sm text-slate-300 truncate">${item.org}</div>
-            <div class="text-lg font-bold text-cyan-300 min-w-[60px] text-right">${item.dias.toFixed(2)}</div>
-          </div>
-        `).join('');
-        
-        // Gráfico mensal
-        const dataMensal = await fetchJSON('/api/aggregate/by-month');
-        const labelsMes = dataMensal.map(x => {
-          const [year, month] = x.ym.split('-');
-          const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          return `${monthNames[parseInt(month) - 1]}. de ${year}`;
-        });
-        const valuesMes = dataMensal.map(x => x.count);
-        
-        if (window.chartTempoMedioMes instanceof Chart) window.chartTempoMedioMes.destroy();
-        const ctxMes = document.getElementById('chartTempoMedioMes').getContext('2d');
-        window.chartTempoMedioMes = new Chart(ctxMes, {
-          type: 'bar',
-          data: {
-            labels: labelsMes,
-            datasets: [{
-              label: 'Quantidade',
-              data: valuesMes,
-              backgroundColor: 'rgba(167,139,250,0.7)',
-              borderColor: 'rgba(167,139,250,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig()
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          });
+          addChartClickHandler(window.chartTempoMedio, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedio');
+          
+          // Lista de ranking
+          document.getElementById('listaTempoMedio').innerHTML = data.map((item, idx) => `
+            <div class="flex items-center gap-3 py-2 border-b border-white/5">
+              <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
+              <div class="flex-1 text-sm text-slate-300 truncate">${item.org}</div>
+              <div class="text-lg font-bold text-cyan-300 min-w-[60px] text-right">${item.dias.toFixed(2)}</div>
+            </div>
+          `).join('');
+          
+          // Gráfico mensal
+          try {
+            const dataMensal = await fetchJSON('/api/aggregate/by-month');
+            if (dataMensal && Array.isArray(dataMensal) && dataMensal.length > 0) {
+              const labelsMes = dataMensal.map(x => {
+                const [year, month] = x.ym.split('-');
+                const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                return `${monthNames[parseInt(month) - 1]}. de ${year}`;
+              });
+              const valuesMes = dataMensal.map(x => x.count);
+              
+              if (window.chartTempoMedioMes instanceof Chart) window.chartTempoMedioMes.destroy();
+              const ctxMes = document.getElementById('chartTempoMedioMes').getContext('2d');
+              window.chartTempoMedioMes = new Chart(ctxMes, {
+                type: 'bar',
+                data: {
+                  labels: labelsMes,
+                  datasets: [{
+                    label: 'Quantidade',
+                    data: valuesMes,
+                    backgroundColor: 'rgba(167,139,250,0.7)',
+                    borderColor: 'rgba(167,139,250,1)',
+                    borderWidth: 1
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  plugins: { 
+                    legend: { display: false },
+                    tooltip: createEnhancedTooltip(),
+                    datalabels: createDataLabelsConfig(false, 'bar', false)
+                  },
+                  scales: {
+                    y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                  }
+                }
+              });
+              addChartClickHandler(window.chartTempoMedioMes, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioMes');
             }
+          } catch (err) {
+            console.error('Erro ao carregar gráfico mensal:', err);
           }
-        });
-        addChartClickHandler(window.chartTempoMedioMes, (label, value) => showClickFeedback(null, label, value));
+        } catch (error) {
+          console.error('❌ Erro ao carregar tempo médio:', error);
+          const errorMsg = error.message || 'Erro desconhecido ao carregar dados';
+          document.getElementById('listaTempoMedio').innerHTML = `<div class="text-red-400 text-center py-8">Erro ao carregar dados: ${errorMsg}</div>`;
+        }
       }
 
       async function loadTema() {
@@ -1776,7 +3337,7 @@
             }
           }
         });
-        addChartClickHandler(window.chartTema, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartTema, (label, value) => showClickFeedback(null, label, value), 'chartTema');
         
         // Status geral
         const status = await fetchJSON('/api/stats/status-overview');
@@ -1803,7 +3364,7 @@
             }
           }
         });
-        addChartClickHandler(window.chartStatusTema, (label, value) => showClickFeedback(null, label, value));
+        addChartClickHandler(window.chartStatusTema, (label, value) => showClickFeedback(null, label, value), 'chartStatusTema');
         document.getElementById('statusTemaInfo').innerHTML = `
           <div class="text-cyan-300">Concluída: ${status.concluida.percentual}%</div>
           <div class="text-amber-300">Em atendimento: ${status.emAtendimento.percentual}%</div>
@@ -1974,7 +3535,11 @@
           },
           options: {
             responsive: true,
-            plugins: { legend: { display: false } },
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig(false, 'bar', false)
+            },
             scales: {
               y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
               x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
@@ -2029,10 +3594,15 @@
           },
           options: {
             responsive: true,
-            plugins: { legend: { display: false } },
+            indexAxis: 'y',
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig(false, 'bar', true)
+            },
             scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              y: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           }
         });
@@ -2114,10 +3684,15 @@
           },
           options: {
             responsive: true,
-            plugins: { legend: { display: false } },
+            indexAxis: 'y',
+            plugins: { 
+              legend: { display: false },
+              tooltip: createEnhancedTooltip(),
+              datalabels: createDataLabelsConfig(false, 'bar', true)
+            },
             scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              y: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
           }
         });
