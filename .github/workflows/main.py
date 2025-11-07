@@ -724,7 +724,7 @@ try:
     if 'client' not in globals() or client is None:
         raise SystemExit("❌ Cliente gspread não autenticado. Verifique Item 1.")
 
-    PLANILHA_TRATADA_ID = "1SmO5yTD5B6fN_gT-7m1wosP_sbzmtd0agTC-LNCnX9Y"
+    PLANILHA_TRATADA_ID = "184A5ctLPfU0kOe1dKACju-wEbbDJJu_8BWfzfyTNxS0"
     planilha_tratada_gs = client.open_by_key(PLANILHA_TRATADA_ID)
     aba_tratada = planilha_tratada_gs.sheet1
     logging.info(f"Planilha tratada '{PLANILHA_TRATADA_ID}' aberta.")
