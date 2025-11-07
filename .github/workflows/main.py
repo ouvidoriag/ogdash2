@@ -421,7 +421,7 @@ _BANNER("5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA")
 try:
     # ---------- CONSTANTES / IDs ----------
     # Defina PLANILHA_TRATADA_ID no topo do arquivo ou altere aqui diretamente:
-    PLANILHA_TRATADA_ID = "184A5ctLPfU0kOe1dKACju-wEbbDJJu_8BWfzfyTNxS0"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
+    PLANILHA_TRATADA_ID = "1-kuT4GFl_Vtc1xjQ2GJuNLNGSLUriftV75IgtbgeNxo"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
 
     # ---------- ABRE A PLANILHA TRATADA (única fonte) ----------
     planilha_tratada_gs = gc.open_by_key(PLANILHA_TRATADA_ID) # Renomeado para evitar conflito com df_tratada
@@ -793,7 +793,7 @@ try:
     if 'client' not in globals() or client is None:
         raise SystemExit("❌ Cliente gspread não autenticado. Verifique Item 1.")
 
-    PLANILHA_TRATADA_ID = "184A5ctLPfU0kOe1dKACju-wEbbDJJu_8BWfzfyTNxS0"
+    PLANILHA_TRATADA_ID = "1-kuT4GFl_Vtc1xjQ2GJuNLNGSLUriftV75IgtbgeNxo"
     planilha_tratada_gs = client.open_by_key(PLANILHA_TRATADA_ID)
     aba_tratada = planilha_tratada_gs.sheet1
     logging.info(f"Planilha tratada '{PLANILHA_TRATADA_ID}' aberta.")
