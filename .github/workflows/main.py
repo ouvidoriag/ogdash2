@@ -479,9 +479,19 @@ except Exception as e:
     nao_enviados = []
 
 # =======================================================================
-# 5-B) SCRIPT TEMPORÁRIO: CORREÇÃO ÚNICA DAS DATAS EXISTENTES
+# 5-B) SCRIPT TEMPORÁRIO: CORREÇÃO ÚNICA DAS DATAS EXISTENTES (V2 - CORRIGIDO)
 # =======================================================================
 _BANNER("5-B) SCRIPT TEMPORÁRIO - CORRIGINDO DATAS EXISTENTES")
+
+# --- FUNÇÃO AUXILIAR PARA CORRIGIR O ERRO DE VERSÃO DO GSPREAD ---
+def col_num_to_a1_letter(col_num):
+    """Converte um número de coluna (base 1) para sua letra em notação A1."""
+    letter = ''
+    while col_num > 0:
+        col_num, remainder = divmod(col_num - 1, 26)
+        letter = chr(65 + remainder) + letter
+    return letter
+# ----------------------------------------------------------------
 
 try:
     print("Iniciando a correção única para as colunas de data em TODAS as linhas existentes...")
@@ -511,29 +521,30 @@ try:
             if nome_coluna == "data_da_conclusao":
                 # Tratamento especial para a coluna que pode ter texto como "Não concluído"
                 datas_convertidas = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
-                # Onde a conversão falhou, mantém o valor original (o texto)
                 df_tratada[nome_coluna] = datas_convertidas.fillna(df_tratada[nome_coluna])
             else:
                 # Conversão direta para data, zerando a hora
                 df_tratada[nome_coluna] = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
             
             # 2. Prepara a lista de valores para enviar à API do Google Sheets
-            # Converte NaT (datas nulas) para string vazia e datas para o formato que a API entende
             valores_para_atualizar = df_tratada[nome_coluna].dt.strftime('%Y-%m-%d').replace({pd.NaT: ''}).tolist()
-            # Envolve cada valor em uma lista, como a API exige: [['valor1'], ['valor2'], ...]
             payload_api = [[valor] for valor in valores_para_atualizar]
 
             # 3. Envia a atualização para a planilha
             col_index = headers.index(nome_coluna) + 1
-            # Define o range para atualizar (ex: "C2:C1001"), começando da segunda linha para não sobrescrever o cabeçalho
-            range_para_atualizar = f"{gspread.utils.rowcol_to_a1(2, col_index)}:{gspread.utils.rowcol_to_a1(len(df_tratada) + 1, col_index)}"
+            range_para_atualizar = f"{col_num_to_a1_letter(col_index)}2:{col_num_to_a1_letter(col_index)}{len(df_tratada) + 1}"
             
-            # Atualiza os VALORES. 'USER_ENTERED' diz ao Google para interpretar os dados como se um usuário os tivesse digitado.
-            aba_tratada.update(range_para_atualizar, payload_api, value_input_option='USER_ENTERED')
+            # CORREÇÃO AQUI: Usando argumentos nomeados para evitar o DeprecationWarning
+            aba_tratada.update(
+                range_name=range_para_atualizar, 
+                values=payload_api, 
+                value_input_option='USER_ENTERED'
+            )
             print(f"     ✅ Valores da coluna '{nome_coluna}' atualizados na planilha.")
 
             # 4. Aplica a FORMATAÇÃO VISUAL na coluna inteira
-            col_letra = gspread.utils.col_num_to_a1(col_index)
+            # CORREÇÃO AQUI: Usando a nossa função auxiliar `col_num_to_a1_letter`
+            col_letra = col_num_to_a1_letter(col_index)
             aba_tratada.format(f"{col_letra}2:{col_letra}", formato_data_visual)
             print(f"     ✅ Formatação 'dd/mm/yyyy' aplicada à coluna '{nome_coluna}'.")
 
