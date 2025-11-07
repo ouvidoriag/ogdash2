@@ -479,72 +479,79 @@ except Exception as e:
     nao_enviados = []
 
 # ===================================================================================
-# 5.5) SINCRONIZAÇÃO CIRÚRGICA DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
+# 5.5) SINCRONIZAÇÃO DIRECIONADA DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) SINCRONIZAÇÃO CIRÚRGICA DE 'unidade_cadastro' (REMOVER DEPOIS)")
-print(" Executando sincronização de 'unidade_cadastro' para protocolos existentes na base bruta...")
-logging.info("INICIANDO: Sincronização cirúrgica da coluna 'unidade_cadastro'.")
+_BANNER("5.5) SINCRONIZAÇÃO DIRECIONADA DE 'unidade_cadastro' (REMOVER DEPOIS)")
+print(" Executando sincronização direcionada de 'unidade_cadastro' para protocolos padrão 'C...'...")
+logging.info("INICIANDO: Sincronização direcionada da coluna 'unidade_cadastro'.")
 
 try:
-    _SUB("Carregando e preparando dados para sincronização...")
+    _SUB("Carregando bases para a sincronização...")
     
     # 1. PREPARA A BASE BRUTA COMO FONTE DA VERDADE
-    # Usa a df_bruta já carregada no Item 2 e garante que esteja limpa
     df_bruta_mapa = df_bruta.copy()
     df_bruta_mapa.columns = [normalizar_nome_coluna(c) for c in df_bruta_mapa.columns]
     df_bruta_mapa.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
     
-    # 2. CARREGA A BASE TRATADA PARA COMPARAÇÃO
+    # 2. CARREGA A BASE TRATADA PARA SER ATUALIZADA
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
     
-    # 3. VERIFICA SE AS COLUNAS NECESSÁRIAS EXISTEM
     if 'protocolo' not in df_bruta_mapa.columns or 'unidade_cadastro' not in df_bruta_mapa.columns or 'protocolo' not in df_tratada_hist.columns:
-        raise ValueError("Colunas 'protocolo' ou 'unidade_cadastro' não encontradas. Verifique as planilhas.")
+        raise ValueError("Colunas 'protocolo' ou 'unidade_cadastro' não encontradas.")
 
     _SUB("Criando mapa de valores da base bruta...")
-    # Cria um mapa apenas com os dados da planilha bruta atual
+    # Cria um mapa {protocolo: unidade_cadastro} apenas com os dados da planilha bruta atual
     mapa_unidade_bruta = df_bruta_mapa.set_index('protocolo')['unidade_cadastro'].to_dict()
 
-    _SUB("Identificando divergências APENAS para protocolos contidos na base bruta...")
-    
-    # 4. FILTRA A BASE TRATADA PARA CONTER APENAS OS PROTOCOLOS DA BRUTA
-    protocolos_na_bruta = df_bruta_mapa['protocolo'].unique()
-    df_tratada_subset = df_tratada_hist[df_tratada_hist['protocolo'].isin(protocolos_na_bruta)].copy()
+    _SUB("Identificando protocolos alvo e preparando para atualização...")
 
-    # 5. ENCONTRA AS DIVERGÊNCIAS DENTRO DESTE SUBCONJUNTO
-    df_tratada_subset['unidade_corrigida'] = df_tratada_subset['protocolo'].map(mapa_unidade_bruta)
-    
-    # Compara a coluna original com a coluna corrigida para encontrar o que precisa ser atualizado
-    df_para_atualizar = df_tratada_subset[
-        df_tratada_subset['unidade_cadastro'].astype(str) != df_tratada_subset['unidade_corrigida'].astype(str)
-    ]
-    
-    if not df_para_atualizar.empty:
-        print(f" Encontradas {len(df_para_atualizar)} linhas em 'unidade_cadastro' para sincronizar com a base bruta.")
-        logging.info(f"Backfill: Encontradas {len(df_para_atualizar)} linhas de 'unidade_cadastro' para sincronizar.")
+    # 3. FILTRA A BASE TRATADA PARA ENCONTRAR OS PROTOCOLOS-ALVO
+    # O padrão é: começar com 'C' (case-insensitive) seguido por 10 ou mais dígitos.
+    padrao_protocolo_alvo = r'^C\d{10,}$'
+    df_alvo_para_atualizar = df_tratada_hist[df_tratada_hist['protocolo'].str.match(padrao_protocolo_alvo, case=False)].copy()
 
-        _SUB("Preparando e enviando a atualização para o Google Sheets...")
-        TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
+    if not df_alvo_para_atualizar.empty:
+        print(f" Encontrados {len(df_alvo_para_atualizar)} protocolos no padrão 'C...' na base tratada para verificar.")
+
+        # 4. APLICA O MAPA APENAS NOS PROTOCOLOS-ALVO
+        df_alvo_para_atualizar['unidade_corrigida'] = df_alvo_para_atualizar['protocolo'].map(mapa_unidade_bruta)
+
+        # Remove linhas onde o protocolo alvo não foi encontrado na base bruta (para evitar o erro 'nan')
+        df_alvo_para_atualizar.dropna(subset=['unidade_corrigida'], inplace=True)
         
-        protocolos_na_sheet = aba_tratada.col_values(1)
-        protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
-        
-        cells_to_update = []
-        for _, row in df_para_atualizar.iterrows():
-            protocolo = row['protocolo']
-            unidade_corrigida = row['unidade_corrigida']
-            if protocolo in protocolo_para_linha:
-                linha_idx = protocolo_para_linha[protocolo]
-                cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(unidade_corrigida)))
+        # Compara a coluna original com a corrigida para encontrar o que realmente precisa mudar
+        df_alvo_para_atualizar = df_alvo_para_atualizar[
+            df_alvo_para_atualizar['unidade_cadastro'].astype(str) != df_alvo_para_atualizar['unidade_corrigida'].astype(str)
+        ]
 
-        if cells_to_update:
-            aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-            print(f"✅ Sincronização da coluna 'unidade_cadastro' concluída. {len(cells_to_update)} células foram atualizadas.")
-            logging.info(f"CONCLUÍDO: Sincronização. {len(cells_to_update)} células de 'unidade_cadastro' foram atualizadas.")
+        if not df_alvo_para_atualizar.empty:
+            print(f" -> Desses, {len(df_alvo_para_atualizar)} precisam de atualização na coluna 'unidade_cadastro'.")
+            logging.info(f"Backfill: {len(df_alvo_para_atualizar)} linhas de 'unidade_cadastro' para sincronizar.")
+
+            _SUB("Preparando e enviando a atualização para o Google Sheets...")
+            TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
+            
+            protocolos_na_sheet = aba_tratada.col_values(1)
+            protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
+            
+            cells_to_update = []
+            for _, row in df_alvo_para_atualizar.iterrows():
+                protocolo = row['protocolo']
+                unidade_corrigida = row['unidade_corrigida']
+                if protocolo in protocolo_para_linha:
+                    linha_idx = protocolo_para_linha[protocolo]
+                    cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(unidade_corrigida)))
+
+            if cells_to_update:
+                aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
+                print(f"✅ Sincronização direcionada concluída. {len(cells_to_update)} células foram atualizadas.")
+                logging.info(f"CONCLUÍDO: Sincronização. {len(cells_to_update)} células de 'unidade_cadastro' foram atualizadas.")
+        else:
+            print("✅ Os protocolos no padrão 'C...' já estão sincronizados.")
     else:
-        print("✅ Nenhuma divergência encontrada. Os protocolos da base bruta já estão sincronizados na tratada.")
-        logging.info("Backfill: Nenhuma correção de 'unidade_cadastro' necessária.")
+        print("✅ Nenhum protocolo no padrão 'C...' foi encontrado na base tratada para verificar.")
+        logging.info("Backfill: Nenhum protocolo no padrão 'C...' encontrado na base tratada.")
 
 except Exception as e:
     print(f"❌ Erro crítico durante o backfill de 'unidade_cadastro': {e}")
