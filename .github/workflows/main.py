@@ -421,7 +421,7 @@ _BANNER("5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA")
 try:
     # ---------- CONSTANTES / IDs ----------
     # Defina PLANILHA_TRATADA_ID no topo do arquivo ou altere aqui diretamente:
-    PLANILHA_TRATADA_ID = "1SmO5yTD5B6fN_gT-7m1wosP_sbzmtd0agTC-LNCnX9Y"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
+    PLANILHA_TRATADA_ID = "184A5ctLPfU0kOe1dKACju-wEbbDJJu_8BWfzfyTNxS0"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
 
     # ---------- ABRE A PLANILHA TRATADA (única fonte) ----------
     planilha_tratada_gs = gc.open_by_key(PLANILHA_TRATADA_ID) # Renomeado para evitar conflito com df_tratada
