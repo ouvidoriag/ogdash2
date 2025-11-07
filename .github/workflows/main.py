@@ -479,9 +479,19 @@ except Exception as e:
     nao_enviados = []
 
 # ====================================================================================
-# 5-D) SCRIPT TEMPORÁRIO: SINCRONIZANDO 'tempo_de_resolucao_em_dias'
+# 5-D) SCRIPT TEMPORÁRIO: SINCRONIZANDO 'tempo_de_resolucao_em_dias' (V2 - CORRIGIDO)
 # ====================================================================================
 _BANNER("5-D) SCRIPT TEMPORÁRIO - SINCRONIZANDO 'tempo_de_resolucao_em_dias'")
+
+# --- FUNÇÃO AUXILIAR NECESSÁRIA PARA ESTE BLOCO ---
+def col_num_to_a1_letter(col_num):
+    """Converte um número de coluna (base 1) para sua letra em notação A1."""
+    letter = ''
+    while col_num > 0:
+        col_num, remainder = divmod(col_num - 1, 26)
+        letter = chr(65 + remainder) + letter
+    return letter
+# --------------------------------------------------
 
 try:
     print("Iniciando a sincronização única da coluna 'tempo_de_resolucao_em_dias'...")
@@ -491,16 +501,13 @@ try:
         raise SystemExit("Dados brutos ou tratados não estão disponíveis para a sincronização.")
 
     # 1. Cria um mapa de consulta {protocolo: valor_original} a partir da planilha bruta.
-    # Usamos drop_duplicates para garantir que cada protocolo seja único.
     mapa_resolucao = df_bruta.drop_duplicates(subset=['protocolo']).set_index('protocolo')['tempo_de_resolucao_em_dias'].to_dict()
     print(f"   • {len(mapa_resolucao)} valores de referência encontrados na planilha bruta.")
 
     # 2. Usa o mapa para encontrar os valores corretos para os protocolos da planilha tratada.
-    # O .map() encontrará o valor para cada protocolo; se não encontrar, resultará em NaN (nulo).
     df_tratada['tempo_resolucao_sync'] = df_tratada['protocolo'].map(mapa_resolucao)
 
     # 3. Lógica de segurança: Atualiza a coluna original SOMENTE onde um valor correspondente foi encontrado.
-    # Se 'tempo_resolucao_sync' for nulo (protocolo antigo), o valor original é mantido.
     df_tratada['tempo_de_resolucao_em_dias'] = df_tratada['tempo_resolucao_sync'].fillna(df_tratada['tempo_de_resolucao_em_dias'])
     
     # 4. Limpa a coluna temporária
@@ -514,7 +521,7 @@ try:
     headers = aba_tratada.row_values(1)
     if 'tempo_de_resolucao_em_dias' in headers:
         col_index = headers.index('tempo_de_resolucao_em_dias') + 1
-        col_letra = col_num_to_a1_letter(col_index) # Requer a função auxiliar
+        col_letra = col_num_to_a1_letter(col_index) # Agora a função existe
         range_para_atualizar = f"{col_letra}2:{col_letra}{len(df_tratada) + 1}"
         
         print(f"   • Enviando {len(valores_para_atualizar)} valores atualizados para a planilha...")
