@@ -94,9 +94,22 @@ O campo `data` armazena o JSON completo da planilha Excel original:
 
 ## 📅 Sistema de Datas
 
+### ⚠️ IMPORTANTE: Sistema Global de Datas
+
+**TODAS as APIs e páginas agora usam um sistema global de funções para processar datas.**  
+Consulte `SISTEMA_GLOBAL_DATAS.md` para documentação completa do sistema global.
+
+**Funções globais principais:**
+- `getDataCriacao(record)` - Obtém data de criação (prioriza `dataDaCriacao` - 100% disponível)
+- `getDataConclusao(record)` - Obtém data de conclusão
+- `getTempoResolucaoEmDias(record, incluirZero)` - Calcula tempo de resolução
+- `isConcluido(record)` - Verifica se está concluído
+- `getMes(record)` - Obtém mês (YYYY-MM)
+- `addMesFilter(where, meses)` - Adiciona filtro de meses
+
 ### Normalização de Datas
 
-O sistema possui uma função `normalizeDate()` que converte diferentes formatos de data para `YYYY-MM-DD`:
+O sistema possui uma função global `normalizeDate()` que converte diferentes formatos de data para `YYYY-MM-DD`:
 
 ```javascript
 const normalizeDate = (dateInput) => {
@@ -128,12 +141,13 @@ const normalizeDate = (dateInput) => {
 
 ### Cálculo de Tempo de Resolução
 
-O sistema calcula o tempo de resolução em dias usando a seguinte prioridade:
+O sistema calcula o tempo de resolução em dias usando a função global `getTempoResolucaoEmDias()` com a seguinte prioridade:
 
-1. **Prioridade 1**: Campo `tempoDeResolucaoEmDias` (se disponível e válido)
-2. **Prioridade 2**: Diferença entre `dataCriacaoIso` e `dataConclusaoIso`
-3. **Prioridade 3**: Diferença entre `normalizeDate(dataDaCriacao)` e `normalizeDate(dataDaConclusao)`
-4. **Prioridade 4**: Diferença entre `normalizeDate(data.data_da_criacao)` e `normalizeDate(data.data_da_conclusao)`
+1. **Prioridade 1**: Campo `tempoDeResolucaoEmDias` (99% disponível) ⭐ **Principal**
+2. **Prioridade 2**: Diferença entre `getDataCriacao()` e `getDataConclusao()`
+3. **Prioridade 3**: Diferença entre `normalizeDate(data.data_da_criacao)` e `normalizeDate(data.data_da_conclusao)`
+
+**Nota**: Todas as APIs usam `getTempoResolucaoEmDias()` que implementa esta lógica de forma consistente.
 
 **Filtros aplicados**:
 - Valores negativos são ignorados

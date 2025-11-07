@@ -234,6 +234,244 @@ async function withCache(key, ttlSeconds, res, fn) {
   }
 }
 
+// ========== SISTEMA GLOBAL DE DATAS ==========
+/**
+ * Sistema global de normalização e processamento de datas
+ * Usado por TODAS as APIs e páginas do sistema
+ */
+
+/**
+ * Normaliza qualquer formato de data para YYYY-MM-DD
+ * @param {any} dateInput - Data em qualquer formato (Date, string ISO, string DD/MM/YYYY, etc.)
+ * @returns {string|null} - Data normalizada em formato YYYY-MM-DD ou null se inválida
+ */
+function normalizeDate(dateInput) {
+  if (!dateInput) return null;
+  
+  // Se for objeto Date, converter para YYYY-MM-DD
+  if (dateInput instanceof Date) {
+    if (isNaN(dateInput.getTime())) return null;
+    return dateInput.toISOString().slice(0, 10);
+  }
+  
+  // Se for objeto com propriedades de data (MongoDB Date)
+  if (typeof dateInput === 'object' && dateInput !== null) {
+    try {
+      const date = new Date(dateInput);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().slice(0, 10);
+      }
+    } catch (e) {
+      // Ignorar erro
+    }
+  }
+  
+  const str = String(dateInput).trim();
+  if (!str || str === 'null' || str === 'undefined') return null;
+  
+  // Formato YYYY-MM-DD (já está no formato correto)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  
+  // Formato ISO com hora (2025-01-06T03:00:28.000Z) - EXTRAIR APENAS A DATA
+  const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+  
+  // Formato DD/MM/YYYY
+  const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  
+  return null;
+}
+
+/**
+ * Obtém a data de criação de um registro usando a ordem de prioridade
+ * @param {Object} record - Registro do Prisma
+ * @returns {string|null} - Data de criação em formato YYYY-MM-DD ou null
+ */
+function getDataCriacao(record) {
+  // Prioridade 1: dataCriacaoIso (se disponível e válida)
+  if (record.dataCriacaoIso) {
+    const normalized = normalizeDate(record.dataCriacaoIso);
+    if (normalized) return normalized;
+  }
+  
+  // Prioridade 2: dataDaCriacao (100% dos registros têm este campo)
+  if (record.dataDaCriacao) {
+    const normalized = normalizeDate(record.dataDaCriacao);
+    if (normalized) return normalized;
+  }
+  
+  // Prioridade 3: data.data_da_criacao (do JSON)
+  if (record.data && typeof record.data === 'object' && record.data.data_da_criacao) {
+    const normalized = normalizeDate(record.data.data_da_criacao);
+    if (normalized) return normalized;
+  }
+  
+  return null;
+}
+
+/**
+ * Obtém a data de conclusão de um registro usando a ordem de prioridade
+ * @param {Object} record - Registro do Prisma
+ * @returns {string|null} - Data de conclusão em formato YYYY-MM-DD ou null
+ */
+function getDataConclusao(record) {
+  // Prioridade 1: dataConclusaoIso (se disponível e válida)
+  if (record.dataConclusaoIso) {
+    const normalized = normalizeDate(record.dataConclusaoIso);
+    if (normalized) return normalized;
+  }
+  
+  // Prioridade 2: dataDaConclusao
+  if (record.dataDaConclusao) {
+    const normalized = normalizeDate(record.dataDaConclusao);
+    if (normalized) return normalized;
+  }
+  
+  // Prioridade 3: data.data_da_conclusao (do JSON)
+  if (record.data && typeof record.data === 'object' && record.data.data_da_conclusao) {
+    const normalized = normalizeDate(record.data.data_da_conclusao);
+    if (normalized) return normalized;
+  }
+  
+  return null;
+}
+
+/**
+ * Verifica se um registro está concluído
+ * @param {Object} record - Registro do Prisma
+ * @returns {boolean} - true se o registro está concluído
+ */
+function isConcluido(record) {
+  // Verificar se tem data de conclusão
+  if (getDataConclusao(record)) return true;
+  
+  // Verificar status
+  const status = (record.status || record.statusDemanda || '').toLowerCase();
+  return status.includes('concluída') || 
+         status.includes('concluida') || 
+         status.includes('encerrada') || 
+         status.includes('finalizada') ||
+         status.includes('resolvida') ||
+         status.includes('arquivamento');
+}
+
+/**
+ * Calcula o tempo de resolução em dias usando a ordem de prioridade
+ * @param {Object} record - Registro do Prisma
+ * @param {boolean} incluirZero - Se true, inclui valores zero
+ * @returns {number|null} - Tempo de resolução em dias ou null se não puder calcular
+ */
+function getTempoResolucaoEmDias(record, incluirZero = true) {
+  // Prioridade 1: tempoDeResolucaoEmDias (campo direto)
+  if (record.tempoDeResolucaoEmDias !== null && record.tempoDeResolucaoEmDias !== undefined && record.tempoDeResolucaoEmDias !== '') {
+    const parsed = parseFloat(record.tempoDeResolucaoEmDias);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
+      if (!incluirZero && parsed === 0) {
+        // Não retornar zero se incluirZero é false, mas continuar tentando calcular das datas
+      } else {
+        return parsed;
+      }
+    }
+  }
+  
+  // Prioridade 2: Calcular a partir das datas ISO
+  const dataCriacao = getDataCriacao(record);
+  const dataConclusao = getDataConclusao(record);
+  
+  if (dataCriacao && dataConclusao) {
+    const start = new Date(dataCriacao + 'T00:00:00');
+    const end = new Date(dataConclusao + 'T00:00:00');
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+      const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+      if (calculated >= 0 && calculated <= 1000) {
+        if (incluirZero || calculated > 0) {
+          return calculated;
+        }
+      }
+    }
+  }
+  
+  // Prioridade 3: Calcular a partir de data.data_da_criacao e data.data_da_conclusao
+  if (record.data && typeof record.data === 'object') {
+    const dataCriacaoJson = normalizeDate(record.data.data_da_criacao);
+    const dataConclusaoJson = normalizeDate(record.data.data_da_conclusao);
+    
+    if (dataCriacaoJson && dataConclusaoJson) {
+      const start = new Date(dataCriacaoJson + 'T00:00:00');
+      const end = new Date(dataConclusaoJson + 'T00:00:00');
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+        if (calculated >= 0 && calculated <= 1000) {
+          if (incluirZero || calculated > 0) {
+            return calculated;
+          }
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Obtém o mês (YYYY-MM) de um registro baseado na data de criação
+ * @param {Object} record - Registro do Prisma
+ * @returns {string|null} - Mês em formato YYYY-MM ou null
+ */
+function getMes(record) {
+  const dataCriacao = getDataCriacao(record);
+  if (dataCriacao) {
+    return dataCriacao.slice(0, 7); // YYYY-MM
+  }
+  return null;
+}
+
+/**
+ * Obtém o ano de um registro baseado na data de criação
+ * @param {Object} record - Registro do Prisma
+ * @returns {number|null} - Ano ou null
+ */
+function getAno(record) {
+  const dataCriacao = getDataCriacao(record);
+  if (dataCriacao) {
+    return parseInt(dataCriacao.slice(0, 4));
+  }
+  return null;
+}
+
+/**
+ * Filtra registros por mês(es) usando dataDaCriacao
+ * @param {Object} where - Objeto where do Prisma
+ * @param {string[]|null} meses - Array de meses no formato YYYY-MM
+ * @returns {Object} - Objeto where atualizado
+ */
+function addMesFilter(where, meses) {
+  if (meses && meses.length > 0) {
+    const monthFilters = meses.map(month => {
+      // Se já está em formato YYYY-MM, usar diretamente
+      if (/^\d{4}-\d{2}$/.test(month)) return month;
+      // Se está em formato MM/YYYY, converter
+      const match = month.match(/^(\d{2})\/(\d{4})$/);
+      if (match) return `${match[2]}-${match[1]}`;
+      return month;
+    });
+    
+    // Adicionar filtro OR para qualquer um dos meses
+    if (where.OR) {
+      where.AND = [
+        ...(where.AND || []),
+        { OR: monthFilters.map(month => ({ dataDaCriacao: { startsWith: month } })) }
+      ];
+    } else {
+      where.OR = monthFilters.map(month => ({
+        dataDaCriacao: { startsWith: month }
+      }));
+    }
+  }
+  return where;
+}
+
 // ========== CONTEXTO (CÉREBRO + WELLINGTON + DADOS DO BANCO) ==========
 const WELLINGTON_DIR = process.env.WELLINGTON_DIR || path.join(projectRoot, 'Wellington');
 const DB_DATA_DIR = path.join(projectRoot, 'db-data'); // Pasta para dados do banco
@@ -498,13 +736,26 @@ app.get('/api/summary', async (req, res) => {
     const statusCounts = byStatus.map(r => ({ status: r.status ?? 'Não informado', count: r._count._all }))
       .sort((a,b) => b.count - a.count);
 
-    // Últimos 7 e 30 dias usando dataCriacaoIso
+    // Últimos 7 e 30 dias usando dataDaCriacao (sistema global - 100% disponível)
     const today = new Date();
     const toIso = (d) => d.toISOString().slice(0,10);
     const d7 = new Date(today); d7.setDate(today.getDate() - 7);
     const d30 = new Date(today); d30.setDate(today.getDate() - 30);
-    const last7Where = { ...where, dataCriacaoIso: { gte: toIso(d7) } };
-    const last30Where = { ...where, dataCriacaoIso: { gte: toIso(d30) } };
+    const last7Str = toIso(d7);
+    const last30Str = toIso(d30);
+    // Filtrar por dataDaCriacao usando startsWith (funciona para strings ISO também)
+    const last7Where = { 
+      ...where, 
+      dataDaCriacao: { 
+        startsWith: last7Str
+      }
+    };
+    const last30Where = { 
+      ...where, 
+      dataDaCriacao: { 
+        startsWith: last30Str
+      }
+    };
     const last7 = await prisma.record.count({ where: last7Where });
     const last30 = await prisma.record.count({ where: last30Where });
 
@@ -602,7 +853,7 @@ app.get('/api/aggregate/count-by', async (req, res) => {
       Bairro: 'endereco',
       Status: 'status',
       StatusDemanda: 'statusDemanda',
-      Data: 'dataCriacaoIso',
+      Data: 'dataDaCriacao', // Usa sistema global getDataCriacao()
       UAC: 'unidadeCadastro',
       Responsavel: 'responsavel',
       Canal: 'canal',
@@ -671,11 +922,28 @@ app.get('/api/aggregate/time-series', async (req, res) => {
   const cacheKey = `ts:${field}`;
   // Cache de 1 hora para séries temporais
   return withCache(cacheKey, 3600, res, async () => {
-    // Se pediram Data, usar coluna normalizada dataCriacaoIso
+    // Se pediram Data, usar sistema global de datas
     if (field === 'Data' || field === 'data_da_criacao') {
-      const rows = await prisma.record.groupBy({ by: ['dataCriacaoIso'], _count: { _all: true } });
-      return rows.map(r => ({ date: r.dataCriacaoIso ?? 'Sem data', count: r._count._all }))
-        .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+      const rows = await prisma.record.findMany({
+        where: { dataDaCriacao: { not: null } },
+        select: {
+          dataCriacaoIso: true,
+          dataDaCriacao: true,
+          data: true
+        }
+      });
+      
+      const map = new Map();
+      for (const r of rows) {
+        const dataCriacao = getDataCriacao(r);
+        if (dataCriacao) {
+          map.set(dataCriacao, (map.get(dataCriacao) || 0) + 1);
+        }
+      }
+      
+      return Array.from(map.entries())
+        .map(([date, count]) => ({ date, count }))
+        .sort((a, b) => a.date.localeCompare(b.date));
     }
 
     const rows = await prisma.record.findMany({ select: { data: true } });
@@ -721,15 +989,19 @@ app.get('/api/aggregate/by-month', async (req, res) => {
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
     const rows = await prisma.record.findMany({ 
-      where,
-      select: { dataCriacaoIso: true } 
+      where: { ...where, dataDaCriacao: { not: null } },
+      select: { 
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        data: true
+      } 
     });
     const map = new Map();
     for (const r of rows) {
-      const d = r.dataCriacaoIso;
-      if (!d || d.length < 7) continue;
-      const ym = d.slice(0,7); // YYYY-MM
-      map.set(ym, (map.get(ym) ?? 0) + 1);
+      // Usar sistema global de datas
+      const mes = getMes(r);
+      if (!mes) continue;
+      map.set(mes, (map.get(mes) ?? 0) + 1);
     }
     return Array.from(map.entries()).map(([ym, count]) => ({ ym, count }))
       .sort((a,b) => a.ym.localeCompare(b.ym)).slice(-12);
@@ -794,17 +1066,24 @@ app.get('/api/aggregate/heatmap', async (req, res) => {
   }
 
   // Buscar apenas colunas necessárias
-  const rows = await prisma.record.findMany({ select: { dataCriacaoIso: true, [col]: true } });
+  const rows = await prisma.record.findMany({ 
+    where: { dataDaCriacao: { not: null } },
+    select: { 
+      dataCriacaoIso: true,
+      dataDaCriacao: true,
+      data: true,
+      [col]: true 
+    } 
+  });
   const matrix = new Map(); // key: dim value -> Map(ym -> count)
   for (const r of rows) {
-    const d = r.dataCriacaoIso;
-    if (!d || d.length < 7) continue;
-    const ym = d.slice(0,7);
-    if (!labels.includes(ym)) continue;
+    // Usar sistema global de datas
+    const mes = getMes(r);
+    if (!mes || !labels.includes(mes)) continue;
     const key = r[col] ?? 'Não informado';
     if (!matrix.has(key)) matrix.set(key, new Map(labels.map(l => [l, 0])));
     const inner = matrix.get(key);
-    inner.set(ym, (inner.get(ym) ?? 0) + 1);
+    inner.set(mes, (inner.get(mes) ?? 0) + 1);
   }
 
   // Selecionar top 10 chaves pelo total (para heatmap legível)
@@ -823,10 +1102,12 @@ app.get('/api/aggregate/heatmap', async (req, res) => {
 app.get('/api/sla/summary', async (req, res) => {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
   
-  const key = servidor ? `sla:servidor:${servidor}:v3` :
-              unidadeCadastro ? `sla:uac:${unidadeCadastro}:v3` :
-              'sla:v3';
+  const key = servidor ? `sla:servidor:${servidor}:v4` :
+              unidadeCadastro ? `sla:uac:${unidadeCadastro}:v4` :
+              meses ? `sla:meses:${meses.sort().join(',')}:v4` :
+              'sla:v4';
   
   // Cache de 1 hora
   return withCache(key, 3600, res, async () => {
@@ -834,17 +1115,24 @@ app.get('/api/sla/summary', async (req, res) => {
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
+    // Adicionar filtro de meses se fornecido
+    addMesFilter(where, meses);
+    
     const today = new Date();
-    const toIso = (d) => d.toISOString().slice(0,10);
-    // Buscar campos necessários: data de criação, conclusão e status
+    
+    // Buscar campos necessários usando sistema global de datas
     const rows = await prisma.record.findMany({ 
-      where: Object.keys(where).length > 0 ? where : undefined,
+      where: { ...where, dataDaCriacao: { not: null } },
       select: { 
-        dataCriacaoIso: true, 
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
         dataConclusaoIso: true,
+        dataDaConclusao: true,
+        tempoDeResolucaoEmDias: true,
         status: true,
         statusDemanda: true,
-        tipoDeManifestacao: true 
+        tipoDeManifestacao: true,
+        data: true
       } 
     });
     
@@ -856,27 +1144,6 @@ app.get('/api/sla/summary', async (req, res) => {
       vermelho: 0         // 61+ dias (atraso)
     };
 
-    const isConcluido = (row) => {
-      // Verificar se tem data de conclusão
-      if (row.dataConclusaoIso) return true;
-      
-      // Verificar status
-      const status = (row.status || row.statusDemanda || '').toLowerCase();
-      return status.includes('concluída') || 
-             status.includes('concluida') || 
-             status.includes('encerrada') || 
-             status.includes('finalizada') ||
-             status.includes('resolvida') ||
-             status.includes('arquivamento');
-    };
-
-    const daysBetween = (iso) => {
-      if (!iso) return null;
-      const d = new Date(iso + 'T00:00:00');
-      if (isNaN(d)) return null;
-      return Math.floor((today - d) / (1000*60*60*24));
-    };
-
     for (const r of rows) {
       // Se está concluído, marcar como verde escuro
       if (isConcluido(r)) {
@@ -884,8 +1151,21 @@ app.get('/api/sla/summary', async (req, res) => {
         continue;
       }
       
-      // Se não está concluído, calcular dias desde criação
-      const days = daysBetween(r.dataCriacaoIso);
+      // Se não está concluído, calcular tempo de resolução usando sistema global
+      const tempoResolucao = getTempoResolucaoEmDias(r, true);
+      
+      // Se não conseguir calcular pelo tempo, calcular dias desde criação
+      let days = tempoResolucao;
+      if (days === null) {
+        const dataCriacao = getDataCriacao(r);
+        if (dataCriacao) {
+          const d = new Date(dataCriacao + 'T00:00:00');
+          if (!isNaN(d.getTime())) {
+            days = Math.floor((today - d) / (1000*60*60*24));
+          }
+        }
+      }
+      
       if (days === null) continue;
       
       // Classificar por faixa de dias
@@ -1009,15 +1289,7 @@ app.get('/api/stats/average-time', async (req, res) => {
         where: {
           ...where,
           dataDaCriacao: { not: null },
-          OR: [
-            { tempoDeResolucaoEmDias: { not: null } },
-            { 
-              AND: [
-                { dataCriacaoIso: { not: null } },
-                { dataConclusaoIso: { not: null } }
-              ]
-            }
-          ]
+          // Filtro já aplicado acima: dataDaCriacao: { not: null }
         },
         select: {
           orgaos: true,
@@ -1032,89 +1304,19 @@ app.get('/api/stats/average-time', async (req, res) => {
         }
       });
       
-      // Função auxiliar para normalizar data
-      const normalizeDate = (dateInput) => {
-        if (!dateInput) return null;
-        if (dateInput instanceof Date) {
-          if (isNaN(dateInput.getTime())) return null;
-          return dateInput.toISOString().slice(0, 10);
-        }
-        if (typeof dateInput === 'object' && dateInput !== null) {
-          try {
-            const date = new Date(dateInput);
-            if (!isNaN(date.getTime())) return date.toISOString().slice(0, 10);
-          } catch (e) {}
-        }
-        const str = String(dateInput).trim();
-        if (!str || str === 'null' || str === 'undefined') return null;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-        const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
-        if (isoMatch) return isoMatch[1];
-        const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
-        return null;
-      };
-      
-      // Agrupar por órgão/unidade e calcular média
+      // Agrupar por órgão/unidade e calcular média usando sistema global de datas
       const map = new Map();
       for (const r of rows) {
         // Priorizar orgaos, depois responsavel, depois unidadeCadastro
         const org = r.orgaos || r.responsavel || r.unidadeCadastro || 'Não informado';
         
-        // Obter data de criação
-        const dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
-                           (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
-        
-        let days = null;
-        
-        // Priorizar campo tempoDeResolucaoEmDias se disponível
-        if (r.tempoDeResolucaoEmDias) {
-          const parsed = parseFloat(r.tempoDeResolucaoEmDias);
-          if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
-            if (!incluirZero && parsed === 0) {
-              // Não definir days, vai tentar calcular das datas
-            } else {
-              days = parsed;
-            }
-          }
-        }
-        
-        // Se não tiver tempoDeResolucaoEmDias, calcular a partir das datas
-        if (days === null) {
-          if (dataCriacao && r.dataConclusaoIso) {
-            const start = new Date(dataCriacao + 'T00:00:00');
-            const end = new Date(r.dataConclusaoIso + 'T00:00:00');
-            if (!isNaN(start) && !isNaN(end)) {
-              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-              if (calculated >= 0 && calculated <= 1000) {
-                if (incluirZero || calculated > 0) {
-                  days = calculated;
-                }
-              }
-            }
-          }
-          
-          if (days === null && r.dataDaConclusao && dataCriacao) {
-            const dataConclusao = normalizeDate(r.dataDaConclusao);
-            if (dataConclusao) {
-              const start = new Date(dataCriacao + 'T00:00:00');
-              const end = new Date(dataConclusao + 'T00:00:00');
-              if (!isNaN(start) && !isNaN(end)) {
-                const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-                if (calculated >= 0 && calculated <= 1000) {
-                  if (incluirZero || calculated > 0) {
-                    days = calculated;
-                  }
-                }
-              }
-            }
-          }
-        }
-        
         // Se apenasConcluidos é true, verificar se tem data de conclusão
-        if (apenasConcluidos && !r.dataConclusaoIso && !r.dataDaConclusao) {
+        if (apenasConcluidos && !isConcluido(r)) {
           continue;
         }
+        
+        // Usar sistema global para calcular tempo de resolução
+        const days = getTempoResolucaoEmDias(r, incluirZero);
         
         // Ignorar se não conseguir calcular
         if (days === null) continue;
@@ -1182,46 +1384,7 @@ app.get('/api/stats/average-time/by-day', async (req, res) => {
     const today = new Date();
     const map = new Map();
     
-    // Função auxiliar para normalizar data
-    // dataDaCriacao vem como string ISO do MongoDB: "2025-01-06T03:00:28.000Z"
-    const normalizeDate = (dateInput) => {
-      if (!dateInput) return null;
-      
-      // Se for objeto Date, converter para YYYY-MM-DD
-      if (dateInput instanceof Date) {
-        if (isNaN(dateInput.getTime())) return null;
-        return dateInput.toISOString().slice(0, 10);
-      }
-      
-      // Se for objeto com propriedades de data (MongoDB Date)
-      if (typeof dateInput === 'object' && dateInput !== null) {
-        // Tentar converter para Date
-        try {
-          const date = new Date(dateInput);
-          if (!isNaN(date.getTime())) {
-            return date.toISOString().slice(0, 10);
-          }
-        } catch (e) {
-          // Ignorar erro
-        }
-      }
-      
-      const str = String(dateInput).trim();
-      if (!str || str === 'null' || str === 'undefined') return null;
-      
-      // Formato YYYY-MM-DD (já está no formato correto)
-      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-      
-      // Formato ISO com hora (2025-01-06T03:00:28.000Z) - EXTRAIR APENAS A DATA
-      const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
-      if (isoMatch) return isoMatch[1];
-      
-      // Formato DD/MM/YYYY
-      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
-      
-      return null;
-    };
+    // Usar sistema global de datas (normalizeDate, getDataCriacao, getTempoResolucaoEmDias já estão disponíveis)
     
     // Debug: verificar quantos registros temos
     console.log(`📊 [by-day] Total de registros encontrados: ${rows.length}`);
@@ -1231,17 +1394,12 @@ app.get('/api/stats/average-time/by-day', async (req, res) => {
     
     for (const r of rows) {
       processados++;
-      // Obter data de criação (priorizar dataCriacaoIso, depois dataDaCriacao, depois data.data_da_criacao)
-      let dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
-                       (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
+      // Usar sistema global de datas
+      const dataCriacao = getDataCriacao(r);
       
       if (!dataCriacao) {
         if (processados <= 10) {
-          const dataDaCriacaoType = r.dataDaCriacao ? 
-            (r.dataDaCriacao instanceof Date ? 'Date' : 
-             typeof r.dataDaCriacao === 'object' ? JSON.stringify(r.dataDaCriacao).substring(0, 50) : 
-             typeof r.dataDaCriacao) : 'null';
-          console.log(`  [${processados}] Sem data: dataCriacaoIso=${r.dataCriacaoIso}, dataDaCriacao=${dataDaCriacaoType}, data.data_da_criacao=${r.data?.data_da_criacao || 'null'}`);
+          console.log(`  [${processados}] Sem data: dataCriacaoIso=${r.dataCriacaoIso}, dataDaCriacao=${typeof r.dataDaCriacao}`);
         }
         continue;
       }
@@ -1249,7 +1407,7 @@ app.get('/api/stats/average-time/by-day', async (req, res) => {
       
       // Debug: mostrar primeiras datas normalizadas
       if (comData <= 5) {
-        console.log(`  [${comData}] Data normalizada: ${dataCriacao}, tipo original: ${r.dataDaCriacao?.constructor?.name || typeof r.dataDaCriacao}`);
+        console.log(`  [${comData}] Data normalizada: ${dataCriacao}`);
       }
       
       let days = null;
@@ -1430,81 +1588,24 @@ app.get('/api/stats/average-time/by-week', async (req, res) => {
     
     const map = new Map();
     
-    // Função auxiliar para normalizar data
-    const normalizeDate = (dateStr) => {
-      if (!dateStr) return null;
-      const str = String(dateStr).trim();
-      if (!str) return null;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
-      return null;
-    };
-    
+    // Usar sistema global de datas
     for (const r of rows) {
-      // Obter data de criação (priorizar dataCriacaoIso, depois dataDaCriacao, depois data.data_da_criacao)
-      let dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
-                       (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
-      
-      if (!dataCriacao) continue;
-      
-      let days = null;
-      // Verificar se tempoDeResolucaoEmDias existe (mesmo que seja 0 ou string vazia)
-      if (r.tempoDeResolucaoEmDias !== null && r.tempoDeResolucaoEmDias !== undefined && r.tempoDeResolucaoEmDias !== '') {
-        const parsed = parseFloat(r.tempoDeResolucaoEmDias);
-        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
-          if (!incluirZero && parsed === 0) {
-            // Não definir days, vai tentar calcular das datas
-          } else {
-            days = parsed;
-          }
-        }
-      }
-      
-      // Se não tiver tempoDeResolucaoEmDias, tentar calcular a partir das datas
-      if (days === null) {
-        // Tentar usar dataCriacaoIso e dataConclusaoIso
-        if (dataCriacao && r.dataConclusaoIso) {
-          const start = new Date(dataCriacao + 'T00:00:00');
-          const end = new Date(r.dataConclusaoIso + 'T00:00:00');
-          if (!isNaN(start) && !isNaN(end)) {
-            const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-            if (calculated >= 0 && calculated <= 1000) {
-              if (incluirZero || calculated > 0) {
-                days = calculated;
-              }
-            }
-          }
-        }
-        
-        // Se ainda não tiver, tentar usar dataDaConclusao
-        if (days === null && r.dataDaConclusao) {
-          const dataConclusao = normalizeDate(r.dataDaConclusao);
-          if (dataConclusao && dataCriacao) {
-            const start = new Date(dataCriacao + 'T00:00:00');
-            const end = new Date(dataConclusao + 'T00:00:00');
-            if (!isNaN(start) && !isNaN(end)) {
-              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-              if (calculated >= 0 && calculated <= 1000) {
-                if (incluirZero || calculated > 0) {
-                  days = calculated;
-                }
-              }
-            }
-          }
-        }
-      }
-      
       // Se apenasConcluidos é true, verificar se tem data de conclusão
-      if (apenasConcluidos && !r.dataConclusaoIso && !r.dataDaConclusao) {
+      if (apenasConcluidos && !isConcluido(r)) {
         continue;
       }
       
+      // Usar sistema global para calcular tempo de resolução
+      const days = getTempoResolucaoEmDias(r, incluirZero);
+      
       if (days === null) continue;
       
-      // Agrupar por data de criação para ver tendência ao longo do tempo
+      // Calcular semana usando data de criação
+      const dataCriacao = getDataCriacao(r);
+      if (!dataCriacao) continue;
+      
       const date = new Date(dataCriacao + 'T00:00:00');
-      if (isNaN(date)) continue;
+      if (isNaN(date.getTime())) continue;
       const year = date.getFullYear();
       const startOfYear = new Date(year, 0, 1);
       const daysSinceStart = Math.floor((date - startOfYear) / (1000 * 60 * 60 * 24));
@@ -1591,49 +1692,24 @@ app.get('/api/stats/average-time/by-month', async (req, res) => {
     
     const map = new Map();
     
-    // Função auxiliar para normalizar data
-    const normalizeDate = (dateStr) => {
-      if (!dateStr) return null;
-      const str = String(dateStr).trim();
-      if (!str) return null;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
-      return null;
-    };
-    
+    // Usar sistema global de datas
     for (const r of rows) {
-      // Obter data de criação (priorizar dataCriacaoIso, depois dataDaCriacao, depois data.data_da_criacao)
-      let dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
-                       (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
-      
-      if (!dataCriacao) continue;
-      
-      let days = null;
-      if (r.tempoDeResolucaoEmDias) {
-        const parsed = parseFloat(r.tempoDeResolucaoEmDias);
-        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
-          days = parsed;
-        }
+      // Se apenasConcluidos é true, verificar se tem data de conclusão
+      if (apenasConcluidos && !isConcluido(r)) {
+        continue;
       }
       
-      if (days === null && r.dataCriacaoIso && r.dataConclusaoIso) {
-        const start = new Date(r.dataCriacaoIso + 'T00:00:00');
-        const end = new Date(r.dataConclusaoIso + 'T00:00:00');
-        if (!isNaN(start) && !isNaN(end)) {
-          const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-          if (calculated >= 0 && calculated <= 1000) {
-            days = calculated;
-          }
-        }
-      }
+      // Usar sistema global para calcular tempo de resolução
+      const days = getTempoResolucaoEmDias(r, incluirZero);
       
       if (days === null) continue;
       
-      // Agrupar por data de criação para ver tendência ao longo do tempo
-      const monthKey = dataCriacao.slice(0, 7); // YYYY-MM
-      if (!map.has(monthKey)) map.set(monthKey, { total: 0, sum: 0 });
-      const stats = map.get(monthKey);
+      // Obter mês usando sistema global
+      const mes = getMes(r);
+      if (!mes) continue;
+      
+      if (!map.has(mes)) map.set(mes, { total: 0, sum: 0 });
+      const stats = map.get(mes);
       stats.total += 1;
       stats.sum += days;
     }
@@ -1704,84 +1780,17 @@ app.get('/api/stats/average-time/stats', async (req, res) => {
       take: 10000 // Limitar para performance
     });
     
-    // Função auxiliar para normalizar data
-    // dataDaCriacao vem como string ISO do MongoDB: "2025-01-06T03:00:28.000Z"
-    const normalizeDate = (dateInput) => {
-      if (!dateInput) return null;
-      if (dateInput instanceof Date) {
-        if (isNaN(dateInput.getTime())) return null;
-        return dateInput.toISOString().slice(0, 10);
-      }
-      if (typeof dateInput === 'object' && dateInput !== null) {
-        try {
-          const date = new Date(dateInput);
-          if (!isNaN(date.getTime())) return date.toISOString().slice(0, 10);
-        } catch (e) {}
-      }
-      const str = String(dateInput).trim();
-      if (!str || str === 'null' || str === 'undefined') return null;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-      const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
-      if (isoMatch) return isoMatch[1];
-      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
-      return null;
-    };
-    
+    // Usar sistema global de datas
     const tempos = [];
     
     for (const r of rows) {
-      // Obter data de criação
-      const dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
-                         (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
-      
       // Se apenasConcluidos é true, verificar se tem data de conclusão
-      if (apenasConcluidos && !r.dataConclusaoIso && !r.dataDaConclusao) {
+      if (apenasConcluidos && !isConcluido(r)) {
         continue;
       }
       
-      let days = null;
-      if (r.tempoDeResolucaoEmDias) {
-        const parsed = parseFloat(r.tempoDeResolucaoEmDias);
-        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
-          if (!incluirZero && parsed === 0) {
-            // Não definir days, vai tentar calcular das datas
-          } else {
-            days = parsed;
-          }
-        }
-      }
-      
-      if (days === null) {
-        if (dataCriacao && r.dataConclusaoIso) {
-          const start = new Date(dataCriacao + 'T00:00:00');
-          const end = new Date(r.dataConclusaoIso + 'T00:00:00');
-          if (!isNaN(start) && !isNaN(end)) {
-            const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-            if (calculated >= 0 && calculated <= 1000) {
-              if (incluirZero || calculated > 0) {
-                days = calculated;
-              }
-            }
-          }
-        }
-        
-        if (days === null && r.dataDaConclusao && dataCriacao) {
-          const dataConclusao = normalizeDate(r.dataDaConclusao);
-          if (dataConclusao) {
-            const start = new Date(dataCriacao + 'T00:00:00');
-            const end = new Date(dataConclusao + 'T00:00:00');
-            if (!isNaN(start) && !isNaN(end)) {
-              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-              if (calculated >= 0 && calculated <= 1000) {
-                if (incluirZero || calculated > 0) {
-                  days = calculated;
-                }
-              }
-            }
-          }
-        }
-      }
+      // Usar sistema global para calcular tempo de resolução
+      const days = getTempoResolucaoEmDias(r, incluirZero);
       
       if (days !== null) tempos.push(days);
     }
@@ -1875,15 +1884,19 @@ app.get('/api/aggregate/filtered', async (req, res) => {
     
     // Dados por mês
     const rows = await prisma.record.findMany({ 
-      where,
-      select: { dataCriacaoIso: true } 
+      where: { ...where, dataDaCriacao: { not: null } },
+      select: { 
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        data: true
+      } 
     });
     const monthMap = new Map();
     for (const r of rows) {
-      const d = r.dataCriacaoIso;
-      if (!d || d.length < 7) continue;
-      const ym = d.slice(0,7);
-      monthMap.set(ym, (monthMap.get(ym) ?? 0) + 1);
+      // Usar sistema global de datas
+      const mes = getMes(r);
+      if (!mes) continue;
+      monthMap.set(mes, (monthMap.get(mes) ?? 0) + 1);
     }
     const byMonth = Array.from(monthMap.entries()).map(([ym, count]) => ({ ym, count }))
       .sort((a,b) => a.ym.localeCompare(b.ym)).slice(-12);
