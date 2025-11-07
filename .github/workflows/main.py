@@ -479,46 +479,135 @@ except Exception as e:
     nao_enviados = []
 
 # ===================================================================================
-# 5.5) BACKFILL FINAL DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
+# 5.5) SINCRONIZAÇÃO TEMPORÁRIA DE 'unidade_cadastro' A PARTIR DA BASE BRUTA
+#       (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) BACKFILL FINAL DE 'unidade_cadastro' (REMOVER DEPOIS)")
-print(" Executando backfill final para 'unidade_cadastro'...")
+_BANNER("5.5) SINCRONIZAÇÃO TEMPORÁRIA DE 'unidade_cadastro' (REMOVER DEPOIS)")
+print(" Executando sincronização TEMPORÁRIA para 'unidade_cadastro' (apenas protocolos C########...) ...")
 
 try:
-    _SUB("Carregando base tratada...")
+    # --- Carrega a base tratada atual (sheet) e garante cabeçalhos normalizados ---
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
 
-    if 'protocolo' in df_tratada_hist.columns and 'unidade_cadastro' in df_tratada_hist.columns:
-        _SUB("Aplicando a nova lógica de padronização a todos os dados históricos...")
-        
-        # Cria a coluna corrigida usando a MESMA lógica do novo Item 7.3
-        df_tratada_hist['unidade_corrigida'] = df_tratada_hist['unidade_cadastro'].astype(str).apply(_clean_whitespace).apply(_to_proper_case_pt)
-
-        df_para_atualizar = df_tratada_hist[df_tratada_hist['unidade_cadastro'] != df_tratada_hist['unidade_corrigida']]
-
-        if not df_para_atualizar.empty:
-            print(f" Encontradas {len(df_para_atualizar)} linhas em 'unidade_cadastro' para padronizar.")
-            
-            TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
-            protocolos_na_sheet = aba_tratada.col_values(1)
-            protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
-            
-            cells_to_update = [
-                gspread.Cell(row=protocolo_para_linha[row['protocolo']], col=TARGET_COL_INDEX, value=str(row['unidade_corrigida']))
-                for _, row in df_para_atualizar.iterrows() if row['protocolo'] in protocolo_para_linha
-            ]
-
-            if cells_to_update:
-                aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-                print(f"✅ Backfill da coluna 'unidade_cadastro' concluído. {len(cells_to_update)} células foram padronizadas.")
-        else:
-            print("✅ Coluna 'unidade_cadastro' já está padronizada.")
+    # Verifica pré-condições
+    if 'protocolo' not in df_tratada_hist.columns:
+        logging.warning("Coluna 'protocolo' não encontrada em df_tratada_hist. Sincronização pulada.")
+        print("⚠️ Coluna 'protocolo' não encontrada na planilha tratada. Sincronização pulada.")
+    elif 'unidade_cadastro' not in df_tratada_hist.columns:
+        logging.warning("Coluna 'unidade_cadastro' não encontrada em df_tratada_hist. Sincronização pulada.")
+        print("⚠️ Coluna 'unidade_cadastro' não encontrada na planilha tratada. Sincronização pulada.")
+    elif 'df_bruta' not in globals() or df_bruta.empty:
+        logging.warning("df_bruta ausente ou vazia. Sincronização pulada.")
+        print("⚠️ df_bruta ausente ou vazia. Sincronização pulada.")
     else:
-        print("⚠️ Coluna 'unidade_cadastro' ou 'protocolo' não encontrada na base tratada. Backfill pulado.")
+        # --- Normaliza df_bruta (garantia) ---
+        df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns]
+        df_bruta = normalize_protocolo_col(df_bruta, "protocolo")
+
+        if 'unidade_cadastro' not in df_bruta.columns:
+            logging.warning("df_bruta não contém 'unidade_cadastro'. Nada a sincronizar.")
+            print("⚠️ df_bruta não contém 'unidade_cadastro'. Nada a sincronizar.")
+        else:
+            # --- Monta mapa de protocolo -> unidade da bruta (string) ---
+            mapa_bruta = (
+                df_bruta[['protocolo', 'unidade_cadastro']]
+                .dropna(subset=['protocolo'])
+                .astype({'protocolo': str, 'unidade_cadastro': str})
+                .set_index('protocolo')['unidade_cadastro']
+                .to_dict()
+            )
+
+            # Regex alvo: C + 18 dígitos
+            regex_prot = re.compile(r"^C\d{18}$")
+
+            # --- Descobre índice de coluna 'protocolo' e 'unidade_cadastro' no sheet (1-based) ---
+            header_row = aba_tratada.row_values(1)
+            header_norm = [normalizar_nome_coluna(h) for h in header_row]
+            try:
+                col_proto_idx = header_norm.index('protocolo') + 1
+            except ValueError:
+                col_proto_idx = 1  # fallback para coluna A se não encontrar
+                logging.warning("Cabeçalho 'protocolo' não encontrado na primeira linha do sheet; assumindo coluna 1.")
+
+            try:
+                col_unidade_idx = header_norm.index('unidade_cadastro') + 1
+            except ValueError:
+                # falback: tenta localizar por df_tratada_hist position
+                col_unidade_idx = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
+                logging.warning("Cabeçalho 'unidade_cadastro' não encontrado na primeira linha do sheet; usando index a partir do DataFrame.")
+
+            # --- Carrega lista de protocolos já presentes na sheet (coluna identificada) ---
+            protocolos_na_sheet = aba_tratada.col_values(col_proto_idx)
+            protocolo_para_linha = {proto.strip(): i + 1 for i, proto in enumerate(protocolos_na_sheet) if str(proto).strip() != ""}
+
+            # --- Prepara lista de Cell updates (gspread.Cell) ---
+            cells_to_update = []
+            modificacoes = []  # para LOG local
+
+            # Itera pelas linhas do df_tratada_hist (em memória) e verifica condição
+            for idx, row in df_tratada_hist.iterrows():
+                protocolo = str(row.get('protocolo', '')).strip().upper()
+                if not protocolo:
+                    continue
+                if not regex_prot.match(protocolo):
+                    continue
+                # Só atualiza se existir registro correspondente na bruta
+                if protocolo in mapa_bruta:
+                    novo_val = str(mapa_bruta[protocolo])
+                    atual_val = str(row.get('unidade_cadastro', '') or "")
+                    if novo_val != atual_val:
+                        # calcula a linha no sheet (protocolo_para_linha); se ausente, pula
+                        if protocolo in protocolo_para_linha:
+                            sheet_row = protocolo_para_linha[protocolo]
+                            cells_to_update.append(gspread.Cell(row=sheet_row, col=col_unidade_idx, value=novo_val))
+                            modificacoes.append((sheet_row, protocolo, atual_val, novo_val))
+                        else:
+                            logging.warning(f"Protocolo {protocolo} não localizado na sheet (não será atualizado).")
+                # else: caso não exista na bruta, não altera
+
+            # --- Se nada para atualizar, fim ---
+            if not cells_to_update:
+                logging.info("Nenhuma célula de 'unidade_cadastro' precisa ser atualizada pela bruta.")
+                print("✅ Nenhuma célula encontrou diferença para sincronizar.")
+            else:
+                # --- Cria/atualiza log sheet para backup ---
+                log_name = "LOG_unidade_sync"
+                log_sheet = None
+                try:
+                    log_sheet = planilha_tratada_gs.worksheet(log_name)
+                except Exception:
+                    log_sheet = planilha_tratada_gs.add_worksheet(title=log_name, rows=1000, cols=10)
+                    log_sheet.append_row(['timestamp', 'sheet_row', 'protocolo', 'antes', 'depois', 'fonte'])
+                # Append modificacoes ao log (em batch)
+                now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+                rows_log = [[now, m[0], m[1], m[2], m[3], 'bruta'] for m in modificacoes]
+                if rows_log:
+                    last_log_row = len(log_sheet.get_all_values()) + 1
+                    log_sheet.insert_rows(rows_log, row=last_log_row)
+
+                # --- Executa update em batch ---
+                aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
+                logging.info(f"Atualizadas {len(cells_to_update)} células de 'unidade_cadastro' a partir da bruta.")
+                print(f"✅ Sincronizadas {len(cells_to_update)} células de 'unidade_cadastro' a partir da bruta.")
+
+                # --- Atualiza df_tratada_hist em memória para refletir mudança (útil para demais passos)
+                for _, _, proto, novo in modificacoes:
+                    mask = df_tratada_hist['protocolo'].astype(str).str.strip().str.upper() == proto
+                    df_tratada_hist.loc[mask, 'unidade_cadastro'] = novo
+
+                # --- Também atualiza df_tratada global (se existir) para manutenção do fluxo posterior ---
+                try:
+                    if 'df_tratada' in globals():
+                        for _, _, proto, novo in modificacoes:
+                            maskg = df_tratada['protocolo'].astype(str).str.strip().str.upper() == proto
+                            df_tratada.loc[maskg, 'unidade_cadastro'] = novo
+                except Exception:
+                    logging.warning("Falha ao propagar alterações para df_tratada em memória; isso não é crítico.")
 
 except Exception as e:
-    print(f"❌ Erro crítico durante o backfill de 'unidade_cadastro': {e}")
+    logging.exception(f"❌ Erro durante sincronização temporária de 'unidade_cadastro': {e}")
+    print(f"❌ Erro durante sincronização temporária de 'unidade_cadastro': {e}")
     
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
