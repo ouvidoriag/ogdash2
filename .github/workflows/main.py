@@ -478,6 +478,77 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
+# =======================================================================
+# 5-B) SCRIPT TEMPORÁRIO: CORREÇÃO ÚNICA DAS DATAS EXISTENTES
+# =======================================================================
+_BANNER("5-B) SCRIPT TEMPORÁRIO - CORRIGINDO DATAS EXISTENTES")
+
+try:
+    print("Iniciando a correção única para as colunas de data em TODAS as linhas existentes...")
+    
+    # df_tratada já foi carregado na Seção 5
+    if df_tratada.empty:
+        print("Planilha tratada está vazia, nenhuma data existente para corrigir.")
+        logging.info("Script Temporário: Planilha tratada vazia, pulando correção de datas existentes.")
+    else:
+        # Pega os nomes das colunas da planilha para encontrar os índices corretos
+        headers = aba_tratada.row_values(1)
+        colunas_para_corrigir = ["data_da_criacao", "data_da_conclusao"]
+
+        # Define o formato visual que queremos na planilha
+        formato_data_visual = {
+            "numberFormat": { "type": "DATE", "pattern": "dd/mm/yyyy" }
+        }
+
+        for nome_coluna in colunas_para_corrigir:
+            if nome_coluna not in df_tratada.columns:
+                print(f"⚠️ Aviso: Coluna '{nome_coluna}' não encontrada, pulando sua correção.")
+                continue
+
+            print(f"   • Processando coluna '{nome_coluna}'...")
+
+            # 1. Prepara os dados em Python: Converte para data e zera a hora
+            if nome_coluna == "data_da_conclusao":
+                # Tratamento especial para a coluna que pode ter texto como "Não concluído"
+                datas_convertidas = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
+                # Onde a conversão falhou, mantém o valor original (o texto)
+                df_tratada[nome_coluna] = datas_convertidas.fillna(df_tratada[nome_coluna])
+            else:
+                # Conversão direta para data, zerando a hora
+                df_tratada[nome_coluna] = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
+            
+            # 2. Prepara a lista de valores para enviar à API do Google Sheets
+            # Converte NaT (datas nulas) para string vazia e datas para o formato que a API entende
+            valores_para_atualizar = df_tratada[nome_coluna].dt.strftime('%Y-%m-%d').replace({pd.NaT: ''}).tolist()
+            # Envolve cada valor em uma lista, como a API exige: [['valor1'], ['valor2'], ...]
+            payload_api = [[valor] for valor in valores_para_atualizar]
+
+            # 3. Envia a atualização para a planilha
+            col_index = headers.index(nome_coluna) + 1
+            # Define o range para atualizar (ex: "C2:C1001"), começando da segunda linha para não sobrescrever o cabeçalho
+            range_para_atualizar = f"{gspread.utils.rowcol_to_a1(2, col_index)}:{gspread.utils.rowcol_to_a1(len(df_tratada) + 1, col_index)}"
+            
+            # Atualiza os VALORES. 'USER_ENTERED' diz ao Google para interpretar os dados como se um usuário os tivesse digitado.
+            aba_tratada.update(range_para_atualizar, payload_api, value_input_option='USER_ENTERED')
+            print(f"     ✅ Valores da coluna '{nome_coluna}' atualizados na planilha.")
+
+            # 4. Aplica a FORMATAÇÃO VISUAL na coluna inteira
+            col_letra = gspread.utils.col_num_to_a1(col_index)
+            aba_tratada.format(f"{col_letra}2:{col_letra}", formato_data_visual)
+            print(f"     ✅ Formatação 'dd/mm/yyyy' aplicada à coluna '{nome_coluna}'.")
+
+    print("✅ Correção única das datas existentes concluída com sucesso.")
+    logging.info("Script Temporário: Correção de datas existentes foi executada com sucesso.")
+
+except Exception as e:
+    print(f"❌ Erro durante a execução do script temporário de correção de datas: {e}")
+    logging.error(f"Falha no Script Temporário (Seção 5-B): {e}", exc_info=True)
+    raise SystemExit("Pipeline encerrado devido a falha na correção de dados existentes.")
+
+# =======================================================================
+# FIM DO SCRIPT TEMPORÁRIO
+# =======================================================================
+
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
