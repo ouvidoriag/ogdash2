@@ -479,49 +479,47 @@ except Exception as e:
     nao_enviados = []
 
 # ===================================================================================
-# 5.5) BACKFILL TEMPORÁRIO DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
+# 5.5) BACKFILL SEGURO DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) BACKFILL TEMPORÁRIO DE 'unidade_cadastro' (REMOVER DEPOIS)")
-print(" Executando backfill para sincronizar TODA a coluna 'unidade_cadastro'...")
-logging.info("INICIANDO: Backfill temporário da coluna 'unidade_cadastro'.")
+_BANNER("5.5) BACKFILL SEGURO DE 'unidade_cadastro' (REMOVER DEPOIS)")
+print(" Executando backfill para SINCRONIZAR a coluna 'unidade_cadastro'...")
+logging.info("INICIANDO: Backfill seguro da coluna 'unidade_cadastro'.")
 
 try:
     _SUB("Carregando bases para o backfill...")
-    # Carrega a base bruta para ser a "fonte da verdade"
-    # A variável df_bruta já foi carregada no Item 2, mas vamos garantir a normalização
-    df_bruta_sync = df_bruta.copy()
+    # Carrega a base bruta para obter os valores ATUALIZADOS
+    df_bruta_sync = df_bruta.copy() # Usa a df_bruta já carregada no Item 2
     df_bruta_sync.columns = [normalizar_nome_coluna(c) for c in df_bruta_sync.columns]
     df_bruta_sync.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
     
-    # Carrega a base tratada para comparação
+    # Carrega a base tratada para ser ATUALIZADA
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
     
-    # Verifica se as colunas necessárias existem em ambos os DataFrames
-    if 'protocolo' not in df_bruta_sync.columns or 'unidade_cadastro' not in df_bruta_sync.columns or 'protocolo' not in df_tratada_hist.columns or 'unidade_cadastro' not in df_tratada_hist.columns:
-        raise ValueError("Colunas 'protocolo' ou 'unidade_cadastro' não encontradas. Verifique as planilhas.")
+    if 'protocolo' not in df_bruta_sync.columns or 'unidade_cadastro' not in df_bruta_sync.columns or 'protocolo' not in df_tratada_hist.columns:
+        raise ValueError("Colunas 'protocolo' ou 'unidade_cadastro' não encontradas.")
 
-    _SUB("Criando mapa de valores corretos a partir da base bruta...")
-    # Cria um mapa de {protocolo: unidade_cadastro_correta}
-    mapa_unidade_correta = df_bruta_sync.set_index('protocolo')['unidade_cadastro'].to_dict()
+    _SUB("Criando mapa de valores atualizados a partir da base bruta...")
+    # Cria um mapa apenas com os dados mais recentes
+    mapa_unidade_atualizada = df_bruta_sync.set_index('protocolo')['unidade_cadastro'].to_dict()
 
-    _SUB("Identificando registros que precisam de correção na base tratada...")
-    # Aplica o mapa para encontrar o valor que a coluna deveria ter
-    df_tratada_hist['unidade_corrigida'] = df_tratada_hist['protocolo'].map(mapa_unidade_correta)
+    _SUB("Identificando registros que precisam de atualização (sem apagar históricos)...")
+    # Cria a coluna corrigida usando o mapa
+    df_tratada_hist['unidade_corrigida'] = df_tratada_hist['protocolo'].map(mapa_unidade_atualizada)
     
-    # Garante que os tipos sejam comparáveis (ambos como string) para evitar falsas divergências
-    df_tratada_hist['unidade_cadastro'] = df_tratada_hist['unidade_cadastro'].astype(str)
-    df_tratada_hist['unidade_corrigida'] = df_tratada_hist['unidade_corrigida'].astype(str)
-    
-    # Compara a coluna atual com a coluna corrigida para encontrar divergências
-    df_para_atualizar = df_tratada_hist[df_tratada_hist['unidade_cadastro'] != df_tratada_hist['unidade_corrigida']].copy()
+    # --- LÓGICA DE SEGURANÇA ---
+    # Onde a 'unidade_corrigida' for NULA (protocolo antigo não encontrado na bruta), 
+    # MANTENHA o valor antigo da 'unidade_cadastro'.
+    df_tratada_hist['unidade_corrigida'].fillna(df_tratada_hist['unidade_cadastro'], inplace=True)
+
+    # Compara a coluna original com a coluna final para encontrar as divergências REAIS
+    df_para_atualizar = df_tratada_hist[df_tratada_hist['unidade_cadastro'].astype(str) != df_tratada_hist['unidade_corrigida'].astype(str)]
     
     if not df_para_atualizar.empty:
-        print(f" Encontradas {len(df_para_atualizar)} linhas em 'unidade_cadastro' para corrigir.")
+        print(f" Encontradas {len(df_para_atualizar)} linhas em 'unidade_cadastro' para atualizar.")
         logging.info(f"Backfill: Encontradas {len(df_para_atualizar)} linhas de 'unidade_cadastro' para sincronizar.")
 
         _SUB("Preparando e enviando a atualização para o Google Sheets...")
-        # Encontra o índice da coluna 'unidade_cadastro' dinamicamente
         TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
         
         protocolos_na_sheet = aba_tratada.col_values(1)
@@ -533,7 +531,6 @@ try:
             unidade_corrigida = row['unidade_corrigida']
             if protocolo in protocolo_para_linha:
                 linha_idx = protocolo_para_linha[protocolo]
-                # Prepara a célula para atualização com o valor correto da base bruta
                 cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(unidade_corrigida)))
 
         if cells_to_update:
@@ -541,13 +538,13 @@ try:
             print(f"✅ Backfill da coluna 'unidade_cadastro' concluído. {len(cells_to_update)} células foram sincronizadas.")
             logging.info(f"CONCLUÍDO: Backfill. {len(cells_to_update)} células de 'unidade_cadastro' foram sincronizadas.")
     else:
-        print("✅ Nenhuma divergência histórica encontrada na coluna 'unidade_cadastro'.")
+        print("✅ Nenhuma divergência encontrada entre a base bruta e a tratada para 'unidade_cadastro'.")
         logging.info("Backfill: Nenhuma correção de 'unidade_cadastro' necessária.")
 
 except Exception as e:
     print(f"❌ Erro crítico durante o backfill de 'unidade_cadastro': {e}")
     logging.error(f"Erro crítico durante o backfill de 'unidade_cadastro': {e}", exc_info=True)
-
+    
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
