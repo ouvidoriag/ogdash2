@@ -478,8 +478,20 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
+
+Ótimo, o log de erro novamente nos deu a pista exata do que aconteceu. Estamos quase lá!
+Análise do Erro
+Sucesso na Primeira Coluna: O log mostra que a coluna data_da_criacao foi processada e atualizada com sucesso. Isso significa que a lógica geral, a autenticação e a comunicação com a planilha estão funcionando.
+Falha na Segunda Coluna: O erro acontece ao processar data_da_conclusao.
+Mensagem de Erro: AttributeError: Can only use .dt accessor with datetimelike values.
+Causa Raiz: Este erro ocorre porque a coluna data_da_conclusao é de tipo misto. Após o passo de preparação, ela contém tanto valores de data (que o script converteu) quanto valores de texto (como "Não concluído", que não puderam ser convertidos e foram mantidos como estavam). O acessor .dt do Pandas só funciona se todos os valores na coluna forem do tipo data. Ao encontrar o primeiro valor de texto, ele falha.
+A Solução
+A correção é ajustar a forma como preparamos os valores para envio, garantindo que ele trate cada valor individualmente, formatando-o se for uma data e mantendo-o como está se for um texto.
+Substitua novamente todo o bloco de código da Seção 5-B pela versão final e corrigida abaixo. Esta versão lida corretamente com colunas de tipo misto.
+code
+Python
 # =======================================================================
-# 5-B) SCRIPT TEMPORÁRIO: CORREÇÃO ÚNICA DAS DATAS EXISTENTES (V2 - CORRIGIDO)
+# 5-B) SCRIPT TEMPORÁRIO: CORREÇÃO ÚNICA DAS DATAS EXISTENTES (V3 - FINAL)
 # =======================================================================
 _BANNER("5-B) SCRIPT TEMPORÁRIO - CORRIGINDO DATAS EXISTENTES")
 
@@ -496,16 +508,13 @@ def col_num_to_a1_letter(col_num):
 try:
     print("Iniciando a correção única para as colunas de data em TODAS as linhas existentes...")
     
-    # df_tratada já foi carregado na Seção 5
     if df_tratada.empty:
         print("Planilha tratada está vazia, nenhuma data existente para corrigir.")
         logging.info("Script Temporário: Planilha tratada vazia, pulando correção de datas existentes.")
     else:
-        # Pega os nomes das colunas da planilha para encontrar os índices corretos
         headers = aba_tratada.row_values(1)
         colunas_para_corrigir = ["data_da_criacao", "data_da_conclusao"]
 
-        # Define o formato visual que queremos na planilha
         formato_data_visual = {
             "numberFormat": { "type": "DATE", "pattern": "dd/mm/yyyy" }
         }
@@ -519,22 +528,26 @@ try:
 
             # 1. Prepara os dados em Python: Converte para data e zera a hora
             if nome_coluna == "data_da_conclusao":
-                # Tratamento especial para a coluna que pode ter texto como "Não concluído"
                 datas_convertidas = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
                 df_tratada[nome_coluna] = datas_convertidas.fillna(df_tratada[nome_coluna])
             else:
-                # Conversão direta para data, zerando a hora
                 df_tratada[nome_coluna] = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
             
-            # 2. Prepara a lista de valores para enviar à API do Google Sheets
-            valores_para_atualizar = df_tratada[nome_coluna].dt.strftime('%Y-%m-%d').replace({pd.NaT: ''}).tolist()
+            # 2. Prepara a lista de valores para enviar à API (CORREÇÃO APLICADA AQUI)
+            # Esta função verifica cada valor: se for uma data, formata; se for texto, mantém.
+            def formatar_valor(valor):
+                if isinstance(valor, pd.Timestamp):
+                    return valor.strftime('%Y-%m-%d')
+                return str(valor) if pd.notna(valor) else ''
+
+            # Aplica a função a cada célula da coluna para criar a lista de valores
+            valores_para_atualizar = df_tratada[nome_coluna].apply(formatar_valor).tolist()
             payload_api = [[valor] for valor in valores_para_atualizar]
 
             # 3. Envia a atualização para a planilha
             col_index = headers.index(nome_coluna) + 1
             range_para_atualizar = f"{col_num_to_a1_letter(col_index)}2:{col_num_to_a1_letter(col_index)}{len(df_tratada) + 1}"
             
-            # CORREÇÃO AQUI: Usando argumentos nomeados para evitar o DeprecationWarning
             aba_tratada.update(
                 range_name=range_para_atualizar, 
                 values=payload_api, 
@@ -543,7 +556,6 @@ try:
             print(f"     ✅ Valores da coluna '{nome_coluna}' atualizados na planilha.")
 
             # 4. Aplica a FORMATAÇÃO VISUAL na coluna inteira
-            # CORREÇÃO AQUI: Usando a nossa função auxiliar `col_num_to_a1_letter`
             col_letra = col_num_to_a1_letter(col_index)
             aba_tratada.format(f"{col_letra}2:{col_letra}", formato_data_visual)
             print(f"     ✅ Formatação 'dd/mm/yyyy' aplicada à coluna '{nome_coluna}'.")
