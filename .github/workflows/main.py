@@ -479,83 +479,46 @@ except Exception as e:
     nao_enviados = []
 
 # ===================================================================================
-# 5.5) SINCRONIZAÇÃO DIRECIONADA DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
+# 5.5) BACKFILL FINAL DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) SINCRONIZAÇÃO DIRECIONADA DE 'unidade_cadastro' (REMOVER DEPOIS)")
-print(" Executando sincronização direcionada de 'unidade_cadastro' para protocolos padrão 'C...'...")
-logging.info("INICIANDO: Sincronização direcionada da coluna 'unidade_cadastro'.")
+_BANNER("5.5) BACKFILL FINAL DE 'unidade_cadastro' (REMOVER DEPOIS)")
+print(" Executando backfill final para 'unidade_cadastro'...")
 
 try:
-    _SUB("Carregando bases para a sincronização...")
-    
-    # 1. PREPARA A BASE BRUTA COMO FONTE DA VERDADE
-    df_bruta_mapa = df_bruta.copy()
-    df_bruta_mapa.columns = [normalizar_nome_coluna(c) for c in df_bruta_mapa.columns]
-    df_bruta_mapa.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
-    
-    # 2. CARREGA A BASE TRATADA PARA SER ATUALIZADA
+    _SUB("Carregando base tratada...")
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
-    
-    if 'protocolo' not in df_bruta_mapa.columns or 'unidade_cadastro' not in df_bruta_mapa.columns or 'protocolo' not in df_tratada_hist.columns:
-        raise ValueError("Colunas 'protocolo' ou 'unidade_cadastro' não encontradas.")
 
-    _SUB("Criando mapa de valores da base bruta...")
-    # Cria um mapa {protocolo: unidade_cadastro} apenas com os dados da planilha bruta atual
-    mapa_unidade_bruta = df_bruta_mapa.set_index('protocolo')['unidade_cadastro'].to_dict()
-
-    _SUB("Identificando protocolos alvo e preparando para atualização...")
-
-    # 3. FILTRA A BASE TRATADA PARA ENCONTRAR OS PROTOCOLOS-ALVO
-    # O padrão é: começar com 'C' (case-insensitive) seguido por 10 ou mais dígitos.
-    padrao_protocolo_alvo = r'^C\d{10,}$'
-    df_alvo_para_atualizar = df_tratada_hist[df_tratada_hist['protocolo'].str.match(padrao_protocolo_alvo, case=False)].copy()
-
-    if not df_alvo_para_atualizar.empty:
-        print(f" Encontrados {len(df_alvo_para_atualizar)} protocolos no padrão 'C...' na base tratada para verificar.")
-
-        # 4. APLICA O MAPA APENAS NOS PROTOCOLOS-ALVO
-        df_alvo_para_atualizar['unidade_corrigida'] = df_alvo_para_atualizar['protocolo'].map(mapa_unidade_bruta)
-
-        # Remove linhas onde o protocolo alvo não foi encontrado na base bruta (para evitar o erro 'nan')
-        df_alvo_para_atualizar.dropna(subset=['unidade_corrigida'], inplace=True)
+    if 'protocolo' in df_tratada_hist.columns and 'unidade_cadastro' in df_tratada_hist.columns:
+        _SUB("Aplicando a nova lógica de padronização a todos os dados históricos...")
         
-        # Compara a coluna original com a corrigida para encontrar o que realmente precisa mudar
-        df_alvo_para_atualizar = df_alvo_para_atualizar[
-            df_alvo_para_atualizar['unidade_cadastro'].astype(str) != df_alvo_para_atualizar['unidade_corrigida'].astype(str)
-        ]
+        # Cria a coluna corrigida usando a MESMA lógica do novo Item 7.3
+        df_tratada_hist['unidade_corrigida'] = df_tratada_hist['unidade_cadastro'].astype(str).apply(_clean_whitespace).apply(_to_proper_case_pt)
 
-        if not df_alvo_para_atualizar.empty:
-            print(f" -> Desses, {len(df_alvo_para_atualizar)} precisam de atualização na coluna 'unidade_cadastro'.")
-            logging.info(f"Backfill: {len(df_alvo_para_atualizar)} linhas de 'unidade_cadastro' para sincronizar.")
+        df_para_atualizar = df_tratada_hist[df_tratada_hist['unidade_cadastro'] != df_tratada_hist['unidade_corrigida']]
 
-            _SUB("Preparando e enviando a atualização para o Google Sheets...")
-            TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
+        if not df_para_atualizar.empty:
+            print(f" Encontradas {len(df_para_atualizar)} linhas em 'unidade_cadastro' para padronizar.")
             
+            TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
             protocolos_na_sheet = aba_tratada.col_values(1)
             protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
             
-            cells_to_update = []
-            for _, row in df_alvo_para_atualizar.iterrows():
-                protocolo = row['protocolo']
-                unidade_corrigida = row['unidade_corrigida']
-                if protocolo in protocolo_para_linha:
-                    linha_idx = protocolo_para_linha[protocolo]
-                    cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(unidade_corrigida)))
+            cells_to_update = [
+                gspread.Cell(row=protocolo_para_linha[row['protocolo']], col=TARGET_COL_INDEX, value=str(row['unidade_corrigida']))
+                for _, row in df_para_atualizar.iterrows() if row['protocolo'] in protocolo_para_linha
+            ]
 
             if cells_to_update:
                 aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-                print(f"✅ Sincronização direcionada concluída. {len(cells_to_update)} células foram atualizadas.")
-                logging.info(f"CONCLUÍDO: Sincronização. {len(cells_to_update)} células de 'unidade_cadastro' foram atualizadas.")
+                print(f"✅ Backfill da coluna 'unidade_cadastro' concluído. {len(cells_to_update)} células foram padronizadas.")
         else:
-            print("✅ Os protocolos no padrão 'C...' já estão sincronizados.")
+            print("✅ Coluna 'unidade_cadastro' já está padronizada.")
     else:
-        print("✅ Nenhum protocolo no padrão 'C...' foi encontrado na base tratada para verificar.")
-        logging.info("Backfill: Nenhum protocolo no padrão 'C...' encontrado na base tratada.")
+        print("⚠️ Coluna 'unidade_cadastro' ou 'protocolo' não encontrada na base tratada. Backfill pulado.")
 
 except Exception as e:
     print(f"❌ Erro crítico durante o backfill de 'unidade_cadastro': {e}")
-    logging.error(f"Erro crítico durante o backfill de 'unidade_cadastro': {e}", exc_info=True)
     
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
@@ -617,20 +580,23 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.2 (Data da Conclusão): {e}", exc_info=True)
 
-    # 7.3 Unidades de saúde (capitaliza e trata “sem informação”)
+    # 7.3 Unidades de Cadastro e Saúde - LÓGICA CORRIGIDA
     try:
-        for col in df_loc.columns:
-            if "unidade" in col and "saude" in col:
-                linhas_alteradas = (df_loc[col].astype(str).str.strip().str.lower() == "sem informação").sum()
-                df_loc[col] = (
-                    df_loc[col].astype(str).str.strip().str.lower()
-                    .replace("sem informação", "Não é uma Unidade de Saúde")
-                    .str.capitalize()
-                )
-                if linhas_alteradas > 0:
-                    logging.info(f"Tratamento 7.3 (Unidades de Saúde) aplicado na coluna '{col}' para {linhas_alteradas} linhas.")
+        # Trata a coluna 'unidade_cadastro'
+        if 'unidade_cadastro' in df_loc.columns:
+            # Aplica a limpeza de espaços e a capitalização inteligente
+            df_loc['unidade_cadastro'] = df_loc['unidade_cadastro'].astype(str).apply(_clean_whitespace).apply(_to_proper_case_pt)
+
+        # Trata colunas que contêm 'unidade_saude' (mantém a lógica original)
+        for col in [c for c in df_loc.columns if "unidade_saude" in c]:
+            df_loc[col] = (
+                df_loc[col].astype(str).str.strip().str.lower()
+                .replace("sem informação", "Não é uma Unidade de Saúde")
+                .str.capitalize()
+            )
+        logging.info("Tratamento 7.3 (Unidades de Cadastro e Saúde) aplicado.")
     except Exception as e:
-        logging.error(f"Erro no tratamento 7.3 (Unidades de Saúde): {e}", exc_info=True)
+        logging.error(f"Erro no tratamento 7.3: {e}", exc_info=True)
 
     # 7.4 Órgãos por tema — LÓGICA SIMPLIFICADA E CORRIGIDA
     try:
