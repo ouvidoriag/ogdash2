@@ -478,79 +478,58 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
-# =======================================================================
-# 5-B) SCRIPT TEMPORÁRIO DEFINITIVO: FORMATANDO DATAS EXISTENTES NO LOCAL
-# =======================================================================
-_BANNER("5-B) FORMATANDO DATAS EXISTENTES (LÓGICA SEGURA)")
-
-# Função auxiliar para conversão de número de coluna para letra
-def col_num_to_a1_letter(col_num):
-    """Converte um número de coluna (base 1) para sua letra em notação A1."""
-    letter = ''
-    while col_num > 0:
-        col_num, remainder = divmod(col_num - 1, 26)
-        letter = chr(65 + remainder) + letter
-    return letter
+# ====================================================================================
+# 5-D) SCRIPT TEMPORÁRIO: SINCRONIZANDO 'tempo_de_resolucao_em_dias'
+# ====================================================================================
+_BANNER("5-D) SCRIPT TEMPORÁRIO - SINCRONIZANDO 'tempo_de_resolucao_em_dias'")
 
 try:
-    print("Iniciando a formatação segura das colunas de data existentes...")
+    print("Iniciando a sincronização única da coluna 'tempo_de_resolucao_em_dias'...")
+
+    # Garante que os dados brutos e tratados estão disponíveis
+    if 'df_bruta' not in globals() or df_bruta.empty or 'df_tratada' not in globals() or df_tratada.empty:
+        raise SystemExit("Dados brutos ou tratados não estão disponíveis para a sincronização.")
+
+    # 1. Cria um mapa de consulta {protocolo: valor_original} a partir da planilha bruta.
+    # Usamos drop_duplicates para garantir que cada protocolo seja único.
+    mapa_resolucao = df_bruta.drop_duplicates(subset=['protocolo']).set_index('protocolo')['tempo_de_resolucao_em_dias'].to_dict()
+    print(f"   • {len(mapa_resolucao)} valores de referência encontrados na planilha bruta.")
+
+    # 2. Usa o mapa para encontrar os valores corretos para os protocolos da planilha tratada.
+    # O .map() encontrará o valor para cada protocolo; se não encontrar, resultará em NaN (nulo).
+    df_tratada['tempo_resolucao_sync'] = df_tratada['protocolo'].map(mapa_resolucao)
+
+    # 3. Lógica de segurança: Atualiza a coluna original SOMENTE onde um valor correspondente foi encontrado.
+    # Se 'tempo_resolucao_sync' for nulo (protocolo antigo), o valor original é mantido.
+    df_tratada['tempo_de_resolucao_em_dias'] = df_tratada['tempo_resolucao_sync'].fillna(df_tratada['tempo_de_resolucao_em_dias'])
     
-    # df_tratada foi carregado na Seção 5 e contém os dados atuais da planilha
-    if df_tratada.empty:
-        print("Planilha tratada está vazia, pulando formatação.")
+    # 4. Limpa a coluna temporária
+    df_tratada.drop(columns=['tempo_resolucao_sync'], inplace=True)
+    print("   • Coluna na memória atualizada com segurança, preservando protocolos antigos.")
+
+    # 5. Prepara os dados para enviar ao Google Sheets
+    valores_para_atualizar = [[str(valor) if pd.notna(valor) else ""] for valor in df_tratada['tempo_de_resolucao_em_dias']]
+
+    # 6. Envia a atualização para a planilha
+    headers = aba_tratada.row_values(1)
+    if 'tempo_de_resolucao_em_dias' in headers:
+        col_index = headers.index('tempo_de_resolucao_em_dias') + 1
+        col_letra = col_num_to_a1_letter(col_index) # Requer a função auxiliar
+        range_para_atualizar = f"{col_letra}2:{col_letra}{len(df_tratada) + 1}"
+        
+        print(f"   • Enviando {len(valores_para_atualizar)} valores atualizados para a planilha...")
+        aba_tratada.update(range_name=range_para_atualizar, values=valores_para_atualizar)
+        print("   • ✅ Sincronização concluída com sucesso!")
     else:
-        headers = aba_tratada.row_values(1)
-        colunas_para_formatar = ["data_da_criacao", "data_da_conclusao"]
-
-        # Define o formato visual que queremos que o Google Sheets aplique
-        formato_data_visual = {"numberFormat": {"type": "DATE", "pattern": "dd/mm/yyyy"}}
-
-        for nome_coluna in colunas_para_formatar:
-            if nome_coluna not in df_tratada.columns:
-                print(f"⚠️ Aviso: Coluna '{nome_coluna}' não encontrada na planilha, pulando.")
-                continue
-
-            print(f"   • Processando coluna '{nome_coluna}'...")
-            
-            # --- LÓGICA DE SEGURANÇA CRÍTICA ---
-            # 1. Tenta converter para data. O que falhar (texto como "Não concluído") vira NaT (nulo).
-            datas_convertidas = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
-            
-            # 2. Onde a conversão falhou, PREENCHE com o valor ORIGINAL. Isso impede que dados sejam apagados.
-            df_tratada[f'{nome_coluna}_corrigida'] = datas_convertidas.fillna(df_tratada[nome_coluna])
-            print(f"     - Coluna preparada na memória com segurança.")
-
-            # Prepara os valores para a API, tratando datas e textos corretamente
-            def formatar_valor_seguro(valor):
-                if isinstance(valor, pd.Timestamp):
-                    return valor.strftime('%Y-%m-%d') # Formato que a API entende como data
-                return str(valor) if pd.notna(valor) else ''
-
-            valores_para_atualizar = df_tratada[f'{nome_coluna}_corrigida'].apply(formatar_valor_seguro).tolist()
-            payload_api = [[valor] for valor in valores_para_atualizar]
-
-            # Encontra a coluna na planilha
-            col_index = headers.index(nome_coluna) + 1
-            range_para_atualizar = f"{col_num_to_a1_letter(col_index)}2:{col_num_to_a1_letter(col_index)}{len(df_tratada) + 1}"
-            
-            # Atualiza os valores na planilha
-            aba_tratada.update(range_name=range_para_atualizar, values=payload_api, value_input_option='USER_ENTERED')
-            print(f"     - ✅ Valores da coluna '{nome_coluna}' atualizados na planilha.")
-            
-            # Aplica a formatação visual DD/MM/AAAA na coluna inteira
-            col_letra = col_num_to_a1_letter(col_index)
-            aba_tratada.format(f"{col_letra}2:{col_letra}", formato_data_visual)
-            print(f"     - ✅ Formatação 'dd/mm/yyyy' aplicada.")
-
-    print("✅ Formatação segura das datas existentes concluída.")
+        print("   • ⚠️ Coluna 'tempo_de_resolucao_em_dias' não encontrada na planilha tratada. Sincronização abortada.")
 
 except Exception as e:
-    print(f"❌ Erro durante a formatação segura de datas: {e}")
-    logging.critical(f"Falha no script temporário de formatação de data: {e}", exc_info=True)
-    raise SystemExit("Pipeline encerrado devido a falha na formatação de dados existentes.")
-# =======================================================================
+    print(f"❌ Erro durante a sincronização temporária: {e}")
+    logging.critical(f"Falha no Script Temporário (Seção 5-D): {e}", exc_info=True)
+    raise SystemExit("Pipeline encerrado devido a falha no script de sincronização.")
+# ====================================================================================
 # FIM DO SCRIPT TEMPORÁRIO
-# =======================================================================
+# ====================================================================================
 
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
@@ -646,9 +625,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
         df_loc.loc[df_loc["orgaos"].str.strip() == '', "orgaos"] = fallback_value
         
         # Passo C: Executa a sequência de limpeza e capitalização
-        # 1. Limpa espaços extras, mas PRESERVA acentos e capitalização
         df_loc["orgaos"] = df_loc["orgaos"].apply(_clean_whitespace).astype(str)
-        # 2. Aplica a capitalização "Title Case" como passo final de polimento
         df_loc["orgaos"] = df_loc["orgaos"].apply(_to_proper_case_pt)
         logging.info("Tratamento 7.4 (Limpeza e Capitalização com Acentos) aplicado a 'orgaos'.")
 
@@ -695,9 +672,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # 7.6 Responsavel - LÓGICA CORRIGIDA E UNIFICADA
     try:
         if "responsavel" in df_loc.columns:
-            # Garante que a coluna é string e limpa espaços extras, preservando acentos
             df_loc["responsavel"] = df_loc["responsavel"].astype(str).apply(_clean_whitespace)
-            # Aplica padronizações robustas com regex (case-insensitive)
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*ouvidoria\s+geral\s*$", "Ouvidoria Geral", regex=True, case=False)
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*ouvidoria\s+setorial\s+de\s+obras\s*$", "Ouvidoria Setorial de Obras", regex=True, case=False)
             df_loc["responsavel"] = df_loc["responsavel"].str.replace(r"^\s*ouvidoria\s+setorial\s+da\s+sa(u|ú)de\s*$", "Ouvidoria Setorial da Saúde", regex=True, case=False)
@@ -711,7 +686,6 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # 7.7 Datas e tipos
     try:
         if "data_da_criacao" in df_loc.columns:
-            # --- FAÇA A ALTERAÇÃO APENAS NESTA LINHA ABAIXO ---
             df_loc["data_da_criacao"] = _parse_dt_cmp(df_loc["data_da_criacao"]) # <-- Retorna objeto de data
             logging.info("Tratamento 7.7 (data_da_criacao para objeto datetime) aplicado.")
         if "status_demanda" in df_loc.columns:
@@ -741,6 +715,21 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
             logging.info("Tratamento 7.9 (Padronização de 'canal') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento de 'canal': {e}", exc_info=True)
+
+    # =======================================================================
+    # 7.10 Limpeza de "Não há dados" para tempo_de_resolucao_em_dias (NOVO)
+    # =======================================================================
+    try:
+        if "tempo_de_resolucao_em_dias" in df_loc.columns:
+            # Converte a coluna para string para garantir que o .replace funcione
+            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].astype(str)
+            # Substitui a string "Não há dados" por uma string vazia ""
+            # Adicionado .replace("nan", "") para limpar possíveis nulos convertidos para texto
+            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].replace({"Não há dados": "", "nan": ""})
+            logging.info("Tratamento 7.10 (Limpeza de 'tempo_de_resolucao_em_dias') aplicado.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
+    # =======================================================================
 
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
     return df_loc
