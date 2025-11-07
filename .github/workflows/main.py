@@ -480,7 +480,7 @@ except Exception as e:
 
 # ===================================================================================
 # 5.5) SINCRONIZAÇÃO TEMPORÁRIA DE 'unidade_cadastro' A PARTIR DA BASE BRUTA
-#       (REMOVER APÓS 1ª EXECUÇÃO)
+#       (SUBSTITUIR ESTE BLOCO APENAS; REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
 _BANNER("5.5) SINCRONIZAÇÃO TEMPORÁRIA DE 'unidade_cadastro' (REMOVER DEPOIS)")
 print(" Executando sincronização TEMPORÁRIA para 'unidade_cadastro' (apenas protocolos C########...) ...")
@@ -490,7 +490,7 @@ try:
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
 
-    # Verifica pré-condições
+    # Pré-checks básicos
     if 'protocolo' not in df_tratada_hist.columns:
         logging.warning("Coluna 'protocolo' não encontrada em df_tratada_hist. Sincronização pulada.")
         print("⚠️ Coluna 'protocolo' não encontrada na planilha tratada. Sincronização pulada.")
@@ -509,67 +509,88 @@ try:
             logging.warning("df_bruta não contém 'unidade_cadastro'. Nada a sincronizar.")
             print("⚠️ df_bruta não contém 'unidade_cadastro'. Nada a sincronizar.")
         else:
-            # --- Monta mapa de protocolo -> unidade da bruta (string) ---
-            mapa_bruta = (
-                df_bruta[['protocolo', 'unidade_cadastro']]
-                .dropna(subset=['protocolo'])
-                .astype({'protocolo': str, 'unidade_cadastro': str})
-                .set_index('protocolo')['unidade_cadastro']
-                .to_dict()
-            )
+            # --- Monta mapa de protocolo -> unidade da bruta (chaves normalizadas UPPER) ---
+            mapa_tmp = df_bruta[['protocolo', 'unidade_cadastro']].dropna(subset=['protocolo']).astype(str)
+            mapa_bruta = {
+                str(r['protocolo']).strip().upper(): _clean_whitespace(str(r.get('unidade_cadastro', '')))
+                for _, r in mapa_tmp.iterrows()
+                if str(r['protocolo']).strip() != ""
+            }
 
-            # Regex alvo: C + 18 dígitos
+            # --- Regex alvo: C + 18 dígitos (mantém filtro conforme solicitado) ---
             regex_prot = re.compile(r"^C\d{18}$")
 
             # --- Descobre índice de coluna 'protocolo' e 'unidade_cadastro' no sheet (1-based) ---
             header_row = aba_tratada.row_values(1)
             header_norm = [normalizar_nome_coluna(h) for h in header_row]
+
             try:
                 col_proto_idx = header_norm.index('protocolo') + 1
             except ValueError:
-                col_proto_idx = 1  # fallback para coluna A se não encontrar
+                col_proto_idx = 1
                 logging.warning("Cabeçalho 'protocolo' não encontrado na primeira linha do sheet; assumindo coluna 1.")
 
             try:
                 col_unidade_idx = header_norm.index('unidade_cadastro') + 1
             except ValueError:
-                # falback: tenta localizar por df_tratada_hist position
+                # fallback para índice baseado no dataframe em memória
                 col_unidade_idx = df_tratada_hist.columns.get_loc('unidade_cadastro') + 1
                 logging.warning("Cabeçalho 'unidade_cadastro' não encontrado na primeira linha do sheet; usando index a partir do DataFrame.")
 
             # --- Carrega lista de protocolos já presentes na sheet (coluna identificada) ---
             protocolos_na_sheet = aba_tratada.col_values(col_proto_idx)
-            protocolo_para_linha = {proto.strip(): i + 1 for i, proto in enumerate(protocolos_na_sheet) if str(proto).strip() != ""}
+
+            # Normaliza as chaves para MATCH com mapa_bruta (strip + upper)
+            protocolo_para_linha = {
+                str(proto).strip().upper(): i + 1
+                for i, proto in enumerate(protocolos_na_sheet)
+                if str(proto).strip() != ""
+            }
+
+            # DEBUG: mostrar tamanhos e interseção para diagnóstico rápido
+            try:
+                keys_mapa = set(mapa_bruta.keys())
+                keys_sheet = set(protocolo_para_linha.keys())
+                intersec = keys_mapa & keys_sheet
+                logging.info(f"mapa_bruta size={len(keys_mapa)}; protocolos_na_sheet size={len(keys_sheet)}; intersec_count={len(intersec)}")
+                print(f"DEBUG: mapa_bruta={len(keys_mapa)} | protocolos_sheet={len(keys_sheet)} | intersec={len(intersec)}")
+                if len(intersec) > 0:
+                    print("DEBUG exemplos de intersec (até 10):", list(intersec)[:10])
+            except Exception:
+                pass
 
             # --- Prepara lista de Cell updates (gspread.Cell) ---
             cells_to_update = []
-            modificacoes = []  # para LOG local
+            modificacoes = []  # (sheet_row, protocolo, antes, depois)
 
             # Itera pelas linhas do df_tratada_hist (em memória) e verifica condição
             for idx, row in df_tratada_hist.iterrows():
-                protocolo = str(row.get('protocolo', '')).strip().upper()
+                protocolo_raw = row.get('protocolo', '')
+                protocolo = str(protocolo_raw).strip().upper()
                 if not protocolo:
                     continue
+                # Mantém o filtro apenas para protocolos no padrão C + 18 dígitos
                 if not regex_prot.match(protocolo):
                     continue
-                # Só atualiza se existir registro correspondente na bruta
+                # Só atualiza se existir registro correspondente na bruta (mapa_bruta)
                 if protocolo in mapa_bruta:
-                    novo_val = str(mapa_bruta[protocolo])
+                    novo_val = mapa_bruta[protocolo]
                     atual_val = str(row.get('unidade_cadastro', '') or "")
-                    if novo_val != atual_val:
-                        # calcula a linha no sheet (protocolo_para_linha); se ausente, pula
+                    novo_val_norm = _clean_whitespace(novo_val)
+                    atual_val_norm = _clean_whitespace(atual_val)
+                    if novo_val_norm != atual_val_norm:
                         if protocolo in protocolo_para_linha:
                             sheet_row = protocolo_para_linha[protocolo]
-                            cells_to_update.append(gspread.Cell(row=sheet_row, col=col_unidade_idx, value=novo_val))
-                            modificacoes.append((sheet_row, protocolo, atual_val, novo_val))
+                            cells_to_update.append(gspread.Cell(row=sheet_row, col=col_unidade_idx, value=novo_val_norm))
+                            modificacoes.append((sheet_row, protocolo, atual_val, novo_val_norm))
                         else:
                             logging.warning(f"Protocolo {protocolo} não localizado na sheet (não será atualizado).")
-                # else: caso não exista na bruta, não altera
+                # se não existir na bruta, não altera
 
             # --- Se nada para atualizar, fim ---
             if not cells_to_update:
                 logging.info("Nenhuma célula de 'unidade_cadastro' precisa ser atualizada pela bruta.")
-                print("✅ Nenhuma célula encontrou diferença para sincronizar.")
+                print("✅ Nenhuma célula encontrou diferença para sincronizar (critério: protocolo C########...).")
             else:
                 # --- Cria/atualiza log sheet para backup ---
                 log_name = "LOG_unidade_sync"
@@ -578,32 +599,48 @@ try:
                     log_sheet = planilha_tratada_gs.worksheet(log_name)
                 except Exception:
                     log_sheet = planilha_tratada_gs.add_worksheet(title=log_name, rows=1000, cols=10)
-                    log_sheet.append_row(['timestamp', 'sheet_row', 'protocolo', 'antes', 'depois', 'fonte'])
+                    # cabeçalho do log
+                    try:
+                        log_sheet.append_row(['timestamp', 'sheet_row', 'protocolo', 'antes', 'depois', 'fonte'])
+                    except Exception:
+                        # ignore header append errors (ex.: quotas); não crítico
+                        pass
+
                 # Append modificacoes ao log (em batch)
                 now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                 rows_log = [[now, m[0], m[1], m[2], m[3], 'bruta'] for m in modificacoes]
-                if rows_log:
-                    last_log_row = len(log_sheet.get_all_values()) + 1
-                    log_sheet.insert_rows(rows_log, row=last_log_row)
+                try:
+                    if rows_log and log_sheet is not None:
+                        last_log_row = len(log_sheet.get_all_values()) + 1
+                        log_sheet.insert_rows(rows_log, row=last_log_row)
+                except Exception as e:
+                    logging.warning(f"Falha ao gravar linhas de log em '{log_name}': {e}")
 
-                # --- Executa update em batch ---
-                aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-                logging.info(f"Atualizadas {len(cells_to_update)} células de 'unidade_cadastro' a partir da bruta.")
-                print(f"✅ Sincronizadas {len(cells_to_update)} células de 'unidade_cadastro' a partir da bruta.")
+                # --- Executa update em batch (uma única chamada update_cells) ---
+                try:
+                    aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
+                    logging.info(f"Atualizadas {len(cells_to_update)} células de 'unidade_cadastro' a partir da bruta.")
+                    print(f"✅ Sincronizadas {len(cells_to_update)} células de 'unidade_cadastro' a partir da bruta.")
+                except Exception as e:
+                    logging.exception(f"Erro ao executar update_cells para 'unidade_cadastro': {e}")
+                    print(f"❌ Erro ao executar update_cells: {e}")
 
-                # --- Atualiza df_tratada_hist em memória para refletir mudança (útil para demais passos)
-                for _, _, proto, novo in modificacoes:
-                    mask = df_tratada_hist['protocolo'].astype(str).str.strip().str.upper() == proto
-                    df_tratada_hist.loc[mask, 'unidade_cadastro'] = novo
+                # --- Atualiza df_tratada_hist em memória para refletir mudança (útil para demais passos) ---
+                try:
+                    for _, sheet_row, proto, novo in [(None, m[0], m[1], m[3]) for m in modificacoes]:
+                        mask = df_tratada_hist['protocolo'].astype(str).str.strip().str.upper() == proto
+                        df_tratada_hist.loc[mask, 'unidade_cadastro'] = novo
+                except Exception:
+                    logging.warning("Falha ao propagar alterações para df_tratada_hist em memória; não crítico.")
 
                 # --- Também atualiza df_tratada global (se existir) para manutenção do fluxo posterior ---
                 try:
                     if 'df_tratada' in globals():
-                        for _, _, proto, novo in modificacoes:
+                        for _, sheet_row, proto, novo in [(None, m[0], m[1], m[3]) for m in modificacoes]:
                             maskg = df_tratada['protocolo'].astype(str).str.strip().str.upper() == proto
                             df_tratada.loc[maskg, 'unidade_cadastro'] = novo
                 except Exception:
-                    logging.warning("Falha ao propagar alterações para df_tratada em memória; isso não é crítico.")
+                    logging.warning("Falha ao propagar alterações para df_tratada global em memória; isso não é crítico.")
 
 except Exception as e:
     logging.exception(f"❌ Erro durante sincronização temporária de 'unidade_cadastro': {e}")
