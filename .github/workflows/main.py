@@ -479,11 +479,11 @@ except Exception as e:
     nao_enviados = []
 
 # =======================================================================
-# 5-B) SCRIPT TEMPORÁRIO: CORREÇÃO ÚNICA DAS DATAS EXISTENTES (V3 - FINAL)
+# 5-B) SCRIPT TEMPORÁRIO DEFINITIVO: FORMATANDO DATAS EXISTENTES NO LOCAL
 # =======================================================================
-_BANNER("5-B) SCRIPT TEMPORÁRIO - CORRIGINDO DATAS EXISTENTES")
+_BANNER("5-B) FORMATANDO DATAS EXISTENTES (LÓGICA SEGURA)")
 
-# --- FUNÇÃO AUXILIAR PARA CORRIGIR O ERRO DE VERSÃO DO GSPREAD ---
+# Função auxiliar para conversão de número de coluna para letra
 def col_num_to_a1_letter(col_num):
     """Converte um número de coluna (base 1) para sua letra em notação A1."""
     letter = ''
@@ -491,140 +491,65 @@ def col_num_to_a1_letter(col_num):
         col_num, remainder = divmod(col_num - 1, 26)
         letter = chr(65 + remainder) + letter
     return letter
-# ----------------------------------------------------------------
 
 try:
-    print("Iniciando a correção única para as colunas de data em TODAS as linhas existentes...")
+    print("Iniciando a formatação segura das colunas de data existentes...")
     
+    # df_tratada foi carregado na Seção 5 e contém os dados atuais da planilha
     if df_tratada.empty:
-        print("Planilha tratada está vazia, nenhuma data existente para corrigir.")
-        logging.info("Script Temporário: Planilha tratada vazia, pulando correção de datas existentes.")
+        print("Planilha tratada está vazia, pulando formatação.")
     else:
         headers = aba_tratada.row_values(1)
-        colunas_para_corrigir = ["data_da_criacao", "data_da_conclusao"]
+        colunas_para_formatar = ["data_da_criacao", "data_da_conclusao"]
 
-        formato_data_visual = {
-            "numberFormat": { "type": "DATE", "pattern": "dd/mm/yyyy" }
-        }
+        # Define o formato visual que queremos que o Google Sheets aplique
+        formato_data_visual = {"numberFormat": {"type": "DATE", "pattern": "dd/mm/yyyy"}}
 
-        for nome_coluna in colunas_para_corrigir:
+        for nome_coluna in colunas_para_formatar:
             if nome_coluna not in df_tratada.columns:
-                print(f"⚠️ Aviso: Coluna '{nome_coluna}' não encontrada, pulando sua correção.")
+                print(f"⚠️ Aviso: Coluna '{nome_coluna}' não encontrada na planilha, pulando.")
                 continue
 
             print(f"   • Processando coluna '{nome_coluna}'...")
-
-            # 1. Prepara os dados em Python: Converte para data e zera a hora
-            if nome_coluna == "data_da_conclusao":
-                datas_convertidas = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
-                df_tratada[nome_coluna] = datas_convertidas.fillna(df_tratada[nome_coluna])
-            else:
-                df_tratada[nome_coluna] = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
             
-            # 2. Prepara a lista de valores para enviar à API (CORREÇÃO APLICADA AQUI)
-            # Esta função verifica cada valor: se for uma data, formata; se for texto, mantém.
-            def formatar_valor(valor):
+            # --- LÓGICA DE SEGURANÇA CRÍTICA ---
+            # 1. Tenta converter para data. O que falhar (texto como "Não concluído") vira NaT (nulo).
+            datas_convertidas = pd.to_datetime(df_tratada[nome_coluna], errors='coerce').dt.normalize()
+            
+            # 2. Onde a conversão falhou, PREENCHE com o valor ORIGINAL. Isso impede que dados sejam apagados.
+            df_tratada[f'{nome_coluna}_corrigida'] = datas_convertidas.fillna(df_tratada[nome_coluna])
+            print(f"     - Coluna preparada na memória com segurança.")
+
+            # Prepara os valores para a API, tratando datas e textos corretamente
+            def formatar_valor_seguro(valor):
                 if isinstance(valor, pd.Timestamp):
-                    return valor.strftime('%Y-%m-%d')
+                    return valor.strftime('%Y-%m-%d') # Formato que a API entende como data
                 return str(valor) if pd.notna(valor) else ''
 
-            # Aplica a função a cada célula da coluna para criar a lista de valores
-            valores_para_atualizar = df_tratada[nome_coluna].apply(formatar_valor).tolist()
+            valores_para_atualizar = df_tratada[f'{nome_coluna}_corrigida'].apply(formatar_valor_seguro).tolist()
             payload_api = [[valor] for valor in valores_para_atualizar]
 
-            # 3. Envia a atualização para a planilha
+            # Encontra a coluna na planilha
             col_index = headers.index(nome_coluna) + 1
             range_para_atualizar = f"{col_num_to_a1_letter(col_index)}2:{col_num_to_a1_letter(col_index)}{len(df_tratada) + 1}"
             
-            aba_tratada.update(
-                range_name=range_para_atualizar, 
-                values=payload_api, 
-                value_input_option='USER_ENTERED'
-            )
-            print(f"     ✅ Valores da coluna '{nome_coluna}' atualizados na planilha.")
-
-            # 4. Aplica a FORMATAÇÃO VISUAL na coluna inteira
+            # Atualiza os valores na planilha
+            aba_tratada.update(range_name=range_para_atualizar, values=payload_api, value_input_option='USER_ENTERED')
+            print(f"     - ✅ Valores da coluna '{nome_coluna}' atualizados na planilha.")
+            
+            # Aplica a formatação visual DD/MM/AAAA na coluna inteira
             col_letra = col_num_to_a1_letter(col_index)
             aba_tratada.format(f"{col_letra}2:{col_letra}", formato_data_visual)
-            print(f"     ✅ Formatação 'dd/mm/yyyy' aplicada à coluna '{nome_coluna}'.")
+            print(f"     - ✅ Formatação 'dd/mm/yyyy' aplicada.")
 
-    print("✅ Correção única das datas existentes concluída com sucesso.")
-    logging.info("Script Temporário: Correção de datas existentes foi executada com sucesso.")
+    print("✅ Formatação segura das datas existentes concluída.")
 
 except Exception as e:
-    print(f"❌ Erro durante a execução do script temporário de correção de datas: {e}")
-    logging.error(f"Falha no Script Temporário (Seção 5-B): {e}", exc_info=True)
-    raise SystemExit("Pipeline encerrado devido a falha na correção de dados existentes.")
-
+    print(f"❌ Erro durante a formatação segura de datas: {e}")
+    logging.critical(f"Falha no script temporário de formatação de data: {e}", exc_info=True)
+    raise SystemExit("Pipeline encerrado devido a falha na formatação de dados existentes.")
 # =======================================================================
 # FIM DO SCRIPT TEMPORÁRIO
-# =======================================================================
-
-# =======================================================================
-# 5-C) SCRIPT DE REPARO TEMPORÁRIO: RESTAURANDO 'data_da_criacao'
-# =======================================================================
-_BANNER("5-C) REPARANDO A COLUNA 'data_da_criacao'")
-
-try:
-    print("Iniciando o reparo da coluna 'data_da_criacao'...")
-
-    # Garante que temos os dados brutos e tratados carregados
-    if 'df_bruta' not in globals() or df_bruta.empty or 'df_tratada' not in globals() or df_tratada.empty:
-        raise SystemExit("Dados brutos ou tratados não estão disponíveis para o reparo.")
-
-    # 1. Cria um mapa dos valores originais da planilha bruta: {protocolo: data_da_criacao_original}
-    # drop_duplicates mantém a primeira ocorrência, caso haja protocolos duplicados
-    mapa_datas_originais = df_bruta.drop_duplicates(subset=['protocolo']).set_index('protocolo')['data_da_criacao'].to_dict()
-    print(f"   • Encontradas {len(mapa_datas_originais)} datas de criação originais na planilha bruta.")
-
-    # 2. Usa o mapa para preencher os valores originais na base tratada
-    # Isso garante que estamos trabalhando com os dados corretos, não os que foram apagados
-    df_tratada['data_da_criacao_original'] = df_tratada['protocolo'].map(mapa_datas_originais)
-    print("   • Valores originais de 'data_da_criacao' restaurados na memória.")
-
-    # 3. Aplica a lógica de conversão SEGURA
-    # Tenta converter para data, se falhar, mantém o valor original
-    datas_convertidas = pd.to_datetime(df_tratada['data_da_criacao_original'], errors='coerce').dt.normalize()
-    df_tratada['data_da_criacao_corrigida'] = datas_convertidas.fillna(df_tratada['data_da_criacao_original'])
-    print("   • Datas de criação corrigidas e formatadas com segurança.")
-
-    # 4. Prepara a lista de valores para enviar à API
-    def formatar_valor_reparo(valor):
-        if isinstance(valor, pd.Timestamp):
-            return valor.strftime('%Y-%m-%d')
-        return str(valor) if pd.notna(valor) else ''
-
-    valores_para_atualizar = df_tratada['data_da_criacao_corrigida'].apply(formatar_valor_reparo).tolist()
-    payload_api = [[valor] for valor in valores_para_atualizar]
-
-    # 5. Encontra a coluna e envia a atualização para a planilha
-    headers = aba_tratada.row_values(1)
-    if 'data_da_criacao' in headers:
-        col_index = headers.index('data_da_criacao') + 1
-        range_para_atualizar = f"{col_num_to_a1_letter(col_index)}2:{col_num_to_a1_letter(col_index)}{len(df_tratada) + 1}"
-        
-        print("   • Enviando dados corrigidos para a planilha. Isso pode levar um momento...")
-        aba_tratada.update(
-            range_name=range_para_atualizar, 
-            values=payload_api, 
-            value_input_option='USER_ENTERED'
-        )
-        print("   • ✅ Valores da coluna 'data_da_criacao' foram restaurados e atualizados.")
-    else:
-        print("   • ⚠️ Coluna 'data_da_criacao' não encontrada na planilha. O reparo não foi concluído.")
-
-    # Limpa as colunas temporárias
-    df_tratada.drop(columns=['data_da_criacao_original', 'data_da_criacao_corrigida'], inplace=True)
-
-    print("✅ Reparo da coluna 'data_da_criacao' concluído.")
-
-except Exception as e:
-    print(f"❌ Erro crítico durante o reparo da coluna 'data_da_criacao': {e}")
-    logging.critical(f"Falha no Script de Reparo (Seção 5-C): {e}", exc_info=True)
-    raise SystemExit("Pipeline encerrado devido a falha no script de reparo.")
-
-# =======================================================================
-# FIM DO SCRIPT DE REPARO
 # =======================================================================
 
 # ========================================================
@@ -846,7 +771,7 @@ if not df_novos.empty:
                 df_novos[col] = df_novos[col].astype(str)
                 
 # ========================================================
-# 8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS
+# 8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS (VERSÃO CORRIGIDA E INTEGRADA)
 # ========================================================
 _BANNER("8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS")
 
@@ -868,7 +793,6 @@ except Exception as e:
 # ----------------------------------------------------------
 # CARREGA PLANILHA TRATADA E OBTÉM PROTOCOLOS EXISTENTES
 # ----------------------------------------------------------
-
 try:
     if 'client' not in globals() or client is None:
         raise SystemExit("❌ Cliente gspread não autenticado. Verifique Item 1.")
@@ -895,15 +819,15 @@ try:
         logging.warning("Coluna 'protocolo' não encontrada em df_tratada_existente. Não será possível identificar protocolos existentes.")
 
     cols_alvo_tratada = list(df_tratada_existente.columns)
-    if df_tratada_existente.empty:
+    if not cols_alvo_tratada: # Se a planilha tratada estiver completamente vazia (sem cabeçalho)
         if 'df_novos' in globals() and not df_novos.empty:
             cols_alvo_tratada = list(df_novos.columns)
             logging.info("Planilha tratada vazia, usando colunas de df_novos como referência para o schema.")
         elif not df_bruta.empty:
-            cols_alvo_tratada = list(df_bruta.columns)
-            logging.info("Planilha tratada vazia e df_novos vazio, usando colunas de df_bruta como referência para o schema.")
+            cols_alvo_tratada = [normalizar_nome_coluna(c) for c in df_bruta.columns]
+            logging.info("Planilha tratada vazia e df_novos vazio, usando colunas de df_bruta como referência.")
         else:
-            logging.error("Não foi possível determinar o schema da planilha tratada. df_tratada_existente, df_novos e df_bruta estão vazios.")
+            logging.error("Não foi possível determinar o schema da planilha tratada.")
             raise ValueError("Não foi possível determinar o schema da planilha tratada.")
     logging.debug(f"Colunas alvo da planilha tratada: {cols_alvo_tratada}")
 
@@ -914,74 +838,62 @@ except Exception as e:
 # ----------------------------------------------------------
 # IDENTIFICA E PREPARA NOVOS PROTOCOLOS PARA ENVIO
 # ----------------------------------------------------------
-
 try:
-    # <<< CORREÇÃO AQUI: A variável df_novos já foi criada na seção 7, vamos reutilizá-la.
-    # O DataFrame df_send será criado a partir do df_novos já tratado.
-    if df_novos.empty:
-        logging.info("Nenhum protocolo novo detectado para envio. df_send será um DataFrame vazio.")
+    # A variável df_novos, contendo apenas os novos protocolos já tratados, vem da Seção 7.
+    if 'df_novos' not in globals() or df_novos.empty:
+        logging.info("Nenhum protocolo novo detectado para envio.")
         print("🧹 Nenhum protocolo novo para enviar.")
-        df_send = pd.DataFrame(columns=cols_alvo_tratada) # Define df_send vazio com colunas corretas
+        df_send = pd.DataFrame() # Cria um df_send vazio para que o script continue sem erros
     else:
-        logging.info(f"Detectados {len(df_novos)} protocolos novos para processar e enviar. Shape inicial: {df_novos.shape}")
+        logging.info(f"Detectados {len(df_novos)} protocolos novos para processar e enviar. Shape: {df_novos.shape}")
         print(f"🧹 Novos protocolos a enviar: {len(df_novos)}")
 
-        # O _tratar_full já foi aplicado na Seção 7. Agora só alinhamos e preparamos o df_send.
-        df_send = df_novos.copy()
-
-        # Garante que o df_send tem as colunas corretas e na ordem certa
-        df_send_final = df_send.reindex(columns=cols_alvo_tratada, fill_value="")
-        logging.info(f"df_send reindexado para alinhar com colunas alvo. Shape final: {df_send_final.shape}")
-       
-        df_send = df_send_final.copy() # Atribui o DataFrame final preparado para df_send
+        # Alinha as colunas do df_novos com as da planilha tratada, preenchendo com "" as que faltarem.
+        df_send = df_novos.reindex(columns=cols_alvo_tratada, fill_value="")
+        logging.info(f"df_send alinhado com as colunas da planilha alvo. Shape final: {df_send.shape}")
 
 except Exception as e:
     logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
     raise
 
 # --------------------------------------------------------------------------
-# CORREÇÃO DEFINITIVA: PREPARAÇÃO DAS DATAS PARA ENVIO (VÁLIDO PARA O FUTURO)
+# PREPARAÇÃO FINAL DAS DATAS ANTES DO ENVIO (LÓGICA SEGURA INTEGRADA)
 # --------------------------------------------------------------------------
-# Este bloco garante que as colunas de data sejam enviadas como objetos de data
-# (sem hora) e que a lógica seja segura para não apagar valores de texto.
-
 if not df_send.empty:
-    print("— Preparando colunas de data para envio (lógica segura)...")
+    _SUB("Preparando colunas de data para envio (lógica segura)...")
     
     # --- Coluna 'data_da_criacao' ---
     if "data_da_criacao" in df_send.columns:
-        # Tenta converter para data, se falhar, mantém o valor original.
+        # Tenta converter para data. O que falhar (texto, etc.) vira NaT (nulo).
         datas_convertidas = pd.to_datetime(df_send["data_da_criacao"], errors='coerce').dt.normalize()
+        # Onde a conversão falhou, preenche de volta com o valor ORIGINAL. Isso impede que dados sejam apagados.
         df_send["data_da_criacao"] = datas_convertidas.fillna(df_send["data_da_criacao"])
         logging.debug("Coluna 'data_da_criacao' para novos protocolos preparada com segurança.")
 
     # --- Coluna 'data_da_conclusao' ---
     if "data_da_conclusao" in df_send.columns:
-        # Tenta converter para data, se falhar, mantém o valor original (ex: "Não concluído").
         datas_convertidas = pd.to_datetime(df_send["data_da_conclusao"], errors='coerce').dt.normalize()
         df_send["data_da_conclusao"] = datas_convertidas.fillna(df_send["data_da_conclusao"])
         logging.debug("Coluna 'data_da_conclusao' para novos protocolos preparada com segurança.")
     
-    # Substitui valores nulos de data (NaT) por None, que o gspread entende como célula vazia.
+    # Substitui NaT (Not a Time) por None, que gspread entende como célula vazia.
     df_send = df_send.replace({pd.NaT: None})
-
 # --------------------------------------------------------------------------
 
 # ----------------------------------------------------------
 # CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
 # ----------------------------------------------------------
 if not df_send.empty and "unidade_cadastro" in df_send.columns:
-    nulos_uc = int(df_send["unidade_cadastro"].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']).sum())
+    nulos_uc = int(df_send["unidade_cadastro"].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado', 'None']).sum())
     print(f"🧪 Checagem (NOVOS - PRONTOS PARA ENVIO): unidade_cadastro presente | vazios={nulos_uc}")
     logging.info(f"Checagem (NOVOS - PRONTOS PARA ENVIO): unidade_cadastro presente | vazios={nulos_uc}")
     if nulos_uc > 0:
-        logging.warning(f"QA Pré-Envio: 'unidade_cadastro' contém {nulos_uc} valores vazios/inválidos em df_send. Exemplos: {df_send.loc[df_send['unidade_cadastro'].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']), 'unidade_cadastro'].unique()[:5].tolist()}")
+        logging.warning(f"QA Pré-Envio: 'unidade_cadastro' contém {nulos_uc} valores vazios/inválidos em df_send.")
 else:
-    # <<< CORREÇÃO AQUI: Pequena melhoria na mensagem de log
     if df_send.empty:
         logging.info("Checagem 'unidade_cadastro' pulada pois não há novos protocolos para enviar.")
     else:
-        print("⚠️ Aviso: unidade_cadastro não está em df_send.")
+        print("⚠️ Aviso: unidade_cadastro não está no DataFrame final a ser enviado.")
         logging.warning("unidade_cadastro não está em df_send. Verifique a consistência do schema.")
 
 # ----------------------------------------------------------
@@ -991,14 +903,14 @@ if df_send.empty:
     logging.info("Nenhum protocolo para enviar, pulando envio em lotes.")
     print("📦 Nenhum protocolo para enviar.")
 else:
-    # <<< CORREÇÃO AQUI: Garante que todos os valores nulos sejam strings vazias antes de enviar, exceto datas que são None
+    # Garante que todos os valores nulos (exceto os de data que já são None) virem strings vazias
     df_send_final = df_send.fillna('')
     lote = 500
     total_lotes = (len(df_send_final) + lote - 1) // lote
     print(f"📦 Envio — APENAS NOVOS (FINAL): {len(df_send_final)} linhas | {total_lotes} lotes")
     logging.info(f"Envio — APENAS NOVOS (FINAL): {len(df_send_final)} linhas | {total_lotes} lotes")
 
-    sheet_is_empty = len(aba_tratada.get_all_values()) == 0
+    sheet_is_empty = (aba_tratada.row_count == 0) or (len(aba_tratada.get_all_values()) <= 1 and not any(aba_tratada.get_all_values()[0]))
 
     for i in range(0, len(df_send_final), lote):
         chunk = df_send_final.iloc[i:i+lote].copy()
@@ -1010,12 +922,12 @@ else:
         print(f"   • Enviando {first_idx}-{last_idx} (prévia protocolos: {protos_preview})")
 
         try:
-            # <<< CORREÇÃO AQUI: Adicionando value_input_option para que o Sheets interprete as datas corretamente
+            # value_input_option='USER_ENTERED' é crucial para o Google Sheets interpretar as datas corretamente
             if sheet_is_empty:
                 header = chunk.columns.tolist()
                 aba_tratada.append_rows([header] + rows, value_input_option='USER_ENTERED')
                 logging.info(f"Lote {first_idx}-{last_idx} enviado com cabeçalho.")
-                sheet_is_empty = False
+                sheet_is_empty = False # Garante que o cabeçalho não seja adicionado novamente
             else:
                 aba_tratada.append_rows(rows, value_input_option='USER_ENTERED')
                 logging.info(f"Lote {first_idx}-{last_idx} enviado (sem cabeçalho).")
