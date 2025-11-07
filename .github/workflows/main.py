@@ -479,44 +479,49 @@ except Exception as e:
     nao_enviados = []
 
 # ===================================================================================
-# 5.5) BACKFILL SEGURO DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
+# 5.5) SINCRONIZAÇÃO CIRÚRGICA DE 'unidade_cadastro' (REMOVER APÓS 1ª EXECUÇÃO)
 # ===================================================================================
-_BANNER("5.5) BACKFILL SEGURO DE 'unidade_cadastro' (REMOVER DEPOIS)")
-print(" Executando backfill para SINCRONIZAR a coluna 'unidade_cadastro'...")
-logging.info("INICIANDO: Backfill seguro da coluna 'unidade_cadastro'.")
+_BANNER("5.5) SINCRONIZAÇÃO CIRÚRGICA DE 'unidade_cadastro' (REMOVER DEPOIS)")
+print(" Executando sincronização de 'unidade_cadastro' para protocolos existentes na base bruta...")
+logging.info("INICIANDO: Sincronização cirúrgica da coluna 'unidade_cadastro'.")
 
 try:
-    _SUB("Carregando bases para o backfill...")
-    # Carrega a base bruta para obter os valores ATUALIZADOS
-    df_bruta_sync = df_bruta.copy() # Usa a df_bruta já carregada no Item 2
-    df_bruta_sync.columns = [normalizar_nome_coluna(c) for c in df_bruta_sync.columns]
-    df_bruta_sync.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
+    _SUB("Carregando e preparando dados para sincronização...")
     
-    # Carrega a base tratada para ser ATUALIZADA
+    # 1. PREPARA A BASE BRUTA COMO FONTE DA VERDADE
+    # Usa a df_bruta já carregada no Item 2 e garante que esteja limpa
+    df_bruta_mapa = df_bruta.copy()
+    df_bruta_mapa.columns = [normalizar_nome_coluna(c) for c in df_bruta_mapa.columns]
+    df_bruta_mapa.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
+    
+    # 2. CARREGA A BASE TRATADA PARA COMPARAÇÃO
     df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
     df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
     
-    if 'protocolo' not in df_bruta_sync.columns or 'unidade_cadastro' not in df_bruta_sync.columns or 'protocolo' not in df_tratada_hist.columns:
-        raise ValueError("Colunas 'protocolo' ou 'unidade_cadastro' não encontradas.")
+    # 3. VERIFICA SE AS COLUNAS NECESSÁRIAS EXISTEM
+    if 'protocolo' not in df_bruta_mapa.columns or 'unidade_cadastro' not in df_bruta_mapa.columns or 'protocolo' not in df_tratada_hist.columns:
+        raise ValueError("Colunas 'protocolo' ou 'unidade_cadastro' não encontradas. Verifique as planilhas.")
 
-    _SUB("Criando mapa de valores atualizados a partir da base bruta...")
-    # Cria um mapa apenas com os dados mais recentes
-    mapa_unidade_atualizada = df_bruta_sync.set_index('protocolo')['unidade_cadastro'].to_dict()
+    _SUB("Criando mapa de valores da base bruta...")
+    # Cria um mapa apenas com os dados da planilha bruta atual
+    mapa_unidade_bruta = df_bruta_mapa.set_index('protocolo')['unidade_cadastro'].to_dict()
 
-    _SUB("Identificando registros que precisam de atualização (sem apagar históricos)...")
-    # Cria a coluna corrigida usando o mapa
-    df_tratada_hist['unidade_corrigida'] = df_tratada_hist['protocolo'].map(mapa_unidade_atualizada)
+    _SUB("Identificando divergências APENAS para protocolos contidos na base bruta...")
     
-    # --- LÓGICA DE SEGURANÇA ---
-    # Onde a 'unidade_corrigida' for NULA (protocolo antigo não encontrado na bruta), 
-    # MANTENHA o valor antigo da 'unidade_cadastro'.
-    df_tratada_hist['unidade_corrigida'].fillna(df_tratada_hist['unidade_cadastro'], inplace=True)
+    # 4. FILTRA A BASE TRATADA PARA CONTER APENAS OS PROTOCOLOS DA BRUTA
+    protocolos_na_bruta = df_bruta_mapa['protocolo'].unique()
+    df_tratada_subset = df_tratada_hist[df_tratada_hist['protocolo'].isin(protocolos_na_bruta)].copy()
 
-    # Compara a coluna original com a coluna final para encontrar as divergências REAIS
-    df_para_atualizar = df_tratada_hist[df_tratada_hist['unidade_cadastro'].astype(str) != df_tratada_hist['unidade_corrigida'].astype(str)]
+    # 5. ENCONTRA AS DIVERGÊNCIAS DENTRO DESTE SUBCONJUNTO
+    df_tratada_subset['unidade_corrigida'] = df_tratada_subset['protocolo'].map(mapa_unidade_bruta)
+    
+    # Compara a coluna original com a coluna corrigida para encontrar o que precisa ser atualizado
+    df_para_atualizar = df_tratada_subset[
+        df_tratada_subset['unidade_cadastro'].astype(str) != df_tratada_subset['unidade_corrigida'].astype(str)
+    ]
     
     if not df_para_atualizar.empty:
-        print(f" Encontradas {len(df_para_atualizar)} linhas em 'unidade_cadastro' para atualizar.")
+        print(f" Encontradas {len(df_para_atualizar)} linhas em 'unidade_cadastro' para sincronizar com a base bruta.")
         logging.info(f"Backfill: Encontradas {len(df_para_atualizar)} linhas de 'unidade_cadastro' para sincronizar.")
 
         _SUB("Preparando e enviando a atualização para o Google Sheets...")
@@ -535,10 +540,10 @@ try:
 
         if cells_to_update:
             aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
-            print(f"✅ Backfill da coluna 'unidade_cadastro' concluído. {len(cells_to_update)} células foram sincronizadas.")
-            logging.info(f"CONCLUÍDO: Backfill. {len(cells_to_update)} células de 'unidade_cadastro' foram sincronizadas.")
+            print(f"✅ Sincronização da coluna 'unidade_cadastro' concluída. {len(cells_to_update)} células foram atualizadas.")
+            logging.info(f"CONCLUÍDO: Sincronização. {len(cells_to_update)} células de 'unidade_cadastro' foram atualizadas.")
     else:
-        print("✅ Nenhuma divergência encontrada entre a base bruta e a tratada para 'unidade_cadastro'.")
+        print("✅ Nenhuma divergência encontrada. Os protocolos da base bruta já estão sincronizados na tratada.")
         logging.info("Backfill: Nenhuma correção de 'unidade_cadastro' necessária.")
 
 except Exception as e:
