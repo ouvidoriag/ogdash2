@@ -22,17 +22,11 @@
       .glass { background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.08); }
       .neon { text-shadow: 0 0 12px rgba(34,211,238,0.65), 0 0 24px rgba(167,139,250,0.45); }
       .glow-ring { box-shadow: 0 0 0 2px rgba(34,211,238,0.15), 0 0 32px rgba(34,211,238,0.25); }
-      .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.06) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
-      @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+      .skeleton { background: rgba(255,255,255,0.06); }
       canvas { max-height: 340px; }
       
-      /* Animações para a página Home */
-      @keyframes float {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-20px); }
-      }
+      /* Animações removidas para melhor performance */
       .cora-avatar {
-        animation: float 3s ease-in-out infinite;
         position: relative;
       }
       .cora-avatar::before {
@@ -43,11 +37,6 @@
         background: linear-gradient(45deg, rgba(34,211,238,0.3), rgba(167,139,250,0.3));
         filter: blur(20px);
         z-index: -1;
-        animation: pulse 2s ease-in-out infinite;
-      }
-      @keyframes pulse {
-        0%, 100% { opacity: 0.5; transform: scale(1); }
-        50% { opacity: 0.8; transform: scale(1.1); }
       }
       .glow-text {
         text-shadow: 0 0 20px rgba(34,211,238,0.5), 0 0 40px rgba(167,139,250,0.3);
@@ -87,7 +76,7 @@
   </head>
   <body class="text-slate-100">
     <div class="min-h-screen grid grid-cols-12 gap-6 p-6">
-      <aside class="col-span-12 lg:col-span-3 xl:col-span-2 glass rounded-2xl p-5 animate__animated animate__fadeIn">
+      <aside class="col-span-12 lg:col-span-3 xl:col-span-2 glass rounded-2xl p-5 ">
         <div class="flex items-center gap-3 mb-6">
           <img src="/dc-logo.png" alt="Duque de Caxias" class="h-12 w-auto object-contain" />
           <div>
@@ -209,38 +198,38 @@
 
       <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">
         <!-- Indicador de Filtros Ativos -->
-        <div id="filterIndicator" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate__animated animate__fadeInDown"></div>
+        <div id="filterIndicator" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-50"></div>
         
         <!-- Página Home: Apresentação da Cora -->
-        <section id="page-home" class="animate__animated animate__fadeIn">
+        <section id="page-home" class="">
           <div class="glass rounded-2xl p-8 md:p-12 text-center">
             <!-- Logo/Ícone da Cora com animação -->
             <div class="mb-8">
               <div class="inline-block relative">
-                <div class="cora-avatar w-32 h-32 md:w-40 md:h-40 mx-auto rounded-full bg-gradient-to-br from-cyan-400 via-purple-500 to-pink-500 flex items-center justify-center text-6xl md:text-7xl animate__animated animate__pulse animate__infinite" style="animation-duration: 2s;">
+                <div class="cora-avatar w-32 h-32 md:w-40 md:h-40 mx-auto rounded-full bg-gradient-to-br from-cyan-400 via-purple-500 to-pink-500 flex items-center justify-center text-6xl md:text-7xl">
                   🤖
                 </div>
-                <div class="absolute inset-0 rounded-full bg-cyan-400/20 blur-2xl animate-pulse"></div>
+                <div class="absolute inset-0 rounded-full bg-cyan-400/20 blur-2xl"></div>
               </div>
             </div>
             
             <!-- Título principal -->
-            <h1 class="text-4xl md:text-6xl font-extrabold mb-4 neon animate__animated animate__fadeInDown">
+            <h1 class="text-4xl md:text-6xl font-extrabold mb-4 neon">
               Olá, Prefeito! 👋
             </h1>
-            <h2 class="text-2xl md:text-4xl font-bold text-cyan-300 mb-8 animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
+            <h2 class="text-2xl md:text-4xl font-bold text-cyan-300 mb-8">
               Eu sou a <span class="text-purple-400">Cora</span>
             </h2>
             
             <!-- Subtítulo -->
-            <p class="text-lg md:text-xl text-slate-300 mb-12 max-w-3xl mx-auto animate__animated animate__fadeIn" style="animation-delay: 0.4s;">
+            <p class="text-lg md:text-xl text-slate-300 mb-12 max-w-3xl mx-auto ">
               Sua assistente virtual inteligente especializada em análises de ouvidoria
             </p>
             
             <!-- Cards de funcionalidades -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
               <!-- Card 1: Chat Inteligente -->
-              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-300 animate__animated animate__fadeInLeft" style="animation-delay: 0.6s;">
+              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-100">
                 <div class="text-4xl mb-4">💬</div>
                 <h3 class="text-xl font-bold text-cyan-300 mb-2">Chat Inteligente</h3>
                 <p class="text-sm text-slate-400">
@@ -249,7 +238,7 @@
               </div>
               
               <!-- Card 2: Análises em Tempo Real -->
-              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-300 animate__animated animate__fadeInUp" style="animation-delay: 0.8s;">
+              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-100">
                 <div class="text-4xl mb-4">📊</div>
                 <h3 class="text-xl font-bold text-purple-300 mb-2">Análises em Tempo Real</h3>
                 <p class="text-sm text-slate-400">
@@ -258,7 +247,7 @@
               </div>
               
               <!-- Card 3: IA Avançada -->
-              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-300 animate__animated animate__fadeInRight" style="animation-delay: 1s;">
+              <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-100">
                 <div class="text-4xl mb-4">🧠</div>
                 <h3 class="text-xl font-bold text-pink-300 mb-2">IA Avançada</h3>
                 <p class="text-sm text-slate-400">
@@ -268,7 +257,7 @@
             </div>
             
             <!-- Como funciona -->
-            <div class="glass rounded-xl p-8 mb-8 max-w-4xl mx-auto animate__animated animate__fadeIn" style="animation-delay: 1.2s;">
+            <div class="glass rounded-xl p-8 mb-8 max-w-4xl mx-auto ">
               <h3 class="text-2xl font-bold text-cyan-300 mb-6 flex items-center justify-center gap-2">
                 <span>⚡</span> Como Funciona
               </h3>
@@ -324,7 +313,7 @@
             </div>
             
             <!-- Exemplos de perguntas -->
-            <div class="glass rounded-xl p-8 max-w-4xl mx-auto mb-8 animate__animated animate__fadeIn" style="animation-delay: 1.4s;">
+            <div class="glass rounded-xl p-8 max-w-4xl mx-auto mb-8 ">
               <h3 class="text-xl font-bold text-purple-300 mb-4">💡 Exemplos de Perguntas</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                 <div class="bg-slate-800/50 rounded-lg p-4 border border-cyan-500/20">
@@ -343,8 +332,8 @@
             </div>
             
             <!-- Botão de ação -->
-            <div class="animate__animated animate__fadeInUp" style="animation-delay: 1.6s;">
-              <a href="/chat" class="inline-block px-8 py-4 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl font-bold text-lg hover:scale-105 transition-transform duration-300 glow-ring">
+            <div class="Up">
+              <a href="/chat" class="inline-block px-8 py-4 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl font-bold text-lg hover:scale-105 transition-transform duration-100 glow-ring">
                 🚀 Começar a Conversar com a Cora
               </a>
             </div>
@@ -483,10 +472,10 @@
             <div class="flex items-center justify-between mb-4">
               <h3 class="font-semibold text-slate-200">Distribuição por Status</h3>
               <div class="flex items-center gap-2">
-                <button id="btnMarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition-colors">
+                <button id="btnMarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition-colors duration-100">
                   ✓ Marcar Todos
                 </button>
-                <button id="btnDesmarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-slate-500/20 text-slate-300 hover:bg-slate-500/30 border border-slate-500/30 transition-colors">
+                <button id="btnDesmarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-slate-500/20 text-slate-300 hover:bg-slate-500/30 border border-slate-500/30 transition-colors duration-100">
                   ✗ Desmarcar Todos
                 </button>
               </div>
@@ -519,7 +508,7 @@
         <section class="grid grid-cols-12 gap-6">
           <div class="col-span-12 glass rounded-2xl p-5">
             <div class="flex items-center justify-between mb-3">
-              <h3 class="font-semibold text-slate-200">SLA (e-SIC e Outros)</h3>
+              <h3 class="font-semibold text-slate-200">SLA (Status dos Pedidos)</h3>
             </div>
             <div class="rounded-xl overflow-hidden bg-slate-900/30">
               <canvas id="chartSla"></canvas>
@@ -663,11 +652,11 @@
         <section id="page-secretaria" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Análise por Secretaria (Órgão)</h2></header>
           <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-cyan-400">Registros por Secretaria</h3>
               <canvas id="chartSecretaria"></canvas>
             </div>
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-cyan-400">Top 10 Secretarias (Rank)</h3>
               <ul id="rankSecretaria" class="space-y-2"></ul>
             </div>
@@ -677,11 +666,11 @@
         <section id="page-tipo" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Tipos de Manifestação</h2></header>
           <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-violet-400">Distribuição por Tipo (Reclamação/Elogio/...)</h3>
               <canvas id="chartTipo"></canvas>
             </div>
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-violet-400">Top Tipos (Rank)</h3>
               <ul id="rankTipo" class="space-y-2"></ul>
             </div>
@@ -691,11 +680,11 @@
         <section id="page-setor" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Análise por Setor/Departamento</h2></header>
           <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-emerald-400">Registros por Setor</h3>
               <canvas id="chartSetor"></canvas>
             </div>
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-emerald-400">Top 10 Setores (Rank)</h3>
               <ul id="rankSetor" class="space-y-2"></ul>
             </div>
@@ -705,11 +694,11 @@
         <section id="page-uac" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Unidades de Atendimento ao Cidadão (UAC)</h2></header>
           <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-cyan-400">Total por UAC</h3>
               <canvas id="chartUAC"></canvas>
             </div>
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-cyan-400">Top 10 UACs (Rank)</h3>
               <ul id="rankUAC" class="space-y-2"></ul>
             </div>
@@ -723,11 +712,11 @@
         <section id="page-responsavel" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Responsáveis pelo Tratamento da Demanda</h2></header>
           <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-violet-400">Distribuição por Responsável</h3>
               <canvas id="chartResponsavel"></canvas>
             </div>
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-violet-400">Top Responsáveis (Rank)</h3>
               <ul id="rankResponsavel" class="space-y-2"></ul>
             </div>
@@ -741,11 +730,11 @@
         <section id="page-canal" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Canais de Atendimento</h2></header>
           <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-emerald-400">Distribuição por Canal</h3>
               <canvas id="chartCanal"></canvas>
             </div>
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-emerald-400">Top Canais (Rank)</h3>
               <ul id="rankCanal" class="space-y-2"></ul>
             </div>
@@ -759,11 +748,11 @@
         <section id="page-prioridade" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Prioridades das Demandas</h2></header>
           <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__faster">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-rose-400">Distribuição por Prioridade</h3>
               <canvas id="chartPrioridade"></canvas>
             </div>
-            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 animate__animated animate__fadeInUp animate__delay-1s">
+            <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
               <h3 class="font-semibold mb-2 text-rose-400">Ranking de Prioridades</h3>
               <ul id="rankPrioridade" class="space-y-2"></ul>
             </div>
@@ -775,7 +764,76 @@
         </section>
         <!-- Página Tempo Médio de Atendimento -->
         <section id="page-tempo-medio" style="display:none">
-          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Tempo Médio de Atendimento / Dias</h2></header>
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">Tempo Médio de Atendimento / Dias</h2>
+            </div>
+            
+            <!-- Filtros de Período -->
+            <div class="grid grid-cols-12 gap-4 mt-4">
+              <div class="col-span-12 md:col-span-6">
+                <label class="block text-sm font-medium text-slate-300 mb-2">
+                  <span class="flex items-center gap-2">
+                    <span>📅 Selecionar Mês(es)</span>
+                    <span class="text-xs text-slate-500">(Múltipla seleção)</span>
+                  </span>
+                </label>
+                <select id="filtroMeses" multiple class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 min-h-[120px]">
+                  <!-- Preenchido dinamicamente -->
+                </select>
+                <div class="text-xs text-slate-400 mt-1">
+                  Segure Ctrl (Windows) ou Cmd (Mac) para selecionar múltiplos meses
+                </div>
+              </div>
+              
+              <div class="col-span-12 md:col-span-3">
+                <label class="block text-sm font-medium text-slate-300 mb-2">⚙️ Configurações</label>
+                <div class="space-y-2">
+                  <label class="flex items-center gap-2 text-sm text-slate-300">
+                    <input type="checkbox" id="filtroApenasConcluidos" class="rounded border-slate-600 bg-slate-700 text-cyan-500 focus:ring-cyan-500">
+                    <span>Apenas concluídos</span>
+                  </label>
+                  <label class="flex items-center gap-2 text-sm text-slate-300">
+                    <input type="checkbox" id="filtroIncluirZero" checked class="rounded border-slate-600 bg-slate-700 text-cyan-500 focus:ring-cyan-500">
+                    <span>Incluir tempo zero</span>
+                  </label>
+                </div>
+              </div>
+              
+              <div class="col-span-12 md:col-span-3 flex items-end">
+                <button id="btnAplicarFiltros" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
+                  🔄 Aplicar Filtros
+                </button>
+              </div>
+            </div>
+            
+            <div id="filtrosSelecionados" class="mt-3 flex flex-wrap gap-2"></div>
+          </header>
+          
+          <!-- Estatísticas Gerais -->
+          <div class="grid grid-cols-12 gap-6 mb-6">
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
+              <div class="text-slate-400 text-sm mb-2">Média Geral</div>
+              <div id="statMedia" class="text-3xl font-extrabold text-cyan-300">—</div>
+              <div class="text-xs text-slate-500 mt-1">dias</div>
+            </div>
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
+              <div class="text-slate-400 text-sm mb-2">Mediana</div>
+              <div id="statMediana" class="text-3xl font-extrabold text-purple-300">—</div>
+              <div class="text-xs text-slate-500 mt-1">dias</div>
+            </div>
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
+              <div class="text-slate-400 text-sm mb-2">Mínimo</div>
+              <div id="statMinimo" class="text-3xl font-extrabold text-emerald-300">—</div>
+              <div class="text-xs text-slate-500 mt-1">dias</div>
+            </div>
+            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
+              <div class="text-slate-400 text-sm mb-2">Máximo</div>
+              <div id="statMaximo" class="text-3xl font-extrabold text-red-300">—</div>
+              <div class="text-xs text-slate-500 mt-1">dias</div>
+            </div>
+          </div>
+
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-4 text-cyan-400">Tempo Médio por Órgão/Unidade</h3>
@@ -785,8 +843,22 @@
               <h3 class="font-semibold mb-4 text-cyan-400">Ranking</h3>
               <div id="listaTempoMedio" class="space-y-2 max-h-[500px] overflow-y-auto"></div>
             </div>
+            
+            <!-- Gráfico por Dia -->
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-cyan-400">Tendência Diária (Últimos 30 dias)</h3>
+              <canvas id="chartTempoMedioDia"></canvas>
+            </div>
+            
+            <!-- Gráfico por Semana -->
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-cyan-400">Tendência Semanal (Últimas 12 semanas)</h3>
+              <canvas id="chartTempoMedioSemana"></canvas>
+            </div>
+            
+            <!-- Gráfico por Mês -->
             <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Filtro / Mês</h3>
+              <h3 class="font-semibold mb-4 text-cyan-400">Tendência Mensal (Últimos 12 meses)</h3>
               <canvas id="chartTempoMedioMes"></canvas>
             </div>
           </div>
@@ -853,6 +925,21 @@
               <div class="text-sm text-slate-400 mb-2">Manifestações</div>
               <div id="totalCadastrante" class="text-6xl font-extrabold text-cyan-300 mb-2">—</div>
               <div class="text-xs text-slate-400">TOTAL CADASTRADAS ATÉ O MOMENTO</div>
+            </div>
+            <!-- Gráficos adicionais que aparecem quando há filtro ativo -->
+            <div id="graficosFiltrados" class="col-span-12 grid grid-cols-12 gap-6" style="display: none;">
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-4 text-amber-400">Por Tema (Filtrado)</h3>
+                <canvas id="chartCadastranteTema"></canvas>
+              </div>
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-4 text-pink-400">Por Assunto (Filtrado)</h3>
+                <canvas id="chartCadastranteAssunto"></canvas>
+              </div>
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-4 text-emerald-400">Por Status (Filtrado)</h3>
+                <canvas id="chartCadastranteStatus"></canvas>
+              </div>
             </div>
           </div>
         </section>
@@ -1123,7 +1210,7 @@
                 <div class="text-xs text-slate-400">Online</div>
               </div>
             </div>
-            <button id="chatWidgetClose" class="text-slate-400 hover:text-slate-200 transition-colors">
+            <button id="chatWidgetClose" class="text-slate-400 hover:text-slate-200 transition-colors duration-100">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
               </svg>
@@ -1249,15 +1336,15 @@
       // Função para mostrar feedback visual ao clicar
       function showClickFeedback(element, label, value) {
         const feedback = document.createElement('div');
-        feedback.className = 'fixed top-4 right-4 glass rounded-lg p-4 z-50 animate__animated animate__fadeInRight';
+        feedback.className = 'fixed top-4 right-4 glass rounded-lg p-4 z-50';
         feedback.innerHTML = `
           <div class="text-cyan-300 font-bold text-lg">${label}</div>
           <div class="text-slate-300 text-sm">Valor: ${value.toLocaleString('pt-BR')}</div>
         `;
         document.body.appendChild(feedback);
         setTimeout(() => {
-          feedback.classList.add('animate__fadeOutRight');
-          setTimeout(() => feedback.remove(), 300);
+          // Animação removida para melhor performance
+          setTimeout(() => feedback.remove(), 100);
         }, 2000);
       }
       
@@ -1379,7 +1466,17 @@
         
         // Recarregar dados específicos da página atual
         if (currentPage === 'orgao-mes') await loadOrgaoMes();
-        if (currentPage === 'tempo-medio') await loadTempoMedio();
+        if (currentPage === 'tempo-medio') {
+          await loadMesesDisponiveis();
+          await loadTempoMedio();
+          
+          // Configurar botão de aplicar filtros
+          const btnAplicar = document.getElementById('btnAplicarFiltros');
+          if (btnAplicar && !btnAplicar.dataset.listenerAdded) {
+            btnAplicar.addEventListener('click', aplicarFiltrosTempoMedio);
+            btnAplicar.dataset.listenerAdded = 'true';
+          }
+        }
         if (currentPage === 'tema') await loadTema();
         if (currentPage === 'assunto') await loadAssunto();
         if (currentPage === 'cadastrante') await loadCadastrante();
@@ -1413,15 +1510,39 @@
         // Por enquanto, retornamos os dados filtrados e processamos no cliente
         return filteredData;
       }
+      
+      // Alias para compatibilidade - usar fetchJSONWithFilters
+      async function fetchJSONWithFilter(url, opts = {}) {
+        return await fetchJSONWithFilters(url, opts);
+      }
 
       // ========== Carregamento da Visão Geral ==========
       async function loadOverview() {
         try {
-          // KPIs e status principal já tratados por loadKpis (mantemos)
+          // Carregar KPIs primeiro (mais importante para o usuário ver)
           await loadKpis();
+          
+          // Buscar summary uma vez e reutilizar (evita duplicação)
+          let summaryData = null;
+          
+          // Fazer TODAS as requisições em PARALELO para melhor performance
+          const [
+            byMonth,
+            orgaos,
+            temas,
+            summary,
+            sla
+          ] = await Promise.all([
+            fetchJSONWithFilter('/api/aggregate/by-month'),
+            fetchJSONWithFilter('/api/aggregate/count-by?field=Orgaos'),
+            fetchJSONWithFilter('/api/aggregate/by-theme'),
+            fetchJSONWithFilter('/api/summary'),
+            fetchJSONWithFilter('/api/sla/summary')
+          ]);
+          
+          summaryData = summary; // Guardar para reutilizar
 
-          // Tendência mensal (12M) usando /api/aggregate/by-month
-          const byMonth = await fetchJSON('/api/aggregate/by-month');
+          // Processar dados de tendência mensal
           const labels = byMonth.map(x => x.month);
           const values = byMonth.map(x => x.count);
           if (window.chartTrend instanceof Chart) window.chartTrend.destroy();
@@ -1449,7 +1570,6 @@
           }
 
           // Top Órgãos
-          const orgaos = await fetchJSON('/api/aggregate/count-by?field=Orgaos');
           const orgLabels = orgaos.slice(0, 10).map(x => x.key);
           const orgValues = orgaos.slice(0, 10).map(x => x.count);
           if (window.chartTopOrgaos instanceof Chart) window.chartTopOrgaos.destroy();
@@ -1464,7 +1584,6 @@
           }
 
           // Top Temas
-          const temas = await fetchJSON('/api/aggregate/by-theme');
           const temaLabels = temas.slice(0, 10).map(x => x.tema);
           const temaValues = temas.slice(0, 10).map(x => x.quantidade);
           if (window.chartTopTemas instanceof Chart) window.chartTopTemas.destroy();
@@ -1478,9 +1597,8 @@
             addChartClickHandler(window.chartTopTemas, (label, value) => showClickFeedback(null, label, value), 'chartTopTemas');
           }
 
-          // Funil por status (usa summary.statusCounts se disponível)
-          const summary = await fetchJSON('/api/summary');
-          const statusCounts = (summary.statusCounts || []).slice(0, 6);
+          // Funil por status (reutiliza summary já carregado)
+          const statusCounts = (summaryData.statusCounts || []).slice(0, 6);
           const funilLabels = statusCounts.map(s => s.status);
           const funilValues = statusCounts.map(s => s.count);
           if (window.chartFunnelStatus instanceof Chart) window.chartFunnelStatus.destroy();
@@ -1494,14 +1612,13 @@
             addChartClickHandler(window.chartFunnelStatus, (label, value) => showClickFeedback(null, label, value), 'chartFunnelStatus');
           }
 
-          // SLA Overview (reuso de /api/sla/summary)
-          const sla = await fetchJSON('/api/sla/summary');
+          // SLA Overview
           const ctxSla = document.getElementById('chartSlaOverview')?.getContext('2d');
           if (ctxSla) {
             if (window.chartSlaOverview instanceof Chart) window.chartSlaOverview.destroy();
             window.chartSlaOverview = new Chart(ctxSla, {
               type: 'bar',
-              data: { labels: ['e-SIC Dentro', 'e-SIC Atraso', 'Outros Verde', 'Outros Amarelo', 'Outros Atraso'], datasets: [{ data: [sla.esic?.dentro||0, sla.esic?.atraso||0, sla.outros?.verde||0, sla.outros?.amarelo||0, sla.outros?.atraso||0], backgroundColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185'] }] },
+              data: { labels: ['Concluídos', 'Verde Claro (0-30d)', 'Amarelo (31-60d)', 'Vermelho (61+d)'], datasets: [{ data: [sla.concluidos||0, sla.verdeClaro||0, sla.amarelo||0, sla.vermelho||0], backgroundColor: ['#059669','#86efac','#fbbf24','#fb7185'] }] },
               options: { responsive: true, plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } }
             });
             addChartClickHandler(window.chartSlaOverview, (label, value) => showClickFeedback(null, label, value), 'chartSlaOverview');
@@ -1587,7 +1704,7 @@
       }
 
       async function loadKpis(defaultCountField, defaultDateField) {
-        const sum = await fetchJSON('/api/summary');
+        const sum = await fetchJSONWithFilters('/api/summary');
         document.getElementById('kpiTotal').textContent = (sum.total ?? 0).toLocaleString('pt-BR');
         document.getElementById('kpi7').textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
         document.getElementById('kpi30').textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
@@ -1740,7 +1857,7 @@
           document.getElementById('chartStatus').classList.remove('skeleton');
         }
         // Série temporal mensal 12M
-        const byMonth = await fetchJSON('/api/aggregate/by-month');
+        const byMonth = await fetchJSONWithFilter('/api/aggregate/by-month');
         const monthCanvas = document.getElementById('chartMonth');
         if (monthCanvas) {
         const ctxM = monthCanvas.getContext('2d');
@@ -1789,11 +1906,11 @@
         window.chartSla = new Chart(ctxS, {
           type: 'bar',
           data: {
-            labels: ['e-SIC Dentro', 'e-SIC Atraso', 'Outros Verde', 'Outros Amarelo', 'Outros Atraso'],
+            labels: ['Concluídos', 'Verde Claro (0-30d)', 'Amarelo (31-60d)', 'Vermelho (61+d)'],
             datasets: [{
-              data: [sla.esic?.dentro||0, sla.esic?.atraso||0, sla.outros?.verde||0, sla.outros?.amarelo||0, sla.outros?.atraso||0],
-              backgroundColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185'],
-              borderColor: ['#34d399','#fb7185','#34d399','#fbbf24','#fb7185'],
+              data: [sla.concluidos||0, sla.verdeClaro||0, sla.amarelo||0, sla.vermelho||0],
+              backgroundColor: ['#059669','#86efac','#fbbf24','#fb7185'],
+              borderColor: ['#059669','#86efac','#fbbf24','#fb7185'],
               borderWidth: 1
             }]
           },
@@ -1827,13 +1944,18 @@
           
         const tbody = document.getElementById('tbody');
         const thead = document.getElementById('thead');
-          const tableInfo = document.getElementById('tableInfo');
-          
+        const tableInfo = document.getElementById('tableInfo');
+        
+        if (!tbody || !thead) {
+          console.warn('Elementos da tabela não encontrados (pode não estar na página atual)');
+          return;
+        }
+        
         tbody.innerHTML = '';
         thead.innerHTML = '';
           
-          if (rows.length === 0) {
-            tableInfo.textContent = 'Nenhum registro encontrado';
+        if (rows.length === 0) {
+          if (tableInfo) tableInfo.textContent = 'Nenhum registro encontrado';
             return;
           }
           
@@ -1855,7 +1977,7 @@
           
         for (const r of rows) {
             const tr = document.createElement('tr'); 
-            tr.className = 'hover:bg-white/5 transition-colors';
+            tr.className = 'hover:bg-white/5 transition-colors duration-100';
             for (const k of sortedKeys) {
               const td = document.createElement('td'); 
               const value = r.data?.[k] ?? '';
@@ -2047,9 +2169,9 @@
             return;
           }
           
-          const summary = await fetchJSON('/api/summary');
-          const sla = await fetchJSON('/api/sla/summary');
-          const statusOverview = await fetchJSON('/api/stats/status-overview');
+          const summary = await fetchJSONWithFilter('/api/summary');
+          const sla = await fetchJSONWithFilter('/api/sla/summary');
+          const statusOverview = await fetchJSONWithFilter('/api/stats/status-overview');
           
           const wb = XLSX.utils.book_new();
           const date = new Date().toISOString().split('T')[0];
@@ -2067,14 +2189,11 @@
             ['STATUS PRINCIPAL'],
             ...summary.statusCounts.slice(0, 10).map(s => [s.status, s.count]),
             [''],
-            ['SLA - e-SIC'],
-            ['Dentro do Prazo', sla.esic?.dentro || 0],
-            ['Atrasado', sla.esic?.atraso || 0],
-            [''],
-            ['SLA - Outros'],
-            ['Verde (≤30 dias)', sla.outros?.verde || 0],
-            ['Amarelo (31-60 dias)', sla.outros?.amarelo || 0],
-            ['Vermelho (>60 dias)', sla.outros?.atraso || 0],
+            ['SLA - Status dos Pedidos'],
+            ['Concluídos (Verde Escuro)', sla.concluidos || 0],
+            ['Verde Claro (0-30 dias)', sla.verdeClaro || 0],
+            ['Amarelo (31-60 dias)', sla.amarelo || 0],
+            ['Vermelho (61+ dias - Atraso)', sla.vermelho || 0],
             [''],
             ['STATUS GERAL'],
             ['Total', statusOverview.total],
@@ -2125,7 +2244,7 @@
           const values = data.slice(0, 20).map(x => x.count);
           const ctx = document.getElementById('chartCount');
           if (!ctx) {
-            console.error('Canvas chartCount não encontrado!');
+            console.warn('Canvas chartCount não encontrado (pode não estar na página atual)');
             return;
           }
           const ctx2d = ctx.getContext('2d');
@@ -2142,7 +2261,7 @@
           }]},
           options: {
             responsive: true,
-            animation: { duration: 800, easing: 'easeOutQuart' },
+            animation: false,
             plugins: { 
               legend: { display: false },
               tooltip: createEnhancedTooltip(),
@@ -2179,7 +2298,7 @@
           const values = data.map(x => x.count);
           const ctx = document.getElementById('chartTime');
           if (!ctx) {
-            console.error('Canvas chartTime não encontrado!');
+            console.warn('Canvas chartTime não encontrado (pode não estar na página atual)');
             return;
           }
           const ctx2d = ctx.getContext('2d');
@@ -2202,7 +2321,7 @@
           }]},
           options: {
             responsive: true,
-            animation: { duration: 900, easing: 'easeOutCubic' },
+            animation: false,
             plugins: { 
               legend: { labels: { color: '#cbd5e1' } },
               tooltip: createEnhancedTooltip(),
@@ -2307,25 +2426,30 @@
         });
       }
 
-      // initial load
-      loadKpis('Categoria', 'Data');
-      // carregar gráficos principais com defaults dos dropdowns
-      loadCountChart('Categoria');
-      loadTimeChart('Data');
-      loadTable(50);
-      // Carregar heatmap inicial com tratamento de erro
-      fetchJSON('/api/aggregate/heatmap?dim=Categoria')
-        .then(hm => {
-          if (hm && hm.labels && hm.rows) {
-            buildHeatmap('heatmap', hm.labels, hm.rows);
-          } else {
-            buildHeatmap('heatmap', [], []);
-          }
-        })
-        .catch(error => {
-          console.error('Erro ao carregar heatmap inicial:', error);
-          buildHeatmap('heatmap', [], []);
+      // initial load - otimizado: carregar em paralelo e de forma progressiva
+      // Primeiro: KPIs (mais importante, aparece primeiro)
+      loadKpis('Categoria', 'Data').then(() => {
+        // Depois: carregar gráficos e tabela em paralelo (não bloqueiam a UI)
+        Promise.all([
+          loadCountChart('Categoria').catch(e => console.error('Erro ao carregar gráfico de contagem:', e)),
+          loadTimeChart('Data').catch(e => console.error('Erro ao carregar gráfico temporal:', e)),
+          loadTable(50).catch(e => console.error('Erro ao carregar tabela:', e)),
+          fetchJSON('/api/aggregate/heatmap?dim=Categoria')
+            .then(hm => {
+              if (hm && hm.labels && hm.rows) {
+                buildHeatmap('heatmap', hm.labels, hm.rows);
+              } else {
+                buildHeatmap('heatmap', [], []);
+              }
+            })
+            .catch(error => {
+              console.error('Erro ao carregar heatmap inicial:', error);
+              buildHeatmap('heatmap', [], []);
+            })
+        ]).then(() => {
+          console.log('✅ Todos os dados iniciais carregados');
         });
+      }).catch(e => console.error('Erro ao carregar KPIs:', e));
       
       // Adicionar eventos aos dropdowns - usar onchange diretamente no HTML ou aguardar DOM
       (function setupDropdowns() {
@@ -2737,6 +2861,10 @@
           // Carrega conteúdo específico
           const pageName = btn.getAttribute('data-page');
           loadSection(pageName);
+          // Atualizar indicador de filtro global se houver
+          if (window.updateGlobalFilterIndicator) {
+            updateGlobalFilterIndicator();
+          }
           // Re-inicializar chat se necessário
           if (pageName === 'cora-chat') {
             setTimeout(() => {
@@ -2814,8 +2942,8 @@
       }
       
       async function loadOrgaoMes() {
-        // Carregar dados de secretarias/órgãos
-        const dataOrgaos = await fetchJSON('/api/aggregate/count-by?field=Secretaria');
+        // Carregar dados de secretarias/órgãos (com filtro se houver)
+        const dataOrgaos = await fetchJSONWithFilter('/api/aggregate/count-by?field=Secretaria');
         const totalOrgaos = dataOrgaos.length;
         document.getElementById('totalOrgaos').textContent = totalOrgaos;
         
@@ -2837,8 +2965,8 @@
           `;
         }).join('');
         
-        // Carregar dados mensais
-        const dataMensal = await fetchJSON('/api/aggregate/by-month');
+        // Carregar dados mensais (com filtro se houver)
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
         const labels = dataMensal.map(x => {
           const [year, month] = x.ym.split('-');
           const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -2894,7 +3022,7 @@
       }
       
       async function loadSecretaria() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Secretaria');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Secretaria');
         const labels = data.slice(0, 10).map(x=>x.key);
         const values = data.slice(0, 10).map(x=>x.count);
         if (window.chartSecretaria instanceof Chart) window.chartSecretaria.destroy();
@@ -2904,7 +3032,7 @@
           data:{labels,datasets:[{label:'Secretaria',data:values,backgroundColor:'#22d3ee',borderColor:'#22d3ee',borderWidth:1}]},
           options: {
             responsive:true, 
-            animation:{duration:1000}, 
+            animation:false, 
             plugins:{
               legend:{display:false},
               tooltip: createEnhancedTooltip(),
@@ -2920,7 +3048,7 @@
         document.getElementById('rankSecretaria').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       async function loadTipo() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Tipo');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Tipo');
         const labels = data.slice(0, 10).map(x=>x.key);
         const values = data.slice(0, 10).map(x=>x.count);
         if(window.chartTipo instanceof Chart) window.chartTipo.destroy();
@@ -2930,7 +3058,7 @@
           data:{labels,datasets:[{label:'Tipo Manifestação',data:values,backgroundColor:['#c084fc','#22d3ee','#facc15','#fb7185']}]}, 
           options:{
             responsive:true,
-            animation:{duration:1000},
+            animation:false,
             plugins: {
               tooltip: createEnhancedTooltip(),
               datalabels: createDataLabelsConfig(true, 'pie')
@@ -2941,7 +3069,7 @@
         document.getElementById('rankTipo').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
       }
       async function loadSetor() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Setor');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Setor');
         const labels = data.slice(0, 10).map(x=>x.key);
         const values = data.slice(0, 10).map(x=>x.count);
         if(window.chartSetor instanceof Chart) window.chartSetor.destroy();
@@ -2951,7 +3079,7 @@
           data:{labels,datasets:[{label:'Setor',data:values,backgroundColor:'#34d399',borderColor:'#34d399',borderWidth:1}]}, 
           options:{
             responsive:true,
-            animation:{duration:1000}, 
+            animation:false, 
             indexAxis:'y', 
             plugins:{
               legend:{display:false},
@@ -2976,7 +3104,7 @@
       }
 
       async function loadCategoria() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Categoria');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Categoria');
         const labels = data.slice(0, 15).map(x=>x.key);
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartCategoria instanceof Chart) window.chartCategoria.destroy();
@@ -2999,12 +3127,12 @@
           } 
         });
         addChartClickHandler(window.chartCategoria, (label, value) => showClickFeedback(null, label, value), 'chartCategoria');
-        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Categoria');
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Categoria');
         buildHeatmap('heatmapCategoria', hm.labels, hm.rows);
       }
 
       async function loadStatusPage() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Status');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Status');
         const labels = data.slice(0, 10).map(x=>x.key);
         const values = data.slice(0, 10).map(x=>x.count);
         if (window.chartStatusPage instanceof Chart) window.chartStatusPage.destroy();
@@ -3021,12 +3149,12 @@
           } 
         });
         addChartClickHandler(window.chartStatusPage, (label, value) => showClickFeedback(null, label, value), 'chartStatusPage');
-        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Status');
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Status');
         buildHeatmap('heatmapStatus', hm.labels, hm.rows);
       }
 
       async function loadBairro() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Bairro');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Bairro');
         const labels = data.slice(0, 15).map(x=>x.key);
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartBairro instanceof Chart) window.chartBairro.destroy();
@@ -3053,12 +3181,12 @@
           } 
         });
         addChartClickHandler(window.chartBairro, (label, value) => showClickFeedback(null, label, value), 'chartBairro');
-        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Bairro');
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Bairro');
         buildHeatmap('heatmapBairro', hm.labels, hm.rows);
       }
 
       async function loadUAC() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=UAC');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=UAC');
         const labels = data.slice(0, 15).map(x=>x.key);
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartUAC instanceof Chart) window.chartUAC.destroy();
@@ -3068,7 +3196,7 @@
           data:{ labels, datasets:[{ label:'UAC', data: values, backgroundColor:'#22d3ee', borderColor:'#22d3ee', borderWidth:1 }] }, 
           options:{ 
             responsive:true, 
-            animation:{duration:1000}, 
+            animation:false, 
             indexAxis:'y', 
             plugins:{
               legend:{display:false},
@@ -3087,12 +3215,12 @@
         });
         addChartClickHandler(window.chartUAC, (label, value) => showClickFeedback(null, label, value), 'chartUAC');
         document.getElementById('rankUAC').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSON('/api/aggregate/heatmap?dim=UAC');
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=UAC');
         buildHeatmap('heatmapUAC', hm.labels, hm.rows);
       }
 
       async function loadResponsavel() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Responsavel');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Responsavel');
         const labels = data.slice(0, 15).map(x=>x.key);
         const values = data.slice(0, 15).map(x=>x.count);
         if (window.chartResponsavel instanceof Chart) window.chartResponsavel.destroy();
@@ -3102,7 +3230,7 @@
           data:{ labels, datasets:[{ label:'Responsável', data: values, backgroundColor:'#a78bfa', borderColor:'#a78bfa', borderWidth:1 }] }, 
           options:{ 
             responsive:true, 
-            animation:{duration:1000}, 
+            animation:false, 
             indexAxis:'y', 
             plugins:{
               legend:{display:false},
@@ -3121,12 +3249,12 @@
         });
         addChartClickHandler(window.chartResponsavel, (label, value) => showClickFeedback(null, label, value), 'chartResponsavel');
         document.getElementById('rankResponsavel').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Responsavel');
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Responsavel');
         buildHeatmap('heatmapResponsavel', hm.labels, hm.rows);
       }
 
       async function loadCanal() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Canal');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Canal');
         const labels = data.map(x=>x.key);
         const values = data.map(x=>x.count);
         if (window.chartCanal instanceof Chart) window.chartCanal.destroy();
@@ -3149,12 +3277,12 @@
         });
         addChartClickHandler(window.chartCanal, (label, value) => showClickFeedback(null, label, value), 'chartCanal');
         document.getElementById('rankCanal').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Canal');
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Canal');
         buildHeatmap('heatmapCanal', hm.labels, hm.rows);
       }
 
       async function loadPrioridade() {
-        const data = await fetchJSON('/api/aggregate/count-by?field=Prioridade');
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Prioridade');
         const labels = data.map(x=>x.key);
         const values = data.map(x=>x.count);
         if (window.chartPrioridade instanceof Chart) window.chartPrioridade.destroy();
@@ -3185,27 +3313,50 @@
         });
         addChartClickHandler(window.chartPrioridade, (label, value) => showClickFeedback(null, label, value), 'chartPrioridade');
         document.getElementById('rankPrioridade').innerHTML=data.map(e=>`<li><span class='text-rose-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSON('/api/aggregate/heatmap?dim=Prioridade');
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Prioridade');
         buildHeatmap('heatmapPrioridade', hm.labels, hm.rows);
       }
 
       async function loadTempoMedio() {
         try {
-          const data = await fetchJSON('/api/stats/average-time');
+          console.log('📊 Carregando dados de tempo médio...');
+          // Carregar todos os dados em paralelo
+          const [data, stats, dataDia, dataSemana, dataMes] = await Promise.all([
+            fetchJSONWithFilter('/api/stats/average-time').catch(e => { console.error('Erro ao carregar average-time:', e); return []; }),
+            fetchJSONWithFilter('/api/stats/average-time/stats').catch(e => { console.error('Erro ao carregar stats:', e); return null; }),
+            fetchJSONWithFilter('/api/stats/average-time/by-day').catch(e => { console.error('Erro ao carregar by-day:', e); return []; }),
+            fetchJSONWithFilter('/api/stats/average-time/by-week').catch(e => { console.error('Erro ao carregar by-week:', e); return []; }),
+            fetchJSONWithFilter('/api/stats/average-time/by-month').catch(e => { console.error('Erro ao carregar by-month:', e); return []; })
+          ]);
+          
+          console.log('📊 Dados carregados:', {
+            data: data?.length || 0,
+            stats: stats ? 'OK' : 'null',
+            dataDia: dataDia?.length || 0,
+            dataSemana: dataSemana?.length || 0,
+            dataMes: dataMes?.length || 0
+          });
+          
+          // Atualizar estatísticas gerais
+          if (stats) {
+            document.getElementById('statMedia').textContent = stats.media || '0';
+            document.getElementById('statMediana').textContent = stats.mediana || '0';
+            document.getElementById('statMinimo').textContent = stats.minimo || '0';
+            document.getElementById('statMaximo').textContent = stats.maximo || '0';
+          }
           
           // Verificar se há dados
           if (!data || !Array.isArray(data) || data.length === 0) {
             console.warn('⚠️ Nenhum dado de tempo médio disponível');
             document.getElementById('chartTempoMedio').getContext('2d').clearRect(0, 0, 0, 0);
             document.getElementById('listaTempoMedio').innerHTML = '<div class="text-slate-400 text-center py-8">Nenhum dado disponível. Verifique se há registros com data de criação e conclusão.</div>';
-            document.getElementById('chartTempoMedioMes').getContext('2d').clearRect(0, 0, 0, 0);
             return;
           }
           
           const labels = data.map(x => x.org);
           const values = data.map(x => x.dias);
           
-          // Gráfico de barras horizontais
+          // Gráfico de barras horizontais por órgão
           if (window.chartTempoMedio instanceof Chart) window.chartTempoMedio.destroy();
           const ctx = document.getElementById('chartTempoMedio').getContext('2d');
           window.chartTempoMedio = new Chart(ctx, {
@@ -3249,48 +3400,123 @@
             </div>
           `).join('');
           
-          // Gráfico mensal
-          try {
-            const dataMensal = await fetchJSON('/api/aggregate/by-month');
-            if (dataMensal && Array.isArray(dataMensal) && dataMensal.length > 0) {
-              const labelsMes = dataMensal.map(x => {
-                const [year, month] = x.ym.split('-');
-                const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-                return `${monthNames[parseInt(month) - 1]}. de ${year}`;
-              });
-              const valuesMes = dataMensal.map(x => x.count);
-              
-              if (window.chartTempoMedioMes instanceof Chart) window.chartTempoMedioMes.destroy();
-              const ctxMes = document.getElementById('chartTempoMedioMes').getContext('2d');
-              window.chartTempoMedioMes = new Chart(ctxMes, {
-                type: 'bar',
-                data: {
-                  labels: labelsMes,
-                  datasets: [{
-                    label: 'Quantidade',
-                    data: valuesMes,
-                    backgroundColor: 'rgba(167,139,250,0.7)',
-                    borderColor: 'rgba(167,139,250,1)',
-                    borderWidth: 1
-                  }]
+          // Gráfico por Dia (linha)
+          if (dataDia && Array.isArray(dataDia) && dataDia.length > 0) {
+            console.log('📊 Dados por dia:', dataDia.slice(0, 5));
+            const labelsDia = dataDia.map(x => {
+              const d = new Date(x.date);
+              return `${d.getDate()}/${d.getMonth() + 1}`;
+            });
+            const valuesDia = dataDia.map(x => x.dias || 0);
+            
+            if (window.chartTempoMedioDia instanceof Chart) window.chartTempoMedioDia.destroy();
+            const ctxDia = document.getElementById('chartTempoMedioDia').getContext('2d');
+            window.chartTempoMedioDia = new Chart(ctxDia, {
+              type: 'line',
+              data: {
+                labels: labelsDia,
+                datasets: [{
+                  label: 'Tempo Médio (dias)',
+                  data: valuesDia,
+                  borderColor: 'rgba(34,211,238,1)',
+                  backgroundColor: 'rgba(34,211,238,0.1)',
+                  borderWidth: 2,
+                  fill: true,
+                  tension: 0.4
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'line', false)
                 },
-                options: {
-                  responsive: true,
-                  plugins: { 
-                    legend: { display: false },
-                    tooltip: createEnhancedTooltip(),
-                    datalabels: createDataLabelsConfig(false, 'bar', false)
-                  },
-                  scales: {
-                    y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                  }
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
                 }
-              });
-              addChartClickHandler(window.chartTempoMedioMes, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioMes');
-            }
-          } catch (err) {
-            console.error('Erro ao carregar gráfico mensal:', err);
+              }
+            });
+            addChartClickHandler(window.chartTempoMedioDia, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioDia');
+          }
+          
+          // Gráfico por Semana (linha)
+          if (dataSemana && Array.isArray(dataSemana) && dataSemana.length > 0) {
+            console.log('📊 Dados por semana:', dataSemana.slice(0, 5));
+            const labelsSemana = dataSemana.map(x => x.week.replace('W', ' Semana '));
+            const valuesSemana = dataSemana.map(x => x.dias || 0);
+            
+            if (window.chartTempoMedioSemana instanceof Chart) window.chartTempoMedioSemana.destroy();
+            const ctxSemana = document.getElementById('chartTempoMedioSemana').getContext('2d');
+            window.chartTempoMedioSemana = new Chart(ctxSemana, {
+              type: 'line',
+              data: {
+                labels: labelsSemana,
+                datasets: [{
+                  label: 'Tempo Médio (dias)',
+                  data: valuesSemana,
+                  borderColor: 'rgba(167,139,250,1)',
+                  backgroundColor: 'rgba(167,139,250,0.1)',
+                  borderWidth: 2,
+                  fill: true,
+                  tension: 0.4
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'line', false)
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+            addChartClickHandler(window.chartTempoMedioSemana, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioSemana');
+          }
+          
+          // Gráfico por Mês (barra)
+          if (dataMes && Array.isArray(dataMes) && dataMes.length > 0) {
+            console.log('📊 Dados por mês:', dataMes.slice(0, 5));
+            const labelsMes = dataMes.map(x => {
+              const [year, month] = x.month.split('-');
+              const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+              return `${monthNames[parseInt(month) - 1]}. de ${year}`;
+            });
+            const valuesMes = dataMes.map(x => x.dias || 0);
+            
+            if (window.chartTempoMedioMes instanceof Chart) window.chartTempoMedioMes.destroy();
+            const ctxMes = document.getElementById('chartTempoMedioMes').getContext('2d');
+            window.chartTempoMedioMes = new Chart(ctxMes, {
+              type: 'bar',
+              data: {
+                labels: labelsMes,
+                datasets: [{
+                  label: 'Tempo Médio (dias)',
+                  data: valuesMes,
+                  backgroundColor: 'rgba(167,139,250,0.7)',
+                  borderColor: 'rgba(167,139,250,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', false)
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+            addChartClickHandler(window.chartTempoMedioMes, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioMes');
           }
         } catch (error) {
           console.error('❌ Erro ao carregar tempo médio:', error);
@@ -3300,7 +3526,7 @@
       }
 
       async function loadTema() {
-        const data = await fetchJSON('/api/aggregate/by-theme');
+        const data = await fetchJSONWithFilter('/api/aggregate/by-theme');
         const labels = data.slice(0, 20).map(x => x.tema);
         const values = data.slice(0, 20).map(x => x.quantidade);
         
@@ -3340,7 +3566,7 @@
         addChartClickHandler(window.chartTema, (label, value) => showClickFeedback(null, label, value), 'chartTema');
         
         // Status geral
-        const status = await fetchJSON('/api/stats/status-overview');
+        const status = await fetchJSONWithFilter('/api/stats/status-overview');
         if (window.chartStatusTema instanceof Chart) window.chartStatusTema.destroy();
         const ctxStatus = document.getElementById('chartStatusTema').getContext('2d');
         window.chartStatusTema = new Chart(ctxStatus, {
@@ -3371,7 +3597,7 @@
         `;
         
         // Gráfico mensal
-        const dataMensal = await fetchJSON('/api/aggregate/by-month');
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
         const labelsMes = dataMensal.map(x => {
           const [year, month] = x.ym.split('-');
           const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -3405,7 +3631,7 @@
       }
 
       async function loadAssunto() {
-        const data = await fetchJSON('/api/aggregate/by-subject');
+        const data = await fetchJSONWithFilter('/api/aggregate/by-subject');
         const labels = data.slice(0, 20).map(x => x.assunto);
         const values = data.slice(0, 20).map(x => x.quantidade);
         
@@ -3436,7 +3662,7 @@
         });
         
         // Status geral
-        const status = await fetchJSON('/api/stats/status-overview');
+        const status = await fetchJSONWithFilter('/api/stats/status-overview');
         if (window.chartStatusAssunto instanceof Chart) window.chartStatusAssunto.destroy();
         const ctxStatus = document.getElementById('chartStatusAssunto').getContext('2d');
         window.chartStatusAssunto = new Chart(ctxStatus, {
@@ -3473,16 +3699,297 @@
         }).join('');
       }
 
+      // Sistema de filtro global unificado
+      if (!window.globalFilters) {
+        window.globalFilters = {
+          filters: [],
+          activeField: null,
+          activeValue: null,
+          cadastranteFilter: null // { type: 'servidor'|'unidadeCadastro', value: string }
+        };
+      }
+      
+      // Função helper para adicionar filtros às URLs
+      function addFilterToUrl(url) {
+        if (!window.globalFilters || !window.globalFilters.cadastranteFilter) return url;
+        const filter = window.globalFilters.cadastranteFilter;
+        const separator = url.includes('?') ? '&' : '?';
+        return `${url}${separator}${filter.type}=${encodeURIComponent(filter.value)}`;
+      }
+      
+      // Função helper para fazer fetch com filtros aplicados (removida - agora é alias de fetchJSONWithFilters)
+      
+      // Função para aplicar filtro global de cadastrante
+      window.applyGlobalCadastranteFilter = async function(filter) {
+        window.globalFilters.cadastranteFilter = filter;
+        
+        // Atualizar indicador global
+        updateGlobalFilterIndicator();
+        
+        // Recarregar todos os dados de todas as páginas
+        await reloadAllDataWithCadastranteFilter();
+      };
+      
+      // Função para limpar filtro global
+      window.clearGlobalCadastranteFilter = function() {
+        window.globalFilters.cadastranteFilter = null;
+        updateGlobalFilterIndicator();
+        reloadAllDataWithCadastranteFilter();
+      };
+      
+      // Função para atualizar indicador global de filtro
+      function updateGlobalFilterIndicator() {
+        const indicator = document.getElementById('filterIndicator');
+        if (!indicator) return;
+        
+        const filter = window.globalFilters.cadastranteFilter;
+        if (filter) {
+          const filterText = filter.type === 'servidor' ? `Servidor: ${filter.value}` : `Unidade: ${filter.value}`;
+          indicator.innerHTML = `
+            <div class="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500/20 border border-cyan-500/30 shadow-lg">
+              <span class="text-cyan-300 text-sm font-semibold">🔍 Filtro Global Ativo:</span>
+              <span class="text-slate-200 text-sm">${filterText}</span>
+              <button onclick="clearGlobalCadastranteFilter()" class="ml-2 text-cyan-300 hover:text-cyan-100 text-xs px-3 py-1 rounded bg-cyan-500/30 font-bold">Limpar Filtro</button>
+            </div>
+          `;
+          indicator.classList.remove('hidden');
+        } else {
+          indicator.classList.add('hidden');
+        }
+      }
+      
+      // Função para recarregar todos os dados quando filtro muda
+      async function reloadAllDataWithCadastranteFilter() {
+        const currentPage = document.querySelector('[data-page].active')?.getAttribute('data-page') || 'main';
+        
+        // Recarregar página atual
+        if (currentPage === 'main') await loadOverview();
+        else if (currentPage === 'orgao-mes') await loadOrgaoMes();
+        else if (currentPage === 'tempo-medio') await loadTempoMedio();
+        else if (currentPage === 'tema') await loadTema();
+        else if (currentPage === 'assunto') await loadAssunto();
+        else if (currentPage === 'cadastrante') await loadCadastrante();
+        else if (currentPage === 'reclamacoes') await loadReclamacoes();
+        else if (currentPage === 'secretaria') await loadSecretaria();
+        else if (currentPage === 'tipo') await loadTipo();
+        else if (currentPage === 'setor') await loadSetor();
+        else if (currentPage === 'categoria') await loadCategoria();
+        else if (currentPage === 'status') await loadStatusPage();
+        else if (currentPage === 'bairro') await loadBairro();
+        else if (currentPage === 'uac') await loadUAC();
+        else if (currentPage === 'responsavel') await loadResponsavel();
+        else if (currentPage === 'canal') await loadCanal();
+        else if (currentPage === 'prioridade') await loadPrioridade();
+      }
+      
+      // Função para atualizar todos os gráficos com dados filtrados (mantida para compatibilidade)
+      window.updateCadastranteCharts = async function(filter) {
+        await window.applyGlobalCadastranteFilter(filter);
+        
+        if (!filter) {
+          // Sem filtro, recarregar página completa
+          await loadCadastrante();
+          return;
+        }
+        
+        // Buscar dados filtrados
+        const url = `/api/aggregate/filtered?${filter.type}=${encodeURIComponent(filter.value)}`;
+        const filteredData = await fetchJSON(url);
+        
+        // Atualizar gráfico mensal
+        const labelsMes = filteredData.byMonth.map(x => {
+          const [year, month] = x.ym.split('-');
+          const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+          return `${monthNames[parseInt(month) - 1]}. de ${year}`;
+        });
+        const valuesMes = filteredData.byMonth.map(x => x.count);
+        
+        if (window.chartCadastranteMes instanceof Chart) {
+          window.chartCadastranteMes.data.labels = labelsMes;
+          window.chartCadastranteMes.data.datasets[0].data = valuesMes;
+          window.chartCadastranteMes.update();
+        }
+        
+        // Atualizar total
+        document.getElementById('totalCadastrante').textContent = (filteredData.total || 0).toLocaleString('pt-BR');
+        
+        // Atualizar destaque visual nas listas
+        document.querySelectorAll('.servidor-item').forEach(item => {
+          const servidor = item.getAttribute('data-servidor');
+          const isActive = filter.type === 'servidor' && filter.value === servidor;
+          if (isActive) {
+            item.classList.add('bg-cyan-500/20', 'border-cyan-500/30', 'border-l-4');
+            item.classList.remove('border-b');
+          } else {
+            item.classList.remove('bg-cyan-500/20', 'border-cyan-500/30', 'border-l-4');
+            item.classList.add('border-b');
+          }
+        });
+        
+        document.querySelectorAll('.unidade-item').forEach(item => {
+          const unidade = item.getAttribute('data-unidade');
+          const isActive = filter.type === 'unidadeCadastro' && filter.value === unidade;
+          if (isActive) {
+            item.classList.add('bg-violet-500/20', 'border-violet-500/30', 'border-l-4');
+            item.classList.remove('border-b');
+          } else {
+            item.classList.remove('bg-violet-500/20', 'border-violet-500/30', 'border-l-4');
+            item.classList.add('border-b');
+          }
+        });
+        
+        // Mostrar/ocultar seção de gráficos filtrados
+        const graficosFiltrados = document.getElementById('graficosFiltrados');
+        if (filter && filteredData) {
+          graficosFiltrados.style.display = 'grid';
+          
+          // Gráfico por Tema
+          if (filteredData.byTheme && filteredData.byTheme.length > 0) {
+            const ctxTema = document.getElementById('chartCadastranteTema').getContext('2d');
+            if (window.chartCadastranteTema instanceof Chart) window.chartCadastranteTema.destroy();
+            window.chartCadastranteTema = new Chart(ctxTema, {
+              type: 'bar',
+              data: {
+                labels: filteredData.byTheme.map(t => t.tema || 'Não informado'),
+                datasets: [{
+                  label: 'Quantidade',
+                  data: filteredData.byTheme.map(t => t.quantidade),
+                  backgroundColor: 'rgba(251, 191, 36, 0.7)',
+                  borderColor: 'rgba(251, 191, 36, 1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', true)
+                },
+                scales: {
+                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  y: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+          
+          // Gráfico por Assunto
+          if (filteredData.bySubject && filteredData.bySubject.length > 0) {
+            const ctxAssunto = document.getElementById('chartCadastranteAssunto').getContext('2d');
+            if (window.chartCadastranteAssunto instanceof Chart) window.chartCadastranteAssunto.destroy();
+            window.chartCadastranteAssunto = new Chart(ctxAssunto, {
+              type: 'bar',
+              data: {
+                labels: filteredData.bySubject.map(a => a.assunto || 'Não informado'),
+                datasets: [{
+                  label: 'Quantidade',
+                  data: filteredData.bySubject.map(a => a.quantidade),
+                  backgroundColor: 'rgba(236, 72, 153, 0.7)',
+                  borderColor: 'rgba(236, 72, 153, 1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', true)
+                },
+                scales: {
+                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  y: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+          
+          // Gráfico por Status (doughnut)
+          if (filteredData.byStatus && filteredData.byStatus.length > 0) {
+            const ctxStatus = document.getElementById('chartCadastranteStatus').getContext('2d');
+            if (window.chartCadastranteStatus instanceof Chart) window.chartCadastranteStatus.destroy();
+            const colors = ['#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#f472b6', '#8b5cf6', '#06b6d4'];
+            window.chartCadastranteStatus = new Chart(ctxStatus, {
+              type: 'doughnut',
+              data: {
+                labels: filteredData.byStatus.map(s => s.status || 'Não informado'),
+                datasets: [{
+                  data: filteredData.byStatus.map(s => s.quantidade),
+                  backgroundColor: filteredData.byStatus.map((s, idx) => colors[idx % colors.length])
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: {
+                  legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(true, 'doughnut')
+                }
+              }
+            });
+          }
+          
+          // Se filtro for por servidor, mostrar unidades cadastradas
+          if (filter.type === 'servidor' && filteredData.unidadesCadastradas && filteredData.unidadesCadastradas.length > 0) {
+            // Criar ou atualizar seção de unidades cadastradas
+            let unidadesSection = document.getElementById('unidadesCadastradasSection');
+            if (!unidadesSection) {
+              unidadesSection = document.createElement('div');
+              unidadesSection.id = 'unidadesCadastradasSection';
+              unidadesSection.className = 'col-span-12 glass rounded-2xl p-5';
+              unidadesSection.innerHTML = '<h3 class="font-semibold mb-4 text-emerald-400">Unidades Cadastradas por este Servidor</h3><div id="listaUnidadesCadastradas" class="space-y-2 max-h-[400px] overflow-y-auto"></div>';
+              const grid = document.querySelector('#page-cadastrante .grid');
+              grid.appendChild(unidadesSection);
+            }
+            
+            const maxCount = Math.max(...filteredData.unidadesCadastradas.map(d => d.quantidade), 1);
+            document.getElementById('listaUnidadesCadastradas').innerHTML = filteredData.unidadesCadastradas.map((item, idx) => {
+              const width = (item.quantidade / maxCount) * 100;
+              return `
+                <div class="flex items-center gap-3 py-2 border-b border-white/5">
+                  <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm text-slate-300 truncate">${item.unidade}</div>
+                    <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div class="h-full bg-gradient-to-r from-emerald-500 to-cyan-500" style="width: ${width}%"></div>
+                    </div>
+                  </div>
+                  <div class="text-lg font-bold text-emerald-300 min-w-[80px] text-right">${item.quantidade.toLocaleString('pt-BR')}</div>
+                </div>
+              `;
+            }).join('');
+          } else {
+            const unidadesSection = document.getElementById('unidadesCadastradasSection');
+            if (unidadesSection) unidadesSection.remove();
+          }
+        } else {
+          graficosFiltrados.style.display = 'none';
+          const unidadesSection = document.getElementById('unidadesCadastradasSection');
+          if (unidadesSection) unidadesSection.remove();
+        }
+      }
+      
+      // Função para limpar filtro (compatibilidade)
+      window.clearCadastranteFilter = function() {
+        window.clearGlobalCadastranteFilter();
+      };
+      
       async function loadCadastrante() {
         // Servidores
-        const servidores = await fetchJSON('/api/aggregate/by-server');
-        document.getElementById('listaServidores').innerHTML = servidores.map((item, idx) => {
+        const servidores = await fetchJSONWithFilter('/api/aggregate/by-server');
+        const listaServidores = document.getElementById('listaServidores');
+        listaServidores.innerHTML = servidores.map((item, idx) => {
           const width = (item.quantidade / Math.max(...servidores.map(d => d.quantidade), 1)) * 100;
+          const isActive = window.globalFilters?.cadastranteFilter?.type === 'servidor' && window.globalFilters.cadastranteFilter.value === item.servidor;
           return `
-            <div class="flex items-center gap-3 py-2 border-b border-white/5">
+            <div class="servidor-item flex items-center gap-3 py-2 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-all ${isActive ? 'bg-cyan-500/20 border-cyan-500/30 border-l-4' : ''}" 
+                 data-servidor="${item.servidor.replace(/"/g, '&quot;')}">
               <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
               <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate">${item.servidor}</div>
+                <div class="text-sm text-slate-300 truncate font-medium">${item.servidor}</div>
                 <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                   <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
                 </div>
@@ -3492,15 +3999,26 @@
           `;
         }).join('');
         
+        // Adicionar event listeners aos servidores
+        listaServidores.querySelectorAll('.servidor-item').forEach(item => {
+          item.addEventListener('click', function() {
+            const servidor = this.getAttribute('data-servidor');
+            updateCadastranteCharts({ type: 'servidor', value: servidor });
+          });
+        });
+        
         // Unidades de Cadastro (UAC)
-        const uacs = await fetchJSON('/api/aggregate/count-by?field=UAC');
-        document.getElementById('listaUnidadesCadastro').innerHTML = uacs.map((item, idx) => {
+        const uacs = await fetchJSONWithFilter('/api/aggregate/count-by?field=UAC');
+        const listaUnidades = document.getElementById('listaUnidadesCadastro');
+        listaUnidades.innerHTML = uacs.map((item, idx) => {
           const width = (item.count / Math.max(...uacs.map(d => d.count), 1)) * 100;
+          const isActive = window.globalFilters?.cadastranteFilter?.type === 'unidadeCadastro' && window.globalFilters.cadastranteFilter.value === item.key;
           return `
-            <div class="flex items-center gap-3 py-2 border-b border-white/5">
+            <div class="unidade-item flex items-center gap-3 py-2 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-all ${isActive ? 'bg-violet-500/20 border-violet-500/30 border-l-4' : ''}" 
+                 data-unidade="${item.key.replace(/"/g, '&quot;')}">
               <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
               <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate">${item.key}</div>
+                <div class="text-sm text-slate-300 truncate font-medium">${item.key}</div>
                 <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                   <div class="h-full bg-gradient-to-r from-violet-500 to-cyan-500" style="width: ${width}%"></div>
                 </div>
@@ -3510,8 +4028,16 @@
           `;
         }).join('');
         
-        // Gráfico mensal
-        const dataMensal = await fetchJSON('/api/aggregate/by-month');
+        // Adicionar event listeners às unidades
+        listaUnidades.querySelectorAll('.unidade-item').forEach(item => {
+          item.addEventListener('click', function() {
+            const unidade = this.getAttribute('data-unidade');
+            updateCadastranteCharts({ type: 'unidadeCadastro', value: unidade });
+          });
+        });
+        
+        // Gráfico mensal (com filtro se houver)
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
         const labelsMes = dataMensal.map(x => {
           const [year, month] = x.ym.split('-');
           const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -3547,13 +4073,18 @@
           }
         });
         
-        // Total
-        const summary = await fetchJSON('/api/summary');
+        // Total (com filtro se houver)
+        const summary = await fetchJSONWithFilter('/api/summary');
         document.getElementById('totalCadastrante').textContent = (summary.total || 0).toLocaleString('pt-BR');
+        
+        // Se já houver filtro ativo, atualizar gráficos adicionais
+        if (window.globalFilters?.cadastranteFilter) {
+          await updateCadastranteCharts(window.globalFilters.cadastranteFilter);
+        }
       }
 
       async function loadReclamacoes() {
-        const data = await fetchJSON('/api/complaints-denunciations');
+        const data = await fetchJSONWithFilter('/api/complaints-denunciations');
         const assuntos = data.assuntos || [];
         const tipos = data.tipos || [];
         

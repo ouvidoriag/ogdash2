@@ -22,11 +22,11 @@ if (!mongodbUrl) {
   process.exit(1);
 }
 
-// Adicionar parâmetros de conexão otimizados para evitar timeouts
+// Adicionar parâmetros de conexão otimizados para evitar timeouts e problemas SSL/TLS
 // Se a URL já não tiver esses parâmetros, adiciona
 if (!mongodbUrl.includes('serverSelectionTimeoutMS')) {
   const separator = mongodbUrl.includes('?') ? '&' : '?';
-  mongodbUrl += `${separator}serverSelectionTimeoutMS=30000&connectTimeoutMS=30000&socketTimeoutMS=30000&retryWrites=true&w=majority`;
+  mongodbUrl += `${separator}serverSelectionTimeoutMS=30000&connectTimeoutMS=30000&socketTimeoutMS=30000&retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=false`;
 }
 
 // Configurar DATABASE_URL para o Prisma (usa MONGODB_ATLAS_URL otimizada)
@@ -81,7 +81,13 @@ const prisma = new PrismaClient({
 let mongoClient = null;
 async function getMongoClient() {
   if (!mongoClient) {
-    mongoClient = new MongoClient(mongodbUrl);
+    mongoClient = new MongoClient(mongodbUrl, {
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 30000,
+      tls: true,
+      tlsAllowInvalidCertificates: false
+    });
     await mongoClient.connect();
   }
   return mongoClient;
@@ -103,9 +109,12 @@ async function testConnection(maxRetries = 3, delay = 5000) {
         console.error('❌ Não foi possível conectar ao MongoDB Atlas após', maxRetries, 'tentativas');
         console.error('💡 Verifique:');
         console.error('   1. A string de conexão MONGODB_ATLAS_URL está correta');
-        console.error('   2. O IP do servidor está na whitelist do MongoDB Atlas');
+        console.error('   2. O IP do servidor está na whitelist do MongoDB Atlas:');
+        console.error('      → MongoDB Atlas → Network Access → Add IP Address');
+        console.error('      → Adicione 0.0.0.0/0 (qualquer IP) OU o IP específico do Render');
         console.error('   3. As credenciais estão corretas');
         console.error('   4. A rede permite conexões SSL/TLS na porta 27017');
+        console.error('   5. O cluster MongoDB Atlas está ativo e não pausado');
         // Não encerra o processo, permite que o servidor inicie mesmo sem conexão
         return false;
       }
@@ -463,35 +472,55 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Summary KPIs e insights críticos
-app.get('/api/summary', async (_req, res) => {
-  const key = 'summary:v1';
+app.get('/api/summary', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const key = servidor ? `summary:servidor:${servidor}:v1` :
+              unidadeCadastro ? `summary:uac:${unidadeCadastro}:v1` :
+              'summary:v1';
+  
   // Cache de 1 hora para dados que mudam pouco
   return withCache(key, 3600, res, async () => {
-  // Totais
-  const total = await prisma.record.count();
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    // Totais
+    const total = await prisma.record.count({ where });
 
-  // Por status (normalizado)
-  const byStatus = await prisma.record.groupBy({ by: ['status'], _count: { _all: true } });
-  const statusCounts = byStatus.map(r => ({ status: r.status ?? 'Não informado', count: r._count._all }))
-    .sort((a,b) => b.count - a.count);
+    // Por status (normalizado)
+    const byStatus = await prisma.record.groupBy({ 
+      by: ['status'], 
+      where: Object.keys(where).length > 0 ? where : undefined,
+      _count: { _all: true } 
+    });
+    const statusCounts = byStatus.map(r => ({ status: r.status ?? 'Não informado', count: r._count._all }))
+      .sort((a,b) => b.count - a.count);
 
-  // Últimos 7 e 30 dias usando dataCriacaoIso
-  const today = new Date();
-  const toIso = (d) => d.toISOString().slice(0,10);
-  const d7 = new Date(today); d7.setDate(today.getDate() - 7);
-  const d30 = new Date(today); d30.setDate(today.getDate() - 30);
-  const last7 = await prisma.record.count({ where: { dataCriacaoIso: { gte: toIso(d7) } } });
-  const last30 = await prisma.record.count({ where: { dataCriacaoIso: { gte: toIso(d30) } } });
+    // Últimos 7 e 30 dias usando dataCriacaoIso
+    const today = new Date();
+    const toIso = (d) => d.toISOString().slice(0,10);
+    const d7 = new Date(today); d7.setDate(today.getDate() - 7);
+    const d30 = new Date(today); d30.setDate(today.getDate() - 30);
+    const last7Where = { ...where, dataCriacaoIso: { gte: toIso(d7) } };
+    const last30Where = { ...where, dataCriacaoIso: { gte: toIso(d30) } };
+    const last7 = await prisma.record.count({ where: last7Where });
+    const last30 = await prisma.record.count({ where: last30Where });
 
-  // Top dimensões normalizadas (usando novos campos)
-  const top = async (col) => {
-    const rows = await prisma.record.groupBy({ by: [col], _count: { _all: true } });
-    return rows.map(r => ({ key: r[col] ?? 'Não informado', count: r._count._all }))
-      .sort((a,b) => b.count - a.count).slice(0,10);
-  };
-  const [topOrgaos, topUnidadeCadastro, topTipoManifestacao, topTema] = await Promise.all([
-    top('orgaos'), top('unidadeCadastro'), top('tipoDeManifestacao'), top('tema')
-  ]);
+    // Top dimensões normalizadas (usando novos campos)
+    const top = async (col) => {
+      const rows = await prisma.record.groupBy({ 
+        by: [col], 
+        where: Object.keys(where).length > 0 ? where : undefined,
+        _count: { _all: true } 
+      });
+      return rows.map(r => ({ key: r[col] ?? 'Não informado', count: r._count._all }))
+        .sort((a,b) => b.count - a.count).slice(0,10);
+    };
+    const [topOrgaos, topUnidadeCadastro, topTipoManifestacao, topTema] = await Promise.all([
+      top('orgaos'), top('unidadeCadastro'), top('tipoDeManifestacao'), top('tema')
+    ]);
 
     return { total, last7, last30, statusCounts, topOrgaos, topUnidadeCadastro, topTipoManifestacao, topTema };
   });
@@ -551,10 +580,19 @@ app.get('/api/distinct', async (req, res) => {
 app.get('/api/aggregate/count-by', async (req, res) => {
   const field = String(req.query.field ?? '').trim();
   if (!field) return res.status(400).json({ error: 'field required' });
-
-  const cacheKey = `countBy:${field}:v2`;
+  
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const cacheKey = servidor ? `countBy:${field}:servidor:${servidor}:v2` :
+                    unidadeCadastro ? `countBy:${field}:uac:${unidadeCadastro}:v2` :
+                    `countBy:${field}:v2`;
+  
   // Cache de 1 hora para agregações
   return withCache(cacheKey, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     // Preferir coluna normalizada quando corresponder a um dos campos conhecidos
     const fieldMap = {
       Secretaria: 'orgaos',
@@ -598,14 +636,21 @@ app.get('/api/aggregate/count-by', async (req, res) => {
     };
     const col = fieldMap[field];
     if (col) {
-      // Agregar direto no banco
-      const rows = await prisma.record.groupBy({ by: [col], _count: { _all: true } });
+      // Agregar direto no banco (com filtro se houver)
+      const rows = await prisma.record.groupBy({ 
+        by: [col], 
+        where: Object.keys(where).length > 0 ? where : undefined,
+        _count: { _all: true } 
+      });
       return rows.map(r => ({ key: r[col] ?? 'Não informado', count: r._count._all }))
         .sort((a, b) => b.count - a.count);
     }
 
     // Fallback: agrega pelo JSON caso campo não esteja normalizado
-    const rows = await prisma.record.findMany({ select: { data: true } });
+    const rows = await prisma.record.findMany({ 
+      where: Object.keys(where).length > 0 ? where : undefined,
+      select: { data: true } 
+    });
     const map = new Map();
     for (const r of rows) {
       const dat = r.data || {};
@@ -662,11 +707,23 @@ app.get('/api/aggregate/time-series', async (req, res) => {
 });
 
 // Série mensal últimos 12 meses (usa dataCriacaoIso)
-app.get('/api/aggregate/by-month', async (_req, res) => {
-  const key = 'byMonth:v1';
-  // Cache de 1 hora
-  return withCache(key, 3600, res, async () => {
-    const rows = await prisma.record.findMany({ select: { dataCriacaoIso: true } });
+app.get('/api/aggregate/by-month', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const cacheKey = servidor ? `byMonth:servidor:${servidor}:v1` : 
+                    unidadeCadastro ? `byMonth:uac:${unidadeCadastro}:v1` : 
+                    'byMonth:v1';
+  
+  return withCache(cacheKey, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    const rows = await prisma.record.findMany({ 
+      where,
+      select: { dataCriacaoIso: true } 
+    });
     const map = new Map();
     for (const r of rows) {
       const d = r.dataCriacaoIso;
@@ -760,22 +817,57 @@ app.get('/api/aggregate/heatmap', async (req, res) => {
   });
 });
 
-// SLA summary: e-SIC >20 dias = atraso; outros: <=30 verde, 30-60 amarelo, >60 vermelho
-app.get('/api/sla/summary', async (_req, res) => {
-  const key = 'sla:v2';
+// SLA summary: 
+// - Concluídos: verde escuro
+// - Não concluídos: 0-30 dias = verde claro, 31-60 dias = amarelo, 61+ dias = vermelho (atraso)
+app.get('/api/sla/summary', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const key = servidor ? `sla:servidor:${servidor}:v3` :
+              unidadeCadastro ? `sla:uac:${unidadeCadastro}:v3` :
+              'sla:v3';
+  
   // Cache de 1 hora
   return withCache(key, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
     const today = new Date();
     const toIso = (d) => d.toISOString().slice(0,10);
-    // Otimizado: buscar apenas campos necessários
+    // Buscar campos necessários: data de criação, conclusão e status
     const rows = await prisma.record.findMany({ 
-      select: { dataCriacaoIso: true, tipoDeManifestacao: true } 
+      where: Object.keys(where).length > 0 ? where : undefined,
+      select: { 
+        dataCriacaoIso: true, 
+        dataConclusaoIso: true,
+        status: true,
+        statusDemanda: true,
+        tipoDeManifestacao: true 
+      } 
     });
-    const buckets = { esic: { dentro: 0, atraso: 0 }, outros: { verde: 0, amarelo: 0, atraso: 0 } };
+    
+    // Buckets: concluídos (verde escuro), verde claro (0-30), amarelo (31-60), vermelho (61+)
+    const buckets = { 
+      concluidos: 0,      // Verde escuro
+      verdeClaro: 0,      // 0-30 dias
+      amarelo: 0,         // 31-60 dias
+      vermelho: 0         // 61+ dias (atraso)
+    };
 
-    const isEsic = (row) => {
-      const t = (row.tipoDeManifestacao ?? '').toLowerCase();
-      return t.includes('e-sic') || t.includes('esic') || t.includes('e sic');
+    const isConcluido = (row) => {
+      // Verificar se tem data de conclusão
+      if (row.dataConclusaoIso) return true;
+      
+      // Verificar status
+      const status = (row.status || row.statusDemanda || '').toLowerCase();
+      return status.includes('concluída') || 
+             status.includes('concluida') || 
+             status.includes('encerrada') || 
+             status.includes('finalizada') ||
+             status.includes('resolvida') ||
+             status.includes('arquivamento');
     };
 
     const daysBetween = (iso) => {
@@ -786,14 +878,23 @@ app.get('/api/sla/summary', async (_req, res) => {
     };
 
     for (const r of rows) {
+      // Se está concluído, marcar como verde escuro
+      if (isConcluido(r)) {
+        buckets.concluidos += 1;
+        continue;
+      }
+      
+      // Se não está concluído, calcular dias desde criação
       const days = daysBetween(r.dataCriacaoIso);
       if (days === null) continue;
-      if (isEsic(r)) {
-        if (days > 20) buckets.esic.atraso += 1; else buckets.esic.dentro += 1;
+      
+      // Classificar por faixa de dias
+      if (days <= 30) {
+        buckets.verdeClaro += 1;
+      } else if (days <= 60) {
+        buckets.amarelo += 1;
       } else {
-        if (days <= 30) buckets.outros.verde += 1;
-        else if (days <= 60) buckets.outros.amarelo += 1;
-        else buckets.outros.atraso += 1;
+        buckets.vermelho += 1;
       }
     }
 
@@ -867,33 +968,156 @@ app.post('/api/filter', async (req, res) => {
 });
 
 // Tempo médio de atendimento por órgão/unidade
-app.get('/api/stats/average-time', async (_req, res) => {
-  const key = 'avgTime:v2';
+app.get('/api/stats/average-time', async (req, res) => {
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false';
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const key = servidor ? `avgTime:servidor:${servidor}:v3` :
+              unidadeCadastro ? `avgTime:uac:${unidadeCadastro}:v3` :
+              'avgTime:v3';
+  
   // Cache de 1 hora
   try {
     return await withCache(key, 3600, res, async () => {
+      const where = {};
+      if (servidor) where.servidor = servidor;
+      if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+      
+      // Construir filtro de data baseado nos meses selecionados
+      if (meses && meses.length > 0) {
+        const monthFilters = meses.map(month => {
+          if (/^\d{4}-\d{2}$/.test(month)) return month;
+          const match = month.match(/^(\d{2})\/(\d{4})$/);
+          if (match) return `${match[2]}-${match[1]}`;
+          return month;
+        });
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: monthFilters.map(month => ({
+              dataDaCriacao: { startsWith: month }
+            }))
+          }
+        ];
+      }
+      
+      // Buscar registros com tempo de resolução ou datas de criação/conclusão
       const rows = await prisma.record.findMany({
         where: {
-          dataCriacaoIso: { not: null },
-          dataConclusaoIso: { not: null }
+          ...where,
+          dataDaCriacao: { not: null },
+          OR: [
+            { tempoDeResolucaoEmDias: { not: null } },
+            { 
+              AND: [
+                { dataCriacaoIso: { not: null } },
+                { dataConclusaoIso: { not: null } }
+              ]
+            }
+          ]
         },
         select: {
+          orgaos: true,
           responsavel: true,
           unidadeCadastro: true,
+          tempoDeResolucaoEmDias: true,
           dataCriacaoIso: true,
-          dataConclusaoIso: true
+          dataDaCriacao: true,
+          dataConclusaoIso: true,
+          dataDaConclusao: true,
+          data: true
         }
       });
+      
+      // Função auxiliar para normalizar data
+      const normalizeDate = (dateInput) => {
+        if (!dateInput) return null;
+        if (dateInput instanceof Date) {
+          if (isNaN(dateInput.getTime())) return null;
+          return dateInput.toISOString().slice(0, 10);
+        }
+        if (typeof dateInput === 'object' && dateInput !== null) {
+          try {
+            const date = new Date(dateInput);
+            if (!isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+          } catch (e) {}
+        }
+        const str = String(dateInput).trim();
+        if (!str || str === 'null' || str === 'undefined') return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+        const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (isoMatch) return isoMatch[1];
+        const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+        return null;
+      };
       
       // Agrupar por órgão/unidade e calcular média
       const map = new Map();
       for (const r of rows) {
-        const org = r.responsavel || r.unidadeCadastro || 'Não informado';
-        const start = new Date(r.dataCriacaoIso + 'T00:00:00');
-        const end = new Date(r.dataConclusaoIso + 'T00:00:00');
-        if (isNaN(start) || isNaN(end)) continue;
-        const days = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-        if (days < 0 || days > 1000) continue; // Filtrar outliers
+        // Priorizar orgaos, depois responsavel, depois unidadeCadastro
+        const org = r.orgaos || r.responsavel || r.unidadeCadastro || 'Não informado';
+        
+        // Obter data de criação
+        const dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
+                           (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
+        
+        let days = null;
+        
+        // Priorizar campo tempoDeResolucaoEmDias se disponível
+        if (r.tempoDeResolucaoEmDias) {
+          const parsed = parseFloat(r.tempoDeResolucaoEmDias);
+          if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
+            if (!incluirZero && parsed === 0) {
+              // Não definir days, vai tentar calcular das datas
+            } else {
+              days = parsed;
+            }
+          }
+        }
+        
+        // Se não tiver tempoDeResolucaoEmDias, calcular a partir das datas
+        if (days === null) {
+          if (dataCriacao && r.dataConclusaoIso) {
+            const start = new Date(dataCriacao + 'T00:00:00');
+            const end = new Date(r.dataConclusaoIso + 'T00:00:00');
+            if (!isNaN(start) && !isNaN(end)) {
+              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+              if (calculated >= 0 && calculated <= 1000) {
+                if (incluirZero || calculated > 0) {
+                  days = calculated;
+                }
+              }
+            }
+          }
+          
+          if (days === null && r.dataDaConclusao && dataCriacao) {
+            const dataConclusao = normalizeDate(r.dataDaConclusao);
+            if (dataConclusao) {
+              const start = new Date(dataCriacao + 'T00:00:00');
+              const end = new Date(dataConclusao + 'T00:00:00');
+              if (!isNaN(start) && !isNaN(end)) {
+                const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+                if (calculated >= 0 && calculated <= 1000) {
+                  if (incluirZero || calculated > 0) {
+                    days = calculated;
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // Se apenasConcluidos é true, verificar se tem data de conclusão
+        if (apenasConcluidos && !r.dataConclusaoIso && !r.dataDaConclusao) {
+          continue;
+        }
+        
+        // Ignorar se não conseguir calcular
+        if (days === null) continue;
         
         if (!map.has(org)) map.set(org, { total: 0, sum: 0 });
         const stats = map.get(org);
@@ -901,14 +1125,691 @@ app.get('/api/stats/average-time', async (_req, res) => {
         stats.sum += days;
       }
       
-      return Array.from(map.entries())
-        .map(([org, stats]) => ({ org, dias: Number((stats.sum / stats.total).toFixed(2)) }))
+      // Calcular médias e retornar ordenado por dias (maior primeiro)
+      const result = Array.from(map.entries())
+        .map(([org, stats]) => ({ 
+          org, 
+          dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+          quantidade: stats.total
+        }))
+        .filter(item => item.dias > 0) // Filtrar apenas órgãos com tempo válido
         .sort((a, b) => b.dias - a.dias);
+      
+      return result;
     });
   } catch (error) {
     console.error('❌ Erro ao calcular tempo médio:', error);
     return res.status(500).json({ error: 'Erro ao calcular tempo médio de atendimento', details: error.message });
   }
+});
+
+// Tempo médio por dia (últimos 30 dias)
+app.get('/api/stats/average-time/by-day', async (req, res) => {
+  console.log('📥 [by-day] Requisição recebida');
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false'; // default true
+  
+  const key = servidor ? `avgTimeByDay:servidor:${servidor}:v4` :
+              unidadeCadastro ? `avgTimeByDay:uac:${unidadeCadastro}:v4` :
+              meses ? `avgTimeByDay:meses:${meses.sort().join(',')}:v4` :
+              'avgTimeByDay:v4';
+  
+  return withCache(key, 3600, res, async () => {
+    console.log('📊 [by-day] Calculando dados (cache miss)...');
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    const rows = await prisma.record.findMany({
+      where: {
+        ...where,
+        dataDaCriacao: { not: null }
+      },
+      select: {
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        tempoDeResolucaoEmDias: true,
+        dataConclusaoIso: true,
+        dataDaConclusao: true,
+        data: true
+      }
+    });
+    
+    const today = new Date();
+    const map = new Map();
+    
+    // Função auxiliar para normalizar data
+    // dataDaCriacao vem como string ISO do MongoDB: "2025-01-06T03:00:28.000Z"
+    const normalizeDate = (dateInput) => {
+      if (!dateInput) return null;
+      
+      // Se for objeto Date, converter para YYYY-MM-DD
+      if (dateInput instanceof Date) {
+        if (isNaN(dateInput.getTime())) return null;
+        return dateInput.toISOString().slice(0, 10);
+      }
+      
+      // Se for objeto com propriedades de data (MongoDB Date)
+      if (typeof dateInput === 'object' && dateInput !== null) {
+        // Tentar converter para Date
+        try {
+          const date = new Date(dateInput);
+          if (!isNaN(date.getTime())) {
+            return date.toISOString().slice(0, 10);
+          }
+        } catch (e) {
+          // Ignorar erro
+        }
+      }
+      
+      const str = String(dateInput).trim();
+      if (!str || str === 'null' || str === 'undefined') return null;
+      
+      // Formato YYYY-MM-DD (já está no formato correto)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      
+      // Formato ISO com hora (2025-01-06T03:00:28.000Z) - EXTRAIR APENAS A DATA
+      const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (isoMatch) return isoMatch[1];
+      
+      // Formato DD/MM/YYYY
+      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+      
+      return null;
+    };
+    
+    // Debug: verificar quantos registros temos
+    console.log(`📊 [by-day] Total de registros encontrados: ${rows.length}`);
+    let processados = 0;
+    let comData = 0;
+    let comDias = 0;
+    
+    for (const r of rows) {
+      processados++;
+      // Obter data de criação (priorizar dataCriacaoIso, depois dataDaCriacao, depois data.data_da_criacao)
+      let dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
+                       (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
+      
+      if (!dataCriacao) {
+        if (processados <= 10) {
+          const dataDaCriacaoType = r.dataDaCriacao ? 
+            (r.dataDaCriacao instanceof Date ? 'Date' : 
+             typeof r.dataDaCriacao === 'object' ? JSON.stringify(r.dataDaCriacao).substring(0, 50) : 
+             typeof r.dataDaCriacao) : 'null';
+          console.log(`  [${processados}] Sem data: dataCriacaoIso=${r.dataCriacaoIso}, dataDaCriacao=${dataDaCriacaoType}, data.data_da_criacao=${r.data?.data_da_criacao || 'null'}`);
+        }
+        continue;
+      }
+      comData++;
+      
+      // Debug: mostrar primeiras datas normalizadas
+      if (comData <= 5) {
+        console.log(`  [${comData}] Data normalizada: ${dataCriacao}, tipo original: ${r.dataDaCriacao?.constructor?.name || typeof r.dataDaCriacao}`);
+      }
+      
+      let days = null;
+      // Verificar se tempoDeResolucaoEmDias existe (mesmo que seja 0 ou string vazia)
+      if (r.tempoDeResolucaoEmDias !== null && r.tempoDeResolucaoEmDias !== undefined && r.tempoDeResolucaoEmDias !== '') {
+        const parsed = parseFloat(r.tempoDeResolucaoEmDias);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
+          days = parsed;
+        }
+      }
+      
+      // Se não tiver tempoDeResolucaoEmDias, tentar calcular a partir das datas
+      if (days === null) {
+        // Tentar usar dataCriacaoIso e dataConclusaoIso
+        if (dataCriacao && r.dataConclusaoIso) {
+          const start = new Date(dataCriacao + 'T00:00:00');
+          const end = new Date(r.dataConclusaoIso + 'T00:00:00');
+          if (!isNaN(start) && !isNaN(end)) {
+            const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+            if (calculated >= 0 && calculated <= 1000) {
+              days = calculated;
+            }
+          }
+        }
+        
+        // Se ainda não tiver, tentar usar dataDaConclusao
+        if (days === null && r.dataDaConclusao) {
+          const dataConclusao = normalizeDate(r.dataDaConclusao);
+          if (dataConclusao && dataCriacao) {
+            const start = new Date(dataCriacao + 'T00:00:00');
+            const end = new Date(dataConclusao + 'T00:00:00');
+            if (!isNaN(start) && !isNaN(end)) {
+              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+              if (calculated >= 0 && calculated <= 1000) {
+                days = calculated;
+              }
+            }
+          }
+        }
+      }
+      
+      // Se apenasConcluidos é true, verificar se tem data de conclusão
+      if (apenasConcluidos && !r.dataConclusaoIso && !r.dataDaConclusao) {
+        continue;
+      }
+      
+      // Se não conseguir calcular dias, pular (registro não concluído ou sem dados)
+      if (days === null) continue;
+      comDias++;
+      
+      // Agrupar por data de criação para ver tendência ao longo do tempo
+      if (!map.has(dataCriacao)) map.set(dataCriacao, { total: 0, sum: 0 });
+      const stats = map.get(dataCriacao);
+      stats.total += 1;
+      stats.sum += days;
+    }
+    
+    console.log(`📊 [by-day] Processados: ${processados}, Com data: ${comData}, Com dias: ${comDias}, Datas únicas: ${map.size}`);
+    
+    // Mostrar algumas datas processadas
+    if (map.size > 0) {
+      const sampleDates = Array.from(map.entries()).slice(0, 5);
+      console.log(`📊 [by-day] Amostra de datas processadas:`, sampleDates.map(([date, stats]) => `${date}: ${stats.total} registros, média ${(stats.sum/stats.total).toFixed(2)} dias`));
+    }
+    
+    // Usar TODAS as datas disponíveis no banco, limitando aos últimos 30 dias de dados reais
+    const result = [];
+    const todayStr = today.toISOString().slice(0, 10);
+    console.log(`📊 [by-day] Data de hoje: ${todayStr}, Total de datas no map: ${map.size}`);
+    
+    if (map.size > 0) {
+      const allDates = Array.from(map.keys()).sort();
+      console.log(`📊 [by-day] Primeira data no map: ${allDates[0]}, Última data no map: ${allDates[allDates.length - 1]}`);
+      console.log(`📊 [by-day] Últimas 5 datas no map:`, allDates.slice(-5));
+      
+      // Pegar as últimas 30 datas disponíveis (ou todas se houver menos de 30)
+      const datesToUse = allDates.slice(-30);
+      
+      // Preencher com zeros as datas que não existem no período
+      // Mas usar as datas reais que temos
+      for (const dateKey of datesToUse) {
+        const stats = map.get(dateKey);
+        result.push({
+          date: dateKey,
+          dias: stats ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+          quantidade: stats ? stats.total : 0
+        });
+      }
+      
+      // Se temos menos de 30 datas, preencher com zeros até completar 30
+      while (result.length < 30 && datesToUse.length > 0) {
+        const lastDate = new Date(datesToUse[datesToUse.length - 1] + 'T00:00:00');
+        lastDate.setDate(lastDate.getDate() + 1);
+        const nextDateKey = lastDate.toISOString().slice(0, 10);
+        if (!datesToUse.includes(nextDateKey)) {
+          result.push({
+            date: nextDateKey,
+            dias: 0,
+            quantidade: 0
+          });
+          datesToUse.push(nextDateKey);
+        } else {
+          break;
+        }
+      }
+    } else {
+      // Se não há dados, retornar últimos 30 dias a partir de hoje
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const dateKey = d.toISOString().slice(0, 10);
+        result.push({
+          date: dateKey,
+          dias: 0,
+          quantidade: 0
+        });
+      }
+    }
+    
+    // Debug: verificar quantos dias têm dados
+    const diasComDados = result.filter(r => r.quantidade > 0).length;
+    const totalDias = result.reduce((sum, r) => sum + r.dias, 0);
+    const totalQuantidade = result.reduce((sum, r) => sum + r.quantidade, 0);
+    console.log(`📊 [by-day] Resultado: ${diasComDados}/30 dias com dados, ${totalQuantidade} registros totais, média geral: ${totalQuantidade > 0 ? (totalDias/totalQuantidade).toFixed(2) : 0} dias`);
+    
+    return result;
+  });
+});
+
+// Tempo médio por semana (últimas 12 semanas)
+app.get('/api/stats/average-time/by-week', async (req, res) => {
+  console.log('📥 [by-week] Requisição recebida');
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false';
+  
+  const key = servidor ? `avgTimeByWeek:servidor:${servidor}:v4` :
+              unidadeCadastro ? `avgTimeByWeek:uac:${unidadeCadastro}:v4` :
+              meses ? `avgTimeByWeek:meses:${meses.sort().join(',')}:v4` :
+              'avgTimeByWeek:v4';
+  
+  return withCache(key, 3600, res, async () => {
+    console.log('📊 [by-week] Calculando dados (cache miss)...');
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    // Construir filtro de data baseado nos meses selecionados
+    if (meses && meses.length > 0) {
+      const monthFilters = meses.map(month => {
+        if (/^\d{4}-\d{2}$/.test(month)) return month;
+        const match = month.match(/^(\d{2})\/(\d{4})$/);
+        if (match) return `${match[2]}-${match[1]}`;
+        return month;
+      });
+      where.OR = monthFilters.map(month => ({
+        dataDaCriacao: { startsWith: month }
+      }));
+    }
+    
+    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    const rows = await prisma.record.findMany({
+      where: {
+        ...where,
+        dataDaCriacao: { not: null }
+      },
+      select: {
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        tempoDeResolucaoEmDias: true,
+        dataConclusaoIso: true,
+        dataDaConclusao: true,
+        data: true
+      }
+    });
+    
+    const map = new Map();
+    
+    // Função auxiliar para normalizar data
+    const normalizeDate = (dateStr) => {
+      if (!dateStr) return null;
+      const str = String(dateStr).trim();
+      if (!str) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+      return null;
+    };
+    
+    for (const r of rows) {
+      // Obter data de criação (priorizar dataCriacaoIso, depois dataDaCriacao, depois data.data_da_criacao)
+      let dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
+                       (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
+      
+      if (!dataCriacao) continue;
+      
+      let days = null;
+      // Verificar se tempoDeResolucaoEmDias existe (mesmo que seja 0 ou string vazia)
+      if (r.tempoDeResolucaoEmDias !== null && r.tempoDeResolucaoEmDias !== undefined && r.tempoDeResolucaoEmDias !== '') {
+        const parsed = parseFloat(r.tempoDeResolucaoEmDias);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
+          if (!incluirZero && parsed === 0) {
+            // Não definir days, vai tentar calcular das datas
+          } else {
+            days = parsed;
+          }
+        }
+      }
+      
+      // Se não tiver tempoDeResolucaoEmDias, tentar calcular a partir das datas
+      if (days === null) {
+        // Tentar usar dataCriacaoIso e dataConclusaoIso
+        if (dataCriacao && r.dataConclusaoIso) {
+          const start = new Date(dataCriacao + 'T00:00:00');
+          const end = new Date(r.dataConclusaoIso + 'T00:00:00');
+          if (!isNaN(start) && !isNaN(end)) {
+            const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+            if (calculated >= 0 && calculated <= 1000) {
+              if (incluirZero || calculated > 0) {
+                days = calculated;
+              }
+            }
+          }
+        }
+        
+        // Se ainda não tiver, tentar usar dataDaConclusao
+        if (days === null && r.dataDaConclusao) {
+          const dataConclusao = normalizeDate(r.dataDaConclusao);
+          if (dataConclusao && dataCriacao) {
+            const start = new Date(dataCriacao + 'T00:00:00');
+            const end = new Date(dataConclusao + 'T00:00:00');
+            if (!isNaN(start) && !isNaN(end)) {
+              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+              if (calculated >= 0 && calculated <= 1000) {
+                if (incluirZero || calculated > 0) {
+                  days = calculated;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Se apenasConcluidos é true, verificar se tem data de conclusão
+      if (apenasConcluidos && !r.dataConclusaoIso && !r.dataDaConclusao) {
+        continue;
+      }
+      
+      if (days === null) continue;
+      
+      // Agrupar por data de criação para ver tendência ao longo do tempo
+      const date = new Date(dataCriacao + 'T00:00:00');
+      if (isNaN(date)) continue;
+      const year = date.getFullYear();
+      const startOfYear = new Date(year, 0, 1);
+      const daysSinceStart = Math.floor((date - startOfYear) / (1000 * 60 * 60 * 24));
+      const week = Math.ceil((daysSinceStart + startOfYear.getDay() + 1) / 7);
+      const weekKey = `${year}-W${week.toString().padStart(2, '0')}`;
+      
+      if (!map.has(weekKey)) map.set(weekKey, { total: 0, sum: 0 });
+      const stats = map.get(weekKey);
+      stats.total += 1;
+      stats.sum += days;
+    }
+    
+    // Últimas 12 semanas
+    const result = [];
+    const today = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (i * 7));
+      const year = d.getFullYear();
+      const startOfYear = new Date(year, 0, 1);
+      const daysSinceStart = Math.floor((d - startOfYear) / (1000 * 60 * 60 * 24));
+      const week = Math.ceil((daysSinceStart + startOfYear.getDay() + 1) / 7);
+      const weekKey = `${year}-W${week.toString().padStart(2, '0')}`;
+      const stats = map.get(weekKey);
+      result.push({
+        week: weekKey,
+        dias: stats ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+        quantidade: stats ? stats.total : 0
+      });
+    }
+    
+    return result;
+  });
+});
+
+// Tempo médio por mês (últimos 12 meses)
+app.get('/api/stats/average-time/by-month', async (req, res) => {
+  console.log('📥 [by-month] Requisição recebida');
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false';
+  
+  const key = servidor ? `avgTimeByMonth:servidor:${servidor}:v4` :
+              unidadeCadastro ? `avgTimeByMonth:uac:${unidadeCadastro}:v4` :
+              meses ? `avgTimeByMonth:meses:${meses.sort().join(',')}:v4` :
+              'avgTimeByMonth:v4';
+  
+  return withCache(key, 3600, res, async () => {
+    console.log('📊 [by-month] Calculando dados (cache miss)...');
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    // Construir filtro de data baseado nos meses selecionados
+    if (meses && meses.length > 0) {
+      const monthFilters = meses.map(month => {
+        if (/^\d{4}-\d{2}$/.test(month)) return month;
+        const match = month.match(/^(\d{2})\/(\d{4})$/);
+        if (match) return `${match[2]}-${match[1]}`;
+        return month;
+      });
+      where.OR = monthFilters.map(month => ({
+        dataDaCriacao: { startsWith: month }
+      }));
+    }
+    
+    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    const rows = await prisma.record.findMany({
+      where: {
+        ...where,
+        dataDaCriacao: { not: null }
+      },
+      select: {
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        tempoDeResolucaoEmDias: true,
+        dataConclusaoIso: true,
+        dataDaConclusao: true,
+        data: true
+      }
+    });
+    
+    const map = new Map();
+    
+    // Função auxiliar para normalizar data
+    const normalizeDate = (dateStr) => {
+      if (!dateStr) return null;
+      const str = String(dateStr).trim();
+      if (!str) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+      return null;
+    };
+    
+    for (const r of rows) {
+      // Obter data de criação (priorizar dataCriacaoIso, depois dataDaCriacao, depois data.data_da_criacao)
+      let dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
+                       (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
+      
+      if (!dataCriacao) continue;
+      
+      let days = null;
+      if (r.tempoDeResolucaoEmDias) {
+        const parsed = parseFloat(r.tempoDeResolucaoEmDias);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
+          days = parsed;
+        }
+      }
+      
+      if (days === null && r.dataCriacaoIso && r.dataConclusaoIso) {
+        const start = new Date(r.dataCriacaoIso + 'T00:00:00');
+        const end = new Date(r.dataConclusaoIso + 'T00:00:00');
+        if (!isNaN(start) && !isNaN(end)) {
+          const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+          if (calculated >= 0 && calculated <= 1000) {
+            days = calculated;
+          }
+        }
+      }
+      
+      if (days === null) continue;
+      
+      // Agrupar por data de criação para ver tendência ao longo do tempo
+      const monthKey = dataCriacao.slice(0, 7); // YYYY-MM
+      if (!map.has(monthKey)) map.set(monthKey, { total: 0, sum: 0 });
+      const stats = map.get(monthKey);
+      stats.total += 1;
+      stats.sum += days;
+    }
+    
+    // Últimos 12 meses
+    const result = [];
+    const today = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const monthKey = d.toISOString().slice(0, 7);
+      const stats = map.get(monthKey);
+      result.push({
+        month: monthKey,
+        dias: stats ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+        quantidade: stats ? stats.total : 0
+      });
+    }
+    
+    return result;
+  });
+});
+
+// Estatísticas gerais de tempo (mínimo, máximo, mediana, média)
+app.get('/api/stats/average-time/stats', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false';
+  
+  const key = servidor ? `avgTimeStats:servidor:${servidor}:v4` :
+              unidadeCadastro ? `avgTimeStats:uac:${unidadeCadastro}:v4` :
+              meses ? `avgTimeStats:meses:${meses.sort().join(',')}:v4` :
+              'avgTimeStats:v4';
+  
+  return withCache(key, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    // Construir filtro de data baseado nos meses selecionados
+    if (meses && meses.length > 0) {
+      const monthFilters = meses.map(month => {
+        if (/^\d{4}-\d{2}$/.test(month)) return month;
+        const match = month.match(/^(\d{2})\/(\d{4})$/);
+        if (match) return `${match[2]}-${match[1]}`;
+        return month;
+      });
+      where.OR = monthFilters.map(month => ({
+        dataDaCriacao: { startsWith: month }
+      }));
+    }
+    
+    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    const rows = await prisma.record.findMany({
+      where: {
+        ...where,
+        dataDaCriacao: { not: null }
+      },
+      select: {
+        tempoDeResolucaoEmDias: true,
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        dataConclusaoIso: true,
+        dataDaConclusao: true,
+        data: true
+      },
+      take: 10000 // Limitar para performance
+    });
+    
+    // Função auxiliar para normalizar data
+    // dataDaCriacao vem como string ISO do MongoDB: "2025-01-06T03:00:28.000Z"
+    const normalizeDate = (dateInput) => {
+      if (!dateInput) return null;
+      if (dateInput instanceof Date) {
+        if (isNaN(dateInput.getTime())) return null;
+        return dateInput.toISOString().slice(0, 10);
+      }
+      if (typeof dateInput === 'object' && dateInput !== null) {
+        try {
+          const date = new Date(dateInput);
+          if (!isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+        } catch (e) {}
+      }
+      const str = String(dateInput).trim();
+      if (!str || str === 'null' || str === 'undefined') return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (isoMatch) return isoMatch[1];
+      const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+      return null;
+    };
+    
+    const tempos = [];
+    
+    for (const r of rows) {
+      // Obter data de criação
+      const dataCriacao = r.dataCriacaoIso || normalizeDate(r.dataDaCriacao) || 
+                         (r.data && typeof r.data === 'object' ? normalizeDate(r.data.data_da_criacao) : null);
+      
+      // Se apenasConcluidos é true, verificar se tem data de conclusão
+      if (apenasConcluidos && !r.dataConclusaoIso && !r.dataDaConclusao) {
+        continue;
+      }
+      
+      let days = null;
+      if (r.tempoDeResolucaoEmDias) {
+        const parsed = parseFloat(r.tempoDeResolucaoEmDias);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
+          if (!incluirZero && parsed === 0) {
+            // Não definir days, vai tentar calcular das datas
+          } else {
+            days = parsed;
+          }
+        }
+      }
+      
+      if (days === null) {
+        if (dataCriacao && r.dataConclusaoIso) {
+          const start = new Date(dataCriacao + 'T00:00:00');
+          const end = new Date(r.dataConclusaoIso + 'T00:00:00');
+          if (!isNaN(start) && !isNaN(end)) {
+            const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+            if (calculated >= 0 && calculated <= 1000) {
+              if (incluirZero || calculated > 0) {
+                days = calculated;
+              }
+            }
+          }
+        }
+        
+        if (days === null && r.dataDaConclusao && dataCriacao) {
+          const dataConclusao = normalizeDate(r.dataDaConclusao);
+          if (dataConclusao) {
+            const start = new Date(dataCriacao + 'T00:00:00');
+            const end = new Date(dataConclusao + 'T00:00:00');
+            if (!isNaN(start) && !isNaN(end)) {
+              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+              if (calculated >= 0 && calculated <= 1000) {
+                if (incluirZero || calculated > 0) {
+                  days = calculated;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      if (days !== null) tempos.push(days);
+    }
+    
+    if (tempos.length === 0) {
+      return {
+        media: 0,
+        mediana: 0,
+        minimo: 0,
+        maximo: 0,
+        total: 0
+      };
+    }
+    
+    tempos.sort((a, b) => a - b);
+    const media = tempos.reduce((a, b) => a + b, 0) / tempos.length;
+    const mediana = tempos.length % 2 === 0
+      ? (tempos[tempos.length / 2 - 1] + tempos[tempos.length / 2]) / 2
+      : tempos[Math.floor(tempos.length / 2)];
+    
+    return {
+      media: Number(media.toFixed(2)),
+      mediana: Number(mediana.toFixed(2)),
+      minimo: tempos[0],
+      maximo: tempos[tempos.length - 1],
+      total: tempos.length
+    };
+  });
 });
 
 // Total por Tema
@@ -936,26 +1837,134 @@ app.get('/api/aggregate/by-subject', async (_req, res) => {
 });
 
 // Por Servidor/Cadastrante
-app.get('/api/aggregate/by-server', async (_req, res) => {
-  const key = 'byServer:v2';
-  // Cache de 1 hora
-  return withCache(key, 3600, res, async () => {
-    const rows = await prisma.record.groupBy({ by: ['servidor'], _count: { _all: true } });
+app.get('/api/aggregate/by-server', async (req, res) => {
+  const unidadeCadastro = req.query.unidadeCadastro;
+  const cacheKey = unidadeCadastro ? `byServer:uac:${unidadeCadastro}:v2` : 'byServer:v2';
+  
+  return withCache(cacheKey, 3600, res, async () => {
+    const where = unidadeCadastro ? { unidadeCadastro } : {};
+    const rows = await prisma.record.groupBy({ 
+      by: ['servidor'],
+      where,
+      _count: { _all: true } 
+    });
     return rows
       .map(r => ({ servidor: r.servidor ?? 'Não informado', quantidade: r._count._all }))
       .sort((a, b) => b.quantidade - a.quantidade);
   });
 });
 
+// Endpoint para dados filtrados por servidor ou unidade
+app.get('/api/aggregate/filtered', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  if (!servidor && !unidadeCadastro) {
+    return res.status(400).json({ error: 'servidor ou unidadeCadastro required' });
+  }
+  
+  const cacheKey = servidor ? `filtered:servidor:${servidor}:v1` : 
+                    `filtered:uac:${unidadeCadastro}:v1`;
+  
+  return withCache(cacheKey, 300, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    const total = await prisma.record.count({ where });
+    
+    // Dados por mês
+    const rows = await prisma.record.findMany({ 
+      where,
+      select: { dataCriacaoIso: true } 
+    });
+    const monthMap = new Map();
+    for (const r of rows) {
+      const d = r.dataCriacaoIso;
+      if (!d || d.length < 7) continue;
+      const ym = d.slice(0,7);
+      monthMap.set(ym, (monthMap.get(ym) ?? 0) + 1);
+    }
+    const byMonth = Array.from(monthMap.entries()).map(([ym, count]) => ({ ym, count }))
+      .sort((a,b) => a.ym.localeCompare(b.ym)).slice(-12);
+    
+    // Dados por tema
+    const temas = await prisma.record.groupBy({
+      by: ['tema'],
+      where,
+      _count: { _all: true }
+    });
+    const byTheme = temas
+      .map(r => ({ tema: r.tema ?? 'Não informado', quantidade: r._count._all }))
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .slice(0, 10);
+    
+    // Dados por assunto
+    const assuntos = await prisma.record.groupBy({
+      by: ['assunto'],
+      where,
+      _count: { _all: true }
+    });
+    const bySubject = assuntos
+      .map(r => ({ assunto: r.assunto ?? 'Não informado', quantidade: r._count._all }))
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .slice(0, 10);
+    
+    // Dados por status
+    const status = await prisma.record.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true }
+    });
+    const byStatus = status
+      .map(r => ({ status: r.status ?? 'Não informado', quantidade: r._count._all }))
+      .sort((a, b) => b.quantidade - a.quantidade);
+    
+    // Unidades cadastradas por este servidor (se filtro for por servidor)
+    let unidadesCadastradas = [];
+    if (servidor) {
+      const uacs = await prisma.record.groupBy({
+        by: ['unidadeCadastro'],
+        where: { servidor },
+        _count: { _all: true }
+      });
+      unidadesCadastradas = uacs
+        .map(r => ({ unidade: r.unidadeCadastro ?? 'Não informado', quantidade: r._count._all }))
+        .sort((a, b) => b.quantidade - a.quantidade);
+    }
+    
+    return {
+      total,
+      byMonth,
+      byTheme,
+      bySubject,
+      byStatus,
+      unidadesCadastradas,
+      filter: servidor ? { type: 'servidor', value: servidor } : { type: 'unidadeCadastro', value: unidadeCadastro }
+    };
+  });
+});
+
 // Status geral (percentuais)
-app.get('/api/stats/status-overview', async (_req, res) => {
-  const key = 'statusOverview:v2';
+app.get('/api/stats/status-overview', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const key = servidor ? `statusOverview:servidor:${servidor}:v2` :
+              unidadeCadastro ? `statusOverview:uac:${unidadeCadastro}:v2` :
+              'statusOverview:v2';
+  
   // Cache de 1 hora
   return withCache(key, 3600, res, async () => {
-    const total = await prisma.record.count();
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    const total = await prisma.record.count({ where });
     // Otimizado: usar agregação do banco ao invés de buscar todos
     // Buscar apenas campos necessários
     const allRecords = await prisma.record.findMany({ 
+      where: Object.keys(where).length > 0 ? where : undefined,
       select: { status: true, statusDemanda: true } 
     });
     let concluidas = 0;
