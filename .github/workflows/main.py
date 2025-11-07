@@ -478,18 +478,6 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
-
-Ótimo, o log de erro novamente nos deu a pista exata do que aconteceu. Estamos quase lá!
-Análise do Erro
-Sucesso na Primeira Coluna: O log mostra que a coluna data_da_criacao foi processada e atualizada com sucesso. Isso significa que a lógica geral, a autenticação e a comunicação com a planilha estão funcionando.
-Falha na Segunda Coluna: O erro acontece ao processar data_da_conclusao.
-Mensagem de Erro: AttributeError: Can only use .dt accessor with datetimelike values.
-Causa Raiz: Este erro ocorre porque a coluna data_da_conclusao é de tipo misto. Após o passo de preparação, ela contém tanto valores de data (que o script converteu) quanto valores de texto (como "Não concluído", que não puderam ser convertidos e foram mantidos como estavam). O acessor .dt do Pandas só funciona se todos os valores na coluna forem do tipo data. Ao encontrar o primeiro valor de texto, ele falha.
-A Solução
-A correção é ajustar a forma como preparamos os valores para envio, garantindo que ele trate cada valor individualmente, formatando-o se for uma data e mantendo-o como está se for um texto.
-Substitua novamente todo o bloco de código da Seção 5-B pela versão final e corrigida abaixo. Esta versão lida corretamente com colunas de tipo misto.
-code
-Python
 # =======================================================================
 # 5-B) SCRIPT TEMPORÁRIO: CORREÇÃO ÚNICA DAS DATAS EXISTENTES (V3 - FINAL)
 # =======================================================================
