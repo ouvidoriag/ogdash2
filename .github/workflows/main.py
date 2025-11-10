@@ -678,6 +678,119 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.3: {e}", exc_info=True)
 
+    # 7.3.1 Tratamentos adicionais para unidade_cadastro
+    
+    try:
+        if "unidade_cadastro" in df_loc.columns:
+            # 1) Upas: Upa - Beira Mar -> UAC - UPA Beira Mar (robusto)
+            mask_upa_beira = df_loc["unidade_cadastro"].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().str.lower().eq("upa - beira mar")
+            if mask_upa_beira.any():
+                df_loc.loc[mask_upa_beira, "unidade_cadastro"] = "UAC - UPA Beira Mar"
+                logging.info(f"Tratamento 7.3.1: Substituído 'Upa - Beira Mar' em {mask_upa_beira.sum()} linhas.")
+
+            # 2) Mapeamento de temas -> Ouvidoria responsável (para quando unidade_cadastro é 'Ouvidoria Setorial' genérico)
+            MAP_TEMA_PARA_OUVIDORIA = {
+                "administração pública": "Ouvidoria Geral",
+                "agricultura": "Ouvidoria Setorial de Obras",
+                "assistência social e direitos humanos": "Ouvidoria Setorial da Assistência Social",
+                "assuntos jurídicos": "Ouvidoria Geral",
+                "comunicação social": "Ouvidoria Geral",
+                "controle governamental": "Ouvidoria Geral",
+                "criança, adolescente e idoso": "Ouvidoria Setorial da Assistência Social",
+                "cultura e turismo": "Ouvidoria Geral",
+                "defesa civil": "Ouvidoria Geral",
+                "direitos à pessoa com deficiência": "Ouvidoria Setorial da Assistência Social",
+                "direitos e vantagens do servidor": "Ouvidoria Geral",
+                "educação": "Ouvidoria Setorial de Educação",
+                "empresas e legalizações": "Ouvidoria Setorial da Fazenda",
+                "esporte e lazer": "Ouvidoria Geral",
+                "fiscalização e tributos": "Ouvidoria Setorial da Fazenda",
+                "fiscalização urbana, regularização e registro de imóveis": "Ouvidoria Setorial de Urbanismo",
+                "fundec": "Ouvidoria Setorial da FUNDEC",
+                "governança": "Ouvidoria Geral",
+                "governo municipal e enterro gratuito": "Ouvidoria Geral",
+                "habitação": "Ouvidoria Setorial de Urbanismo",
+                "inclusão e acessibilidade": "Ouvidoria Geral",
+                "meio ambiente": "Ouvidoria Setorial de Meio Ambiente",
+                "meio ambiente (poluição sonora, árvores, licenças e fiscalizações ambientais e etc.)": "Ouvidoria Setorial de Meio Ambiente",
+                "assédio": "Ouvidoria Geral",
+                "obras públicas": "Ouvidoria Setorial de Obras",
+                "obras, limpeza urbana e braço de luz": "Ouvidoria Setorial de Obras",
+                "proteção animal": "Ouvidoria Geral",
+                "saúde": "Ouvidoria Setorial da Saúde",
+                "segurança pública": "Ouvidoria Geral de Segurança Pública",
+                "segurança, sinalização e multas": "Ouvidoria Geral de Segurança Pública",
+                "trabalho, emprego e renda": "Ouvidoria Geral",
+                "transportes e serviços públicos": "Ouvidoria Geral",
+                "transportes, serviços públicos e troca de lâmpadas": "Ouvidoria Geral",
+                "urbanismo": "Ouvidoria Setorial de Urbanismo",
+                "vetores e zoonoses (combate à dengue, controle de pragas, criação irregular de animais e etc.)": "Secretaria de Saúde",
+                "vigilância sanitária": "Ouvidoria Setorial da Saúde",
+                "obras": "Ouvidoria Setorial de Obras",
+                "trabalho": "Ouvidoria Geral",
+                "segurança": "Ouvidoria Setorial de Segurança Pública",
+                "serviços públicos e troca de lâmpadas": "Ouvidoria Geral",
+                "árvores": "Ouvidoria Setorial de Meio Ambiente",
+                "controle de pragas": "Ouvidoria Setorial da Saúde",
+                "criação irregular de animais": "Ouvidoria Setorial da Saúde",
+                "adolescente e idoso": "Ouvidoria Setorial da Assistência Social",
+                "criança": "Ouvidoria Setorial da Assistência Social",
+                "emprego e renda": "Ouvidoria Geral",
+                "fiscalização urbana": "Ouvidoria Setorial de Urbanismo",
+                "regularização e registro de imóveis": "Ouvidoria Setorial de Urbanismo",
+                "limpeza urbana e braço de luz": "Ouvidoria Setorial de Obras",
+                "meio ambiente (poluição sonora)": "Ouvidoria Setorial de Meio Ambiente",
+                "licenças e fiscalizações ambientais e etc.": "Ouvidoria Setorial de Meio Ambiente",
+                "vetores e zoonoses (combate à dengue)": "Ouvidoria Setorial da Saúde",
+                "sinalização e multas": "Ouvidoria Setorial de Segurança Pública",
+                "transportes": "Ouvidoria Geral",
+                # mantenha o dicionário estendido conforme necessário...
+            }
+            # normalizado (sem acento, lower, sem espaços extras)
+            MAP_TEMA_OUVID_NORM = { _norm_tema(k): v for k, v in MAP_TEMA_PARA_OUVIDORIA.items() }
+
+            def map_tema_para_ouvidoria(tema_val):
+                if pd.isna(tema_val) or str(tema_val).strip() == "":
+                    return "Ouvidoria Geral"
+                # pega a primeira correspondência possível considerando divisores
+                partes = _div_temas(tema_val)
+                for p in partes:
+                    pn = _norm_tema(p)
+                    if pn in MAP_TEMA_OUVID_NORM:
+                        return MAP_TEMA_OUVID_NORM[pn]
+                # fallback
+                return "Ouvidoria Geral"
+
+            # 2a) Detecta linhas onde unidade_cadastro é "Ouvidoria Setorial" genérico
+            mask_ouvidoria_setorial = df_loc["unidade_cadastro"].astype(str).str.match(r"(?i)^\s*ouvidoria\s+setorial\s*$", na=False)
+            n_mask = mask_ouvidoria_setorial.sum()
+            if n_mask:
+                # atribui a ouvidoria com base no tema
+                df_loc.loc[mask_ouvidoria_setorial, "unidade_cadastro"] = df_loc.loc[mask_ouvidoria_setorial, "tema"].apply(map_tema_para_ouvidoria)
+                logging.info(f"Tratamento 7.3.1: 'Ouvidoria Setorial' mapeada por tema em {n_mask} linhas.")
+
+            # 2b) Também trata variações contendo 'ouvidoria setorial' em texto (ex.: 'Ouvidoria Setorial de Saúde')
+            mask_ouvidoria_setorial_like = df_loc["unidade_cadastro"].astype(str).str.contains(r"(?i)\bouvidoria\s+setorial\b", na=False)
+            # para quem tem 'ouvidoria setorial' + mais detalhes, normalizamos para o termo mapeado por tema
+            mask_override = mask_ouvidoria_setorial_like & ~mask_ouvidoria_setorial
+            if mask_override.any():
+                df_loc.loc[mask_override, "unidade_cadastro"] = df_loc.loc[mask_override, "tema"].apply(map_tema_para_ouvidoria)
+                logging.info(f"Tratamento 7.3.1: Variantes contendo 'ouvidoria setorial' normalizadas por tema em {mask_override.sum()} linhas.")
+
+            # 3) Padronizar 'ouvidoria geral' (qualquer variante) -> 'Ouvidoria Geral'
+            mask_ouvidoria_geral = df_loc["unidade_cadastro"].astype(str).str.match(r"(?i)^\s*ouvidoria\s+geral\s*$", na=False)
+            if mask_ouvidoria_geral.any():
+                df_loc.loc[mask_ouvidoria_geral, "unidade_cadastro"] = "Ouvidoria Geral"
+                logging.info(f"Tratamento 7.3.1: Padronizado 'Ouvidoria Geral' em {mask_ouvidoria_geral.sum()} linhas.")
+
+            # 4) Limpeza final: aplica _clean_whitespace e formatação leve
+            df_loc["unidade_cadastro"] = df_loc["unidade_cadastro"].astype(str).apply(_clean_whitespace)
+            # Mantemos nomes de Ouvidoria em Title Case/Proper Case quando possível
+            df_loc["unidade_cadastro"] = df_loc["unidade_cadastro"].apply(lambda x: _to_proper_case_pt(x) if "ouvidoria" not in str(x).lower() and "uac - upa" not in str(x).lower() else x)
+
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.3.1 (unidade_cadastro extra): {e}", exc_info=True)
+        
     # 7.4 Órgãos por tema — LÓGICA SIMPLIFICADA E CORRIGIDA
     try:
         # Passo A: Cria a coluna 'orgaos' chamando a função global
