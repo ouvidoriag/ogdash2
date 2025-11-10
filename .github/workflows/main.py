@@ -1339,11 +1339,11 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # 1️⃣ Padroniza status_demanda
+    # 1️⃣ Padroniza status_demanda (nova regra institucional)
     if "status_demanda" in df.columns:
         df["status_demanda"] = df["status_demanda"].apply(
-            lambda v: "CONCLUÍDA" if _is_concluida(v)
-            else "EM ANDAMENTO" if (v and str(v).strip() != "")
+            lambda v: "Concluído" if _is_concluida(v)
+            else "Em atendimento" if (v and str(v).strip() != "")
             else v
         )
 
