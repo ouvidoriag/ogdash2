@@ -796,24 +796,19 @@ except Exception as e:
 # PREPARAÇÃO FINAL DAS DATAS ANTES DO ENVIO (LÓGICA SEGURA INTEGRADA)
 # --------------------------------------------------------------------------
 if not df_send.empty:
-    _SUB("Preparando colunas de data para envio (lógica segura)...")
+    _SUB("Serializando datas e limpando nulos para o envio...")
     
-    # --- Coluna 'data_da_criacao' ---
-    if "data_da_criacao" in df_send.columns:
-        # Tenta converter para data. O que falhar (texto, etc.) vira NaT (nulo).
-        datas_convertidas = pd.to_datetime(df_send["data_da_criacao"], errors='coerce').dt.normalize()
-        # Onde a conversão falhou, preenche de volta com o valor ORIGINAL. Isso impede que dados sejam apagados.
-        df_send["data_da_criacao"] = datas_convertidas.fillna(df_send["data_da_criacao"])
-        logging.debug("Coluna 'data_da_criacao' para novos protocolos preparada com segurança.")
-
-    # --- Coluna 'data_da_conclusao' ---
-    if "data_da_conclusao" in df_send.columns:
-        datas_convertidas = pd.to_datetime(df_send["data_da_conclusao"], errors='coerce').dt.normalize()
-        df_send["data_da_conclusao"] = datas_convertidas.fillna(df_send["data_da_conclusao"])
-        logging.debug("Coluna 'data_da_conclusao' para novos protocolos preparada com segurança.")
+    colunas_de_data = ["data_da_criacao", "data_da_conclusao"]
+    for coluna in colunas_de_data:
+        if coluna in df_send.columns:
+            # Converte para datetime (erros viram NaT) e depois para string DD/MM/AAAA
+            df_send[coluna] = pd.to_datetime(df_send[coluna], errors='coerce').dt.strftime('%d/%m/%Y')
+            logging.info(f"Coluna '{coluna}' convertida para texto DD/MM/AAAA.")
     
-    # Substitui NaT (Not a Time) por None, que gspread entende como célula vazia.
-    df_send = df_send.replace({pd.NaT: None})
+    # Substitui todos os tipos de nulos restantes (NaT, None, NaN) por uma string vazia
+    df_send.fillna('', inplace=True)
+    logging.info("Todos os valores nulos foram convertidos para string vazia para o envio.")
+    
 # --------------------------------------------------------------------------
 
 # ----------------------------------------------------------
@@ -876,18 +871,6 @@ else:
 
 print("✅ Atualização da planilha tratada concluída com sucesso.")
 logging.info("✅ Atualização da planilha tratada concluída com sucesso.")
-
-# 8.1) PREPARAÇÃO FINAL PARA ENVIO (SERIALIZAÇÃO DE DATAS PARA DD/MM/AAAA)
-
-if not df_send.empty:
-    _SUB("Serializando colunas de data para o formato DD/MM/AAAA...")
-    for col in ["data_da_criacao", "data_da_conclusao"]:
-        # Verifica se a coluna existe e se é do tipo data
-        if col in df_send.columns and pd.api.types.is_datetime64_any_dtype(df_send[col]):
-            # Converte o objeto de data para string no formato DD/MM/AAAA
-            # Onde for NaT (nulo), transforma em uma string vazia
-            df_send[col] = df_send[col].dt.strftime('%d/%m/%Y').fillna('')
-    logging.info("Colunas de data serializadas para envio como string DD/MM/AAAA.")
 
 # ========================================================
 # 9) PATCH / ATUALIZAÇÃO DE STATUS E DELTA HISTÓRICO (CORRIGIDO)
