@@ -877,6 +877,18 @@ else:
 print("✅ Atualização da planilha tratada concluída com sucesso.")
 logging.info("✅ Atualização da planilha tratada concluída com sucesso.")
 
+# 8.1) PREPARAÇÃO FINAL PARA ENVIO (SERIALIZAÇÃO DE DATAS PARA DD/MM/AAAA)
+
+if not df_send.empty:
+    _SUB("Serializando colunas de data para o formato DD/MM/AAAA...")
+    for col in ["data_da_criacao", "data_da_conclusao"]:
+        # Verifica se a coluna existe e se é do tipo data
+        if col in df_send.columns and pd.api.types.is_datetime64_any_dtype(df_send[col]):
+            # Converte o objeto de data para string no formato DD/MM/AAAA
+            # Onde for NaT (nulo), transforma em uma string vazia
+            df_send[col] = df_send[col].dt.strftime('%d/%m/%Y').fillna('')
+    logging.info("Colunas de data serializadas para envio como string DD/MM/AAAA.")
+
 # ========================================================
 # 9) PATCH / ATUALIZAÇÃO DE STATUS E DELTA HISTÓRICO (CORRIGIDO)
 # ========================================================
