@@ -785,37 +785,37 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento de 'canal': {e}", exc_info=True)
 
-# =======================================================================
-# 7.10 Limpeza de "Não há dados" para tempo_de_resolucao_em_dias (REFATORADO)
-# =======================================================================
-try:
-    if "tempo_de_resolucao_em_dias" in df_loc.columns:
-        raw = df_loc["tempo_de_resolucao_em_dias"]
+    # =======================================================================
+    # 7.10 Limpeza de "Não há dados" para tempo_de_resolucao_em_dias (REFATORADO)
+    # =======================================================================
+    try:
+        if "tempo_de_resolucao_em_dias" in df_loc.columns:
+            raw = df_loc["tempo_de_resolucao_em_dias"]
 
-        # Converte para string temporariamente para detectar tokens inválidos
-        s = raw.astype(str).str.strip()
+            # Converte para string temporariamente para detectar tokens inválidos
+            s = raw.astype(str).str.strip()
 
-        # Marca tokens que devem ser considerados como "sem dado"
-        invalid_tokens = {"nan", "none", "na", "não há dados", "n/a", ""}
-        mask_invalid = s.str.lower().isin(invalid_tokens)
+            # Marca tokens que devem ser considerados como "sem dado"
+            invalid_tokens = {"nan", "none", "na", "não há dados", "n/a", ""}
+            mask_invalid = s.str.lower().isin(invalid_tokens)
 
-        # Substitui os inválidos por NA (pd.NA)
-        s = s.where(~mask_invalid, pd.NA)
+            # Substitui os inválidos por NA (pd.NA)
+            s = s.where(~mask_invalid, pd.NA)
 
-        # Em valores válidos, padroniza vírgula decimal para ponto
-        if s.notna().any():
-            s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
+            # Em valores válidos, padroniza vírgula decimal para ponto
+            if s.notna().any():
+                s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
 
-        # Converte para numérico (erros -> NaN)
-        df_loc["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
+            # Converte para numérico (erros -> NaN)
+            df_loc["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
 
-        logging.info("Tratamento 7.10 (Limpeza e conversão numérica de 'tempo_de_resolucao_em_dias') aplicado.")
-except Exception as e:
-    logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
+            logging.info("Tratamento 7.10 (Limpeza e conversão numérica de 'tempo_de_resolucao_em_dias') aplicado.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
 
-# finalização / retorno da função (GARANTE retorno mesmo sem exceção)
-logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
-return df_loc
+    # finalização / retorno da função (GARANTE retorno mesmo sem exceção)
+    logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
+    return df_loc
 
 # Aplica o tratamento aos novos protocolos
 try:
