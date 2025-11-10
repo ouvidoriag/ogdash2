@@ -8,6 +8,8 @@ import NodeCache from 'node-cache';
 import { PrismaClient } from '@prisma/client';
 import { MongoClient, ObjectId } from 'mongodb';
 import fs from 'fs';
+import compression from 'compression';
+import { detectDistrictByAddress, mapAddressesToDistricts, getMappingStats } from './utils/districtMapper.js';
 
 // Resolver caminho absoluto
 const __filename = fileURLToPath(import.meta.url);
@@ -691,6 +693,18 @@ reindexContext().then(() => {
   console.error('⚠️ Erro ao indexar contexto:', err);
 });
 
+// Compressão Gzip para reduzir tamanho de transferência
+app.use(compression({ 
+  level: 6, // Nível de compressão (1-9, 6 é um bom equilíbrio)
+  filter: (req, res) => {
+    // Comprimir apenas respostas JSON e HTML
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
+
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
@@ -736,28 +750,59 @@ app.get('/api/summary', async (req, res) => {
     const statusCounts = byStatus.map(r => ({ status: r.status ?? 'Não informado', count: r._count._all }))
       .sort((a,b) => b.count - a.count);
 
-    // Últimos 7 e 30 dias usando dataDaCriacao (sistema global - 100% disponível)
+    // Últimos 7 e 30 dias usando dataCriacaoIso (campo normalizado)
+    // Incluir hoje nos últimos 7 e 30 dias
     const today = new Date();
-    const toIso = (d) => d.toISOString().slice(0,10);
-    const d7 = new Date(today); d7.setDate(today.getDate() - 7);
-    const d30 = new Date(today); d30.setDate(today.getDate() - 30);
-    const last7Str = toIso(d7);
-    const last30Str = toIso(d30);
-    // Filtrar por dataDaCriacao usando startsWith (funciona para strings ISO também)
-    const last7Where = { 
-      ...where, 
-      dataDaCriacao: { 
-        startsWith: last7Str
+    const todayStr = today.toISOString().slice(0, 10); // YYYY-MM-DD (hoje)
+    
+    // Data há 7 dias atrás (incluindo hoje = últimos 7 dias)
+    const d7 = new Date(today);
+    d7.setDate(today.getDate() - 6); // -6 porque incluímos hoje (hoje + 6 dias = 7 dias)
+    const last7Str = d7.toISOString().slice(0, 10); // YYYY-MM-DD
+    
+    // Data há 30 dias atrás (incluindo hoje = últimos 30 dias)
+    const d30 = new Date(today);
+    d30.setDate(today.getDate() - 29); // -29 porque incluímos hoje (hoje + 29 dias = 30 dias)
+    const last30Str = d30.toISOString().slice(0, 10); // YYYY-MM-DD
+    
+    console.log(`📅 Calculando últimos 7 e 30 dias: hoje=${todayStr}, últimos 7 dias de ${last7Str} até ${todayStr}, últimos 30 dias de ${last30Str} até ${todayStr}`);
+    
+    // Buscar todos os registros e filtrar por data usando sistema global
+    const allRecords = await safePrismaQuery(async () => {
+      return await prisma.record.findMany({
+        where: where,
+        select: {
+          dataCriacaoIso: true,
+          dataDaCriacao: true,
+          data: true
+        }
+      });
+    });
+    
+    console.log(`📊 Total de registros encontrados: ${allRecords.length}`);
+    
+    // Filtrar usando função getDataCriacao (sistema global)
+    let last7 = 0;
+    let last30 = 0;
+    let semData = 0;
+    
+    allRecords.forEach(record => {
+      const dataCriacao = getDataCriacao(record);
+      if (!dataCriacao) {
+        semData++;
+        return;
       }
-    };
-    const last30Where = { 
-      ...where, 
-      dataDaCriacao: { 
-        startsWith: last30Str
+      
+      // Comparar datas (formato YYYY-MM-DD - comparação lexicográfica funciona)
+      if (dataCriacao >= last7Str && dataCriacao <= todayStr) {
+        last7++;
       }
-    };
-    const last7 = await prisma.record.count({ where: last7Where });
-    const last30 = await prisma.record.count({ where: last30Where });
+      if (dataCriacao >= last30Str && dataCriacao <= todayStr) {
+        last30++;
+      }
+    });
+    
+    console.log(`📊 Resultado: últimos 7 dias=${last7}, últimos 30 dias=${last30}, sem data=${semData}`);
 
     // Top dimensões normalizadas (usando novos campos)
     const top = async (col) => {
@@ -1005,6 +1050,53 @@ app.get('/api/aggregate/by-month', async (req, res) => {
     }
     return Array.from(map.entries()).map(([ym, count]) => ({ ym, count }))
       .sort((a,b) => a.ym.localeCompare(b.ym)).slice(-12);
+  });
+});
+
+// Dados diários (últimos 30 dias) para KPIs e sparklines
+app.get('/api/aggregate/by-day', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const cacheKey = servidor ? `byDay:servidor:${servidor}:v1` : 
+                    unidadeCadastro ? `byDay:uac:${unidadeCadastro}:v1` : 
+                    'byDay:v1';
+  
+  return withCache(cacheKey, 300, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    const rows = await prisma.record.findMany({ 
+      where: { ...where, dataDaCriacao: { not: null } },
+      select: { 
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        data: true
+      } 
+    });
+    
+    const map = new Map();
+    for (const r of rows) {
+      const dataCriacao = getDataCriacao(r);
+      if (!dataCriacao) continue;
+      map.set(dataCriacao, (map.get(dataCriacao) ?? 0) + 1);
+    }
+    
+    // Gerar últimos 30 dias
+    const today = new Date();
+    const result = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateKey = d.toISOString().slice(0, 10);
+      result.push({
+        date: dateKey,
+        count: map.get(dateKey) || 0
+      });
+    }
+    
+    return result;
   });
 });
 
@@ -1821,6 +1913,199 @@ app.get('/api/stats/average-time/stats', async (req, res) => {
   });
 });
 
+// Tempo médio por Unidade de Cadastro
+app.get('/api/stats/average-time/by-unit', async (req, res) => {
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false';
+  const servidor = req.query.servidor;
+  
+  const key = servidor ? `avgTimeByUnit:servidor:${servidor}:v1` :
+              meses ? `avgTimeByUnit:meses:${meses.sort().join(',')}:v1` :
+              'avgTimeByUnit:v1';
+  
+  try {
+    return await withCache(key, 3600, res, async () => {
+      const where = {};
+      if (servidor) where.servidor = servidor;
+      
+      // Construir filtro de data baseado nos meses selecionados
+      if (meses && meses.length > 0) {
+        const monthFilters = meses.map(month => {
+          if (/^\d{4}-\d{2}$/.test(month)) return month;
+          const match = month.match(/^(\d{2})\/(\d{4})$/);
+          if (match) return `${match[2]}-${match[1]}`;
+          return month;
+        });
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: monthFilters.map(month => ({
+              dataDaCriacao: { startsWith: month }
+            }))
+          }
+        ];
+      }
+      
+      // Buscar registros
+      const rows = await prisma.record.findMany({
+        where: {
+          ...where,
+          dataDaCriacao: { not: null }
+        },
+        select: {
+          unidadeCadastro: true,
+          tempoDeResolucaoEmDias: true,
+          dataCriacaoIso: true,
+          dataDaCriacao: true,
+          dataConclusaoIso: true,
+          dataDaConclusao: true,
+          data: true
+        }
+      });
+      
+      // Agrupar por unidade de cadastro e calcular média
+      const map = new Map();
+      for (const r of rows) {
+        const unidade = r.unidadeCadastro || 'Não informado';
+        
+        // Se apenasConcluidos é true, verificar se tem data de conclusão
+        if (apenasConcluidos && !isConcluido(r)) {
+          continue;
+        }
+        
+        // Usar sistema global para calcular tempo de resolução
+        const days = getTempoResolucaoEmDias(r, incluirZero);
+        
+        // Ignorar se não conseguir calcular
+        if (days === null) continue;
+        
+        if (!map.has(unidade)) map.set(unidade, { total: 0, sum: 0 });
+        const stats = map.get(unidade);
+        stats.total += 1;
+        stats.sum += days;
+      }
+      
+      // Calcular médias e retornar ordenado por dias (maior primeiro - decrescente)
+      const result = Array.from(map.entries())
+        .map(([unidade, stats]) => ({ 
+          unidade, 
+          dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+          quantidade: stats.total
+        }))
+        .filter(item => item.dias > 0) // Filtrar apenas unidades com tempo válido
+        .sort((a, b) => b.dias - a.dias); // Ordem decrescente
+      
+      return result;
+    });
+  } catch (error) {
+    console.error('❌ Erro ao calcular tempo médio por unidade:', error);
+    return res.status(500).json({ error: 'Erro ao calcular tempo médio por unidade', details: error.message });
+  }
+});
+
+// Tempo médio por mês agrupado por unidade de cadastro
+app.get('/api/stats/average-time/by-month-unit', async (req, res) => {
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false';
+  const servidor = req.query.servidor;
+  
+  const key = servidor ? `avgTimeByMonthUnit:servidor:${servidor}:v1` :
+              meses ? `avgTimeByMonthUnit:meses:${meses.sort().join(',')}:v1` :
+              'avgTimeByMonthUnit:v1';
+  
+  try {
+    return await withCache(key, 3600, res, async () => {
+      const where = {};
+      if (servidor) where.servidor = servidor;
+      
+      // Construir filtro de data baseado nos meses selecionados
+      if (meses && meses.length > 0) {
+        const monthFilters = meses.map(month => {
+          if (/^\d{4}-\d{2}$/.test(month)) return month;
+          const match = month.match(/^(\d{2})\/(\d{4})$/);
+          if (match) return `${match[2]}-${match[1]}`;
+          return month;
+        });
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: monthFilters.map(month => ({
+              dataDaCriacao: { startsWith: month }
+            }))
+          }
+        ];
+      }
+      
+      // Buscar registros
+      const rows = await prisma.record.findMany({
+        where: {
+          ...where,
+          dataDaCriacao: { not: null }
+        },
+        select: {
+          unidadeCadastro: true,
+          tempoDeResolucaoEmDias: true,
+          dataCriacaoIso: true,
+          dataDaCriacao: true,
+          dataConclusaoIso: true,
+          dataDaConclusao: true,
+          data: true
+        }
+      });
+      
+      // Agrupar por unidade e mês
+      const map = new Map(); // key: "unidade|mes", value: { total, sum }
+      
+      for (const r of rows) {
+        const unidade = r.unidadeCadastro || 'Não informado';
+        
+        // Se apenasConcluidos é true, verificar se tem data de conclusão
+        if (apenasConcluidos && !isConcluido(r)) {
+          continue;
+        }
+        
+        // Usar sistema global para calcular tempo de resolução
+        const days = getTempoResolucaoEmDias(r, incluirZero);
+        
+        // Ignorar se não conseguir calcular
+        if (days === null) continue;
+        
+        // Obter mês usando sistema global
+        const mes = getMes(r);
+        if (!mes) continue;
+        
+        const key = `${unidade}|${mes}`;
+        if (!map.has(key)) map.set(key, { total: 0, sum: 0, unidade, mes });
+        const stats = map.get(key);
+        stats.total += 1;
+        stats.sum += days;
+      }
+      
+      // Converter para formato de resposta
+      const result = Array.from(map.entries())
+        .map(([key, stats]) => ({
+          unidade: stats.unidade,
+          mes: stats.mes,
+          dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+          quantidade: stats.total
+        }))
+        .filter(item => item.dias > 0)
+        .sort((a, b) => {
+          // Ordenar por mês primeiro, depois por unidade
+          if (a.mes !== b.mes) return a.mes.localeCompare(b.mes);
+          return a.unidade.localeCompare(b.unidade);
+        });
+      
+      return result;
+    });
+  } catch (error) {
+    console.error('❌ Erro ao calcular tempo médio por mês/unidade:', error);
+    return res.status(500).json({ error: 'Erro ao calcular tempo médio por mês/unidade', details: error.message });
+  }
+});
+
 // Total por Tema
 app.get('/api/aggregate/by-theme', async (_req, res) => {
   const key = 'byTheme:v2';
@@ -1909,8 +2194,8 @@ app.get('/api/aggregate/filtered', async (req, res) => {
     });
     const byTheme = temas
       .map(r => ({ tema: r.tema ?? 'Não informado', quantidade: r._count._all }))
-      .sort((a, b) => b.quantidade - a.quantidade)
-      .slice(0, 10);
+      .sort((a, b) => b.quantidade - a.quantidade);
+      // Removido .slice(0, 10) para mostrar todos os temas
     
     // Dados por assunto
     const assuntos = await prisma.record.groupBy({
@@ -1920,8 +2205,8 @@ app.get('/api/aggregate/filtered', async (req, res) => {
     });
     const bySubject = assuntos
       .map(r => ({ assunto: r.assunto ?? 'Não informado', quantidade: r._count._all }))
-      .sort((a, b) => b.quantidade - a.quantidade)
-      .slice(0, 10);
+      .sort((a, b) => b.quantidade - a.quantidade);
+      // Removido .slice(0, 10) para mostrar todos os assuntos
     
     // Dados por status
     const status = await prisma.record.groupBy({
@@ -1955,6 +2240,202 @@ app.get('/api/aggregate/filtered', async (req, res) => {
       unidadesCadastradas,
       filter: servidor ? { type: 'servidor', value: servidor } : { type: 'unidadeCadastro', value: unidadeCadastro }
     };
+  });
+});
+
+// Dados cruzados para Sankey: Tema → Órgão → Status
+app.get('/api/aggregate/sankey-flow', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const cacheKey = servidor ? `sankey:servidor:${servidor}:v1` : 
+                    unidadeCadastro ? `sankey:uac:${unidadeCadastro}:v1` : 
+                    'sankey:v1';
+  
+  return withCache(cacheKey, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    // Buscar registros com tema, órgão e status
+    const records = await prisma.record.findMany({
+      where: { ...where, tema: { not: null }, orgaos: { not: null }, status: { not: null } },
+      select: {
+        tema: true,
+        orgaos: true,
+        status: true
+      },
+      take: 10000 // Limitar para performance
+    });
+    
+    // Agrupar por combinações tema-órgão-status
+    const flowMap = new Map();
+    records.forEach(r => {
+      const tema = r.tema || 'Não informado';
+      const orgao = r.orgaos || 'Não informado';
+      const status = r.status || 'Não informado';
+      
+      // Tema → Órgão
+      const key1 = `${tema}|${orgao}`;
+      flowMap.set(key1, (flowMap.get(key1) || 0) + 1);
+      
+      // Órgão → Status
+      const key2 = `${orgao}|${status}`;
+      flowMap.set(key2, (flowMap.get(key2) || 0) + 1);
+    });
+    
+    // Contar frequência de cada tema, órgão e status para pegar os top
+    const temaCount = new Map();
+    const orgaoCount = new Map();
+    const statusCount = new Map();
+    
+    records.forEach(r => {
+      const tema = r.tema || 'Não informado';
+      const orgao = r.orgaos || 'Não informado';
+      const status = r.status || 'Não informado';
+      
+      temaCount.set(tema, (temaCount.get(tema) || 0) + 1);
+      orgaoCount.set(orgao, (orgaoCount.get(orgao) || 0) + 1);
+      statusCount.set(status, (statusCount.get(status) || 0) + 1);
+    });
+    
+    // Top temas, órgãos e status
+    const topTemas = Array.from(temaCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([tema]) => tema);
+    
+    const topOrgaos = Array.from(orgaoCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([orgao]) => orgao);
+    
+    const topStatuses = Array.from(statusCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([status]) => status);
+    
+    // Criar links apenas para os tops
+    const links = [];
+    
+    // Tema → Órgão
+    topTemas.forEach(tema => {
+      topOrgaos.forEach(orgao => {
+        const key = `${tema}|${orgao}`;
+        const value = flowMap.get(key) || 0;
+        if (value > 0) {
+          links.push({ source: tema, target: orgao, value, type: 'tema-orgao' });
+        }
+      });
+    });
+    
+    // Órgão → Status
+    topOrgaos.forEach(orgao => {
+      topStatuses.forEach(status => {
+        const key = `${orgao}|${status}`;
+        const value = flowMap.get(key) || 0;
+        if (value > 0) {
+          links.push({ source: orgao, target: status, value, type: 'orgao-status' });
+        }
+      });
+    });
+    
+    return {
+      nodes: {
+        temas: topTemas,
+        orgaos: topOrgaos,
+        statuses: topStatuses
+      },
+      links: links.filter(l => l.value > 0).sort((a, b) => b.value - a.value)
+    };
+  });
+});
+
+// Status por mês
+app.get('/api/aggregate/count-by-status-mes', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const cacheKey = servidor ? `statusMes:servidor:${servidor}:v1` : 
+                    unidadeCadastro ? `statusMes:uac:${unidadeCadastro}:v1` : 
+                    'statusMes:v1';
+  
+  return withCache(cacheKey, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    const rows = await prisma.record.findMany({ 
+      where: { ...where, dataDaCriacao: { not: null } },
+      select: { 
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        data: true,
+        status: true
+      } 
+    });
+    
+    const map = new Map();
+    for (const r of rows) {
+      const mes = getMes(r);
+      const status = r.status || 'Não informado';
+      if (!mes) continue;
+      
+      const key = `${status}|${mes}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    
+    return Array.from(map.entries()).map(([key, count]) => {
+      const [status, month] = key.split('|');
+      return { status, month, count };
+    }).sort((a, b) => {
+      if (a.month !== b.month) return a.month.localeCompare(b.month);
+      return a.status.localeCompare(b.status);
+    });
+  });
+});
+
+// Órgão por mês
+app.get('/api/aggregate/count-by-orgao-mes', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const cacheKey = servidor ? `orgaoMes:servidor:${servidor}:v1` : 
+                    unidadeCadastro ? `orgaoMes:uac:${unidadeCadastro}:v1` : 
+                    'orgaoMes:v1';
+  
+  return withCache(cacheKey, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    const rows = await prisma.record.findMany({ 
+      where: { ...where, dataDaCriacao: { not: null } },
+      select: { 
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        data: true,
+        orgaos: true
+      } 
+    });
+    
+    const map = new Map();
+    for (const r of rows) {
+      const mes = getMes(r);
+      const orgao = r.orgaos || 'Não informado';
+      if (!mes) continue;
+      
+      const key = `${orgao}|${mes}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    
+    return Array.from(map.entries()).map(([key, count]) => {
+      const [orgao, month] = key.split('|');
+      return { orgao, month, count };
+    }).sort((a, b) => {
+      if (a.month !== b.month) return a.month.localeCompare(b.month);
+      return a.orgao.localeCompare(b.orgao);
+    });
   });
 });
 
@@ -2110,6 +2591,663 @@ app.get('/api/complaints-denunciations', async (_req, res) => {
 });
 
 // Metadados: retornar aliases e colunas disponíveis
+// ========== ENDPOINTS DE SECRETARIAS E DISTRITOS ==========
+// ========== IA ANALÍTICA - INSIGHTS AUTOMÁTICOS ==========
+
+// Função para detectar anomalias e padrões
+async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
+  const where = {};
+  if (servidor) where.servidor = servidor;
+  if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  
+  // Buscar dados dos últimos 3 meses para comparação
+  const hoje = new Date();
+  const tresMesesAtras = new Date(hoje);
+  tresMesesAtras.setMonth(tresMesesAtras.getMonth() - 3);
+  
+  // Buscar registros e agrupar por mês manualmente
+  const registros = await prisma.record.findMany({
+    where: {
+      ...where,
+      dataDaCriacao: { not: null }
+    },
+    select: {
+      dataCriacaoIso: true,
+      dataDaCriacao: true,
+      data: true
+    }
+  });
+  
+  // Agrupar por mês usando a função getMes
+  const porMes = new Map();
+  registros.forEach(r => {
+    const mes = getMes(r);
+    if (mes) {
+      porMes.set(mes, (porMes.get(mes) || 0) + 1);
+    }
+  });
+  
+  const meses = Array.from(porMes.entries()).sort();
+  const anomalias = [];
+  
+  // Detectar aumentos anormais (mais de 30% de aumento)
+  if (meses.length >= 2) {
+    const ultimoMes = meses[meses.length - 1];
+    const penultimoMes = meses[meses.length - 2];
+    const aumento = ((ultimoMes[1] - penultimoMes[1]) / penultimoMes[1]) * 100;
+    
+    if (aumento > 30) {
+      anomalias.push({
+        tipo: 'aumento_anormal',
+        mes: ultimoMes[0],
+        valor: ultimoMes[1],
+        aumento: aumento.toFixed(1),
+        mensagem: `Aumento anormal de ${aumento.toFixed(1)}% em ${ultimoMes[0]}`
+      });
+    }
+  }
+  
+  // Dados por secretaria
+  const porSecretaria = await prisma.record.groupBy({
+    by: ['orgaos'],
+    where: {
+      ...where,
+      orgaos: { not: null }
+    },
+    _count: { _all: true },
+    orderBy: { _count: { _all: 'desc' } },
+    take: 10
+  });
+  
+  // Dados por assunto
+  const porAssunto = await prisma.record.groupBy({
+    by: ['assunto'],
+    where: {
+      ...where,
+      assunto: { not: null }
+    },
+    _count: { _all: true },
+    orderBy: { _count: { _all: 'desc' } },
+    take: 10
+  });
+  
+  // Dados por unidade de cadastro
+  const porUnidade = await prisma.record.groupBy({
+    by: ['unidadeCadastro'],
+    where: {
+      ...where,
+      unidadeCadastro: { not: null }
+    },
+    _count: { _all: true },
+    orderBy: { _count: { _all: 'desc' } },
+    take: 10
+  });
+  
+  return {
+    anomalias,
+    topSecretarias: porSecretaria.map(s => ({ nome: s.orgaos, count: s._count._all })),
+    topAssuntos: porAssunto.map(a => ({ nome: a.assunto, count: a._count._all })),
+    topUnidades: porUnidade.map(u => ({ nome: u.unidadeCadastro, count: u._count._all })),
+    tendenciaMensal: meses.map(([mes, count]) => ({ mes, count }))
+  };
+}
+
+// Endpoint para gerar insights com IA
+app.get('/api/ai/insights', async (req, res) => {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  const cacheKey = servidor ? `aiInsights:servidor:${servidor}:v1` : 
+                    unidadeCadastro ? `aiInsights:uac:${unidadeCadastro}:v1` : 
+                    'aiInsights:v1';
+  
+  return withCache(cacheKey, 1800, res, async () => { // Cache de 30 minutos
+    try {
+      // Detectar padrões e anomalias
+      const patterns = await detectPatternsAndAnomalies(servidor, unidadeCadastro);
+      
+      // Se não houver chave Gemini, retornar insights básicos
+      if (GEMINI_API_KEYS.length === 0) {
+        const insights = [];
+        
+        if (patterns.anomalias.length > 0) {
+          patterns.anomalias.forEach(a => {
+            insights.push({
+              tipo: 'anomalia',
+              insight: a.mensagem,
+              recomendacao: 'Revisar causas do aumento e implementar medidas preventivas.',
+              severidade: 'alta'
+            });
+          });
+        }
+        
+        if (patterns.topSecretarias.length > 0) {
+          insights.push({
+            tipo: 'volume',
+            insight: `Maior volume: ${patterns.topSecretarias[0].nome} com ${patterns.topSecretarias[0].count.toLocaleString('pt-BR')} manifestações.`,
+            recomendacao: 'Monitorar de perto e garantir recursos adequados.',
+            severidade: 'media'
+          });
+        }
+        
+        return { insights, patterns };
+      }
+      
+      // Gerar insights com IA (Gemini)
+      const GEMINI_API_KEY = getCurrentGeminiKey();
+      
+      if (!GEMINI_API_KEY) {
+        console.warn('⚠️ Nenhuma chave Gemini disponível para insights');
+        // Fallback para insights básicos
+        const insights = [];
+        if (patterns.anomalias.length > 0) {
+          patterns.anomalias.forEach(a => {
+            insights.push({
+              tipo: 'anomalia',
+              insight: a.mensagem,
+              recomendacao: 'Revisar causas do aumento e implementar medidas preventivas.',
+              severidade: 'alta'
+            });
+          });
+        }
+        if (patterns.topSecretarias.length > 0) {
+          insights.push({
+            tipo: 'volume',
+            insight: `Maior volume: ${patterns.topSecretarias[0].nome} com ${patterns.topSecretarias[0].count.toLocaleString('pt-BR')} manifestações.`,
+            recomendacao: 'Monitorar de perto e garantir recursos adequados.',
+            severidade: 'media'
+          });
+        }
+        return { insights, patterns, geradoPorIA: false };
+      }
+      
+      console.log(`🤖 Gerando insights com Gemini (chave ${currentKeyIndex + 1}/${GEMINI_API_KEYS.length})...`);
+      
+      const dadosTexto = `
+ANÁLISE DE DADOS DA OUVIDORIA DE DUQUE DE CAXIAS
+
+TENDÊNCIA MENSAL:
+${patterns.tendenciaMensal.map(t => `- ${t.mes}: ${t.count.toLocaleString('pt-BR')} manifestações`).join('\n')}
+
+TOP 5 SECRETARIAS/ÓRGÃOS:
+${patterns.topSecretarias.slice(0, 5).map((s, i) => `${i+1}. ${s.nome}: ${s.count.toLocaleString('pt-BR')} manifestações`).join('\n')}
+
+TOP 5 ASSUNTOS:
+${patterns.topAssuntos.slice(0, 5).map((a, i) => `${i+1}. ${a.nome}: ${a.count.toLocaleString('pt-BR')} manifestações`).join('\n')}
+
+TOP 5 UNIDADES DE CADASTRO:
+${patterns.topUnidades.slice(0, 5).map((u, i) => `${i+1}. ${u.nome}: ${u.count.toLocaleString('pt-BR')} manifestações`).join('\n')}
+
+${patterns.anomalias.length > 0 ? `\nANOMALIAS DETECTADAS:\n${patterns.anomalias.map(a => `- ${a.mensagem}`).join('\n')}` : ''}
+      `.trim();
+      
+      const systemPrompt = `Você é um analista especializado em dados de ouvidoria municipal. 
+Analise os dados fornecidos e gere insights acionáveis em português brasileiro.
+Seja objetivo, use números reais e forneça recomendações práticas.`;
+      
+      const userPrompt = `${dadosTexto}
+
+Gere 3-5 insights principais baseados nestes dados. Para cada insight:
+1. Identifique padrões, tendências ou anomalias importantes
+2. Explique o que isso significa em linguagem clara
+3. Forneça uma recomendação acionável
+
+Formato JSON:
+{
+  "insights": [
+    {
+      "tipo": "anomalia|tendencia|volume|tempo",
+      "insight": "Descrição clara do que foi detectado (ex: 'A Secretaria de Saúde teve aumento de 32% em manifestações no último mês')",
+      "recomendacao": "Ação sugerida (ex: 'Revisar fluxo de triagem e reforçar equipe médica no local')",
+      "severidade": "alta|media|baixa"
+    }
+  ]
+}
+
+Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
+      
+      try {
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+        
+        const payload = {
+          system_instruction: {
+            parts: [{ text: systemPrompt }]
+          },
+          safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            responseMimeType: "application/json"
+          },
+          contents: [
+            { role: 'user', parts: [{ text: userPrompt }] }
+          ]
+        };
+        
+        const resp = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!resp.ok) {
+          const errorText = await resp.text().catch(() => '');
+          console.error(`❌ Gemini API error ${resp.status}:`, errorText);
+          throw new Error(`Gemini API error: ${resp.status} - ${errorText.substring(0, 200)}`);
+        }
+        
+        const data = await resp.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        
+        console.log('✅ Resposta recebida da Gemini para insights');
+        
+        // Tentar extrair JSON mesmo se vier com markdown
+        let jsonStr = text.trim();
+        if (jsonStr.startsWith('```')) {
+          jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        }
+        
+        let aiInsights;
+        try {
+          aiInsights = JSON.parse(jsonStr);
+        } catch (parseError) {
+          console.error('❌ Erro ao fazer parse do JSON da Gemini:', parseError);
+          console.error('Texto recebido:', jsonStr.substring(0, 500));
+          throw new Error('Resposta da Gemini não é um JSON válido');
+        }
+        
+        console.log(`✅ ${aiInsights.insights?.length || 0} insights gerados pela IA`);
+        
+        return {
+          insights: aiInsights.insights || [],
+          patterns,
+          geradoPorIA: true
+        };
+      } catch (geminiError) {
+        console.error('❌ Erro ao chamar Gemini para insights:', geminiError);
+        rotateToNextKey();
+        
+        // Fallback para insights básicos
+        const insights = [];
+        if (patterns.anomalias.length > 0) {
+          patterns.anomalias.forEach(a => {
+            insights.push({
+              tipo: 'anomalia',
+              insight: a.mensagem,
+              recomendacao: 'Revisar causas do aumento e implementar medidas preventivas.',
+              severidade: 'alta'
+            });
+          });
+        }
+        return { insights, patterns, geradoPorIA: false };
+      }
+    } catch (error) {
+      console.error('❌ Erro ao gerar insights:', error);
+      return { insights: [], patterns: {}, geradoPorIA: false, erro: error.message };
+    }
+  });
+});
+
+app.get('/api/secretarias', async (_req, res) => {
+  try {
+    const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    return res.json({
+      secretarias: data.secretarias,
+      total: data.secretarias.length
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar secretarias:', error);
+    return res.status(500).json({ error: 'Erro ao buscar secretarias' });
+  }
+});
+
+app.get('/api/secretarias/:district', async (req, res) => {
+  try {
+    const { district } = req.params;
+    const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    const secretarias = data.secretarias.filter(s => 
+      s.district.toLowerCase().includes(district.toLowerCase())
+    );
+    return res.json({ secretarias, total: secretarias.length });
+  } catch (error) {
+    console.error('❌ Erro ao buscar secretarias por distrito:', error);
+    return res.status(500).json({ error: 'Erro ao buscar secretarias' });
+  }
+});
+
+app.get('/api/distritos', async (_req, res) => {
+  try {
+    const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    return res.json({
+      distritos: data.distritos,
+      estatisticas: data.estatisticas
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar distritos:', error);
+    return res.status(500).json({ error: 'Erro ao buscar distritos' });
+  }
+});
+
+app.get('/api/distritos/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    const distrito = Object.entries(data.distritos).find(([name, info]) => 
+      info.code === code || name.includes(code)
+    );
+    
+    if (!distrito) {
+      return res.status(404).json({ error: 'Distrito não encontrado' });
+    }
+    
+    return res.json({
+      nome: distrito[0],
+      ...distrito[1]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar distrito:', error);
+    return res.status(500).json({ error: 'Erro ao buscar distrito' });
+  }
+});
+
+app.get('/api/bairros', async (req, res) => {
+  try {
+    const { distrito } = req.query;
+    const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    
+    if (distrito) {
+      const distritoInfo = data.distritos[distrito];
+      if (!distritoInfo) {
+        return res.status(404).json({ error: 'Distrito não encontrado' });
+      }
+      return res.json({ bairros: distritoInfo.bairros, total: distritoInfo.bairros.length });
+    }
+    
+    // Retornar todos os bairros agrupados por distrito
+    const bairrosPorDistrito = {};
+    Object.entries(data.distritos).forEach(([nome, info]) => {
+      bairrosPorDistrito[nome] = info.bairros;
+    });
+    
+    return res.json({ bairrosPorDistrito });
+  } catch (error) {
+    console.error('❌ Erro ao buscar bairros:', error);
+    return res.status(500).json({ error: 'Erro ao buscar bairros' });
+  }
+});
+
+// Endpoint de debug para testar mapeamento de endereços
+app.get('/api/debug/district-mapping', async (req, res) => {
+  try {
+    const { endereco } = req.query;
+    if (!endereco) {
+      return res.status(400).json({ error: 'Parâmetro "endereco" é obrigatório' });
+    }
+    
+    const resultado = detectDistrictByAddress(endereco);
+    const stats = getMappingStats();
+    
+    return res.json({
+      endereco: endereco,
+      resultado: resultado,
+      estatisticas: stats
+    });
+  } catch (error) {
+    console.error('❌ Erro ao testar mapeamento:', error);
+    return res.status(500).json({ error: 'Erro ao testar mapeamento' });
+  }
+});
+
+// Endpoint para testar mapeamento em lote
+app.post('/api/debug/district-mapping-batch', async (req, res) => {
+  try {
+    const { enderecos } = req.body;
+    if (!Array.isArray(enderecos)) {
+      return res.status(400).json({ error: 'Body deve conter array "enderecos"' });
+    }
+    
+    const resultado = mapAddressesToDistricts(enderecos);
+    
+    return res.json(resultado);
+  } catch (error) {
+    console.error('❌ Erro ao testar mapeamento em lote:', error);
+    return res.status(500).json({ error: 'Erro ao testar mapeamento' });
+  }
+});
+
+// Endpoint para agregar manifestações por distrito
+app.get('/api/aggregate/by-district', async (req, res) => {
+  return withCache('aggregate-by-district', 300, res, async () => {
+    try {
+      const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+      const distritosData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+      
+      // Buscar todos os registros (vamos filtrar depois para ter mais flexibilidade)
+      const records = await safePrismaQuery(async () => {
+        const allRecords = await prisma.record.findMany({
+          select: {
+            endereco: true,
+            data: true,
+            statusDemanda: true,
+            tipoDeManifestacao: true,
+            dataCriacaoIso: true
+          }
+        });
+        
+        // Filtrar apenas registros que têm algum endereço/bairro
+        return allRecords.filter(record => {
+          const dat = record.data || {};
+          const endereco = record.endereco || 
+                          dat.endereco || 
+                          dat.Bairro || 
+                          dat.bairro ||
+                          dat.endereco_completo ||
+                          dat.endereço ||
+                          dat.Endereço ||
+                          '';
+          return endereco && endereco.trim() !== '';
+        });
+      });
+      
+      console.log(`📊 Total de registros com endereço encontrados: ${records.length}`);
+      
+      // Agrupar por distrito
+      const distritosMap = {};
+      Object.keys(distritosData.distritos).forEach(distrito => {
+        distritosMap[distrito] = {
+          nome: distrito,
+          code: distritosData.distritos[distrito].code,
+          count: 0,
+          porStatus: {},
+          porTipo: {},
+          porMes: {}
+        };
+      });
+      
+      // Processar cada registro usando a biblioteca de mapeamento
+      let mapeados = 0;
+      let naoMapeados = 0;
+      
+      records.forEach(record => {
+        const dat = record.data || {};
+        const bairro = record.endereco || 
+                      dat.endereco || 
+                      dat.Bairro || 
+                      dat.bairro ||
+                      dat.endereco_completo ||
+                      dat.endereço ||
+                      dat.Endereço ||
+                      '';
+        
+        if (!bairro || bairro.trim() === '') {
+          naoMapeados++;
+          return;
+        }
+        
+        // Usar biblioteca de mapeamento robusta
+        const resultado = detectDistrictByAddress(bairro);
+        const distrito = resultado?.distrito;
+        
+        if (!distrito || !distritosMap[distrito]) {
+          naoMapeados++;
+          // Log para debug (apenas primeiros 10 não mapeados)
+          if (naoMapeados <= 10) {
+            console.log(`⚠️ Não mapeado: "${bairro}"`);
+          }
+          return;
+        }
+        
+        mapeados++;
+        distritosMap[distrito].count++;
+        
+        // Agrupar por status
+        const status = record.statusDemanda || record.data?.status_demanda || record.data?.Status || 'Não informado';
+        distritosMap[distrito].porStatus[status] = (distritosMap[distrito].porStatus[status] || 0) + 1;
+        
+        // Agrupar por tipo
+        const tipo = record.tipoDeManifestacao || record.data?.tipo_de_manifestacao || record.data?.Tipo || 'Não informado';
+        distritosMap[distrito].porTipo[tipo] = (distritosMap[distrito].porTipo[tipo] || 0) + 1;
+        
+        // Agrupar por mês
+        const dataIso = record.dataCriacaoIso || record.data?.dataCriacaoIso;
+        if (dataIso) {
+          const mes = dataIso.substring(0, 7); // YYYY-MM
+          distritosMap[distrito].porMes[mes] = (distritosMap[distrito].porMes[mes] || 0) + 1;
+        }
+      });
+      
+      console.log(`📊 Mapeamento: ${mapeados} mapeados, ${naoMapeados} não mapeados (${((mapeados / records.length) * 100).toFixed(1)}% de sucesso)`);
+      
+      // Converter para array
+      const resultado = Object.values(distritosMap).map(d => ({
+        distrito: d.nome,
+        code: d.code,
+        total: d.count,
+        porStatus: d.porStatus,
+        porTipo: d.porTipo,
+        porMes: d.porMes
+      }));
+      
+      return resultado;
+    } catch (error) {
+      console.error('❌ Erro ao agregar por distrito:', error);
+      throw error;
+    }
+  });
+});
+
+// Endpoint para estatísticas detalhadas de um distrito específico
+app.get('/api/distritos/:code/stats', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+    const distritosData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    
+    // Encontrar o distrito
+    const distrito = Object.entries(distritosData.distritos).find(([name, info]) => 
+      info.code === code || name.includes(code)
+    );
+    
+    if (!distrito) {
+      return res.status(404).json({ error: 'Distrito não encontrado' });
+    }
+    
+    const [nome, info] = distrito;
+    const bairros = info.bairros;
+    
+    // Buscar manifestações dos bairros deste distrito
+    // MongoDB não suporta mode: 'insensitive' diretamente, vamos buscar todos e filtrar
+    const records = await safePrismaQuery(async () => {
+      const allRecords = await prisma.record.findMany({
+        where: {
+          OR: [
+            { endereco: { not: null } },
+            { data: { path: ['endereco'], not: null } },
+            { data: { path: ['Bairro'], not: null } }
+          ]
+        }
+      });
+      
+      // Filtrar por bairros do distrito usando biblioteca de mapeamento
+      return allRecords.filter(record => {
+        const endereco = record.endereco || 
+                        record.data?.endereco || 
+                        record.data?.Bairro || 
+                        record.data?.bairro ||
+                        record.data?.endereco_completo ||
+                        '';
+        
+        if (!endereco) return false;
+        
+        const resultado = detectDistrictByAddress(endereco);
+        return resultado && resultado.distrito === nome;
+      });
+    });
+    
+    // Calcular estatísticas
+    const stats = {
+      distrito: nome,
+      code: info.code,
+      totalManifestacoes: records.length,
+      porStatus: {},
+      porTipo: {},
+      porTema: {},
+      porMes: {},
+      topBairros: {}
+    };
+    
+    records.forEach(record => {
+      const dat = record.data || {};
+      
+      // Status
+      const status = record.statusDemanda || dat.status_demanda || dat.Status || 'Não informado';
+      stats.porStatus[status] = (stats.porStatus[status] || 0) + 1;
+      
+      // Tipo
+      const tipo = record.tipoDeManifestacao || dat.tipo_de_manifestacao || dat.Tipo || 'Não informado';
+      stats.porTipo[tipo] = (stats.porTipo[tipo] || 0) + 1;
+      
+      // Tema
+      const tema = record.tema || dat.tema || dat.Tema || 'Não informado';
+      stats.porTema[tema] = (stats.porTema[tema] || 0) + 1;
+      
+      // Mês
+      const dataIso = record.dataCriacaoIso || dat.dataCriacaoIso;
+      if (dataIso) {
+        const mes = dataIso.substring(0, 7);
+        stats.porMes[mes] = (stats.porMes[mes] || 0) + 1;
+      }
+      
+      // Bairro
+      const bairro = record.endereco || dat.endereco || dat.Bairro || 'Não informado';
+      stats.topBairros[bairro] = (stats.topBairros[bairro] || 0) + 1;
+    });
+    
+    // Ordenar top bairros
+    stats.topBairros = Object.entries(stats.topBairros)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .reduce((obj, [key, value]) => {
+        obj[key] = value;
+        return obj;
+      }, {});
+    
+    return res.json(stats);
+  } catch (error) {
+    console.error('❌ Erro ao buscar estatísticas do distrito:', error);
+    return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
+  }
+});
+
 app.get('/api/meta/aliases', (_req, res) => {
   res.json({
     aliases: {
@@ -3328,9 +4466,9 @@ app.post('/api/chat/messages', async (req, res) => {
         '7. Se perguntarem sobre "tema", use os dados de "TOP 10 TEMAS POR VOLUME"',
         '8. Se perguntarem sobre "bairro" ou "reclamação por bairro", use os dados de "TOP X BAIRROS POR VOLUME" (se disponível) ou "TOP X ENDEREÇOS COMPLETOS POR VOLUME"',
         '9. Responda de forma direta e objetiva, citando os números exatos dos dados',
-        '10. Seja profissional mas amigável, sempre se referindo ao usuário como "Prefeito"',
+        '10. Seja profissional mas amigável, sempre se referindo ao usuário como "Gestor Municipal"',
         '11. NÃO diga "preciso acessar os dados" ou "não posso fazer cálculos" - você JÁ TEM os dados e PODE fazer qualquer cálculo necessário',
-        '12. Quando o Prefeito pedir cálculos, percentuais, somas, médias, etc., FAÇA os cálculos usando os dados fornecidos',
+        '12. Quando o Gestor Municipal pedir cálculos, percentuais, somas, médias, etc., FAÇA os cálculos usando os dados fornecidos',
         '13. Você tem total liberdade para realizar operações matemáticas, análises estatísticas e qualquer tipo de cálculo solicitado',
         '14. Sempre apresente os dados de forma visualmente atraente e organizada',
         '15. Quando apresentar rankings, inclua o número de posição e destaque os valores principais'
@@ -3367,7 +4505,7 @@ app.post('/api/chat/messages', async (req, res) => {
                 temperature: 0.7
               },
               contents: [
-                { role: 'user', parts: [{ text: `${dadosFormatados ? dadosFormatados + '\n\n' : ''}${ctxParts ? 'CONTEXTO DO PROJETO:\n' + ctxParts + '\n\n' : ''}PERGUNTA DO PREFEITO: ${text}\n\nINSTRUÇÕES PARA RESPOSTA:\n- Use os dados reais fornecidos acima para responder de forma precisa e objetiva\n- Cite números exatos formatados com separadores de milhar (ex: 10.339)\n- FAÇA CÁLCULOS MATEMÁTICOS quando necessário (somas, subtrações, médias, percentuais, etc.)\n- Formate a resposta usando Markdown: use **negrito** para destacar números e títulos, listas numeradas ou bullets para organizar, e emojis quando apropriado\n- Organize as informações de forma clara e hierárquica\n- Quando apresentar rankings ou listas, use formatação visualmente atraente\n- Sempre inclua totais e percentuais quando relevante\n- Você tem total liberdade para realizar qualquer operação matemática ou análise estatística solicitada pelo Prefeito` }] }
+                { role: 'user', parts: [{ text: `${dadosFormatados ? dadosFormatados + '\n\n' : ''}${ctxParts ? 'CONTEXTO DO PROJETO:\n' + ctxParts + '\n\n' : ''}PERGUNTA DO GESTOR MUNICIPAL: ${text}\n\nINSTRUÇÕES PARA RESPOSTA:\n- Use os dados reais fornecidos acima para responder de forma precisa e objetiva\n- Cite números exatos formatados com separadores de milhar (ex: 10.339)\n- FAÇA CÁLCULOS MATEMÁTICOS quando necessário (somas, subtrações, médias, percentuais, etc.)\n- Formate a resposta usando Markdown: use **negrito** para destacar números e títulos, listas numeradas ou bullets para organizar, e emojis quando apropriado\n- Organize as informações de forma clara e hierárquica\n- Quando apresentar rankings ou listas, use formatação visualmente atraente\n- Sempre inclua totais e percentuais quando relevante\n- Você tem total liberdade para realizar qualquer operação matemática ou análise estatística solicitada pelo Gestor Municipal` }] }
               ]
             };
             
@@ -3508,6 +4646,31 @@ app.post('/api/chat/messages', async (req, res) => {
     console.error('Erro ao salvar mensagem:', error);
     res.status(500).json({ error: 'Erro ao salvar mensagem' });
   }
+});
+
+// Endpoint para limpar cache (útil após importação de dados)
+app.post('/api/cache/clear', (req, res) => {
+  const keys = cache.keys();
+  cache.flushAll();
+  console.log(`🗑️  Cache limpo: ${keys.length} chaves removidas`);
+  res.json({ 
+    success: true, 
+    message: `Cache limpo: ${keys.length} chaves removidas`,
+    keysRemoved: keys.length
+  });
+});
+
+// Endpoint para verificar status do cache
+app.get('/api/cache/status', (req, res) => {
+  const keys = cache.keys();
+  const stats = cache.getStats();
+  res.json({
+    keys: keys.length,
+    hits: stats.hits,
+    misses: stats.misses,
+    ksize: stats.ksize,
+    vsize: stats.vsize
+  });
 });
 
 const port = Number(process.env.PORT ?? 3000);

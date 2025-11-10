@@ -1,6 +1,6 @@
 {
   "name": "ouvidoria-dashboard",
-  "version": "1.0.0",
+  "version": "2.0.1.16",
   "description": "Dashboard estratégico da Ouvidoria Geral de Duque de Caxias com IA Cora",
   "private": true,
   "type": "module",
@@ -21,9 +21,11 @@
     "prisma:push": "npx prisma db push",
     "prisma:studio": "npx prisma studio",
     "import:excel": "node scripts/importExcel.js",
+    "update:excel": "node scripts/updateFromExcel.js",
     "db:backfill": "node scripts/backfillNormalized.js",
     "db:reset": "node scripts/resetDb.js",
     "db:analyze": "node scripts/analyzeDbStructure.js",
+    "cache:clear": "node scripts/clearCache.js",
     "test": "echo 'No tests specified' && exit 0"
   },
   "keywords": [
@@ -38,6 +40,7 @@
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^5.20.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
@@ -47,7 +50,6 @@
     "prisma": "^5.20.0",
     "xlsx": "^0.18.5"
   },
-  "devDependencies": {},
   "repository": {
     "type": "git",
     "url": "https://github.com/ouvidoriag/ogdash.git"

@@ -25,6 +25,41 @@
       .skeleton { background: rgba(255,255,255,0.06); }
       canvas { max-height: 340px; }
       
+      /* Estilos do menu lateral */
+      nav[id="sideMenu"] div[data-page].active {
+        background: linear-gradient(90deg, rgba(34,211,238,0.15) 0%, rgba(34,211,238,0.05) 100%);
+        border-left: 3px solid #22d3ee;
+        color: #22d3ee;
+        font-weight: 600;
+      }
+      
+      nav[id="sideMenu"] div[data-page]:hover:not(.active) {
+        background: rgba(255,255,255,0.05);
+      }
+      
+      nav[id="sideMenu"] .unit-category-header:hover {
+        background: rgba(255,255,255,0.05);
+      }
+      
+      nav[id="sideMenu"] .unit-category-header[data-category].expanded .unit-category-arrow {
+        transform: rotate(90deg);
+      }
+      
+      nav[id="sideMenu"] .unit-category-content[data-category-content] {
+        animation: slideDown 0.2s ease-out;
+      }
+      
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
       /* Animações removidas para melhor performance */
       .cora-avatar {
         position: relative;
@@ -84,87 +119,103 @@
             <div class="text-xs text-slate-400">Dashboard Futurista</div>
           </div>
         </div>
-        <nav id="sideMenu" class="space-y-2 text-sm">
-          <div data-page="home" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">🏠 Home</div>
-          <div data-page="main" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Visão Geral</div>
-          <a href="/chat" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer block">💬 Cora - Chat</a>
-          <div data-page="orgao-mes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Por Órgão e Mês</div>
-          <div data-page="tempo-medio" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Tempo Médio</div>
-          <div data-page="tema" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Por Tema</div>
-          <div data-page="assunto" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Por Assunto</div>
-          <div data-page="cadastrante" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Por Cadastrante</div>
-          <div data-page="reclamacoes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Reclamações e Denúncias</div>
-          <div class="mt-4 pt-4 border-t border-white/10">
-            <div class="text-xs text-slate-500 mb-2 px-3">Unidades</div>
+        <nav id="sideMenu" class="space-y-3 text-sm">
+          <!-- 🏠 SEÇÃO: INÍCIO -->
+          <div class="space-y-1">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🏠 Início</div>
+            <div data-page="home" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏠 Home</div>
+            <div data-page="main" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📊 Visão Geral</div>
+            <a href="/chat" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer block transition-colors">💬 Cora - Chat</a>
+          </div>
+          
+          <!-- 📊 SEÇÃO: ANÁLISES PRINCIPAIS -->
+          <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📊 Análises Principais</div>
+            <div data-page="orgao-mes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏢 Por Órgão e Mês</div>
+            <div data-page="tempo-medio" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏱️ Tempo Médio</div>
+            <div data-page="tema" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📑 Por Tema</div>
+            <div data-page="assunto" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📝 Por Assunto</div>
+            <div data-page="cadastrante" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">👤 Por Cadastrante</div>
+            <div data-page="reclamacoes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🚨 Reclamações e Denúncias</div>
+            <div data-page="projecao-2026" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📈 Projeção 2026</div>
+          </div>
+          
+          <!-- 🏥 SEÇÃO: UNIDADES DE SAÚDE -->
+          <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🏥 Unidades de Saúde</div>
             
             <!-- Hospitais -->
-            <div class="mb-2">
-              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="hospitais">
+            <div class="mb-1">
+              <div class="unit-category-header text-xs text-slate-300 px-3 py-1.5 font-medium hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between transition-colors" data-category="hospitais">
                 <span>🏥 Hospitais</span>
-                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+                <span class="unit-category-arrow transition-transform duration-200 text-slate-500">▶</span>
               </div>
-              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="hospitais" style="display: none;">
-                <div data-page="unit-hospital-olho" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital do Olho</div>
-                <div data-page="unit-hospital-duque" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Duque</div>
-                <div data-page="unit-hospital-infantil" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Infantil</div>
-                <div data-page="unit-hospital-moacyr" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Moacyr</div>
-                <div data-page="unit-hospital-veterinario" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Hospital Veterinário</div>
-                <div data-page="unit-maternidade-santa-cruz" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Maternidade Santa Cruz</div>
+              <div class="unit-category-content pl-2 space-y-0.5 mt-1" data-category-content="hospitais" style="display: none;">
+                <div data-page="unit-hospital-olho" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">Hospital do Olho</div>
+                <div data-page="unit-hospital-duque" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">Hospital Duque</div>
+                <div data-page="unit-hospital-infantil" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">Hospital Infantil</div>
+                <div data-page="unit-hospital-moacyr" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">Hospital Moacyr</div>
+                <div data-page="unit-hospital-veterinario" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">Hospital Veterinário</div>
+                <div data-page="unit-maternidade-santa-cruz" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">Maternidade Santa Cruz</div>
               </div>
             </div>
             
             <!-- UPH -->
-            <div class="mb-2">
-              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="uph">
+            <div class="mb-1">
+              <div class="unit-category-header text-xs text-slate-300 px-3 py-1.5 font-medium hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between transition-colors" data-category="uph">
                 <span>🏥 UPH</span>
-                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+                <span class="unit-category-arrow transition-transform duration-200 text-slate-500">▶</span>
               </div>
-              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="uph" style="display: none;">
-                <div data-page="unit-uph-pilar" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Pilar</div>
-                <div data-page="unit-uph-saracuruna" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Saracuruna</div>
-                <div data-page="unit-uph-xerem" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Xerém</div>
-                <div data-page="unit-uph-campos-eliseos" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Campos Elíseos</div>
-                <div data-page="unit-uph-parque-equitativa" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Parque Equitativa</div>
-                <div data-page="unit-uph-imbarie" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPH Imbariê</div>
+              <div class="unit-category-content pl-2 space-y-0.5 mt-1" data-category-content="uph" style="display: none;">
+                <div data-page="unit-uph-pilar" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPH Pilar</div>
+                <div data-page="unit-uph-saracuruna" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPH Saracuruna</div>
+                <div data-page="unit-uph-xerem" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPH Xerém</div>
+                <div data-page="unit-uph-campos-eliseos" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPH Campos Elíseos</div>
+                <div data-page="unit-uph-parque-equitativa" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPH Parque Equitativa</div>
+                <div data-page="unit-uph-imbarie" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPH Imbariê</div>
               </div>
             </div>
             
             <!-- UPA -->
-            <div class="mb-2">
-              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="upa">
+            <div class="mb-1">
+              <div class="unit-category-header text-xs text-slate-300 px-3 py-1.5 font-medium hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between transition-colors" data-category="upa">
                 <span>🚑 UPA</span>
-                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+                <span class="unit-category-arrow transition-transform duration-200 text-slate-500">▶</span>
               </div>
-              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="upa" style="display: none;">
-                <div data-page="unit-upa-beira-mar" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Beira Mar</div>
-                <div data-page="unit-upa-walter-garcia" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Walter Garcia</div>
-                <div data-page="unit-upa-sarapui" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UPA Sarapuí</div>
+              <div class="unit-category-content pl-2 space-y-0.5 mt-1" data-category-content="upa" style="display: none;">
+                <div data-page="unit-upa-beira-mar" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPA Beira Mar</div>
+                <div data-page="unit-upa-walter-garcia" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPA Walter Garcia</div>
+                <div data-page="unit-upa-sarapui" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UPA Sarapuí</div>
               </div>
             </div>
             
             <!-- Outros -->
-            <div class="mb-2">
-              <div class="unit-category-header text-xs text-slate-400 px-3 py-1.5 font-semibold hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between" data-category="outros">
+            <div class="mb-1">
+              <div class="unit-category-header text-xs text-slate-300 px-3 py-1.5 font-medium hover:bg-white/5 rounded-lg cursor-pointer flex items-center justify-between transition-colors" data-category="outros">
                 <span>📍 Outros</span>
-                <span class="unit-category-arrow transition-transform duration-200">▶</span>
+                <span class="unit-category-arrow transition-transform duration-200 text-slate-500">▶</span>
               </div>
-              <div class="unit-category-content pl-2 space-y-1 mt-1" data-category-content="outros" style="display: none;">
-                <div data-page="unit-adao" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">ADÃO</div>
-                <div data-page="unit-cer-iv" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">CER IV</div>
-                <div data-page="unit-ubs-antonio-granja" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">UBS Antonio Granja</div>
+              <div class="unit-category-content pl-2 space-y-0.5 mt-1" data-category-content="outros" style="display: none;">
+                <div data-page="unit-adao" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">Hospital Adão</div>
+                <div data-page="unit-cer-iv" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">CER IV</div>
+                <div data-page="unit-ubs-antonio-granja" class="px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer text-xs transition-colors">UBS Antonio Granja</div>
               </div>
             </div>
           </div>
-          <div data-page="secretaria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Secretarias</div>
-          <div data-page="tipo" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Tipos de Manifestação</div>
-          <div data-page="setor" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Setores</div>
-          <div data-page="categoria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Categorias</div>
-          <div data-page="status" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Status</div>
-          <div data-page="bairro" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Bairros</div>
-          <div data-page="uac" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Unidades (UAC)</div>
-          <div data-page="responsavel" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Responsáveis</div>
-          <div data-page="canal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Canais</div>
-          <div data-page="prioridade" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer">Prioridades</div>
+          
+          <!-- 📈 SEÇÃO: RELATÓRIOS POR DIMENSÃO -->
+          <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📈 Relatórios por Dimensão</div>
+            <div data-page="secretaria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏛️ Secretarias</div>
+            <div data-page="secretarias-distritos" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🗺️ Secretarias e Distritos</div>
+            <div data-page="tipo" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📋 Tipos de Manifestação</div>
+            <div data-page="status" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📊 Status</div>
+            <div data-page="categoria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📂 Tema</div>
+            <div data-page="setor" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏢 Unidade de Cadastro</div>
+            <div data-page="responsavel" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">👥 Responsáveis</div>
+            <div data-page="canal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📡 Canais</div>
+            <div data-page="prioridade" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⚡ Prioridades</div>
+          </div>
         </nav>
         <div class="mt-8 pt-6 border-t border-white/10">
           <div class="text-xs font-semibold text-slate-300 mb-4 uppercase tracking-wider">Equipe Responsável</div>
@@ -215,7 +266,7 @@
             
             <!-- Título principal -->
             <h1 class="text-4xl md:text-6xl font-extrabold mb-4 neon">
-              Olá, Prefeito! 👋
+              Olá, Gestor Municipal! 👋
             </h1>
             <h2 class="text-2xl md:text-4xl font-bold text-cyan-300 mb-8">
               Eu sou a <span class="text-purple-400">Cora</span>
@@ -242,16 +293,16 @@
                 <div class="text-4xl mb-4">📊</div>
                 <h3 class="text-xl font-bold text-purple-300 mb-2">Análises em Tempo Real</h3>
                 <p class="text-sm text-slate-400">
-                  Acesso direto ao banco de dados MongoDB para fornecer informações atualizadas e precisas
+                  Acesso direto ao banco de dados para fornecer informações atualizadas e precisas
                 </p>
               </div>
               
-              <!-- Card 3: IA Avançada -->
+              <!-- Card 3: Processamento Inteligente -->
               <div class="glass rounded-xl p-6 hover:scale-105 transition-transform duration-100">
                 <div class="text-4xl mb-4">🧠</div>
-                <h3 class="text-xl font-bold text-pink-300 mb-2">IA Avançada</h3>
+                <h3 class="text-xl font-bold text-pink-300 mb-2">Processamento Inteligente</h3>
                 <p class="text-sm text-slate-400">
-                  Powered by Google Gemini 2.0, com capacidade de cálculos matemáticos e análises estatísticas
+                  Análise avançada de dados com capacidade de cálculos matemáticos e análises estatísticas
                 </p>
               </div>
             </div>
@@ -281,7 +332,7 @@
                   <div>
                     <h4 class="font-semibold text-white mb-1">Cora busca no banco</h4>
                     <p class="text-sm text-slate-400">
-                      Sistema inteligente identifica palavras-chave e busca dados relevantes automaticamente no MongoDB
+                      Sistema inteligente identifica palavras-chave e busca dados relevantes automaticamente no banco de dados
                     </p>
                   </div>
                 </div>
@@ -291,9 +342,9 @@
                     3
                   </div>
                   <div>
-                    <h4 class="font-semibold text-white mb-1">IA processa e responde</h4>
+                    <h4 class="font-semibold text-white mb-1">Sistema processa e responde</h4>
                     <p class="text-sm text-slate-400">
-                      Gemini 2.0 analisa os dados, faz cálculos quando necessário e formata uma resposta clara e objetiva
+                      Análise inteligente dos dados, faz cálculos quando necessário e formata uma resposta clara e objetiva
                     </p>
                   </div>
                 </div>
@@ -323,7 +374,7 @@
                   <p class="text-sm text-purple-200">"Quantas UPAs temos?"</p>
                 </div>
                 <div class="bg-slate-800/50 rounded-lg p-4 border border-pink-500/20">
-                  <p class="text-sm text-pink-200">"O que tem no protocolo 00719.2025.000011-41?"</p>
+                  <p class="text-sm text-pink-200">"O que tem no protocolo C-0000.0000.0000.0000/25?"</p>
                 </div>
                 <div class="bg-slate-800/50 rounded-lg p-4 border border-emerald-500/20">
                   <p class="text-sm text-emerald-200">"Qual o bairro com mais reclamações?"</p>
@@ -342,144 +393,212 @@
         
         <!-- Painel principal: Visão Geral (refatorado) -->
         <section id="page-main" style="display: none;">
-          <header class="glass rounded-2xl p-6 relative overflow-hidden">
+          <!-- Header -->
+          <header class="glass rounded-2xl p-6 mb-6 relative overflow-hidden">
             <div class="absolute inset-0 opacity-30" style="background: radial-gradient(600px 220px at 8% 0%, rgba(34,211,238,0.22), transparent 60%), radial-gradient(600px 220px at 92% 100%, rgba(167,139,250,0.22), transparent 60%)"></div>
             <div class="relative flex flex-wrap items-center justify-between gap-4">
               <div class="flex items-center gap-4">
                 <img src="/dc-logo.png" alt="Duque de Caxias" class="h-14 w-auto object-contain" />
-              <div>
+                <div>
                   <h1 class="text-xl md:text-2xl font-bold neon">Visão Geral • Inteligência Estratégicas</h1>
                   <div class="text-slate-400 text-xs">Dados interligados: clique para filtrar todo o painel</div>
                 </div>
               </div>
-                <div class="flex items-center gap-2">
-                <button class="px-3 py-1.5 text-xs rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-800 glow-ring" onclick="applyGlobalFilter('Status','Concluída','quick')">Concluídas</button>
-                <button class="px-3 py-1.5 text-xs rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-800 glow-ring" onclick="applyGlobalFilter('Status','Em atendimento','quick')">Ativas</button>
-                <button class="px-3 py-1.5 text-xs rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-800 glow-ring" onclick="applyGlobalFilter('Data', new Date().toISOString().slice(0,7),'quick')">Mês atual</button>
-                <button class="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/30 glow-ring" onclick="clearGlobalFilters()">Limpar filtros</button>
-              </div>
             </div>
           </header>
 
-          <!-- KPIs + Mini Tendências -->
-        <section class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-            <div class="text-slate-400 text-sm">Total</div>
-              <div class="flex items-end gap-3 mt-2">
-                <div id="kpiTotal" class="text-3xl font-extrabold">—</div>
-                <div id="kpiTotalDelta" class="text-xs text-slate-400 mb-1">—</div>
-          </div>
-              <canvas id="sparkTotal" height="32" class="mt-2"></canvas>
+          <!-- ========== SEÇÃO 1: KPIs PRINCIPAIS ========== -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider px-3">📊 Indicadores Principais</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
             </div>
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-            <div class="text-slate-400 text-sm">Últimos 7 dias</div>
-              <div class="flex items-end gap-3 mt-2">
-                <div id="kpi7" class="text-3xl font-extrabold">—</div>
-                <div id="kpi7Delta" class="text-xs text-slate-400 mb-1">—</div>
-          </div>
-              <canvas id="spark7" height="32" class="mt-2"></canvas>
-            </div>
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-            <div class="text-slate-400 text-sm">Últimos 30 dias</div>
-              <div class="flex items-end gap-3 mt-2">
-                <div id="kpi30" class="text-3xl font-extrabold">—</div>
-                <div id="kpi30Delta" class="text-xs text-slate-400 mb-1">—</div>
-          </div>
-              <canvas id="spark30" height="32" class="mt-2"></canvas>
-            </div>
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-            <div class="text-slate-400 text-sm">Status principal</div>
-            <div id="kpiTopStatus" class="text-3xl font-extrabold mt-2">—</div>
-              <div id="kpiTopStatusHint" class="text-xs text-slate-500">—</div>
-          </div>
-        </section>
-
-          <!-- Linha de Insights + SLA -->
-          <section class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 xl:col-span-8 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-3 text-emerald-300">Insights automáticos</h3>
-              <div id="insightsBox" class="text-sm text-slate-300 space-y-2">
-                <!-- preenchido dinamicamente -->
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 md:col-span-4 glass rounded-2xl p-5 hover:scale-[1.02] transition-transform">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-slate-400 text-sm font-medium">Total de Manifestações</div>
+                  <div class="text-2xl">📈</div>
+                </div>
+                <div class="flex items-end gap-3 mt-2">
+                  <div id="kpiTotal" class="text-3xl font-extrabold text-cyan-300">—</div>
+                  <div id="kpiTotalDelta" class="text-xs text-slate-400 mb-1">—</div>
+                </div>
+                <canvas id="sparkTotal" height="32" class="mt-3"></canvas>
               </div>
-            </div>
-            <div class="col-span-12 xl:col-span-4 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-3 text-cyan-300">SLA Geral</h3>
-              <canvas id="chartSlaOverview"></canvas>
-            </div>
-          </section>
-
-          <!-- Principais gráficos -->
-          <section class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Tendência mensal (12M)</h3>
+              <div class="col-span-12 md:col-span-4 glass rounded-2xl p-5 hover:scale-[1.02] transition-transform">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-slate-400 text-sm font-medium">Últimos 7 dias</div>
+                  <div class="text-2xl">📅</div>
+                </div>
+                <div class="flex items-end gap-3 mt-2">
+                  <div id="kpi7" class="text-3xl font-extrabold text-violet-300">—</div>
+                  <div id="kpi7Delta" class="text-xs text-slate-400 mb-1">—</div>
+                </div>
+                <canvas id="spark7" height="32" class="mt-3"></canvas>
               </div>
-            <div class="rounded-xl overflow-hidden bg-slate-900/30">
-                <canvas id="chartTrend"></canvas>
-            </div>
-            </div>
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Top Órgãos (Top 10)</h3>
-              </div>
-              <div class="rounded-xl overflow-hidden bg-slate-900/30">
-                <canvas id="chartTopOrgaos"></canvas>
-              </div>
-            </div>
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Top Temas</h3>
-              </div>
-              <div class="rounded-xl overflow-hidden bg-slate-900/30">
-                <canvas id="chartTopTemas"></canvas>
-              </div>
-            </div>
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Funil por Status</h3>
-              </div>
-              <div class="rounded-xl overflow-hidden bg-slate-900/30">
-                <canvas id="chartFunnelStatus"></canvas>
+              <div class="col-span-12 md:col-span-4 glass rounded-2xl p-5 hover:scale-[1.02] transition-transform">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-slate-400 text-sm font-medium">Últimos 30 dias</div>
+                  <div class="text-2xl">📊</div>
+                </div>
+                <div class="flex items-end gap-3 mt-2">
+                  <div id="kpi30" class="text-3xl font-extrabold text-emerald-300">—</div>
+                  <div id="kpi30Delta" class="text-xs text-slate-400 mb-1">—</div>
+                </div>
+                <canvas id="spark30" height="32" class="mt-3"></canvas>
               </div>
             </div>
           </section>
 
-          <!-- Heatmap dinâmico -->
-          <section class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-semibold text-slate-200">Heatmap: Mês × Dimensão</h3>
-                <div>
-                  <select id="heatmapDim" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm glow-ring">
-                    <option>Categoria</option>
-                    <option>Secretaria</option>
-                    <option>Setor</option>
-                    <option>Tipo</option>
-                    <option>Status</option>
-                    <option>Bairro</option>
-                    <option>UAC</option>
-                    <option>Responsavel</option>
-                    <option>Canal</option>
-                    <option>Prioridade</option>
-                  </select>
+          <!-- ========== SEÇÃO 2: INSIGHTS E ANÁLISES ========== -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-emerald-400 uppercase tracking-wider px-3">💡 Insights e Análises</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 xl:col-span-8 glass rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-emerald-300 text-lg">🤖 Análise Inteligente com IA</h3>
+                  <button id="btnRefreshInsights" class="px-3 py-1.5 text-xs rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 transition-colors">
+                    🔄 Atualizar
+                  </button>
+                </div>
+                
+                <!-- Insights gerados pela IA -->
+                <div id="insightsAIBox" class="space-y-3 mb-4">
+                  <div class="flex items-center justify-center py-4">
+                    <div class="text-slate-400">Gerando insights...</div>
+                  </div>
+                </div>
+                
+                <!-- Insights básicos -->
+                <div class="border-t border-white/10 pt-4">
+                  <div class="text-xs text-slate-400 mb-2 font-medium">📊 Resumo Rápido</div>
+                  <div id="insightsBox" class="text-sm text-slate-300 space-y-2">
+                    <div class="flex items-center justify-center py-4">
+                      <div class="text-slate-400">Carregando...</div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div id="heatmap" class="overflow-auto rounded-xl border border-white/10"></div>
-            </div>
-          </section>
-        <section class="grid grid-cols-12 gap-6">
-          <div class="col-span-12 glass rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="font-semibold text-slate-200">Distribuição por Status</h3>
-              <div class="flex items-center gap-2">
-                <button id="btnMarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition-colors duration-100">
-                  ✓ Marcar Todos
-                </button>
-                <button id="btnDesmarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-slate-500/20 text-slate-300 hover:bg-slate-500/30 border border-slate-500/30 transition-colors duration-100">
-                  ✗ Desmarcar Todos
-                </button>
+              
+              <!-- Status Overview -->
+              <div class="col-span-12 xl:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-cyan-300 text-lg mb-4">📊 Status Atual</h3>
+                <div id="statusOverviewCards" class="space-y-3">
+                  <div class="text-center text-slate-400 py-4">Carregando...</div>
+                </div>
               </div>
             </div>
+          </section>
+
+          <!-- ========== SEÇÃO 3: TENDÊNCIAS E DISTRIBUIÇÕES ========== -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider px-3">📈 Tendências e Distribuições</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-cyan-300">📊 Tendência Mensal (12M)</h3>
+                </div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
+                  <canvas id="chartTrend"></canvas>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-violet-300">🎯 Funil por Status</h3>
+                </div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
+                  <canvas id="chartFunnelStatus"></canvas>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ========== SEÇÃO 4: RANKINGS PRINCIPAIS ========== -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-purple-400 uppercase tracking-wider px-3">🏆 Rankings Principais</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-cyan-300">🏛️ Top Órgãos (Top 10)</h3>
+                </div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
+                  <canvas id="chartTopOrgaos"></canvas>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-emerald-300">📑 Top Temas</h3>
+                </div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
+                  <canvas id="chartTopTemas"></canvas>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ========== SEÇÃO 5: HEATMAP E ANÁLISES AVANÇADAS ========== -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-amber-400 uppercase tracking-wider px-3">🔥 Análises Avançadas</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 glass rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-amber-300">🗺️ Heatmap: Mês × Dimensão</h3>
+                  <div>
+                    <select id="heatmapDim" class="bg-slate-900/60 border border-white/10 rounded-lg px-3 py-2 text-sm glow-ring hover:border-amber-500/50 transition-colors">
+                      <option>Categoria</option>
+                      <option>Secretaria</option>
+                      <option>Setor</option>
+                      <option>Tipo</option>
+                      <option>Status</option>
+                      <option>Bairro</option>
+                      <option>UAC</option>
+                      <option>Responsavel</option>
+                      <option>Canal</option>
+                      <option>Prioridade</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="heatmap" class="overflow-auto rounded-xl border border-white/10 bg-slate-900/20"></div>
+              </div>
+            </div>
+          </section>
+          <!-- ========== SEÇÃO 6: DISTRIBUIÇÃO POR STATUS ========== -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-rose-400 uppercase tracking-wider px-3">📋 Distribuição Detalhada</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 glass rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-rose-300">📊 Distribuição por Status</h3>
+                <div class="flex items-center gap-2">
+                  <button id="btnMarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition-colors duration-100">
+                    ✓ Marcar Todos
+                  </button>
+                  <button id="btnDesmarcarTodosStatus" class="px-3 py-1.5 text-xs rounded-lg bg-slate-500/20 text-slate-300 hover:bg-slate-500/30 border border-slate-500/30 transition-colors duration-100">
+                    ✗ Desmarcar Todos
+                  </button>
+                </div>
+              </div>
             <div class="grid grid-cols-12 gap-4">
               <div class="col-span-12 lg:col-span-5 rounded-xl overflow-hidden bg-slate-900/30 flex items-center justify-center">
                 <canvas id="chartStatus"></canvas>
@@ -505,16 +624,33 @@
             </div>
           </div>
         </section>
-        <section class="grid grid-cols-12 gap-6">
-          <div class="col-span-12 glass rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="font-semibold text-slate-200">SLA (Status dos Pedidos)</h3>
+          <!-- ========== SEÇÃO 7: VISUALIZAÇÕES AVANÇADAS ========== -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-indigo-400 uppercase tracking-wider px-3">🎨 Visualizações Avançadas</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></div>
             </div>
-            <div class="rounded-xl overflow-hidden bg-slate-900/30">
-              <canvas id="chartSla"></canvas>
+            <div class="grid grid-cols-12 gap-6">
+              <!-- Sankey Diagram: Fluxo Tema → Órgão → Status -->
+              <div class="col-span-12 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-4 text-cyan-400">🌊 Fluxo de Manifestações: Tema → Órgão → Status</h3>
+                <div id="sankeyChart" style="height: 500px;"></div>
+              </div>
+              
+              <!-- TreeMap: Proporção por Categoria -->
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-4 text-violet-400">🗺️ Proporção por Categoria (TreeMap)</h3>
+                <div id="treemapChart" style="height: 400px;"></div>
+              </div>
+              
+              <!-- Mapa de Calor Geográfico -->
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-4 text-emerald-400">📍 Distribuição Geográfica por Bairro</h3>
+                <div id="mapChart" style="height: 400px;"></div>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
         
         </section>
         
@@ -537,7 +673,7 @@
                   <div class="flex-1">
                     <div class="bg-slate-800/60 rounded-lg p-3 text-sm text-slate-200">
                       <div class="font-semibold text-purple-300 mb-1">Cora</div>
-                      <div>Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje Prefeito?</div>
+                      <div>Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje Gestor Municipal?</div>
                     </div>
                     <div class="text-xs text-slate-500 mt-1 ml-1">Agora</div>
                   </div>
@@ -567,21 +703,41 @@
         
         <!-- Página por Categoria -->
         <section id="page-categoria" style="display:none">
-          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Categorias</h2></header>
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Tema</h2></header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-fuchsia-400">Top Categorias</h3>
+              <h3 class="font-semibold mb-2 text-fuchsia-400">Top Temas</h3>
               <canvas id="chartCategoria"></canvas>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-2 text-fuchsia-400">Heatmap Mês x Categoria</h3>
               <div id="heatmapCategoria" class="overflow-auto rounded-xl border border-white/10"></div>
             </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-fuchsia-400">Categorias por Mês</h3>
+              <canvas id="chartCategoriaMes"></canvas>
+            </div>
           </div>
         </section>
         <!-- Página por Status -->
         <section id="page-status" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Status</h2></header>
+          
+          <!-- Abas para diferentes visualizações -->
+          <div class="mb-6 flex gap-2 border-b border-white/10">
+            <button class="tab-status px-4 py-2 font-semibold text-sm transition-colors border-b-2 border-cyan-400 text-cyan-400" data-tab="status">
+              Por Status
+            </button>
+            <button class="tab-status px-4 py-2 font-semibold text-sm transition-colors border-b-2 border-transparent text-slate-400 hover:text-slate-300" data-tab="tema">
+              Por Tema
+            </button>
+            <button class="tab-status px-4 py-2 font-semibold text-sm transition-colors border-b-2 border-transparent text-slate-400 hover:text-slate-300" data-tab="orgao">
+              Por Órgão
+            </button>
+          </div>
+          
+          <!-- Conteúdo da aba Por Status -->
+          <div id="status-tab-content" class="tab-content">
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-2 text-sky-400">Distribuição por Status</h3>
@@ -590,6 +746,39 @@
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-2 text-sky-400">Heatmap Mês x Status</h3>
               <div id="heatmapStatus" class="overflow-auto rounded-xl border border-white/10"></div>
+              </div>
+              <div class="col-span-12 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-4 text-sky-400">Status por Mês</h3>
+                <canvas id="chartStatusMes"></canvas>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Conteúdo da aba Por Tema -->
+          <div id="tema-tab-content" class="tab-content hidden">
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-2 text-sky-400">Status por Tema</h3>
+                <canvas id="chartStatusTema"></canvas>
+              </div>
+              <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-2 text-sky-400">Heatmap Mês x Tema</h3>
+                <div id="heatmapStatusTema" class="overflow-auto rounded-xl border border-white/10"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Conteúdo da aba Por Órgão -->
+          <div id="orgao-tab-content" class="tab-content hidden">
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-2 text-sky-400">Status por Órgão</h3>
+                <canvas id="chartStatusOrgao"></canvas>
+              </div>
+              <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-2 text-sky-400">Heatmap Mês x Órgão</h3>
+                <div id="heatmapStatusOrgao" class="overflow-auto rounded-xl border border-white/10"></div>
+              </div>
             </div>
           </div>
         </section>
@@ -604,6 +793,10 @@
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-2 text-amber-400">Heatmap Mês x Bairro</h3>
               <div id="heatmapBairro" class="overflow-auto rounded-xl border border-white/10"></div>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-amber-400">Bairros por Mês</h3>
+              <canvas id="chartBairroMes"></canvas>
             </div>
           </div>
         </section>
@@ -646,6 +839,16 @@
                 <div class="text-xs text-slate-400">TOTAL CADASTRADAS ATÉ O MOMENTO</div>
               </div>
             </div>
+            
+            <!-- Tabela Por Órgão e Mês -->
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-cyan-400">Tabela: Manifestações por Órgão e Mês</h3>
+              <div class="overflow-x-auto">
+                <div id="tabelaOrgaoMes" class="min-w-full">
+                  <!-- Será preenchido dinamicamente -->
+                </div>
+              </div>
+            </div>
           </div>
         </section>
         <!-- Página por Secretaria -->
@@ -660,8 +863,55 @@
               <h3 class="font-semibold mb-2 text-cyan-400">Top 10 Secretarias (Rank)</h3>
               <ul id="rankSecretaria" class="space-y-2"></ul>
             </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-cyan-400">Secretarias por Mês</h3>
+              <canvas id="chartSecretariaMes"></canvas>
+            </div>
           </div>
         </section>
+        
+        <!-- Página Secretarias e Distritos -->
+        <section id="page-secretarias-distritos" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <h2 class="neon text-xl font-bold">Secretarias e Distritos</h2>
+            <p class="text-slate-400 text-sm mt-2">Análise de secretarias municipais por distrito</p>
+          </header>
+          
+          <div class="grid grid-cols-12 gap-6">
+            <!-- Lista de Distritos -->
+            <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-cyan-400">Distritos de Duque de Caxias</h3>
+              <div id="listaDistritos" class="space-y-3 max-h-[600px] overflow-y-auto">
+                <!-- Preenchido dinamicamente -->
+              </div>
+            </div>
+            
+            <!-- Secretarias por Distrito Selecionado -->
+            <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-violet-400">
+                Secretarias do <span id="distritoSelecionadoNome" class="text-cyan-300">Selecione um distrito</span>
+              </h3>
+              <div id="listaSecretarias" class="space-y-3">
+                <div class="text-center text-slate-400 py-8">Selecione um distrito para ver as secretarias</div>
+              </div>
+            </div>
+            
+            <!-- Estatísticas Gerais -->
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-emerald-400">Estatísticas</h3>
+              <div id="estatisticasDistritos" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <!-- Preenchido dinamicamente -->
+              </div>
+            </div>
+            
+            <!-- Gráfico de Secretarias por Distrito -->
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-amber-400">Distribuição de Secretarias por Distrito</h3>
+              <canvas id="chartSecretariasDistritos"></canvas>
+            </div>
+          </div>
+        </section>
+        
         <!-- Página por Tipo de Manifestação -->
         <section id="page-tipo" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Tipos de Manifestação</h2></header>
@@ -685,7 +935,7 @@
               <canvas id="chartSetor"></canvas>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5 ">
-              <h3 class="font-semibold mb-2 text-emerald-400">Top 10 Setores (Rank)</h3>
+              <h3 class="font-semibold mb-2 text-emerald-400">Top 10 Unidades de Cadastro (Rank)</h3>
               <ul id="rankSetor" class="space-y-2"></ul>
             </div>
           </div>
@@ -765,49 +1015,7 @@
         <!-- Página Tempo Médio de Atendimento -->
         <section id="page-tempo-medio" style="display:none">
           <header class="glass rounded-2xl p-6 mb-6">
-            <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">Tempo Médio de Atendimento / Dias</h2>
-            </div>
-            
-            <!-- Filtros de Período -->
-            <div class="grid grid-cols-12 gap-4 mt-4">
-              <div class="col-span-12 md:col-span-6">
-                <label class="block text-sm font-medium text-slate-300 mb-2">
-                  <span class="flex items-center gap-2">
-                    <span>📅 Selecionar Mês(es)</span>
-                    <span class="text-xs text-slate-500">(Múltipla seleção)</span>
-                  </span>
-                </label>
-                <select id="filtroMeses" multiple class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 min-h-[120px]">
-                  <!-- Preenchido dinamicamente -->
-                </select>
-                <div class="text-xs text-slate-400 mt-1">
-                  Segure Ctrl (Windows) ou Cmd (Mac) para selecionar múltiplos meses
-                </div>
-              </div>
-              
-              <div class="col-span-12 md:col-span-3">
-                <label class="block text-sm font-medium text-slate-300 mb-2">⚙️ Configurações</label>
-                <div class="space-y-2">
-                  <label class="flex items-center gap-2 text-sm text-slate-300">
-                    <input type="checkbox" id="filtroApenasConcluidos" class="rounded border-slate-600 bg-slate-700 text-cyan-500 focus:ring-cyan-500">
-                    <span>Apenas concluídos</span>
-                  </label>
-                  <label class="flex items-center gap-2 text-sm text-slate-300">
-                    <input type="checkbox" id="filtroIncluirZero" checked class="rounded border-slate-600 bg-slate-700 text-cyan-500 focus:ring-cyan-500">
-                    <span>Incluir tempo zero</span>
-                  </label>
-                </div>
-              </div>
-              
-              <div class="col-span-12 md:col-span-3 flex items-end">
-                <button id="btnAplicarFiltros" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
-                  🔄 Aplicar Filtros
-                </button>
-              </div>
-            </div>
-            
-            <div id="filtrosSelecionados" class="mt-3 flex flex-wrap gap-2"></div>
           </header>
           
           <!-- Estatísticas Gerais -->
@@ -857,9 +1065,21 @@
             </div>
             
             <!-- Gráfico por Mês -->
-            <div class="col-span-12 glass rounded-2xl p-5">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-4 text-cyan-400">Tendência Mensal (Últimos 12 meses)</h3>
               <canvas id="chartTempoMedioMes"></canvas>
+            </div>
+            
+            <!-- Tempo Médio por Unidade de Cadastro -->
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-violet-400">Tempo Médio por Unidade de Cadastro</h3>
+              <canvas id="chartTempoMedioUnidade"></canvas>
+            </div>
+            
+            <!-- Tempo Médio por Unidade de Cadastro por Mês -->
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-emerald-400">Tempo Médio por Unidade de Cadastro por Mês</h3>
+              <canvas id="chartTempoMedioUnidadeMes"></canvas>
             </div>
           </div>
         </section>
@@ -882,6 +1102,13 @@
               <h3 class="font-semibold mb-4 text-violet-400">Filtro / Mês</h3>
               <canvas id="chartTemaMes"></canvas>
             </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-violet-400">Lista Completa de Temas</h3>
+                <div id="filtrosTemaInfo" class="text-xs text-slate-400"></div>
+              </div>
+              <div id="listaTemas" class="space-y-2 max-h-[500px] overflow-y-auto"></div>
+            </div>
           </div>
         </section>
         <!-- Página Por Assunto -->
@@ -889,8 +1116,13 @@
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Total por Assunto</h2></header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-emerald-400">Top Assuntos</h3>
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-emerald-400">Top 15 Assuntos</h3>
+                <span class="text-xs text-slate-400">(Lista completa abaixo)</span>
+              </div>
+              <div style="height: 500px; position: relative;">
               <canvas id="chartAssunto"></canvas>
+              </div>
             </div>
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
               <div class="flex items-center justify-between mb-4">
@@ -903,11 +1135,20 @@
               <h3 class="font-semibold mb-4 text-emerald-400">Lista Completa de Assuntos</h3>
               <div id="listaAssuntos" class="space-y-2 max-h-[500px] overflow-y-auto"></div>
             </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-emerald-400">Assuntos por Mês</h3>
+              <canvas id="chartAssuntoMes"></canvas>
+            </div>
           </div>
         </section>
         <!-- Página Por Cadastrante -->
         <section id="page-cadastrante" style="display:none">
-          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Por Cadastrante / Unidade</h2></header>
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-2">
+              <h2 class="neon text-xl font-bold">Por Cadastrante / Unidade</h2>
+              <div id="filtrosCadastranteInfo" class="text-xs text-slate-400"></div>
+            </div>
+          </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-4 text-cyan-400">Por Servidor</h3>
@@ -955,11 +1196,53 @@
               <h3 class="font-semibold mb-4 text-rose-400">Record Count por Tipo de Ação</h3>
               <canvas id="chartReclamacoesTipo"></canvas>
             </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-rose-400">Quantidade por Mês</h3>
+              <canvas id="chartReclamacoesMes"></canvas>
+            </div>
           </div>
         </section>
+        
+        <!-- Página Projeção 2026 -->
+        <section id="page-projecao-2026" style="display:none">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <h2 class="neon text-xl font-bold">📈 Projeção 2026</h2>
+            <p class="text-slate-400 text-sm mt-2">Análise de tendências e projeções baseadas em dados históricos</p>
+          </header>
+          
+          <div class="grid grid-cols-12 gap-6">
+            <!-- Gráfico de Tendência Mensal -->
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-cyan-400">Tendência Mensal (Histórico + Projeção)</h3>
+              <canvas id="chartProjecaoMensal"></canvas>
+            </div>
+            
+            <!-- Projeção por Tema -->
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-violet-400">Top Temas (Projeção)</h3>
+              <canvas id="chartProjecaoTema"></canvas>
+            </div>
+            
+            <!-- Status Projetado -->
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-emerald-400">Distribuição por Status (Projeção)</h3>
+              <canvas id="chartProjecaoStatus"></canvas>
+              <div id="projecaoStatusInfo" class="mt-4 space-y-2 text-sm"></div>
+            </div>
+            
+            <!-- Resumo de Projeções -->
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-amber-400">Resumo de Projeções para 2026</h3>
+              <div id="resumoProjecao" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <!-- Preenchido dinamicamente -->
+              </div>
+            </div>
+          </div>
+        </section>
+        
         <!-- Páginas de Unidades -->
         <section id="page-unit-adao" class="unit-page" style="display:none">
-          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Total de Assuntos ADÃO</h2></header>
+          <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Total de Assuntos Hospital Adão</h2></header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-4 text-cyan-400">Assuntos</h3>
@@ -1252,6 +1535,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
     <script>
       // Registrar plugin de datalabels
       if (typeof ChartDataLabels !== 'undefined') {
@@ -1285,27 +1569,48 @@
       }
       
       // Função helper para configurar datalabels
-      function createDataLabelsConfig(showPercentage = false) {
-        return {
-          anchor: 'end',
-          align: 'top',
+      function createDataLabelsConfig(showPercentage = false, chartType = 'bar', showAll = true) {
+        // Configurações base por tipo de gráfico
+        const baseConfig = {
           color: '#e2e8f0',
           font: {
             size: 11,
             weight: 'bold'
           },
           formatter: function(value, context) {
-            if (showPercentage && context.dataset.data) {
-              const total = context.dataset.data.reduce((a, b) => a + (b || 0), 0);
-              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-              return value.toLocaleString('pt-BR') + '\n(' + percentage + '%)';
+            // Verificar se value é válido
+            if (value === null || value === undefined || isNaN(value)) {
+              return '';
             }
-            return value.toLocaleString('pt-BR');
+            const numValue = Number(value);
+            if (isNaN(numValue) || numValue === 0) {
+              return '';
+            }
+            if (showPercentage && context.dataset && context.dataset.data) {
+              const total = context.dataset.data.reduce((a, b) => a + (Number(b) || 0), 0);
+              const percentage = total > 0 ? ((numValue / total) * 100).toFixed(1) : 0;
+              return numValue.toLocaleString('pt-BR') + '\n(' + percentage + '%)';
+            }
+            return numValue.toLocaleString('pt-BR');
           },
           padding: 4,
           backgroundColor: 'rgba(15, 23, 42, 0.7)',
           borderRadius: 4
         };
+        
+        // Ajustar anchor e align baseado no tipo de gráfico
+        if (chartType === 'doughnut' || chartType === 'pie') {
+          baseConfig.anchor = 'center';
+          baseConfig.align = 'center';
+        } else if (chartType === 'bar' && showAll) {
+          baseConfig.anchor = 'end';
+          baseConfig.align = 'top';
+        } else {
+          baseConfig.anchor = 'end';
+          baseConfig.align = 'top';
+        }
+        
+        return baseConfig;
       }
       
       // Função helper para adicionar eventos de clique
@@ -1356,7 +1661,7 @@
       }
 
       async function fetchJSON(url, opts) {
-        const res = await fetch(url, opts);
+          const res = await fetch(url, opts);
         if (!res.ok) throw new Error('Request failed');
         return res.json();
       }
@@ -1467,20 +1772,13 @@
         // Recarregar dados específicos da página atual
         if (currentPage === 'orgao-mes') await loadOrgaoMes();
         if (currentPage === 'tempo-medio') {
-          await loadMesesDisponiveis();
           await loadTempoMedio();
-          
-          // Configurar botão de aplicar filtros
-          const btnAplicar = document.getElementById('btnAplicarFiltros');
-          if (btnAplicar && !btnAplicar.dataset.listenerAdded) {
-            btnAplicar.addEventListener('click', aplicarFiltrosTempoMedio);
-            btnAplicar.dataset.listenerAdded = 'true';
-          }
         }
         if (currentPage === 'tema') await loadTema();
         if (currentPage === 'assunto') await loadAssunto();
         if (currentPage === 'cadastrante') await loadCadastrante();
         if (currentPage === 'reclamacoes') await loadReclamacoes();
+        if (currentPage === 'projecao-2026') await loadProjecao2026();
         if (currentPage === 'status') await loadStatusPage();
         if (currentPage === 'bairro') await loadBairro();
         if (currentPage === 'uac') await loadUAC();
@@ -1517,6 +1815,127 @@
       }
 
       // ========== Carregamento da Visão Geral ==========
+      // Função para carregar insights com IA
+      async function loadAIInsights() {
+        try {
+          const data = await fetchJSONWithFilter('/api/ai/insights').catch(() => ({ insights: [], geradoPorIA: false }));
+          
+          const insightsAIBox = document.getElementById('insightsAIBox');
+          if (!insightsAIBox) return;
+          
+          if (!data.insights || data.insights.length === 0) {
+            insightsAIBox.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum insight disponível no momento.</div>';
+            return;
+          }
+          
+          const severidadeColors = {
+            alta: 'border-red-500/50 bg-red-500/10',
+            media: 'border-amber-500/50 bg-amber-500/10',
+            baixa: 'border-blue-500/50 bg-blue-500/10'
+          };
+          
+          const tipoIcons = {
+            anomalia: '⚠️',
+            tendencia: '📈',
+            volume: '📊',
+            tempo: '⏱️'
+          };
+          
+          insightsAIBox.innerHTML = data.insights.map(insight => `
+            <div class="glass rounded-xl p-4 border ${severidadeColors[insight.severidade] || 'border-white/10'} hover:border-white/20 transition-all">
+              <div class="flex items-start gap-3">
+                <div class="text-2xl">${tipoIcons[insight.tipo] || '💡'}</div>
+                <div class="flex-1">
+                  <div class="font-semibold text-emerald-300 mb-2">${insight.insight}</div>
+                  <div class="text-sm text-slate-400 mt-2">
+                    <div class="font-medium text-cyan-300 mb-1">💡 Recomendação:</div>
+                    <div>${insight.recomendacao}</div>
+                  </div>
+                  ${data.geradoPorIA ? '<div class="text-xs text-slate-500 mt-2">✨ Gerado por IA</div>' : ''}
+                </div>
+              </div>
+            </div>
+          `).join('');
+        } catch (error) {
+          console.error('❌ Erro ao carregar insights com IA:', error);
+          const insightsAIBox = document.getElementById('insightsAIBox');
+          if (insightsAIBox) {
+            insightsAIBox.innerHTML = '<div class="text-center text-red-400 py-4">Erro ao carregar insights. Tente novamente.</div>';
+          }
+        }
+      }
+
+      // Função para carregar Status Overview
+      async function loadStatusOverview() {
+        try {
+          const statusData = await fetchJSONWithFilter('/api/stats/status-overview').catch(() => null);
+          const statusCards = document.getElementById('statusOverviewCards');
+          if (!statusCards) return;
+          
+          if (!statusData || !statusData.total) {
+            statusCards.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum dado disponível</div>';
+            return;
+          }
+          
+          const cards = [
+            {
+              label: 'Total',
+              value: statusData.total?.quantidade || 0,
+              color: 'cyan',
+              icon: '📊'
+            },
+            {
+              label: 'Concluídas',
+              value: statusData.concluida?.quantidade || 0,
+              percent: statusData.concluida?.percentual || 0,
+              color: 'emerald',
+              icon: '✅'
+            },
+            {
+              label: 'Em Atendimento',
+              value: statusData.emAtendimento?.quantidade || 0,
+              percent: statusData.emAtendimento?.percentual || 0,
+              color: 'amber',
+              icon: '⏳'
+            },
+            {
+              label: 'Pendentes',
+              value: statusData.pendente?.quantidade || 0,
+              percent: statusData.pendente?.percentual || 0,
+              color: 'rose',
+              icon: '📋'
+            }
+          ];
+          
+          const colorClasses = {
+            cyan: { border: 'border-cyan-500/20', borderHover: 'hover:border-cyan-500/40', text: 'text-cyan-300' },
+            emerald: { border: 'border-emerald-500/20', borderHover: 'hover:border-emerald-500/40', text: 'text-emerald-300' },
+            amber: { border: 'border-amber-500/20', borderHover: 'hover:border-amber-500/40', text: 'text-amber-300' },
+            rose: { border: 'border-rose-500/20', borderHover: 'hover:border-rose-500/40', text: 'text-rose-300' }
+          };
+          
+          statusCards.innerHTML = cards.map(card => {
+            const colors = colorClasses[card.color] || colorClasses.cyan;
+            return `
+            <div class="glass rounded-xl p-4 border ${colors.border} ${colors.borderHover} transition-all">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-xs text-slate-400 font-medium">${card.label}</div>
+                <div class="text-xl">${card.icon}</div>
+              </div>
+              <div class="text-2xl font-bold ${colors.text}">${(card.value || 0).toLocaleString('pt-BR')}</div>
+              ${card.percent !== undefined ? `<div class="text-xs text-slate-400 mt-1">${card.percent.toFixed(1)}%</div>` : ''}
+            </div>
+          `;
+          }).join('');
+        } catch (error) {
+          console.error('❌ Erro ao carregar Status Overview:', error);
+          const statusCards = document.getElementById('statusOverviewCards');
+          if (statusCards) {
+            statusCards.innerHTML = '<div class="text-center text-red-400 py-4">Erro ao carregar dados</div>';
+          }
+        }
+      }
+
       async function loadOverview() {
         try {
           // Carregar KPIs primeiro (mais importante para o usuário ver)
@@ -1530,34 +1949,40 @@
             byMonth,
             orgaos,
             temas,
-            summary,
-            sla
+            summary
           ] = await Promise.all([
             fetchJSONWithFilter('/api/aggregate/by-month'),
             fetchJSONWithFilter('/api/aggregate/count-by?field=Orgaos'),
             fetchJSONWithFilter('/api/aggregate/by-theme'),
-            fetchJSONWithFilter('/api/summary'),
-            fetchJSONWithFilter('/api/sla/summary')
+            fetchJSONWithFilter('/api/summary')
           ]);
           
           summaryData = summary; // Guardar para reutilizar
 
           // Processar dados de tendência mensal
-          const labels = byMonth.map(x => x.month);
-          const values = byMonth.map(x => x.count);
+          const labels = byMonth.map(x => {
+            const ym = x.ym || x.month || '';
+            if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
+            const parts = ym.split('-');
+            if (parts.length < 2) return ym;
+            const [year, month] = parts;
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : ym;
+          });
+          const values = byMonth.map(x => x.count || 0);
           if (window.chartTrend instanceof Chart) window.chartTrend.destroy();
           const ctxTrend = document.getElementById('chartTrend')?.getContext('2d');
           if (ctxTrend) {
             window.chartTrend = new Chart(ctxTrend, {
               type: 'line',
               data: { labels, datasets: [{
-                label: 'Manifestações',
-                data: values,
-                fill: true,
-                borderColor: '#22d3ee',
-                backgroundColor: gradient(ctxTrend, 'rgba(34,211,238,0.35)', 'rgba(34,211,238,0.05)'),
-                tension: 0.35,
-                borderWidth: 2,
+                  label: 'Manifestações',
+                  data: values,
+                  fill: true,
+                  borderColor: '#22d3ee',
+                  backgroundColor: gradient(ctxTrend, 'rgba(34,211,238,0.35)', 'rgba(34,211,238,0.05)'),
+                  tension: 0.35,
+                  borderWidth: 2,
                 pointRadius: 3
               }]},
               options: {
@@ -1612,18 +2037,6 @@
             addChartClickHandler(window.chartFunnelStatus, (label, value) => showClickFeedback(null, label, value), 'chartFunnelStatus');
           }
 
-          // SLA Overview
-          const ctxSla = document.getElementById('chartSlaOverview')?.getContext('2d');
-          if (ctxSla) {
-            if (window.chartSlaOverview instanceof Chart) window.chartSlaOverview.destroy();
-            window.chartSlaOverview = new Chart(ctxSla, {
-              type: 'bar',
-              data: { labels: ['Concluídos', 'Verde Claro (0-30d)', 'Amarelo (31-60d)', 'Vermelho (61+d)'], datasets: [{ data: [sla.concluidos||0, sla.verdeClaro||0, sla.amarelo||0, sla.vermelho||0], backgroundColor: ['#059669','#86efac','#fbbf24','#fb7185'] }] },
-              options: { responsive: true, plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } }
-            });
-            addChartClickHandler(window.chartSlaOverview, (label, value) => showClickFeedback(null, label, value), 'chartSlaOverview');
-          }
-
           // Sparks e deltas rápidos usando byMonth
           const totalNow = values[values.length-1] || 0;
           const totalPrev = values[values.length-2] || 0;
@@ -1644,25 +2057,364 @@
             ctx.stroke();
           };
           drawSpark('sparkTotal', values.slice(-12), '#22d3ee');
-          drawSpark('spark7', values.slice(-7), '#a78bfa');
-          drawSpark('spark30', values.slice(-12), '#34d399');
 
-          // Insights automáticos
+          // Carregar insights com IA
+          await loadAIInsights();
+          
+          // Carregar Status Overview
+          await loadStatusOverview();
+          
+          // Insights básicos (fallback)
           const insights = [];
           if (orgaos.length) insights.push(`Maior volume: ${orgaos[0].key} (${orgaos[0].count.toLocaleString('pt-BR')}).`);
           const upIdx = values.length>2 ? values[values.length-1] - values[values.length-2] : 0;
           if (upIdx>0) insights.push(`Crescimento de ${upIdx.toLocaleString('pt-BR')} em relação ao mês anterior.`);
-          if (statusCounts.length) insights.push(`Status dominante: ${statusCounts[0].status}.`);
+          
+          // Buscar dados adicionais para insights básicos
+          Promise.all([
+            fetchJSONWithFilter('/api/aggregate/by-subject').catch(() => []),
+            fetchJSONWithFilter('/api/aggregate/count-by?field=UAC').catch(() => []),
+            fetchJSONWithFilter('/api/stats/average-time/stats').catch(() => null)
+          ]).then(([assuntos, unidades, tempoMedioStats]) => {
+            if (assuntos.length > 0) {
+              insights.push(`Assunto mais frequente: ${assuntos[0].assunto} (${assuntos[0].quantidade.toLocaleString('pt-BR')}).`);
+            }
+            if (unidades.length > 0) {
+              insights.push(`Unidade de cadastro com maior volume: ${unidades[0].key} (${unidades[0].count.toLocaleString('pt-BR')}).`);
+            }
+            if (tempoMedioStats && tempoMedioStats.media) {
+              insights.push(`Tempo Médio de Resposta global: ${tempoMedioStats.media.toFixed(1)} dias.`);
+            }
+            
+            const insightsBox = document.getElementById('insightsBox');
+            if (insightsBox) {
+              insightsBox.innerHTML = insights.length ? insights.map(t=>`<div class="text-slate-400">• ${t}</div>`).join('') : '<div class="text-slate-500">Sem insights básicos no momento.</div>';
+            }
+          });
+          
+          // Exibir insights iniciais enquanto carrega os adicionais
           const insightsBox = document.getElementById('insightsBox');
           if (insightsBox) {
-            insightsBox.innerHTML = insights.length ? insights.map(t=>`<div>• ${t}</div>`).join('') : '<div class="text-slate-500">Sem insights no momento.</div>';
+            insightsBox.innerHTML = insights.length ? insights.map(t=>`<div>• ${t}</div>`).join('') : '<div class="text-slate-500">Carregando insights...</div>';
           }
 
           // Heatmap dinâmico já conectado ao seletor (reuso existente)
           const dimSel = document.getElementById('heatmapDim');
           if (dimSel) dimSel.dispatchEvent(new Event('change'));
+          
+          // Carregar novos gráficos avançados
+          await loadAdvancedCharts();
         } catch (e) {
           console.error('Erro ao carregar Visão Geral', e);
+        }
+      }
+
+      // Função para carregar gráficos avançados (Sankey, TreeMap, Mapa)
+      async function loadAdvancedCharts() {
+        try {
+          // Carregar dados necessários em paralelo
+          const [temas, orgaos, status, bairros] = await Promise.all([
+            fetchJSONWithFilter('/api/aggregate/by-theme').catch(() => []),
+            fetchJSONWithFilter('/api/aggregate/count-by?field=Orgaos').catch(() => []),
+            fetchJSONWithFilter('/api/aggregate/count-by?field=status').catch(() => []),
+            fetchJSONWithFilter('/api/aggregate/count-by?field=Bairro').catch(() => [])
+          ]);
+          
+          // 1. Sankey Diagram: Tema → Órgão → Status
+          await loadSankeyChart(temas, orgaos, status);
+          
+          // 2. TreeMap: Proporção por Categoria
+          await loadTreeMapChart(temas);
+          
+          // 3. Mapa de Calor Geográfico: Bairros
+          await loadGeographicMap(bairros);
+        } catch (error) {
+          console.error('❌ Erro ao carregar gráficos avançados:', error);
+        }
+      }
+
+      // Função para criar Sankey Diagram
+      async function loadSankeyChart(temas, orgaos, status) {
+        try {
+          if (typeof Plotly === 'undefined') {
+            console.warn('Plotly.js não carregado');
+            return;
+          }
+          
+          // Buscar dados cruzados do backend
+          const flowData = await fetchJSONWithFilter('/api/aggregate/sankey-flow').catch(() => null);
+          
+          if (!flowData || !flowData.nodes || !flowData.links) {
+            // Fallback: usar dados agregados
+            const topTemas = temas.slice(0, 5);
+            const topOrgaos = orgaos.slice(0, 5);
+            const topStatus = status.slice(0, 3);
+            
+            const labels = [
+              ...topTemas.map(t => t.tema || 'Não informado'),
+              ...topOrgaos.map(o => o.key || 'Não informado'),
+              ...topStatus.map(s => s.key || 'Não informado')
+            ];
+            
+            const temaIndices = topTemas.map((_, i) => i);
+            const orgaoIndices = topOrgaos.map((_, i) => topTemas.length + i);
+            const statusIndices = topStatus.map((_, i) => topTemas.length + topOrgaos.length + i);
+            
+            const source = [];
+            const target = [];
+            const value = [];
+            
+            topTemas.forEach((tema, tIdx) => {
+              topOrgaos.forEach((orgao, oIdx) => {
+                source.push(temaIndices[tIdx]);
+                target.push(orgaoIndices[oIdx]);
+                value.push(Math.round((tema.quantidade || 0) * (orgao.count || 0) / 1000));
+              });
+            });
+            
+            topOrgaos.forEach((orgao, oIdx) => {
+              topStatus.forEach((st, sIdx) => {
+                source.push(orgaoIndices[oIdx]);
+                target.push(statusIndices[sIdx]);
+                value.push(Math.round((orgao.count || 0) * (st.count || 0) / 1000));
+              });
+            });
+            
+            const data = [{
+              type: 'sankey',
+              node: {
+                pad: 15,
+                thickness: 20,
+                line: { color: '#0f172a', width: 0.5 },
+                label: labels,
+                color: [
+                  ...topTemas.map(() => '#22d3ee'),
+                  ...topOrgaos.map(() => '#a78bfa'),
+                  ...topStatus.map(() => '#34d399')
+                ]
+              },
+              link: {
+                source: source,
+                target: target,
+                value: value,
+                color: ['rgba(34,211,238,0.4)']
+              }
+            }];
+            
+            const layout = {
+              title: '',
+              font: { color: '#94a3b8', size: 12 },
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent'
+            };
+            
+            Plotly.newPlot('sankeyChart', data, layout, { responsive: true, displayModeBar: false });
+            return;
+          }
+          
+          // Usar dados reais do backend
+          const allNodes = [
+            ...flowData.nodes.temas,
+            ...flowData.nodes.orgaos,
+            ...flowData.nodes.statuses
+          ];
+          
+          const nodeMap = new Map();
+          allNodes.forEach((node, idx) => {
+            nodeMap.set(node, idx);
+          });
+          
+          const source = [];
+          const target = [];
+          const value = [];
+          
+          flowData.links.forEach(link => {
+            const srcIdx = nodeMap.get(link.source);
+            const tgtIdx = nodeMap.get(link.target);
+            if (srcIdx !== undefined && tgtIdx !== undefined) {
+              source.push(srcIdx);
+              target.push(tgtIdx);
+              value.push(link.value);
+            }
+          });
+          
+          const nodeColors = [
+            ...flowData.nodes.temas.map(() => '#22d3ee'),
+            ...flowData.nodes.orgaos.map(() => '#a78bfa'),
+            ...flowData.nodes.statuses.map(() => '#34d399')
+          ];
+          
+          const data = [{
+            type: 'sankey',
+            node: {
+              pad: 15,
+              thickness: 20,
+              line: { color: '#0f172a', width: 0.5 },
+              label: allNodes,
+              color: nodeColors
+            },
+            link: {
+              source: source,
+              target: target,
+              value: value,
+              color: ['rgba(34,211,238,0.4)']
+            }
+          }];
+          
+          const layout = {
+            title: '',
+            font: { color: '#94a3b8', size: 12 },
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent'
+          };
+          
+          Plotly.newPlot('sankeyChart', data, layout, { responsive: true, displayModeBar: false });
+        } catch (error) {
+          console.error('❌ Erro ao criar Sankey:', error);
+          document.getElementById('sankeyChart').innerHTML = '<div class="p-4 text-center text-slate-400">Erro ao carregar gráfico Sankey</div>';
+        }
+      }
+
+      // Função para criar TreeMap
+      async function loadTreeMapChart(temas) {
+        try {
+          if (typeof Plotly === 'undefined') {
+            console.warn('Plotly.js não carregado');
+            return;
+          }
+          
+          // Preparar dados para TreeMap (top 20 temas)
+          const topTemas = temas.slice(0, 20);
+          
+          const data = [{
+            type: 'treemap',
+            labels: topTemas.map(t => t.tema || 'Não informado'),
+            values: topTemas.map(t => t.quantidade || 0),
+            parents: topTemas.map(() => ''),
+            textinfo: 'label+value',
+            textfont: { color: '#ffffff', size: 12 },
+            marker: {
+              colors: topTemas.map((_, i) => {
+                const colors = ['#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#e879f9', '#8b5cf6', '#06b6d4'];
+                return colors[i % colors.length];
+              }),
+              line: { color: '#0f172a', width: 2 }
+            }
+          }];
+          
+          const layout = {
+            title: '',
+            font: { color: '#94a3b8' },
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent',
+            margin: { l: 0, r: 0, t: 0, b: 0 }
+          };
+          
+          Plotly.newPlot('treemapChart', data, layout, { responsive: true, displayModeBar: false });
+        } catch (error) {
+          console.error('❌ Erro ao criar TreeMap:', error);
+          document.getElementById('treemapChart').innerHTML = '<div class="p-4 text-center text-slate-400">Erro ao carregar TreeMap</div>';
+        }
+      }
+
+      // Função para criar Mapa de Calor Geográfico
+      async function loadGeographicMap(bairros) {
+        try {
+          // Usar fallback direto (lista visual) já que Mapbox requer token válido
+          const topBairros = (bairros || []).slice(0, 15);
+          
+          if (topBairros.length === 0) {
+            document.getElementById('mapChart').innerHTML = '<div class="p-4 text-center text-slate-400">Nenhum dado de bairro disponível</div>';
+            return;
+          }
+          
+          const maxCount = Math.max(...topBairros.map(b => b.count || 0), 1);
+          
+          // Criar visualização de mapa de calor usando gráfico de barras horizontais
+          const labels = topBairros.map(b => b.key || 'Não informado');
+          const values = topBairros.map(b => b.count || 0);
+          
+          // Usar Chart.js para criar um gráfico de barras horizontais estilizado como mapa
+          const ctx = document.createElement('canvas');
+          ctx.id = 'mapChartCanvas';
+          const container = document.getElementById('mapChart');
+          container.innerHTML = '';
+          container.appendChild(ctx);
+          
+          if (window.chartMap instanceof Chart) window.chartMap.destroy();
+          
+          window.chartMap = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Manifestações',
+                data: values,
+                backgroundColor: values.map(v => {
+                  const intensity = v / maxCount;
+                  if (intensity > 0.7) return 'rgba(239,68,68,0.8)'; // Vermelho - alto
+                  if (intensity > 0.4) return 'rgba(167,139,250,0.8)'; // Violeta - médio
+                  return 'rgba(34,211,238,0.8)'; // Cyan - baixo
+                }),
+                borderColor: values.map(v => {
+                  const intensity = v / maxCount;
+                  if (intensity > 0.7) return 'rgba(239,68,68,1)';
+                  if (intensity > 0.4) return 'rgba(167,139,250,1)';
+                  return 'rgba(34,211,238,1)';
+                }),
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              indexAxis: 'y',
+              plugins: {
+                legend: { display: false },
+                tooltip: createEnhancedTooltip(),
+                datalabels: {
+                  ...createDataLabelsConfig(),
+                  anchor: 'start',
+                  align: 'end'
+                }
+              },
+              scales: {
+                x: { 
+                  beginAtZero: true, 
+                  ticks: { color: '#94a3b8' }, 
+                  grid: { color: 'rgba(255,255,255,0.05)' } 
+                },
+                y: { 
+                  ticks: { color: '#94a3b8', font: { size: 10 } }, 
+                  grid: { color: 'rgba(255,255,255,0.05)' } 
+                }
+              }
+            }
+          });
+        } catch (error) {
+          console.error('❌ Erro ao criar mapa geográfico:', error);
+          // Fallback: mostrar lista simples
+          const topBairros = (bairros || []).slice(0, 10);
+          const maxCount = Math.max(...topBairros.map(b => b.count || 0), 1);
+          document.getElementById('mapChart').innerHTML = `
+            <div class="p-4">
+              <div class="text-slate-400 text-sm mb-4">Top Bairros por Volume</div>
+              <div class="space-y-2">
+                ${topBairros.map((b, idx) => `
+                  <div class="flex items-center gap-3">
+                    <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
+                    <div class="flex-1">
+                      <div class="text-sm text-slate-300">${b.key || 'Não informado'}</div>
+                      <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-emerald-500 to-cyan-500" style="width: ${((b.count || 0) / maxCount) * 100}%"></div>
+                      </div>
+                    </div>
+                    <div class="text-sm font-bold text-emerald-300">${(b.count || 0).toLocaleString('pt-BR')}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
         }
       }
 
@@ -1704,13 +2456,61 @@
       }
 
       async function loadKpis(defaultCountField, defaultDateField) {
-        const sum = await fetchJSONWithFilters('/api/summary');
+        const [sum, dailyData] = await Promise.all([
+          fetchJSONWithFilters('/api/summary'),
+          fetchJSONWithFilters('/api/aggregate/by-day').catch(() => [])
+        ]);
+        
         document.getElementById('kpiTotal').textContent = (sum.total ?? 0).toLocaleString('pt-BR');
         document.getElementById('kpi7').textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
         document.getElementById('kpi30').textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
-        if (sum.statusCounts && sum.statusCounts.length) {
-          document.getElementById('kpiTopStatus').textContent = `${sum.statusCounts[0].status} (${sum.statusCounts[0].count})`;
+        
+        // Calcular deltas e sparklines para últimos 7 e 30 dias
+        if (dailyData && dailyData.length > 0) {
+          // Últimos 7 dias: comparar últimos 7 dias com os 7 dias anteriores
+          const last7Days = dailyData.slice(-7);
+          const prev7Days = dailyData.slice(-14, -7);
+          const last7Sum = last7Days.reduce((s, d) => s + (d.count || 0), 0);
+          const prev7Sum = prev7Days.reduce((s, d) => s + (d.count || 0), 0);
+          const delta7 = prev7Sum > 0 ? (((last7Sum - prev7Sum) / prev7Sum) * 100).toFixed(1) : 0;
+          const delta7El = document.getElementById('kpi7Delta');
+          if (delta7El) delta7El.textContent = `${delta7 >= 0 ? '+' : ''}${delta7}% vs período anterior`;
           
+          // Últimos 30 dias: comparar últimos 30 dias com os 30 dias anteriores
+          const last30Days = dailyData.slice(-30);
+          const prev30Days = dailyData.length >= 60 ? dailyData.slice(-60, -30) : [];
+          const last30Sum = last30Days.reduce((s, d) => s + (d.count || 0), 0);
+          const prev30Sum = prev30Days.length > 0 ? prev30Days.reduce((s, d) => s + (d.count || 0), 0) : 0;
+          const delta30 = prev30Sum > 0 ? (((last30Sum - prev30Sum) / prev30Sum) * 100).toFixed(1) : 0;
+          const delta30El = document.getElementById('kpi30Delta');
+          if (delta30El) delta30El.textContent = `${delta30 >= 0 ? '+' : ''}${delta30}% vs período anterior`;
+          
+          // Desenhar sparklines
+          const drawSpark = (canvasId, data, color) => {
+            const c = document.getElementById(canvasId);
+            if (!c) return;
+            const ctx = c.getContext('2d');
+            ctx.clearRect(0, 0, c.width, c.height);
+            const w = c.width || c.offsetWidth; 
+            const h = c.height || 32;
+            const max = Math.max(...data.map(d => d.count || 0), 1);
+            const step = w / (data.length - 1 || 1);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            data.forEach((d, i) => {
+              const x = i * step;
+              const y = h - ((d.count || 0) / max) * h;
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+          };
+          
+          drawSpark('spark7', last7Days, '#a78bfa');
+          drawSpark('spark30', last30Days, '#34d399');
+        }
+        if (sum.statusCounts && sum.statusCounts.length) {
           // Cores para o gráfico (expandido para mais status)
           const colors = [
             '#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#f472b6',
@@ -1745,7 +2545,9 @@
           };
           
           // Monta gráfico de status inicialmente com todos os status
-          const ctx = document.getElementById('chartStatus').getContext('2d');
+          const chartStatusEl = document.getElementById('chartStatus');
+          if (!chartStatusEl) return;
+          const ctx = chartStatusEl.getContext('2d');
           if (window.chartStatus instanceof Chart) window.chartStatus.destroy();
           window.chartStatus = new Chart(ctx, { 
             type: 'doughnut', 
@@ -1857,7 +2659,7 @@
           document.getElementById('chartStatus').classList.remove('skeleton');
         }
         // Série temporal mensal 12M
-        const byMonth = await fetchJSONWithFilter('/api/aggregate/by-month');
+          const byMonth = await fetchJSONWithFilter('/api/aggregate/by-month');
         const monthCanvas = document.getElementById('chartMonth');
         if (monthCanvas) {
         const ctxM = monthCanvas.getContext('2d');
@@ -1865,10 +2667,13 @@
         
         // Formatar labels do mês corretamente
         const monthLabels = byMonth.map(x => {
-          if (!x.ym) return '';
-          const [year, month] = x.ym.split('-');
+          const ym = x.ym || x.month || '';
+          if (!ym || typeof ym !== 'string') return '';
+          const parts = ym.split('-');
+          if (parts.length < 2) return ym;
+          const [year, month] = parts;
           const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-          return monthNames[parseInt(month) - 1] + '/' + year.slice(2);
+          return month ? (monthNames[parseInt(month) - 1] + '/' + year.slice(2)) : ym;
         });
         
         window.chartMonth = new Chart(ctxM, { 
@@ -1901,7 +2706,9 @@
 
         // SLA chart
         const sla = await fetchJSON('/api/sla/summary');
-        const ctxS = document.getElementById('chartSla').getContext('2d');
+        const chartSlaEl = document.getElementById('chartSla');
+        if (!chartSlaEl) return;
+        const ctxS = chartSlaEl.getContext('2d');
         if (window.chartSla instanceof Chart) window.chartSla.destroy();
         window.chartSla = new Chart(ctxS, {
           type: 'bar',
@@ -2427,30 +3234,30 @@
       }
 
       // initial load - otimizado: carregar em paralelo e de forma progressiva
-      // Primeiro: KPIs (mais importante, aparece primeiro)
-      loadKpis('Categoria', 'Data').then(() => {
-        // Depois: carregar gráficos e tabela em paralelo (não bloqueiam a UI)
-        Promise.all([
+        // Primeiro: KPIs (mais importante, aparece primeiro)
+        loadKpis('Categoria', 'Data').then(() => {
+          // Depois: carregar gráficos e tabela em paralelo (não bloqueiam a UI)
+          Promise.all([
           loadCountChart('Categoria').catch(e => console.error('Erro ao carregar gráfico de contagem:', e)),
           loadTimeChart('Data').catch(e => console.error('Erro ao carregar gráfico temporal:', e)),
           loadTable(50).catch(e => console.error('Erro ao carregar tabela:', e)),
-          fetchJSON('/api/aggregate/heatmap?dim=Categoria')
-            .then(hm => {
-              if (hm && hm.labels && hm.rows) {
-                buildHeatmap('heatmap', hm.labels, hm.rows);
-              } else {
+            fetchJSON('/api/aggregate/heatmap?dim=Categoria')
+              .then(hm => {
+                if (hm && hm.labels && hm.rows) {
+                  buildHeatmap('heatmap', hm.labels, hm.rows);
+                } else {
+                  buildHeatmap('heatmap', [], []);
+                }
+              })
+              .catch(error => {
+                console.error('Erro ao carregar heatmap inicial:', error);
                 buildHeatmap('heatmap', [], []);
-              }
-            })
-            .catch(error => {
-              console.error('Erro ao carregar heatmap inicial:', error);
-              buildHeatmap('heatmap', [], []);
-            })
-        ]).then(() => {
-          console.log('✅ Todos os dados iniciais carregados');
+              })
+          ]).then(() => {
+            console.log('✅ Todos os dados iniciais carregados');
         });
       }).catch(e => console.error('Erro ao carregar KPIs:', e));
-      
+
       // Adicionar eventos aos dropdowns - usar onchange diretamente no HTML ou aguardar DOM
       (function setupDropdowns() {
         function attachCountByEvent() {
@@ -2825,14 +3632,18 @@
             const content = document.querySelector(`[data-category-content="${category}"]`);
             const arrow = this.querySelector('.unit-category-arrow');
             
-            if (content.style.display === 'none') {
-              content.style.display = 'block';
-              arrow.style.transform = 'rotate(0deg)';
-              arrow.textContent = '▼';
-            } else {
+            const isExpanded = this.classList.contains('expanded');
+            
+            if (isExpanded) {
+              // Fechar
               content.style.display = 'none';
-              arrow.style.transform = 'rotate(-90deg)';
-              arrow.textContent = '▶';
+              this.classList.remove('expanded');
+              arrow.style.transform = 'rotate(0deg)';
+            } else {
+              // Abrir
+              content.style.display = 'block';
+              this.classList.add('expanded');
+              arrow.style.transform = 'rotate(90deg)';
             }
           });
         });
@@ -2845,13 +3656,52 @@
         initUnitCategoryToggles();
       }
       
+      // Event listener para botão de atualizar insights
+      document.addEventListener('DOMContentLoaded', () => {
+        const btnRefreshInsights = document.getElementById('btnRefreshInsights');
+        if (btnRefreshInsights) {
+          btnRefreshInsights.addEventListener('click', async () => {
+            btnRefreshInsights.disabled = true;
+            btnRefreshInsights.textContent = '⏳ Atualizando...';
+            try {
+              // Forçar atualização limpando cache e recarregando
+              await loadAIInsights();
+            } catch (error) {
+              console.error('❌ Erro ao atualizar insights:', error);
+            } finally {
+              btnRefreshInsights.disabled = false;
+              btnRefreshInsights.textContent = '🔄 Atualizar';
+            }
+          });
+        }
+      });
+      
+      // Inicializar também se o DOM já estiver carregado
+      if (document.readyState !== 'loading') {
+        const btnRefreshInsights = document.getElementById('btnRefreshInsights');
+        if (btnRefreshInsights) {
+          btnRefreshInsights.addEventListener('click', async () => {
+            btnRefreshInsights.disabled = true;
+            btnRefreshInsights.textContent = '⏳ Atualizando...';
+            try {
+              await loadAIInsights();
+            } catch (error) {
+              console.error('❌ Erro ao atualizar insights:', error);
+            } finally {
+              btnRefreshInsights.disabled = false;
+              btnRefreshInsights.textContent = '🔄 Atualizar';
+            }
+          });
+        }
+      }
+
       // SPA Page switch
       const sideMenu = document.getElementById('sideMenu');
       const pages = document.getElementById('pages').children;
       sideMenu.querySelectorAll('div[data-page]').forEach(btn => {
         btn.onclick = () => {
-          sideMenu.querySelectorAll('div[data-page]').forEach(b=>b.classList.remove('active','bg-white/10'));
-          btn.classList.add('active','bg-white/10');
+          sideMenu.querySelectorAll('div[data-page]').forEach(b=>b.classList.remove('active'));
+          btn.classList.add('active');
           Array.from(pages).forEach(page => page.style.display = 'none');
           const pageId = 'page-'+btn.getAttribute('data-page');
           const targetPage = document.getElementById(pageId);
@@ -2892,7 +3742,9 @@
         if(page==='assunto') loadAssunto();
         if(page==='cadastrante') loadCadastrante();
         if(page==='reclamacoes') loadReclamacoes();
+        if(page==='projecao-2026') loadProjecao2026();
         if(page==='secretaria') loadSecretaria();
+        if(page==='secretarias-distritos') loadSecretariasDistritos();
         if(page && page.startsWith('unit-')) {
           const unitName = page.replace('unit-', '').replace(/-/g, ' ');
           loadUnit(unitName);
@@ -2908,7 +3760,7 @@
         if(page==='prioridade') loadPrioridade();
       }
       // Funções para carregar cada seção temática
-      enableCharts(); // chamada para garantir que gráficos não quebrem
+        enableCharts(); // chamada para garantir que gráficos não quebrem
       
       // Carregar Home automaticamente ao abrir a página
       function initPage() {
@@ -2929,8 +3781,8 @@
         // Garantir que o botão "Home" está ativo
         const homeBtn = sideMenu.querySelector('[data-page="home"]');
         if (homeBtn) {
-          sideMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active', 'bg-white/10'));
-          homeBtn.classList.add('active', 'bg-white/10');
+          sideMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active'));
+          homeBtn.classList.add('active');
         }
       }
       
@@ -2968,9 +3820,15 @@
         // Carregar dados mensais (com filtro se houver)
         const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
         const labels = dataMensal.map(x => {
-          const [year, month] = x.ym.split('-');
+          const ym = x.ym || x.month || '';
+          if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
+          const parts = ym.split('-');
+          if (parts.length < 2) return ym;
+          const [year, month] = parts;
+          if (!year || !month) return ym;
           const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          return `${monthNames[parseInt(month) - 1]}. de ${year}`;
+          const monthIndex = parseInt(month) - 1;
+          return monthIndex >= 0 && monthIndex < 12 ? `${monthNames[monthIndex]}. de ${year}` : ym;
         });
         const values = dataMensal.map(x => x.count);
         
@@ -3019,8 +3877,225 @@
         // Atualizar KPI total
         const total = dataOrgaos.reduce((sum, item) => sum + item.count, 0);
         document.getElementById('totalOrgaoMes').textContent = total.toLocaleString('pt-BR');
+        
+        // Carregar e exibir tabela Por Órgão e Mês
+        const dataOrgaoMes = await fetchJSONWithFilter('/api/aggregate/count-by-orgao-mes').catch(() => []);
+        if (dataOrgaoMes && dataOrgaoMes.length > 0) {
+          const orgaosUnicos = [...new Set(dataOrgaoMes.map(d => d.orgao))].sort();
+          const mesesUnicos = [...new Set(dataOrgaoMes.map(d => d.month))].sort();
+          
+          let html = '<table class="w-full text-sm border-collapse">';
+          html += '<thead><tr class="border-b border-white/10">';
+          html += '<th class="px-4 py-3 text-left text-slate-300 font-semibold">Órgão</th>';
+          mesesUnicos.forEach(mes => {
+            if (!mes || typeof mes !== 'string') {
+              html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${mes || 'N/A'}</th>`;
+            } else {
+              const parts = mes.split('-');
+              if (parts.length >= 2) {
+                const [year, month] = parts;
+                const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${monthNames[parseInt(month) - 1]}/${year.slice(-2)}</th>`;
+              } else {
+                html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${mes}</th>`;
+              }
+            }
+          });
+          html += '<th class="px-4 py-3 text-center text-slate-300 font-semibold">Total</th>';
+          html += '</tr></thead><tbody>';
+          
+          orgaosUnicos.forEach(orgao => {
+            let totalOrgao = 0;
+            html += '<tr class="border-b border-white/5 hover:bg-white/5">';
+            html += `<td class="px-4 py-2 text-slate-200 font-medium">${orgao || 'Não informado'}</td>`;
+            mesesUnicos.forEach(mes => {
+              const item = dataOrgaoMes.find(d => d.orgao === orgao && d.month === mes);
+              const count = item ? (item.count || 0) : 0;
+              totalOrgao += count;
+              html += `<td class="px-4 py-2 text-center text-slate-300">${count.toLocaleString('pt-BR')}</td>`;
+            });
+            html += `<td class="px-4 py-2 text-center text-cyan-300 font-bold">${totalOrgao.toLocaleString('pt-BR')}</td>`;
+            html += '</tr>';
+          });
+          
+          // Linha de totais
+          html += '<tr class="border-t-2 border-cyan-500/50 bg-cyan-500/10 font-bold">';
+          html += '<td class="px-4 py-3 text-cyan-300">TOTAL</td>';
+          mesesUnicos.forEach(mes => {
+            const totalMes = dataOrgaoMes.filter(d => d.month === mes).reduce((sum, d) => sum + (d.count || 0), 0);
+            html += `<td class="px-4 py-3 text-center text-cyan-300">${totalMes.toLocaleString('pt-BR')}</td>`;
+          });
+          html += `<td class="px-4 py-3 text-center text-cyan-300">${total.toLocaleString('pt-BR')}</td>`;
+          html += '</tr>';
+          
+          html += '</tbody></table>';
+          document.getElementById('tabelaOrgaoMes').innerHTML = html;
+        }
       }
       
+      async function loadSecretariasDistritos() {
+        try {
+          // Carregar dados de distritos e secretarias
+          const distritosData = await fetchJSON('/api/distritos').catch(() => null);
+          
+          if (!distritosData || !distritosData.distritos) {
+            document.getElementById('listaDistritos').innerHTML = '<div class="text-center text-slate-400 py-4">Erro ao carregar dados de distritos</div>';
+            return;
+          }
+          
+          const distritos = distritosData.distritos;
+          const estatisticas = distritosData.estatisticas || {};
+          
+          // Renderizar lista de distritos
+          const listaDistritos = document.getElementById('listaDistritos');
+          listaDistritos.innerHTML = Object.entries(distritos).map(([nome, info]) => `
+            <div class="distrito-item p-4 rounded-lg border border-white/10 hover:border-cyan-400/50 hover:bg-white/5 cursor-pointer transition-all" 
+                 data-distrito="${nome}" 
+                 data-code="${info.code || ''}">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-cyan-300">${nome}</div>
+                  <div class="text-xs text-slate-400 mt-1">
+                    ${info.bairros ? info.bairros.length + ' bairros' : ''}
+                    ${estatisticas.secretariasPorDistrito && estatisticas.secretariasPorDistrito[nome] 
+                      ? ' • ' + estatisticas.secretariasPorDistrito[nome] + ' secretarias' 
+                      : ''}
+                  </div>
+                </div>
+                <div class="text-2xl">${info.code || '📍'}</div>
+              </div>
+            </div>
+          `).join('');
+          
+          // Adicionar event listeners para seleção de distrito
+          document.querySelectorAll('.distrito-item').forEach(item => {
+            item.addEventListener('click', async () => {
+              // Remover seleção anterior
+              document.querySelectorAll('.distrito-item').forEach(i => {
+                i.classList.remove('border-cyan-400', 'bg-cyan-500/10');
+                i.classList.add('border-white/10');
+              });
+              
+              // Marcar como selecionado
+              item.classList.remove('border-white/10');
+              item.classList.add('border-cyan-400', 'bg-cyan-500/10');
+              
+              const distritoNome = item.dataset.distrito;
+              const distritoCode = item.dataset.code;
+              
+              // Atualizar nome do distrito selecionado
+              document.getElementById('distritoSelecionadoNome').textContent = distritoNome;
+              
+              // Carregar secretarias do distrito
+              await loadSecretariasPorDistrito(distritoNome, distritoCode);
+            });
+          });
+          
+          // Renderizar estatísticas
+          const estatisticasDiv = document.getElementById('estatisticasDistritos');
+          estatisticasDiv.innerHTML = `
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Total de Secretarias</div>
+              <div class="text-2xl font-bold text-cyan-300">${estatisticas.totalSecretarias || 0}</div>
+            </div>
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Total de Distritos</div>
+              <div class="text-2xl font-bold text-violet-300">${estatisticas.totalDistritos || 0}</div>
+            </div>
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Total de Bairros</div>
+              <div class="text-2xl font-bold text-emerald-300">${estatisticas.totalBairros || 0}</div>
+            </div>
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Média Secretarias/Distrito</div>
+              <div class="text-2xl font-bold text-amber-300">${estatisticas.totalSecretarias && estatisticas.totalDistritos 
+                ? (estatisticas.totalSecretarias / estatisticas.totalDistritos).toFixed(1) 
+                : 0}</div>
+            </div>
+          `;
+          
+          // Criar gráfico de distribuição de secretarias por distrito
+          if (estatisticas.secretariasPorDistrito) {
+            const distritoLabels = Object.keys(estatisticas.secretariasPorDistrito);
+            const distritoValues = Object.values(estatisticas.secretariasPorDistrito);
+            
+            if (window.chartSecretariasDistritos instanceof Chart) window.chartSecretariasDistritos.destroy();
+            const ctx = document.getElementById('chartSecretariasDistritos')?.getContext('2d');
+            if (ctx) {
+              window.chartSecretariasDistritos = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                  labels: distritoLabels.map(d => d.replace('º Distrito - ', '').split('(')[0].trim()),
+                  datasets: [{
+                    label: 'Quantidade de Secretarias',
+                    data: distritoValues,
+                    backgroundColor: 'rgba(245,158,11,0.7)',
+                    borderColor: 'rgba(245,158,11,1)',
+                    borderWidth: 1
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: createEnhancedTooltip(),
+                    datalabels: createDataLabelsConfig()
+                  },
+                  scales: {
+                    y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                  }
+                }
+              });
+            }
+          }
+        } catch (error) {
+          console.error('❌ Erro ao carregar secretarias e distritos:', error);
+          document.getElementById('listaDistritos').innerHTML = '<div class="text-center text-slate-400 py-4">Erro ao carregar dados</div>';
+        }
+      }
+      
+      async function loadSecretariasPorDistrito(distritoNome, distritoCode) {
+        try {
+          // Buscar secretarias do distrito
+          const response = await fetch(`/api/secretarias/${encodeURIComponent(distritoCode || distritoNome)}`);
+          const data = await response.json().catch(() => ({ secretarias: [] }));
+          
+          const secretarias = data.secretarias || [];
+          const listaSecretarias = document.getElementById('listaSecretarias');
+          
+          if (secretarias.length === 0) {
+            listaSecretarias.innerHTML = '<div class="text-center text-slate-400 py-8">Nenhuma secretaria encontrada para este distrito</div>';
+            return;
+          }
+          
+          listaSecretarias.innerHTML = secretarias.map(sec => `
+            <div class="glass rounded-xl p-4 border border-white/10 hover:border-violet-400/50 transition-all">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1">
+                  <h4 class="font-semibold text-violet-300 mb-2">${sec.name || 'Secretaria'}</h4>
+                  ${sec.address ? `<div class="text-sm text-slate-400 mb-1">📍 ${sec.address}</div>` : ''}
+                  ${sec.phone ? `<div class="text-sm text-slate-400 mb-1">📞 ${sec.phone}</div>` : ''}
+                  ${sec.email ? `<div class="text-sm text-slate-400 mb-1">✉️ ${sec.email}</div>` : ''}
+                  ${sec.workingHours ? `<div class="text-sm text-slate-400 mb-2">🕐 ${sec.workingHours}</div>` : ''}
+                  ${sec.services && sec.services.length > 0 ? `
+                    <div class="mt-3">
+                      <div class="text-xs text-slate-500 mb-1">Serviços oferecidos:</div>
+                      <div class="flex flex-wrap gap-1">
+                        ${sec.services.map(s => `<span class="px-2 py-1 text-xs rounded bg-slate-800/50 text-slate-300">${s}</span>`).join('')}
+                      </div>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          `).join('');
+        } catch (error) {
+          console.error('❌ Erro ao carregar secretarias do distrito:', error);
+          document.getElementById('listaSecretarias').innerHTML = '<div class="text-center text-slate-400 py-8">Erro ao carregar secretarias</div>';
+        }
+      }
+
       async function loadSecretaria() {
         const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Secretaria');
         const labels = data.slice(0, 10).map(x=>x.key);
@@ -3046,6 +4121,47 @@
         });
         addChartClickHandler(window.chartSecretaria, (label, value) => showClickFeedback(null, label, value), 'chartSecretaria');
         document.getElementById('rankSecretaria').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
+        
+        // Gráfico mensal
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
+        if (dataMensal && dataMensal.length > 0) {
+          const labelsMes = dataMensal.map(x => {
+            const [year, month] = (x.ym || x.month || '').split('-');
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
+          });
+          const valuesMes = dataMensal.map(x => x.count || 0);
+          
+          if (window.chartSecretariaMes instanceof Chart) window.chartSecretariaMes.destroy();
+          const ctxMes = document.getElementById('chartSecretariaMes')?.getContext('2d');
+          if (ctxMes) {
+            window.chartSecretariaMes = new Chart(ctxMes, {
+              type: 'bar',
+              data: {
+                labels: labelsMes,
+                datasets: [{
+                  label: 'Manifestações',
+                  data: valuesMes,
+                  backgroundColor: 'rgba(34,211,238,0.7)',
+                  borderColor: 'rgba(34,211,238,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', false)
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+        }
       }
       async function loadTipo() {
         const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Tipo');
@@ -3127,30 +4243,261 @@
           } 
         });
         addChartClickHandler(window.chartCategoria, (label, value) => showClickFeedback(null, label, value), 'chartCategoria');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Categoria');
-        buildHeatmap('heatmapCategoria', hm.labels, hm.rows);
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Categoria').catch(() => ({ labels: [], rows: [] }));
+        buildHeatmap('heatmapCategoria', hm.labels || [], hm.rows || []);
+        
+        // Gráfico mensal
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
+        if (dataMensal && dataMensal.length > 0) {
+          const labelsMes = dataMensal.map(x => {
+            const [year, month] = (x.ym || x.month || '').split('-');
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
+          });
+          const valuesMes = dataMensal.map(x => x.count || 0);
+          
+          if (window.chartCategoriaMes instanceof Chart) window.chartCategoriaMes.destroy();
+          const ctxMes = document.getElementById('chartCategoriaMes')?.getContext('2d');
+          if (ctxMes) {
+            window.chartCategoriaMes = new Chart(ctxMes, {
+              type: 'bar',
+              data: {
+                labels: labelsMes,
+                datasets: [{
+                  label: 'Manifestações',
+                  data: valuesMes,
+                  backgroundColor: 'rgba(244,114,182,0.7)',
+                  borderColor: 'rgba(244,114,182,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', false)
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+        }
       }
 
       async function loadStatusPage() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Status');
-        const labels = data.slice(0, 10).map(x=>x.key);
-        const values = data.slice(0, 10).map(x=>x.count);
+        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=status');
+        if (!data || data.length === 0) {
+          console.warn('⚠️ Nenhum dado de status disponível');
+          const ctx = document.getElementById('chartStatusPage')?.getContext('2d');
+          if (ctx && window.chartStatusPage instanceof Chart) {
+            window.chartStatusPage.destroy();
+            window.chartStatusPage = null;
+          }
+          return;
+        }
+        
+        const labels = data.map(x => x.key || 'Não informado');
+        const values = data.map(x => x.count || 0);
+        
         if (window.chartStatusPage instanceof Chart) window.chartStatusPage.destroy();
-        const ctx = document.getElementById('chartStatusPage').getContext('2d');
+        const ctx = document.getElementById('chartStatusPage')?.getContext('2d');
+        if (ctx) {
+          const colors = ['#38bdf8', '#22d3ee', '#fbbf24', '#34d399', '#fb7185', '#e879f9', '#a78bfa', '#8b5cf6', '#06b6d4', '#10b981'];
         window.chartStatusPage = new Chart(ctx, { 
           type:'doughnut', 
-          data:{ labels, datasets:[{ data: values, backgroundColor:['#38bdf8','#22d3ee','#fbbf24','#34d399','#fb7185','#e879f9'] }] }, 
+            data:{ 
+              labels, 
+              datasets:[{ 
+                data: values, 
+                backgroundColor: labels.map((_, i) => colors[i % colors.length])
+              }] 
+            }, 
           options:{ 
             responsive:true,
             plugins: {
+                legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } },
               tooltip: createEnhancedTooltip(),
               datalabels: createDataLabelsConfig(true, 'doughnut')
             }
           } 
         });
         addChartClickHandler(window.chartStatusPage, (label, value) => showClickFeedback(null, label, value), 'chartStatusPage');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Status');
-        buildHeatmap('heatmapStatus', hm.labels, hm.rows);
+        }
+        
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Status').catch(() => ({ labels: [], rows: [] }));
+        buildHeatmap('heatmapStatus', hm.labels || [], hm.rows || []);
+        
+        // Gráfico Status por Mês
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/count-by-status-mes').catch(() => []);
+        if (dataMensal && dataMensal.length > 0) {
+          const statuses = [...new Set(dataMensal.map(d => d.status))];
+          const meses = [...new Set(dataMensal.map(d => d.month))].sort();
+          const colors = ['#38bdf8', '#22d3ee', '#fbbf24', '#34d399', '#fb7185', '#e879f9', '#a78bfa', '#8b5cf6', '#06b6d4', '#10b981'];
+          
+          const datasets = statuses.slice(0, 10).map((status, idx) => ({
+            label: status || 'Não informado',
+            data: meses.map(month => {
+              const item = dataMensal.find(d => d.month === month && d.status === status);
+              return item ? (item.count || 0) : 0;
+            }),
+            backgroundColor: colors[idx % colors.length] + '80',
+            borderColor: colors[idx % colors.length],
+            borderWidth: 1
+          }));
+          
+          const labelsMes = meses.map(m => {
+            if (!m || typeof m !== 'string') return m || 'Data inválida';
+            const parts = m.split('-');
+            if (parts.length < 2) return m;
+            const [year, month] = parts;
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : m;
+          });
+          
+          if (window.chartStatusMes instanceof Chart) window.chartStatusMes.destroy();
+          const ctxMes = document.getElementById('chartStatusMes')?.getContext('2d');
+          if (ctxMes) {
+            window.chartStatusMes = new Chart(ctxMes, {
+              type: 'line',
+              data: {
+                labels: labelsMes,
+                datasets: datasets
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: { display: false }
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+        }
+        
+        // Aba Por Tema
+        const dataTema = await fetchJSONWithFilter('/api/aggregate/count-by?field=tema').catch(() => []);
+        if (dataTema && dataTema.length > 0) {
+          const labelsTema = dataTema.slice(0, 15).map(x => x.key || 'Não informado');
+          const valuesTema = dataTema.slice(0, 15).map(x => x.count || 0);
+          
+          if (window.chartStatusTema instanceof Chart) window.chartStatusTema.destroy();
+          const ctxTema = document.getElementById('chartStatusTema')?.getContext('2d');
+          if (ctxTema) {
+            window.chartStatusTema = new Chart(ctxTema, {
+              type: 'bar',
+              data: {
+                labels: labelsTema,
+                datasets: [{
+                  label: 'Quantidade',
+                  data: valuesTema,
+                  backgroundColor: 'rgba(56,189,248,0.7)',
+                  borderColor: 'rgba(56,189,248,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                indexAxis: 'y',
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', true)
+                },
+                scales: {
+                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+          
+          const hmTema = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Categoria').catch(() => ({ labels: [], rows: [] }));
+          buildHeatmap('heatmapStatusTema', hmTema.labels || [], hmTema.rows || []);
+        }
+        
+        // Aba Por Órgão
+        const dataOrgao = await fetchJSONWithFilter('/api/aggregate/count-by?field=Orgaos').catch(() => []);
+        if (dataOrgao && dataOrgao.length > 0) {
+          const labelsOrgao = dataOrgao.slice(0, 15).map(x => x.key || 'Não informado');
+          const valuesOrgao = dataOrgao.slice(0, 15).map(x => x.count || 0);
+          
+          if (window.chartStatusOrgao instanceof Chart) window.chartStatusOrgao.destroy();
+          const ctxOrgao = document.getElementById('chartStatusOrgao')?.getContext('2d');
+          if (ctxOrgao) {
+            window.chartStatusOrgao = new Chart(ctxOrgao, {
+              type: 'bar',
+              data: {
+                labels: labelsOrgao,
+                datasets: [{
+                  label: 'Quantidade',
+                  data: valuesOrgao,
+                  backgroundColor: 'rgba(34,211,238,0.7)',
+                  borderColor: 'rgba(34,211,238,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                indexAxis: 'y',
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', true)
+                },
+                scales: {
+                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+          
+          const hmOrgao = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Secretaria').catch(() => ({ labels: [], rows: [] }));
+          buildHeatmap('heatmapStatusOrgao', hmOrgao.labels || [], hmOrgao.rows || []);
+        }
+      }
+      
+      // Gerenciar abas na página de Status
+      if (!window.statusTabsInitialized) {
+        window.statusTabsInitialized = true;
+        setTimeout(() => {
+          const tabButtons = document.querySelectorAll('.tab-status');
+          tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+              const tab = btn.dataset.tab;
+              
+              // Atualizar botões
+              tabButtons.forEach(b => {
+                b.classList.remove('border-cyan-400', 'text-cyan-400');
+                b.classList.add('border-transparent', 'text-slate-400');
+              });
+              btn.classList.remove('border-transparent', 'text-slate-400');
+              btn.classList.add('border-cyan-400', 'text-cyan-400');
+              
+              // Mostrar/ocultar conteúdo
+              document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+              });
+              
+              if (tab === 'status') {
+                document.getElementById('status-tab-content')?.classList.remove('hidden');
+              } else if (tab === 'tema') {
+                document.getElementById('tema-tab-content')?.classList.remove('hidden');
+              } else if (tab === 'orgao') {
+                document.getElementById('orgao-tab-content')?.classList.remove('hidden');
+              }
+            });
+          });
+        }, 100);
       }
 
       async function loadBairro() {
@@ -3181,8 +4528,49 @@
           } 
         });
         addChartClickHandler(window.chartBairro, (label, value) => showClickFeedback(null, label, value), 'chartBairro');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Bairro');
-        buildHeatmap('heatmapBairro', hm.labels, hm.rows);
+        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Bairro').catch(() => ({ labels: [], rows: [] }));
+        buildHeatmap('heatmapBairro', hm.labels || [], hm.rows || []);
+        
+        // Gráfico mensal
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
+        if (dataMensal && dataMensal.length > 0) {
+          const labelsMes = dataMensal.map(x => {
+            const [year, month] = (x.ym || x.month || '').split('-');
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
+          });
+          const valuesMes = dataMensal.map(x => x.count || 0);
+          
+          if (window.chartBairroMes instanceof Chart) window.chartBairroMes.destroy();
+          const ctxMes = document.getElementById('chartBairroMes')?.getContext('2d');
+          if (ctxMes) {
+            window.chartBairroMes = new Chart(ctxMes, {
+              type: 'bar',
+              data: {
+                labels: labelsMes,
+                datasets: [{
+                  label: 'Manifestações',
+                  data: valuesMes,
+                  backgroundColor: 'rgba(245,158,11,0.7)',
+                  borderColor: 'rgba(245,158,11,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', false)
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+        }
       }
 
       async function loadUAC() {
@@ -3321,12 +4709,14 @@
         try {
           console.log('📊 Carregando dados de tempo médio...');
           // Carregar todos os dados em paralelo
-          const [data, stats, dataDia, dataSemana, dataMes] = await Promise.all([
+          const [data, stats, dataDia, dataSemana, dataMes, dataUnidade, dataUnidadeMes] = await Promise.all([
             fetchJSONWithFilter('/api/stats/average-time').catch(e => { console.error('Erro ao carregar average-time:', e); return []; }),
             fetchJSONWithFilter('/api/stats/average-time/stats').catch(e => { console.error('Erro ao carregar stats:', e); return null; }),
             fetchJSONWithFilter('/api/stats/average-time/by-day').catch(e => { console.error('Erro ao carregar by-day:', e); return []; }),
             fetchJSONWithFilter('/api/stats/average-time/by-week').catch(e => { console.error('Erro ao carregar by-week:', e); return []; }),
-            fetchJSONWithFilter('/api/stats/average-time/by-month').catch(e => { console.error('Erro ao carregar by-month:', e); return []; })
+            fetchJSONWithFilter('/api/stats/average-time/by-month').catch(e => { console.error('Erro ao carregar by-month:', e); return []; }),
+            fetchJSONWithFilter('/api/stats/average-time/by-unit').catch(e => { console.error('Erro ao carregar by-unit:', e); return []; }),
+            fetchJSONWithFilter('/api/stats/average-time/by-month-unit').catch(e => { console.error('Erro ao carregar by-month-unit:', e); return []; })
           ]);
           
           console.log('📊 Dados carregados:', {
@@ -3404,8 +4794,14 @@
           if (dataDia && Array.isArray(dataDia) && dataDia.length > 0) {
             console.log('📊 Dados por dia:', dataDia.slice(0, 5));
             const labelsDia = dataDia.map(x => {
-              const d = new Date(x.date);
-              return `${d.getDate()}/${d.getMonth() + 1}`;
+              if (!x.date) return 'Data inválida';
+              try {
+                const d = new Date(x.date);
+                if (isNaN(d.getTime())) return 'Data inválida';
+                return `${d.getDate()}/${d.getMonth() + 1}`;
+              } catch (e) {
+                return 'Data inválida';
+              }
             });
             const valuesDia = dataDia.map(x => x.dias || 0);
             
@@ -3444,7 +4840,10 @@
           // Gráfico por Semana (linha)
           if (dataSemana && Array.isArray(dataSemana) && dataSemana.length > 0) {
             console.log('📊 Dados por semana:', dataSemana.slice(0, 5));
-            const labelsSemana = dataSemana.map(x => x.week.replace('W', ' Semana '));
+            const labelsSemana = dataSemana.map(x => {
+              if (!x.week || typeof x.week !== 'string') return 'Semana inválida';
+              return x.week.replace('W', ' Semana ');
+            });
             const valuesSemana = dataSemana.map(x => x.dias || 0);
             
             if (window.chartTempoMedioSemana instanceof Chart) window.chartTempoMedioSemana.destroy();
@@ -3483,9 +4882,13 @@
           if (dataMes && Array.isArray(dataMes) && dataMes.length > 0) {
             console.log('📊 Dados por mês:', dataMes.slice(0, 5));
             const labelsMes = dataMes.map(x => {
-              const [year, month] = x.month.split('-');
+              const monthStr = x.month || x.ym || '';
+              if (!monthStr || typeof monthStr !== 'string') return monthStr || 'Data inválida';
+              const parts = monthStr.split('-');
+              if (parts.length < 2) return monthStr;
+              const [year, month] = parts;
               const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-              return `${monthNames[parseInt(month) - 1]}. de ${year}`;
+              return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : monthStr;
             });
             const valuesMes = dataMes.map(x => x.dias || 0);
             
@@ -3518,6 +4921,106 @@
             });
             addChartClickHandler(window.chartTempoMedioMes, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioMes');
           }
+          
+          // Gráfico por Unidade de Cadastro
+          if (dataUnidade && dataUnidade.length > 0) {
+            const labelsUnidade = dataUnidade.map(x => x.unit || 'Não informado');
+            const valuesUnidade = dataUnidade.map(x => x.dias || 0);
+            
+            if (window.chartTempoMedioUnidade instanceof Chart) window.chartTempoMedioUnidade.destroy();
+            const ctxUnidade = document.getElementById('chartTempoMedioUnidade').getContext('2d');
+            window.chartTempoMedioUnidade = new Chart(ctxUnidade, {
+              type: 'bar',
+              data: {
+                labels: labelsUnidade,
+                datasets: [{
+                  label: 'Dias',
+                  data: valuesUnidade,
+                  backgroundColor: 'rgba(167,139,250,0.7)',
+                  borderColor: 'rgba(167,139,250,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                indexAxis: 'y',
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: {
+                    ...createDataLabelsConfig(),
+                    anchor: 'start',
+                    align: 'end'
+                  }
+                },
+                scales: {
+                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+            addChartClickHandler(window.chartTempoMedioUnidade, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioUnidade');
+          }
+          
+          // Gráfico por Unidade de Cadastro por Mês
+          if (dataUnidadeMes && dataUnidadeMes.length > 0) {
+            // Agrupar dados por mês e criar datasets para cada unidade
+            // Filtrar meses inválidos antes de processar
+            const meses = [...new Set(dataUnidadeMes.map(d => d.month).filter(m => m && typeof m === 'string' && m.includes('-')))].sort();
+            const unidades = [...new Set(dataUnidadeMes.map(d => d.unit).filter(u => u))];
+            const colors = ['#34d399', '#10b981', '#059669', '#047857', '#065f46', '#064e3b', '#a78bfa', '#8b5cf6', '#7c3aed', '#6d28d9'];
+            
+            const datasets = unidades.slice(0, 10).map((unit, idx) => ({
+              label: unit || 'Não informado',
+              data: meses.map(month => {
+                const item = dataUnidadeMes.find(d => d.month === month && d.unit === unit);
+                return item ? (item.dias || 0) : 0;
+              }),
+              backgroundColor: colors[idx % colors.length] + '80',
+              borderColor: colors[idx % colors.length],
+              borderWidth: 1
+            }));
+            
+            const labelsMes = meses.map(m => {
+              // Validação robusta antes de fazer split
+              if (!m || typeof m !== 'string' || !m.includes('-')) {
+                return m || 'Data inválida';
+              }
+              const parts = m.split('-');
+              if (parts.length < 2) {
+                return m;
+              }
+              const [year, month] = parts;
+              const monthNum = parseInt(month);
+              if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+                return m;
+              }
+              const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+              return `${monthNames[monthNum - 1]}. de ${year}`;
+            });
+            
+            if (window.chartTempoMedioUnidadeMes instanceof Chart) window.chartTempoMedioUnidadeMes.destroy();
+            const ctxUnidadeMes = document.getElementById('chartTempoMedioUnidadeMes').getContext('2d');
+            window.chartTempoMedioUnidadeMes = new Chart(ctxUnidadeMes, {
+              type: 'line',
+              data: {
+                labels: labelsMes,
+                datasets: datasets
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: { display: false }
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
         } catch (error) {
           console.error('❌ Erro ao carregar tempo médio:', error);
           const errorMsg = error.message || 'Erro desconhecido ao carregar dados';
@@ -3527,8 +5030,9 @@
 
       async function loadTema() {
         const data = await fetchJSONWithFilter('/api/aggregate/by-theme');
-        const labels = data.slice(0, 20).map(x => x.tema);
-        const values = data.slice(0, 20).map(x => x.quantidade);
+        // Mostrar todos os temas, sem limitação
+        const labels = data.map(x => x.tema);
+        const values = data.map(x => x.quantidade);
         
         // Gráfico de temas
         if (window.chartTema instanceof Chart) window.chartTema.destroy();
@@ -3569,27 +5073,27 @@
         const status = await fetchJSONWithFilter('/api/stats/status-overview');
         if (window.chartStatusTema instanceof Chart) window.chartStatusTema.destroy();
         const ctxStatus = document.getElementById('chartStatusTema').getContext('2d');
-        window.chartStatusTema = new Chart(ctxStatus, {
-          type: 'doughnut',
-          data: {
-            labels: ['Concluída', 'Em atendimento'],
-            datasets: [{
+          window.chartStatusTema = new Chart(ctxStatus, {
+            type: 'doughnut',
+            data: {
+              labels: ['Concluída', 'Em atendimento'],
+              datasets: [{
               data: [status.concluida.percentual, status.emAtendimento.percentual],
-              backgroundColor: ['#38bdf8', '#fbbf24']
-            }]
-          },
-          options: { 
-            responsive: true,
-            plugins: {
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(true),
-                anchor: 'center',
-                align: 'center'
+                backgroundColor: ['#38bdf8', '#fbbf24']
+              }]
+            },
+            options: { 
+              responsive: true,
+              plugins: {
+                tooltip: createEnhancedTooltip(),
+                datalabels: {
+                  ...createDataLabelsConfig(true),
+                  anchor: 'center',
+                  align: 'center'
+                }
               }
             }
-          }
-        });
+          });
         addChartClickHandler(window.chartStatusTema, (label, value) => showClickFeedback(null, label, value), 'chartStatusTema');
         document.getElementById('statusTemaInfo').innerHTML = `
           <div class="text-cyan-300">Concluída: ${status.concluida.percentual}%</div>
@@ -3599,9 +5103,15 @@
         // Gráfico mensal
         const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
         const labelsMes = dataMensal.map(x => {
-          const [year, month] = x.ym.split('-');
+          const ym = x.ym || x.month || '';
+          if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
+          const parts = ym.split('-');
+          if (parts.length < 2) return ym;
+          const [year, month] = parts;
+          if (!year || !month) return ym;
           const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          return `${monthNames[parseInt(month) - 1]}. de ${year}`;
+          const monthIndex = parseInt(month) - 1;
+          return monthIndex >= 0 && monthIndex < 12 ? `${monthNames[monthIndex]}. de ${year}` : ym;
         });
         const valuesMes = dataMensal.map(x => x.count);
         
@@ -3628,16 +5138,98 @@
             }
           }
         });
+        
+        // Lista completa de temas
+        const listaTemas = document.getElementById('listaTemas');
+        if (listaTemas) {
+          const maxQuantidade = Math.max(...data.map(d => d.quantidade), 1);
+          listaTemas.innerHTML = data.map((item, idx) => {
+            const width = (item.quantidade / maxQuantidade) * 100;
+            return `
+              <div class="flex items-center gap-3 py-2 border-b border-white/5">
+                <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm text-slate-300 truncate font-medium">${item.tema}</div>
+                  <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-violet-500 to-cyan-500" style="width: ${width}%"></div>
+                  </div>
+                </div>
+                <div class="text-lg font-bold text-violet-300 min-w-[80px] text-right">${item.quantidade.toLocaleString('pt-BR')}</div>
+              </div>
+            `;
+          }).join('');
+        }
+        
+        // Exibir filtros aplicados
+        const filtrosTemaInfo = document.getElementById('filtrosTemaInfo');
+        if (filtrosTemaInfo) {
+          const filtros = [];
+          if (window.globalFilters?.filters && window.globalFilters.filters.length > 0) {
+            window.globalFilters.filters.forEach(f => {
+              if (f.field === 'Data' || f.field === 'Mês') {
+                const meses = Array.isArray(f.value) ? f.value : [f.value];
+                meses.forEach(mes => {
+                  if (mes && typeof mes === 'string') {
+                    const parts = mes.split('-');
+                    if (parts.length >= 2) {
+                      const [year, month] = parts;
+                      const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                      filtros.push(`${monthNames[parseInt(month) - 1]}/${year}`);
+                    } else {
+                      filtros.push(`Mês: ${mes}`);
+                    }
+                  }
+                });
+              } else {
+                filtros.push(`${f.field}: ${f.value}`);
+              }
+            });
+          }
+          if (filtros.length > 0) {
+            filtrosTemaInfo.innerHTML = `🔍 Filtros: ${filtros.join(', ')}`;
+            filtrosTemaInfo.classList.remove('hidden');
+          } else {
+            filtrosTemaInfo.innerHTML = '';
+            filtrosTemaInfo.classList.add('hidden');
+          }
+        }
       }
 
       async function loadAssunto() {
         const data = await fetchJSONWithFilter('/api/aggregate/by-subject');
-        const labels = data.slice(0, 20).map(x => x.assunto);
-        const values = data.slice(0, 20).map(x => x.quantidade);
         
-        // Gráfico de assuntos
-        if (window.chartAssunto instanceof Chart) window.chartAssunto.destroy();
-        const ctx = document.getElementById('chartAssunto').getContext('2d');
+        // Limitar gráfico "Top Assuntos" para Top 15 para melhor legibilidade
+        // A lista completa abaixo mostra todos os assuntos
+        const topAssuntos = data.slice(0, 15);
+        const labels = topAssuntos.map(x => {
+          // Truncar labels muito longos (máximo 50 caracteres)
+          const label = x.assunto || 'Não informado';
+          return label.length > 50 ? label.substring(0, 47) + '...' : label;
+        });
+        const labelsFull = topAssuntos.map(x => x.assunto || 'Não informado'); // Labels completos para tooltip
+        const values = topAssuntos.map(x => x.quantidade);
+        
+        // Gráfico de assuntos (Top 15)
+        const canvasAssunto = document.getElementById('chartAssunto');
+        if (!canvasAssunto) {
+          console.warn('Canvas chartAssunto não encontrado');
+          return;
+        }
+        
+        // Destruir gráfico anterior se existir
+        if (window.chartAssunto instanceof Chart) {
+          try {
+            window.chartAssunto.destroy();
+          } catch (e) {
+            console.warn('Erro ao destruir gráfico anterior:', e);
+          }
+          window.chartAssunto = null;
+        }
+        
+        // Aguardar um frame para garantir que o canvas está livre
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        const ctx = canvasAssunto.getContext('2d');
         window.chartAssunto = new Chart(ctx, {
           type: 'bar',
           data: {
@@ -3652,43 +5244,92 @@
           },
           options: {
             responsive: true,
+            maintainAspectRatio: false,
             indexAxis: 'y',
-            plugins: { legend: { display: false } },
+            plugins: { 
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const fullLabel = labelsFull[context.dataIndex];
+                    const value = context.parsed.x;
+                    return `${fullLabel}: ${value.toLocaleString('pt-BR')}`;
+                  }
+                }
+              },
+              datalabels: {
+                ...createDataLabelsConfig(),
+                anchor: 'start',
+                align: 'end',
+                display: function(context) {
+                  // Mostrar apenas se houver espaço suficiente
+                  return context.dataIndex < 10;
+                }
+              }
+            },
             scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+              x: { 
+                beginAtZero: true, 
+                ticks: { color: '#94a3b8', font: { size: 11 } }, 
+                grid: { color: 'rgba(255,255,255,0.05)' } 
+              },
+              y: { 
+                ticks: { 
+                  color: '#94a3b8',
+                  font: { size: 10 },
+                  maxRotation: 0,
+                  minRotation: 0,
+                  callback: function(value, index) {
+                    // Garantir que labels truncados sejam mostrados
+                    return labels[index] || '';
+                  }
+                }, 
+                grid: { color: 'rgba(255,255,255,0.05)' }
+              }
+            },
+            layout: {
+              padding: {
+                left: 10,
+                right: 10,
+                top: 10,
+                bottom: 10
+              }
             }
           }
         });
+        addChartClickHandler(window.chartAssunto, (label, value) => showClickFeedback(null, label, value), 'chartAssunto');
         
         // Status geral
         const status = await fetchJSONWithFilter('/api/stats/status-overview');
         if (window.chartStatusAssunto instanceof Chart) window.chartStatusAssunto.destroy();
         const ctxStatus = document.getElementById('chartStatusAssunto').getContext('2d');
-        window.chartStatusAssunto = new Chart(ctxStatus, {
-          type: 'doughnut',
-          data: {
-            labels: ['Concluída', 'Em atendimento'],
-            datasets: [{
+          window.chartStatusAssunto = new Chart(ctxStatus, {
+            type: 'doughnut',
+            data: {
+              labels: ['Concluída', 'Em atendimento'],
+              datasets: [{
               data: [status.concluida.percentual, status.emAtendimento.percentual],
-              backgroundColor: ['#38bdf8', '#fbbf24']
-            }]
-          },
-          options: { responsive: true }
-        });
+                backgroundColor: ['#38bdf8', '#fbbf24']
+              }]
+            },
+            options: { responsive: true }
+          });
         document.getElementById('statusAssuntoInfo').innerHTML = `
           <div class="text-cyan-300">Concluída: ${status.concluida.percentual}%</div>
           <div class="text-amber-300">Em atendimento: ${status.emAtendimento.percentual}%</div>
         `;
         
         // Lista completa de assuntos
-        document.getElementById('listaAssuntos').innerHTML = data.map((item, idx) => {
-          const width = (item.quantidade / Math.max(...data.map(d => d.quantidade), 1)) * 100;
+        const listaAssuntos = document.getElementById('listaAssuntos');
+        if (listaAssuntos) {
+          const maxQuantidade = Math.max(...data.map(d => d.quantidade), 1);
+          listaAssuntos.innerHTML = data.map((item, idx) => {
+            const width = (item.quantidade / maxQuantidade) * 100;
           return `
             <div class="flex items-center gap-3 py-2 border-b border-white/5">
               <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
               <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate">${item.assunto}</div>
+                  <div class="text-sm text-slate-300 truncate font-medium">${item.assunto}</div>
                 <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                   <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
                 </div>
@@ -3697,6 +5338,48 @@
             </div>
           `;
         }).join('');
+        }
+        
+        // Gráfico mensal
+        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
+        if (dataMensal && dataMensal.length > 0) {
+          const labelsMes = dataMensal.map(x => {
+            const [year, month] = (x.ym || x.month || '').split('-');
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
+          });
+          const valuesMes = dataMensal.map(x => x.count || 0);
+          
+          if (window.chartAssuntoMes instanceof Chart) window.chartAssuntoMes.destroy();
+          const ctxMes = document.getElementById('chartAssuntoMes')?.getContext('2d');
+          if (ctxMes) {
+            window.chartAssuntoMes = new Chart(ctxMes, {
+              type: 'bar',
+              data: {
+                labels: labelsMes,
+                datasets: [{
+                  label: 'Manifestações',
+                  data: valuesMes,
+                  backgroundColor: 'rgba(34,211,238,0.7)',
+                  borderColor: 'rgba(34,211,238,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { 
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(false, 'bar', false)
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+              }
+            });
+          }
+        }
       }
 
       // Sistema de filtro global unificado
@@ -3756,6 +5439,53 @@
         } else {
           indicator.classList.add('hidden');
         }
+        
+        // Atualizar também os filtros na página de cadastrante
+        updateCadastranteFiltersDisplay();
+      }
+      
+      // Função para atualizar exibição de filtros na página de cadastrante
+      function updateCadastranteFiltersDisplay() {
+        const filtrosCadastranteInfo = document.getElementById('filtrosCadastranteInfo');
+        if (!filtrosCadastranteInfo) return;
+        
+        const filtros = [];
+        
+        // Filtro de cadastrante/unidade
+        if (window.globalFilters?.cadastranteFilter) {
+          const filter = window.globalFilters.cadastranteFilter;
+          const filterText = filter.type === 'servidor' ? `Servidor: ${filter.value}` : `Unidade: ${filter.value}`;
+          filtros.push(filterText);
+        }
+        
+        // Filtros de mês/data
+        if (window.globalFilters?.filters && window.globalFilters.filters.length > 0) {
+          window.globalFilters.filters.forEach(f => {
+            if (f.field === 'Data' || f.field === 'Mês') {
+              const meses = Array.isArray(f.value) ? f.value : [f.value];
+              meses.forEach(mes => {
+                if (mes && typeof mes === 'string') {
+                  const parts = mes.split('-');
+                  if (parts.length >= 2) {
+                    const [year, month] = parts;
+                    const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                    filtros.push(`Mês: ${monthNames[parseInt(month) - 1]}/${year}`);
+                  } else {
+                    filtros.push(`Mês: ${mes}`);
+                  }
+                }
+              });
+            }
+          });
+        }
+        
+        if (filtros.length > 0) {
+          filtrosCadastranteInfo.innerHTML = `🔍 Filtros aplicados: ${filtros.join(' • ')}`;
+          filtrosCadastranteInfo.classList.remove('hidden');
+        } else {
+          filtrosCadastranteInfo.innerHTML = '';
+          filtrosCadastranteInfo.classList.add('hidden');
+        }
       }
       
       // Função para recarregar todos os dados quando filtro muda
@@ -3770,7 +5500,9 @@
         else if (currentPage === 'assunto') await loadAssunto();
         else if (currentPage === 'cadastrante') await loadCadastrante();
         else if (currentPage === 'reclamacoes') await loadReclamacoes();
+        else if (currentPage === 'projecao-2026') await loadProjecao2026();
         else if (currentPage === 'secretaria') await loadSecretaria();
+        else if (currentPage === 'secretarias-distritos') await loadSecretariasDistritos();
         else if (currentPage === 'tipo') await loadTipo();
         else if (currentPage === 'setor') await loadSetor();
         else if (currentPage === 'categoria') await loadCategoria();
@@ -3798,7 +5530,11 @@
         
         // Atualizar gráfico mensal
         const labelsMes = filteredData.byMonth.map(x => {
-          const [year, month] = x.ym.split('-');
+          const ym = x.ym || x.month || '';
+          if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
+          const parts = ym.split('-');
+          if (parts.length < 2) return ym;
+          const [year, month] = parts;
           const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
           return `${monthNames[parseInt(month) - 1]}. de ${year}`;
         });
@@ -3970,6 +5706,9 @@
           const unidadesSection = document.getElementById('unidadesCadastradasSection');
           if (unidadesSection) unidadesSection.remove();
         }
+        
+        // Atualizar exibição de filtros
+        updateCadastranteFiltersDisplay();
       }
       
       // Função para limpar filtro (compatibilidade)
@@ -4039,9 +5778,15 @@
         // Gráfico mensal (com filtro se houver)
         const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
         const labelsMes = dataMensal.map(x => {
-          const [year, month] = x.ym.split('-');
+          const ym = x.ym || x.month || '';
+          if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
+          const parts = ym.split('-');
+          if (parts.length < 2) return ym;
+          const [year, month] = parts;
+          if (!year || !month) return ym;
           const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          return `${monthNames[parseInt(month) - 1]}. de ${year}`;
+          const monthIndex = parseInt(month) - 1;
+          return monthIndex >= 0 && monthIndex < 12 ? `${monthNames[monthIndex]}. de ${year}` : ym;
         });
         const valuesMes = dataMensal.map(x => x.count);
         
@@ -4077,6 +5822,9 @@
         const summary = await fetchJSONWithFilter('/api/summary');
         document.getElementById('totalCadastrante').textContent = (summary.total || 0).toLocaleString('pt-BR');
         
+        // Atualizar exibição de filtros
+        updateCadastranteFiltersDisplay();
+        
         // Se já houver filtro ativo, atualizar gráficos adicionais
         if (window.globalFilters?.cadastranteFilter) {
           await updateCadastranteCharts(window.globalFilters.cadastranteFilter);
@@ -4084,7 +5832,11 @@
       }
 
       async function loadReclamacoes() {
-        const data = await fetchJSONWithFilter('/api/complaints-denunciations');
+        const [data, dataMensal] = await Promise.all([
+          fetchJSONWithFilter('/api/complaints-denunciations'),
+          fetchJSONWithFilter('/api/aggregate/by-month').catch(() => [])
+        ]);
+        
         const assuntos = data.assuntos || [];
         const tipos = data.tipos || [];
         
@@ -4095,7 +5847,7 @@
             <div class="flex items-center gap-3 py-2 border-b border-white/5">
               <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
               <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate">${item.assunto}</div>
+                <div class="text-sm text-slate-300 truncate font-medium">${item.assunto}</div>
                 <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                   <div class="h-full bg-gradient-to-r from-rose-500 to-pink-500" style="width: ${width}%"></div>
                 </div>
@@ -4137,6 +5889,244 @@
             }
           }
         });
+        
+        // Gráfico por mês
+        if (dataMensal && dataMensal.length > 0) {
+          const labelsMes = dataMensal.map(x => {
+            const ym = x.ym || x.month || '';
+            if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
+            const parts = ym.split('-');
+            if (parts.length < 2) return ym;
+            const [year, month] = parts;
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : ym;
+          });
+          const valuesMes = dataMensal.map(x => x.count);
+          
+          if (window.chartReclamacoesMes instanceof Chart) window.chartReclamacoesMes.destroy();
+          const ctxMes = document.getElementById('chartReclamacoesMes').getContext('2d');
+          window.chartReclamacoesMes = new Chart(ctxMes, {
+            type: 'bar',
+            data: {
+              labels: labelsMes,
+              datasets: [{
+                label: 'Quantidade',
+                data: valuesMes,
+                backgroundColor: 'rgba(239,68,68,0.7)',
+                borderColor: 'rgba(239,68,68,1)',
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: { 
+                legend: { display: false },
+                tooltip: createEnhancedTooltip(),
+                datalabels: createDataLabelsConfig(false, 'bar', false)
+              },
+              scales: {
+                y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+              }
+            }
+          });
+        }
+      }
+
+      async function loadProjecao2026() {
+        try {
+          // Carregar dados históricos
+          const [byMonth, temas, status] = await Promise.all([
+            fetchJSONWithFilter('/api/aggregate/by-month'),
+            fetchJSONWithFilter('/api/aggregate/by-theme'),
+            fetchJSONWithFilter('/api/stats/status-overview')
+          ]);
+          
+          // Processar dados mensais históricos
+          const historico = byMonth.map(x => {
+            const ym = x.ym || x.month || '';
+            if (!ym || typeof ym !== 'string') {
+              return {
+                label: ym || 'Data inválida',
+                value: x.count || 0,
+                year: 0,
+                month: 0
+              };
+            }
+            const parts = ym.split('-');
+            if (parts.length < 2) {
+              return {
+                label: ym,
+                value: x.count || 0,
+                year: 0,
+                month: 0
+              };
+            }
+            const [year, month] = parts;
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            return {
+              label: month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : ym,
+              value: x.count || 0,
+              year: parseInt(year) || 0,
+              month: parseInt(month) || 0
+            };
+          });
+          
+          // Calcular média mensal dos últimos 12 meses
+          const ultimos12Meses = historico.slice(-12);
+          const mediaMensal = ultimos12Meses.reduce((sum, item) => sum + item.value, 0) / ultimos12Meses.length;
+          
+          // Gerar projeção para 2026 (12 meses)
+          const projecao2026 = [];
+          for (let mes = 1; mes <= 12; mes++) {
+            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            projecao2026.push({
+              label: `${monthNames[mes - 1]}. de 2026`,
+              value: Math.round(mediaMensal * (1 + (Math.random() * 0.2 - 0.1))) // Variação de ±10%
+            });
+          }
+          
+          // Combinar histórico e projeção
+          const todosLabels = [...historico.map(h => h.label), ...projecao2026.map(p => p.label)];
+          const todosValores = [...historico.map(h => h.value), ...projecao2026.map(p => p.value)];
+          const pontoDivisao = historico.length;
+          
+          // Gráfico de tendência mensal com projeção
+          if (window.chartProjecaoMensal instanceof Chart) window.chartProjecaoMensal.destroy();
+          const ctxMensal = document.getElementById('chartProjecaoMensal')?.getContext('2d');
+          if (ctxMensal) {
+            window.chartProjecaoMensal = new Chart(ctxMensal, {
+              type: 'line',
+              data: {
+                labels: todosLabels,
+                datasets: [
+                  {
+                    label: 'Histórico',
+                    data: [...historico.map(h => h.value), ...Array(12).fill(null)],
+                    borderColor: '#22d3ee',
+                    backgroundColor: 'rgba(34,211,238,0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                  },
+                  {
+                    label: 'Projeção 2026',
+                    data: [...Array(historico.length).fill(null), ...projecao2026.map(p => p.value)],
+                    borderColor: '#a78bfa',
+                    backgroundColor: 'rgba(167,139,250,0.1)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: true,
+                    tension: 0.4
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                plugins: {
+                  legend: { display: true, position: 'top', labels: { color: '#94a3b8' } },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: { display: false }
+                },
+                scales: {
+                  x: { ticks: { color: '#94a3b8', maxRotation: 45 } },
+                  y: { ticks: { color: '#94a3b8' }, beginAtZero: true }
+                }
+              }
+            });
+          }
+          
+          // Gráfico de temas (top 10)
+          const topTemas = temas.slice(0, 10);
+          const labelsTemas = topTemas.map(t => t.tema || 'Não informado');
+          const valoresTemas = topTemas.map(t => t.quantidade || 0);
+          
+          if (window.chartProjecaoTema instanceof Chart) window.chartProjecaoTema.destroy();
+          const ctxTema = document.getElementById('chartProjecaoTema')?.getContext('2d');
+          if (ctxTema) {
+            window.chartProjecaoTema = new Chart(ctxTema, {
+              type: 'bar',
+              data: {
+                labels: labelsTemas,
+                datasets: [{
+                  label: 'Quantidade',
+                  data: valoresTemas,
+                  backgroundColor: 'rgba(167,139,250,0.7)',
+                  borderColor: 'rgba(167,139,250,1)',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                indexAxis: 'y',
+                plugins: {
+                  legend: { display: false },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig()
+                },
+                scales: {
+                  x: { beginAtZero: true, ticks: { color: '#94a3b8' } },
+                  y: { ticks: { color: '#94a3b8' } }
+                }
+              }
+            });
+          }
+          
+          // Gráfico de status
+          if (window.chartProjecaoStatus instanceof Chart) window.chartProjecaoStatus.destroy();
+          const ctxStatus = document.getElementById('chartProjecaoStatus')?.getContext('2d');
+          if (ctxStatus) {
+            window.chartProjecaoStatus = new Chart(ctxStatus, {
+              type: 'doughnut',
+              data: {
+                labels: ['Concluída', 'Em atendimento'],
+                datasets: [{
+                  data: [status.concluida?.percentual || 0, status.emAtendimento?.percentual || 0],
+                  backgroundColor: ['#38bdf8', '#fbbf24']
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: {
+                  legend: { display: true, position: 'right', labels: { color: '#94a3b8' } },
+                  tooltip: createEnhancedTooltip(),
+                  datalabels: createDataLabelsConfig(true, 'doughnut')
+                }
+              }
+            });
+          }
+          
+          document.getElementById('projecaoStatusInfo').innerHTML = `
+            <div class="text-cyan-300">Concluída: ${status.concluida?.percentual || 0}%</div>
+            <div class="text-amber-300">Em atendimento: ${status.emAtendimento?.percentual || 0}%</div>
+          `;
+          
+          // Resumo de projeções
+          const totalProjetado = projecao2026.reduce((sum, item) => sum + item.value, 0);
+          const totalHistorico = historico.reduce((sum, item) => sum + item.value, 0);
+          const crescimento = ((totalProjetado - totalHistorico) / totalHistorico * 100).toFixed(1);
+          
+          document.getElementById('resumoProjecao').innerHTML = `
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Total Projetado 2026</div>
+              <div class="text-2xl font-bold text-cyan-300">${totalProjetado.toLocaleString('pt-BR')}</div>
+            </div>
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Média Mensal</div>
+              <div class="text-2xl font-bold text-violet-300">${Math.round(mediaMensal).toLocaleString('pt-BR')}</div>
+            </div>
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Crescimento Estimado</div>
+              <div class="text-2xl font-bold ${crescimento >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${crescimento >= 0 ? '+' : ''}${crescimento}%</div>
+            </div>
+            <div class="glass rounded-xl p-4">
+              <div class="text-slate-400 text-sm mb-1">Total Histórico</div>
+              <div class="text-2xl font-bold text-amber-300">${totalHistorico.toLocaleString('pt-BR')}</div>
+            </div>
+          `;
+        } catch (error) {
+          console.error('❌ Erro ao carregar projeção 2026:', error);
+        }
       }
 
       async function loadUnit(unitName) {
@@ -4231,5 +6221,6 @@
     </script>
   </body>
   </html>
+
 
 

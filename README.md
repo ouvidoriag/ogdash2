@@ -42,9 +42,12 @@
 - 📊 **Dashboard Interativo**: Interface moderna com gráficos interativos (Chart.js)
 - 🔍 **Análises Avançadas**: KPIs, séries temporais, heatmaps, análises multidimensionais
 - ⚡ **Performance Otimizada**: Cache em memória e índices no banco de dados
-- 🌐 **API REST Completa**: 18+ endpoints para integração
+- 🌐 **API REST Completa**: 40+ endpoints para integração
 - 📱 **Design Responsivo**: Interface adaptável a diferentes tamanhos de tela
 - 🎨 **UI Moderna**: Design futurista com glass morphism e efeitos neon
+- 📈 **KPIs Avançados**: Deltas, sparklines e comparações temporais
+- 📑 **Visualizações Múltiplas**: Abas, tabelas dinâmicas e gráficos por mês
+- ⏱️ **Análise de Tempo**: Tempo médio por órgão, unidade e período
 
 ### 🛠️ Stack Tecnológico
 
@@ -192,6 +195,9 @@ O sistema usa **MongoDB** com Prisma ORM. O modelo `Record` armazena:
 # Importar dados do Excel
 npm run import:excel
 
+# Atualizar dados do Excel
+npm run update:excel
+
 # Normalizar campos após importação
 npm run db:backfill
 ```
@@ -200,23 +206,95 @@ npm run db:backfill
 
 O dashboard inclui:
 
-- **KPIs Principais**: Total, últimos 7/30 dias, status
+- **KPIs Principais**: Total, últimos 7/30 dias com deltas e sparklines
 - **Gráficos Dinâmicos**: Barras, linhas, pizza, doughnut
-- **Séries Temporais**: Análise por data
-- **Heatmaps**: Visualização multidimensional
+- **Séries Temporais**: Análise por data, dia, semana e mês
+- **Heatmaps**: Visualização multidimensional (mês x dimensão)
 - **Tabelas Dinâmicas**: Com paginação e exportação CSV
-- **Filtros Avançados**: Por múltiplas dimensões
+- **Filtros Avançados**: Por múltiplas dimensões (servidor, unidade, mês)
+- **Visualizações por Abas**: Múltiplas perspectivas na mesma página
 
 ### 🔍 Análises Disponíveis
 
-- ✅ **Por Órgão**: Manifestações por secretaria/órgão
-- ✅ **Por Tema**: Agrupamento por tema
-- ✅ **Por Assunto**: Detalhamento por assunto
-- ✅ **Por Unidade**: Análise por UAC/unidade de saúde
-- ✅ **Tempo Médio**: Análise de tempo de atendimento
-- ✅ **SLA**: Monitoramento de prazos
-- ✅ **Reclamações e Denúncias**: Filtro específico
-- ✅ **Por Cadastrante**: Análise por servidor
+#### 📊 Visão Geral
+- **KPIs com Deltas**: Comparação com períodos anteriores
+- **Sparklines**: Visualização de tendências em mini-gráficos
+- **Tendência Mensal**: Gráfico de linha com últimos 12 meses
+- **Heatmap Interativo**: Seleção de dimensão dinâmica
+- **Tabela de Registros**: Com paginação e filtros
+
+#### 🏢 Por Órgão e Mês
+- **Lista de Órgãos**: Visual com barras de progresso
+- **Gráfico Mensal**: Barras horizontais por mês
+- **Tabela Completa**: Dados cruzados por órgão e mês
+- **Totais**: Por linha e coluna
+
+#### ⏱️ Tempo Médio
+- **Estatísticas Gerais**: Média, mediana, mínimo, máximo
+- **Por Órgão**: Gráfico de barras horizontais
+- **Por Unidade de Cadastro**: Gráfico de barras horizontais
+- **Tendência Diária**: Últimos 30 dias
+- **Tendência Semanal**: Últimas 12 semanas
+- **Tendência Mensal**: Últimos 12 meses
+- **Por Unidade e Mês**: Gráfico de linha com múltiplas séries
+- **Filtros Avançados**: Por mês, apenas concluídos, incluir zero
+
+#### 📑 Por Tema
+- **Gráfico de Barras**: Todos os temas sem limitação
+- **Status Geral**: Distribuição por status
+- **Gráfico Mensal**: Evolução por mês
+- **Lista Completa**: Ranking completo de temas
+- **Filtros Aplicados**: Indicador visual de filtros ativos
+
+#### 📝 Por Assunto
+- **Gráfico de Barras**: Todos os assuntos sem limitação
+- **Status Geral**: Distribuição por status
+- **Lista Completa**: Ranking completo de assuntos
+- **Gráfico Mensal**: Evolução por mês
+
+#### 👤 Por Cadastrante / Unidade
+- **Filtro por Servidor**: Análise por servidor específico
+- **Filtro por Unidade**: Análise por unidade de cadastro
+- **Gráficos Dinâmicos**: Atualização em tempo real
+- **Indicadores de Filtro**: Exibição de filtros aplicados
+- **Gráfico Mensal**: Evolução por mês
+
+#### 🚨 Reclamações e Denúncias
+- **Lista de Assuntos**: Ranking completo
+- **Gráfico por Tipo**: Tipos de ação
+- **Gráfico Mensal**: Evolução por mês
+
+#### 📊 Status (com Abas)
+- **Aba Por Status**:
+  - Gráfico de rosca com distribuição
+  - Heatmap mês x status
+  - Gráfico de linha temporal por status
+- **Aba Por Tema**:
+  - Gráfico de barras por tema
+  - Heatmap mês x tema
+- **Aba Por Órgão**:
+  - Gráfico de barras por órgão
+  - Heatmap mês x órgão
+
+#### 🏥 Por Secretaria
+- **Gráfico de Barras**: Top secretarias
+- **Ranking**: Lista dos top 10
+- **Gráfico Mensal**: Evolução por mês
+
+#### 🏘️ Por Bairro
+- **Gráfico de Barras**: Top bairros
+- **Heatmap**: Mês x bairro
+- **Gráfico Mensal**: Evolução por mês
+
+#### 📂 Por Categoria
+- **Gráfico de Barras**: Top categorias
+- **Heatmap**: Mês x categoria
+- **Gráfico Mensal**: Evolução por mês
+
+#### 🏥 Páginas de Unidades
+- **18 Unidades Específicas**: Páginas dedicadas para cada unidade
+- **Assuntos por Unidade**: Lista completa
+- **Tipos de Ação**: Gráfico por tipo
 
 ---
 
@@ -246,7 +324,7 @@ GET /api/health
 #### 📊 Resumo (KPIs)
 
 ```http
-GET /api/summary
+GET /api/summary?servidor=...&unidadeCadastro=...
 ```
 
 **Resposta:**
@@ -266,6 +344,29 @@ GET /api/summary
   "topTipoManifestacao": [...],
   "topTema": [...]
 }
+```
+
+**Query Parameters:**
+- `servidor` (opcional): Filtrar por servidor
+- `unidadeCadastro` (opcional): Filtrar por unidade
+
+**Cache**: 3600 segundos (1 hora)
+
+#### 📅 Dados Diários (Novo)
+
+```http
+GET /api/aggregate/by-day?servidor=...&unidadeCadastro=...
+```
+
+**Descrição**: Retorna dados diários dos últimos 30 dias para KPIs e sparklines
+
+**Resposta:**
+```json
+[
+  { "date": "2025-01-01", "count": 45 },
+  { "date": "2025-01-02", "count": 67 },
+  ...
+]
 ```
 
 **Cache**: 300 segundos
@@ -291,7 +392,7 @@ Retorna valores únicos de um campo específico.
 #### 📊 Agregação por Contagem
 
 ```http
-GET /api/aggregate/count-by?field=tema
+GET /api/aggregate/count-by?field=tema&servidor=...&unidadeCadastro=...
 ```
 
 **Resposta:**
@@ -319,24 +420,199 @@ GET /api/aggregate/time-series?field=Data
 #### 📅 Agregação Mensal
 
 ```http
-GET /api/aggregate/by-month
+GET /api/aggregate/by-month?servidor=...&unidadeCadastro=...
 ```
 
 Retorna os últimos 12 meses.
 
+**Resposta:**
+```json
+[
+  { "ym": "2024-11", "count": 63 },
+  { "ym": "2024-12", "count": 2179 }
+]
+```
+
+**Cache**: 3600 segundos
+
+#### 📊 Status por Mês (Novo)
+
+```http
+GET /api/aggregate/count-by-status-mes?servidor=...&unidadeCadastro=...
+```
+
+**Descrição**: Retorna contagem de registros agrupados por status e mês
+
+**Resposta:**
+```json
+[
+  { "status": "Concluída", "month": "2024-11", "count": 50 },
+  { "status": "Em atendimento", "month": "2024-11", "count": 13 },
+  ...
+]
+```
+
+**Cache**: 3600 segundos
+
+#### 🏢 Órgão por Mês (Novo)
+
+```http
+GET /api/aggregate/count-by-orgao-mes?servidor=...&unidadeCadastro=...
+```
+
+**Descrição**: Retorna contagem de registros agrupados por órgão e mês
+
+**Resposta:**
+```json
+[
+  { "orgao": "Saúde", "month": "2024-11", "count": 45 },
+  { "orgao": "Educação", "month": "2024-11", "count": 18 },
+  ...
+]
+```
+
+**Cache**: 3600 segundos
+
 #### 🔥 Heatmap
 
 ```http
-GET /api/aggregate/heatmap?dim=tema
+GET /api/aggregate/heatmap?dim=tema&servidor=...&unidadeCadastro=...
 ```
 
 **Query Parameters:**
-- `dim`: Dimensão (tema, orgaos, unidadeCadastro, tipoDeManifestacao, etc.)
+- `dim`: Dimensão (tema, orgaos, unidadeCadastro, tipoDeManifestacao, Status, Secretaria, Categoria, Bairro, etc.)
+
+**Resposta:**
+```json
+{
+  "labels": ["2024-11", "2024-12", ...],
+  "rows": [
+    {
+      "key": "Saúde",
+      "values": [10, 25, 30, ...]
+    }
+  ]
+}
+```
+
+**Cache**: 3600 segundos
+
+#### ⏱️ Tempo Médio de Atendimento
+
+```http
+GET /api/stats/average-time?meses=["2024-11","2024-12"]&apenasConcluidos=true&incluirZero=false&servidor=...&unidadeCadastro=...
+```
+
+**Query Parameters:**
+- `meses` (opcional): Array de meses no formato `YYYY-MM`
+- `apenasConcluidos` (opcional): Boolean (true/false)
+- `incluirZero` (opcional): Boolean (true/false)
+- `servidor` (opcional): Filtrar por servidor
+- `unidadeCadastro` (opcional): Filtrar por unidade
+
+**Resposta:**
+```json
+[
+  { "org": "Saúde", "dias": 25.5, "quantidade": 100 },
+  { "org": "Educação", "dias": 30.2, "quantidade": 50 }
+]
+```
+
+#### ⏱️ Estatísticas de Tempo Médio
+
+```http
+GET /api/stats/average-time/stats?meses=...&apenasConcluidos=...&incluirZero=...&servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+{
+  "media": 28.5,
+  "mediana": 25.0,
+  "minimo": 1,
+  "maximo": 365,
+  "total": 150
+}
+```
+
+#### ⏱️ Tempo Médio por Dia
+
+```http
+GET /api/stats/average-time/by-day?meses=...&apenasConcluidos=...&incluirZero=...&servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+[
+  { "date": "2025-01-01", "dias": 25.5, "quantidade": 10 },
+  { "date": "2025-01-02", "dias": 30.2, "quantidade": 15 }
+]
+```
+
+#### ⏱️ Tempo Médio por Semana
+
+```http
+GET /api/stats/average-time/by-week?meses=...&apenasConcluidos=...&incluirZero=...&servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+[
+  { "week": "2025-W40", "dias": 28.3, "quantidade": 120 },
+  { "week": "2025-W41", "dias": 32.1, "quantidade": 150 }
+]
+```
+
+#### ⏱️ Tempo Médio por Mês
+
+```http
+GET /api/stats/average-time/by-month?meses=...&apenasConcluidos=...&incluirZero=...&servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+[
+  { "month": "2024-11", "dias": 28.5, "quantidade": 200 },
+  { "month": "2024-12", "dias": 30.2, "quantidade": 250 }
+]
+```
+
+#### ⏱️ Tempo Médio por Unidade (Novo)
+
+```http
+GET /api/stats/average-time/by-unit?meses=...&apenasConcluidos=...&incluirZero=...&servidor=...&unidadeCadastro=...
+```
+
+**Descrição**: Retorna tempo médio agrupado por unidade de cadastro
+
+**Resposta:**
+```json
+[
+  { "unit": "UAC Centro", "dias": 25.5, "quantidade": 100 },
+  { "unit": "UAC Vila", "dias": 30.2, "quantidade": 50 }
+]
+```
+
+#### ⏱️ Tempo Médio por Unidade e Mês (Novo)
+
+```http
+GET /api/stats/average-time/by-month-unit?meses=...&apenasConcluidos=...&incluirZero=...&servidor=...&unidadeCadastro=...
+```
+
+**Descrição**: Retorna tempo médio agrupado por unidade de cadastro e mês
+
+**Resposta:**
+```json
+[
+  { "unidade": "UAC Centro", "mes": "2024-11", "dias": 25.5, "quantidade": 100 },
+  { "unidade": "UAC Centro", "mes": "2024-12", "dias": 28.2, "quantidade": 120 }
+]
+```
 
 #### ⏱️ Resumo de SLA
 
 ```http
-GET /api/sla/summary
+GET /api/sla/summary?servidor=...&unidadeCadastro=...
 ```
 
 **Resposta:**
@@ -358,6 +634,40 @@ GET /api/sla/summary
 - **e-SIC**: >20 dias = atraso
 - **Outros**: ≤30 dias = verde, 30-60 dias = amarelo, >60 dias = atraso
 
+#### 📊 Agregação por Tema
+
+```http
+GET /api/aggregate/by-theme?servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+[
+  { "tema": "Saúde", "quantidade": 10202 },
+  { "tema": "Educação", "quantidade": 2500 }
+]
+```
+
+#### 📝 Agregação por Assunto
+
+```http
+GET /api/aggregate/by-subject?servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+[
+  { "assunto": "Atendimento", "quantidade": 5000 },
+  { "assunto": "Infraestrutura", "quantidade": 3000 }
+]
+```
+
+#### 👤 Agregação por Servidor
+
+```http
+GET /api/aggregate/by-server?servidor=...&unidadeCadastro=...
+```
+
 #### 🔎 Filtro Avançado
 
 ```http
@@ -376,22 +686,114 @@ Content-Type: application/json
 - `eq`: Igual (exato)
 - `contains`: Contém (case-insensitive)
 
-### 📚 Outros Endpoints
+#### 🚨 Reclamações e Denúncias
 
-- `GET /api/stats/average-time` - Tempo médio de atendimento
-- `GET /api/aggregate/by-theme` - Agregação por tema
-- `GET /api/aggregate/by-subject` - Agregação por assunto
-- `GET /api/aggregate/by-server` - Agregação por servidor
-- `GET /api/stats/status-overview` - Status geral (percentuais)
-- `GET /api/unit/:unitName` - Dados por unidade
-- `GET /api/complaints-denunciations` - Reclamações e denúncias
-- `GET /api/meta/aliases` - Metadados (aliases de campos)
+```http
+GET /api/complaints-denunciations?servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+{
+  "assuntos": [
+    { "assunto": "Atendimento", "quantidade": 100 },
+    { "assunto": "Infraestrutura", "quantidade": 50 }
+  ],
+  "tipos": [
+    { "tipo": "Reclamação", "quantidade": 80 },
+    { "tipo": "Denúncia", "quantidade": 70 }
+  ]
+}
+```
+
+#### 🏥 Dados por Unidade
+
+```http
+GET /api/unit/:unitName?servidor=...&unidadeCadastro=...
+```
+
+#### 📊 Status Overview
+
+```http
+GET /api/stats/status-overview?servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+{
+  "concluida": {
+    "total": 10770,
+    "percentual": 72.8
+  },
+  "emAtendimento": {
+    "total": 4025,
+    "percentual": 27.2
+  }
+}
+```
+
+#### 📋 Dados Filtrados
+
+```http
+GET /api/aggregate/filtered?servidor=...&unidadeCadastro=...
+```
+
+**Resposta:**
+```json
+{
+  "total": 1000,
+  "byMonth": [...],
+  "byTheme": [...],
+  "bySubject": [...],
+  "byStatus": [...],
+  "unidadesCadastradas": [...],
+  "filter": { "type": "servidor", "value": "..." }
+}
+```
+
+#### 🗺️ Secretarias e Distritos
+
+```http
+GET /api/secretarias
+GET /api/secretarias/:district
+GET /api/distritos
+GET /api/distritos/:code
+GET /api/distritos/:code/stats
+GET /api/aggregate/by-district
+```
+
+#### 💬 Chat Cora (IA)
+
+```http
+GET /api/chat/messages
+POST /api/chat/messages
+POST /api/chat/reindex
+```
+
+#### 🔧 Cache
+
+```http
+POST /api/cache/clear
+GET /api/cache/status
+```
+
+#### 📤 Exportação
+
+```http
+GET /api/export/database
+```
+
+#### 🔍 Metadados
+
+```http
+GET /api/meta/aliases
+```
 
 ### 💾 Cache
 
 O sistema utiliza cache em memória (`node-cache`) com:
 - **TTL padrão**: 60 segundos
-- **TTL para endpoints pesados**: 300 segundos (5 minutos)
+- **TTL para endpoints pesados**: 300-3600 segundos (5 minutos a 1 hora)
 - **Headers HTTP**: `Cache-Control: public, max-age=X`
 
 ---
@@ -404,8 +806,10 @@ O frontend é uma **Single Page Application (SPA)** construída em um único arq
 
 - ✅ JavaScript inline
 - ✅ CSS inline (Tailwind via CDN)
-- ✅ Chart.js para gráficos
+- ✅ Chart.js para gráficos interativos
 - ✅ Navegação por seções (sem recarregar página)
+- ✅ Sistema de filtros global
+- ✅ Abas dinâmicas para múltiplas visualizações
 
 ### Design
 
@@ -415,19 +819,113 @@ O frontend é uma **Single Page Application (SPA)** construída em um único arq
   - Violet (`#a78bfa`): Accent
   - Green (`#34d399`): Success
   - Rose (`#fb7185`): Danger
+  - Amber (`#f59e0b`): Warning
 - **Efeitos**: Glass morphism, neons, gradientes
 - **Responsivo**: Grid adaptativo (Tailwind)
 
 ### Seções do Dashboard
 
-1. **Visão Geral**: KPIs, gráficos dinâmicos, heatmap, tabela
-2. **Por Órgão e Mês**: Lista de órgãos com gráficos
-3. **Tempo Médio**: Análise de tempo de atendimento
-4. **Por Tema**: Agrupamento por tema
-5. **Por Assunto**: Detalhamento por assunto
-6. **Por Cadastrante**: Análise por servidor/unidade
-7. **Reclamações e Denúncias**: Filtro específico
-8. **Páginas de Unidades**: Páginas específicas para cada unidade
+#### 🏠 Home
+- Página inicial com informações gerais
+
+#### 📊 Visão Geral
+- **KPIs Principais**: Total, últimos 7/30 dias com deltas e sparklines
+- **Tendência Mensal**: Gráfico de linha (12 meses)
+- **Top Órgãos**: Gráfico de barras
+- **Top Temas**: Gráfico de barras
+- **Distribuição por Status**: Gráfico de rosca
+- **Funil por Status**: Gráfico de barras
+- **Heatmap Interativo**: Seleção de dimensão
+- **Tabela de Registros**: Com paginação
+
+#### 🏢 Por Órgão e Mês
+- **Lista de Órgãos**: Visual com barras de progresso
+- **Gráfico Mensal**: Barras horizontais
+- **Tabela Completa**: Dados cruzados por órgão e mês
+- **KPI Total**: Total de manifestações
+
+#### ⏱️ Tempo Médio
+- **Estatísticas Gerais**: 4 cards (média, mediana, mínimo, máximo)
+- **Por Órgão**: Gráfico de barras horizontais
+- **Por Unidade de Cadastro**: Gráfico de barras horizontais
+- **Tendência Diária**: Gráfico de linha (30 dias)
+- **Tendência Semanal**: Gráfico de linha (12 semanas)
+- **Tendência Mensal**: Gráfico de barras (12 meses)
+- **Por Unidade e Mês**: Gráfico de linha com múltiplas séries
+- **Filtros**: Por mês, apenas concluídos, incluir zero
+
+#### 📑 Por Tema
+- **Gráfico de Barras**: Todos os temas
+- **Status Geral**: Gráfico de rosca
+- **Gráfico Mensal**: Evolução por mês
+- **Lista Completa**: Ranking completo
+- **Filtros Aplicados**: Indicador visual
+
+#### 📝 Por Assunto
+- **Gráfico de Barras**: Todos os assuntos
+- **Status Geral**: Gráfico de rosca
+- **Lista Completa**: Ranking completo
+- **Gráfico Mensal**: Evolução por mês
+
+#### 👤 Por Cadastrante / Unidade
+- **Filtro por Servidor**: Dropdown com servidores
+- **Filtro por Unidade**: Dropdown com unidades
+- **Gráficos Dinâmicos**: Atualização em tempo real
+- **Indicadores de Filtro**: Exibição de filtros aplicados
+- **Gráfico Mensal**: Evolução por mês
+
+#### 🚨 Reclamações e Denúncias
+- **Lista de Assuntos**: Ranking completo
+- **Gráfico por Tipo**: Tipos de ação
+- **Gráfico Mensal**: Evolução por mês
+
+#### 📊 Status (com Abas)
+- **Aba Por Status**:
+  - Gráfico de rosca
+  - Heatmap mês x status
+  - Gráfico de linha temporal
+- **Aba Por Tema**:
+  - Gráfico de barras
+  - Heatmap mês x tema
+- **Aba Por Órgão**:
+  - Gráfico de barras
+  - Heatmap mês x órgão
+
+#### 🏥 Por Secretaria
+- **Gráfico de Barras**: Top secretarias
+- **Ranking**: Lista dos top 10
+- **Gráfico Mensal**: Evolução por mês
+
+#### 🏘️ Por Bairro
+- **Gráfico de Barras**: Top bairros
+- **Heatmap**: Mês x bairro
+- **Gráfico Mensal**: Evolução por mês
+
+#### 📂 Por Categoria
+- **Gráfico de Barras**: Top categorias
+- **Heatmap**: Mês x categoria
+- **Gráfico Mensal**: Evolução por mês
+
+#### 🏥 Páginas de Unidades
+- **18 Unidades Específicas**: Páginas dedicadas
+- **Assuntos por Unidade**: Lista completa
+- **Tipos de Ação**: Gráfico por tipo
+
+### 🎯 Funcionalidades do Frontend
+
+#### Sistema de Filtros Global
+- **Filtro por Servidor**: Aplicado globalmente
+- **Filtro por Unidade**: Aplicado globalmente
+- **Filtro por Mês**: Seleção múltipla de meses
+- **Indicadores Visuais**: Mostra filtros ativos
+- **Atualização Automática**: Todos os gráficos atualizam
+
+#### Interatividade
+- **Clique em Gráficos**: Feedback visual
+- **Hover em Elementos**: Tooltips informativos
+- **Navegação por Abas**: Múltiplas visualizações
+- **Paginação**: Tabelas com paginação
+- **Scroll Suave**: Animações de scroll
 
 ---
 
@@ -452,21 +950,26 @@ npm run prisma:studio     # Abre Prisma Studio (interface visual do banco)
 
 # Dados
 npm run import:excel      # Importa dados do Excel para MongoDB
+npm run update:excel      # Atualiza dados do Excel existentes
 npm run db:backfill       # Normaliza campos dos registros no MongoDB
 npm run db:reset          # Reseta banco de dados (cuidado!)
 npm run db:analyze        # Analisa estrutura do banco de dados
+npm run cache:clear       # Limpa cache em memória
 ```
 
 ### Scripts Node (scripts/)
 
 - **`setup.js`**: Configuração inicial (gera Prisma Client, cria DB)
 - **`importExcel.js`**: Importa dados do arquivo Excel
+- **`updateFromExcel.js`**: Atualiza dados do Excel existentes
 - **`backfillNormalized.js`**: Preenche campos normalizados
 - **`clearDb.js`**: Limpa todos os registros
 - **`checkDb.js`**: Verifica estado do banco de dados
 - **`compareExcelDb.js`**: Compara dados do Excel com banco
 - **`listExcelColumns.js`**: Lista colunas disponíveis no Excel
 - **`testEndpoints.js`**: Testa endpoints da API
+- **`testMongoConnection.js`**: Testa conexão MongoDB
+- **`clearCache.js`**: Limpa cache em memória
 
 ---
 
@@ -561,6 +1064,14 @@ npm run db:analyze        # Analisa estrutura do banco de dados
 3. Verifique se a API está respondendo: `GET /api/health`
 4. Verifique se há dados no banco
 
+#### ❌ KPIs mostram "—" ou valores zerados
+
+**Solução:**
+1. Verifique se há dados no banco de dados
+2. Verifique se os campos de data estão normalizados: `npm run db:backfill`
+3. Verifique se o endpoint `/api/summary` está retornando dados
+4. Verifique o console do navegador para erros
+
 #### ❌ Importação falha
 
 **Solução:**
@@ -598,6 +1109,7 @@ O sistema mostra logs detalhados:
 - `📁 MongoDB Atlas conectado`: Conexão estabelecida
 - `✅ Banco de dados encontrado!`: Banco existe
 - `🎉 Setup concluído!`: Sistema pronto
+- `📊 Dados carregados`: Dados processados
 - `❌ ERRO`: Erros com descrição
 
 ---
@@ -608,6 +1120,68 @@ O sistema mostra logs detalhados:
 - **[GUIA_MIGRACAO_MONGODB.md](./GUIA_MIGRACAO_MONGODB.md)**: Guia de migração para MongoDB
 - **[HOSPEDAGEM.md](./HOSPEDAGEM.md)**: Guia detalhado de deploy
 - **[ANALISE_BANCO_DADOS.md](./ANALISE_BANCO_DADOS.md)**: Análise do banco de dados
+- **[DOCUMENTACAO_SISTEMA_DATAS_SLA.md](./DOCUMENTACAO_SISTEMA_DATAS_SLA.md)**: Sistema de datas e SLA
+- **[MELHORIAS_PAGINA_TEMPO_MEDIO.md](./MELHORIAS_PAGINA_TEMPO_MEDIO.md)**: Melhorias na página de tempo médio
+
+---
+
+## 🆕 Novidades e Melhorias Recentes
+
+### ✨ Funcionalidades Adicionadas
+
+#### 📊 KPIs Avançados
+- ✅ **Deltas Percentuais**: Comparação com períodos anteriores (7 e 30 dias)
+- ✅ **Sparklines**: Mini-gráficos de tendência nos cards de KPI
+- ✅ **Endpoint Diário**: `/api/aggregate/by-day` para dados diários
+
+#### 📑 Visualizações por Abas
+- ✅ **Página Status**: 3 abas (Por Status, Por Tema, Por Órgão)
+- ✅ **Navegação Intuitiva**: Sistema de abas com indicadores visuais
+- ✅ **Múltiplas Perspectivas**: Mesma página, diferentes análises
+
+#### 📊 Tabelas Dinâmicas
+- ✅ **Por Órgão e Mês**: Tabela completa com dados cruzados
+- ✅ **Totais por Linha e Coluna**: Cálculos automáticos
+- ✅ **Formatação Visual**: Cores e hover effects
+
+#### ⏱️ Tempo Médio Expandido
+- ✅ **Por Unidade de Cadastro**: Gráfico de barras horizontais
+- ✅ **Por Unidade e Mês**: Gráfico de linha com múltiplas séries
+- ✅ **Estatísticas Gerais**: Cards com média, mediana, mínimo, máximo
+- ✅ **Tendências**: Diária, semanal e mensal
+
+#### 📈 Gráficos Mensais
+- ✅ **Todas as Páginas**: Gráficos mensais adicionados em:
+  - Por Assunto
+  - Por Bairro
+  - Por Secretaria
+  - Por Categoria
+  - Reclamações e Denúncias
+  - Status (na aba Por Status)
+
+#### 🔍 Filtros e Contexto
+- ✅ **Indicadores de Filtro**: Exibição visual de filtros aplicados
+- ✅ **Filtros por Mês**: Seleção múltipla de meses
+- ✅ **Contexto Completo**: Informações de filtro em todas as páginas relevantes
+
+#### 🎯 Rankings Completos
+- ✅ **Por Tema**: Todos os temas sem limitação
+- ✅ **Por Assunto**: Todos os assuntos sem limitação
+- ✅ **Listas Visuais**: Com barras de progresso e rankings
+
+### 🛠️ Endpoints Criados
+
+1. **`GET /api/aggregate/by-day`**: Dados diários (últimos 30 dias)
+2. **`GET /api/aggregate/count-by-status-mes`**: Status agrupado por mês
+3. **`GET /api/aggregate/count-by-orgao-mes`**: Órgão agrupado por mês
+
+### 🐛 Correções Implementadas
+
+- ✅ **Tendência Mensal**: Corrigido cálculo usando campo `ym`
+- ✅ **Gráficos Vazios**: Validação de dados antes de criar gráficos
+- ✅ **Heatmap**: Tratamento de erros e validação de dados
+- ✅ **Rankings**: Removidas limitações (slice) para mostrar todos os itens
+- ✅ **Filtros**: Sistema global de filtros funcionando corretamente
 
 ---
 

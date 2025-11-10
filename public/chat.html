@@ -259,7 +259,7 @@
               console.log('ℹ️ Nenhuma mensagem encontrada, adicionando mensagem inicial');
               // Mensagem inicial (não salvar no banco, apenas mostrar)
               chatMessages.push({
-                text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje Prefeito?',
+                text: 'Olá, Gestor Municipal! 👋 Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
                 sender: 'cora',
                 createdAt: new Date().toISOString()
               });
@@ -269,7 +269,7 @@
           } else {
             console.error('❌ Erro ao carregar mensagens:', response.status);
             chatMessages = [{
-              text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje Prefeito?',
+              text: 'Olá, Gestor Municipal! 👋 Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
               sender: 'cora',
               createdAt: new Date().toISOString()
             }];
