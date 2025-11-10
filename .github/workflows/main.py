@@ -810,7 +810,6 @@ try:
         df_loc["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
 
         logging.info("Tratamento 7.10 (Limpeza e conversão numérica de 'tempo_de_resolucao_em_dias') aplicado.")
-        
 except Exception as e:
     logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
 
@@ -836,13 +835,18 @@ if not df_novos.empty:
         if col in df_novos.columns:
             empty_count = df_novos[col].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']).sum()
             if empty_count > 0:
-                logging.warning(f"QA Pós-Tratamento (df_novos): Coluna '{col}' contém {empty_count} valores vazios/inválidos/não informados. Exemplos: {df_novos.loc[df_novos[col].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']), col].unique()[:5].tolist()}")
-            
+                logging.warning(
+                    f"QA Pós-Tratamento (df_novos): Coluna '{col}' contém {empty_count} valores vazios/inválidos/não informados. "
+                    f"Exemplos: {df_novos.loc[df_novos[col].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']), col].unique()[:5].tolist()}"
+                )
+
             # Verificação de tipos para garantir que são strings
             if not pd.api.types.is_string_dtype(df_novos[col]):
-                logging.error(f"QA Pós-Tratamento (df_novos): Coluna '{col}' não é do tipo string após tratamento. Tipo atual: {df_novos[col].dtype}. Convertendo para string.")
+                logging.error(
+                    f"QA Pós-Tratamento (df_novos): Coluna '{col}' não é do tipo string após tratamento. Tipo atual: {df_novos[col].dtype}. Convertendo para string."
+                )
                 df_novos[col] = df_novos[col].astype(str)
-                
+
 # ========================================================
 # 8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS (VERSÃO CORRIGIDA E INTEGRADA)
 # ========================================================
@@ -856,8 +860,8 @@ try:
         raise SystemExit("❌ df_bruta não está definido ou está vazio. Carregue a base bruta antes do Item 8.")
     logging.info(f"df_bruta presente e com shape: {df_bruta.shape}")
 
-    df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns] # Garante que está normalizado
-    df_bruta = normalize_protocolo_col(df_bruta, "protocolo") # Garante que protocolo está padronizado
+    df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns]  # Garante que está normalizado
+    df_bruta = normalize_protocolo_col(df_bruta, "protocolo")  # Garante que protocolo está padronizado
     logging.debug("Colunas e protocolos de df_bruta normalizados.")
 except Exception as e:
     logging.critical(f"Erro na checagem inicial de df_bruta no Item 8: {e}", exc_info=True)
@@ -899,7 +903,7 @@ try:
         logging.warning("Coluna 'protocolo' não encontrada em df_tratada_existente. Não será possível identificar protocolos existentes.")
 
     cols_alvo_tratada = list(df_tratada_existente.columns)
-    if not cols_alvo_tratada: # Se a planilha tratada estiver completamente vazia (sem cabeçalho)
+    if not cols_alvo_tratada:  # Se a planilha tratada estiver completamente vazia (sem cabeçalho)
         if 'df_novos' in globals() and not df_novos.empty:
             cols_alvo_tratada = list(df_novos.columns)
             logging.info("Planilha tratada vazia, usando colunas de df_novos como referência para o schema.")
@@ -923,7 +927,7 @@ try:
     if 'df_novos' not in globals() or df_novos.empty:
         logging.info("Nenhum protocolo novo detectado para envio.")
         print("🧹 Nenhum protocolo novo para enviar.")
-        df_send = pd.DataFrame() # Cria um df_send vazio para que o script continue sem erros
+        df_send = pd.DataFrame()  # Cria um df_send vazio para que o script continue sem erros
     else:
         logging.info(f"Detectados {len(df_novos)} protocolos novos para processar e enviar. Shape: {df_novos.shape}")
         print(f"🧹 Novos protocolos a enviar: {len(df_novos)}")
@@ -958,14 +962,14 @@ except Exception as e:
 # --------------------------------------------------------------------------
 if not df_send.empty:
     _SUB("Serializando datas e limpando nulos para o envio...")
-    
+
     colunas_de_data = ["data_da_criacao", "data_da_conclusao"]
     for coluna in colunas_de_data:
         if coluna in df_send.columns:
             # Converte para datetime (erros viram NaT) e depois para string DD/MM/AAAA
             df_send[coluna] = pd.to_datetime(df_send[coluna], errors='coerce').dt.strftime('%d/%m/%Y')
             logging.info(f"Coluna '{coluna}' convertida para texto DD/MM/AAAA.")
-    
+
     # --- B) QA PRE-APPEND: checagem de somas e contagens antes de enviar ===
     def soma_tempo_serie_safe(df_local, col="tempo_de_resolucao_em_dias"):
         if col not in df_local.columns:
@@ -986,7 +990,7 @@ if not df_send.empty:
     # Se houver discrepância grande entre bruta e tratada+envio, emitir WARNING
     if abs((soma_tratada_atual + soma_a_enviar) - soma_bruta_total) > 1:
         logging.warning("QA PRE-APPEND: Diferença significativa detectada entre bruta e tratada+envio. Verifique mapeamento de colunas (ex.: tempo_de_resolucao_em_dias).")
-    
+
     # Substitui todos os tipos de nulos restantes (NaT, None, NaN) por uma string vazia
     # Observação: mantemos a versão original df_send para QA; abaixo criaremos a versão para append.
     # Não sobrescrevemos a coluna numérica 'tempo_de_resolucao_em_dias' até depois da dedupe final.
@@ -1109,7 +1113,7 @@ else:
                 header = chunk.columns.tolist()
                 aba_tratada.append_rows([header] + rows, value_input_option='USER_ENTERED')
                 logging.info(f"Lote {first_idx}-{last_idx} enviado com cabeçalho.")
-                sheet_is_empty = False # Garante que o cabeçalho não seja adicionado novamente
+                sheet_is_empty = False  # Garante que o cabeçalho não seja adicionado novamente
             else:
                 aba_tratada.append_rows(rows, value_input_option='USER_ENTERED')
                 logging.info(f"Lote {first_idx}-{last_idx} enviado (sem cabeçalho).")
@@ -1224,8 +1228,8 @@ df = _prepare_status(df)  # garante que coluna principal esteja padronizada
 
 # Em seguida crie os deltas com base no df já padronizado:
 delta_status = df[df["status_demanda"] != df.get("status_demanda_OLD", df["status_demanda"])]
-delta_conc   = df[df["data_da_conclusao"] != df.get("data_da_conclusao_OLD", df["data_da_conclusao"])]
-delta_tempo  = df[df["tempo_de_resolucao_em_dias"] != df.get("tempo_de_resolucao_em_dias_OLD", df["tempo_de_resolucao_em_dias"])]
+delta_conc = df[df["data_da_conclusao"] != df.get("data_da_conclusao_OLD", df["data_da_conclusao"])]
+delta_tempo = df[df["tempo_de_resolucao_em_dias"] != df.get("tempo_de_resolucao_em_dias_OLD", df["tempo_de_resolucao_em_dias"])]
 
 # --------------------------------------------------------
 # PATCH principal — atualização de células no Google Sheets
@@ -1357,8 +1361,8 @@ def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
 
 # --- Calcula deltas específicos (apenas uma vez e sem sobrescritas) ---
 delta_status = _delta_df(df_full, "status_demanda")
-delta_conc   = _delta_df(df_full, "data_da_conclusao")
-delta_tempo  = _delta_df(df_full, "tempo_de_resolucao_em_dias")
+delta_conc = _delta_df(df_full, "data_da_conclusao")
+delta_tempo = _delta_df(df_full, "tempo_de_resolucao_em_dias")
 
 # --- Logs e verificações ---
 logging.info(f"Delta STATUS: {len(delta_status)} linhas alteradas/novas")
