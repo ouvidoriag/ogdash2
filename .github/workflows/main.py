@@ -633,14 +633,22 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # 7.7 Datas e tipos
     try:
         if "data_da_criacao" in df_loc.columns:
-            df_loc["data_da_criacao"] = _parse_dt_cmp(df_loc["data_da_criacao"]) # <-- Retorna objeto de data
-            logging.info("Tratamento 7.7 (data_da_criacao para objeto datetime) aplicado.")
+            # Converte para objeto de data e ZERA a informação de hora
+            df_loc["data_da_criacao"] = pd.to_datetime(_parse_dt_cmp(df_loc["data_da_criacao"])).dt.normalize()
+            logging.info("Tratamento 7.7 (data_da_criacao para objeto Date) aplicado.")
+        
         if "status_demanda" in df_loc.columns:
             df_loc["status_demanda"] = df_loc["status_demanda"].astype(str)
-            logging.info("Tratamento 7.7 (status_demanda) tipo aplicado.")
+            logging.info("Tratamento 7.7 (status_demanda tipo) aplicado.")
+        
         if "data_da_conclusao" in df_loc.columns:
-            df_loc["data_da_conclusao"] = _conclusao_strict(df_loc["data_da_conclusao"])
-            logging.info("Tratamento 7.7 (data_da_conclusao) strict aplicado.")
+            # A função _conclusao_strict já retorna texto, então vamos primeiro convertê-la para data e depois normalizar
+            # Para evitar erros, primeiro aplicamos o tratamento de texto
+            datas_texto = _conclusao_strict(df_loc["data_da_conclusao"])
+            # Depois, convertemos para data (o que for texto inválido vira NaT) e normalizamos
+            df_loc["data_da_conclusao"] = pd.to_datetime(datas_texto, format='%d/%m/%Y', errors='coerce').dt.normalize()
+            logging.info("Tratamento 7.7 (data_da_conclusao para objeto Date) aplicado.")
+
     except Exception as e:
         logging.error(f"Erro no tratamento 7.7 (Datas e Tipos): {e}", exc_info=True)
 
@@ -791,30 +799,6 @@ try:
 except Exception as e:
     logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
     raise
-
-# --------------------------------------------------------------------------
-# PREPARAÇÃO FINAL DAS DATAS ANTES DO ENVIO (LÓGICA SEGURA INTEGRADA)
-# --------------------------------------------------------------------------
-if not df_send.empty:
-    _SUB("Preparando colunas de data para envio (lógica segura)...")
-    
-    # --- Coluna 'data_da_criacao' ---
-    if "data_da_criacao" in df_send.columns:
-        # Tenta converter para data. O que falhar (texto, etc.) vira NaT (nulo).
-        datas_convertidas = pd.to_datetime(df_send["data_da_criacao"], errors='coerce').dt.normalize()
-        # Onde a conversão falhou, preenche de volta com o valor ORIGINAL. Isso impede que dados sejam apagados.
-        df_send["data_da_criacao"] = datas_convertidas.fillna(df_send["data_da_criacao"])
-        logging.debug("Coluna 'data_da_criacao' para novos protocolos preparada com segurança.")
-
-    # --- Coluna 'data_da_conclusao' ---
-    if "data_da_conclusao" in df_send.columns:
-        datas_convertidas = pd.to_datetime(df_send["data_da_conclusao"], errors='coerce').dt.normalize()
-        df_send["data_da_conclusao"] = datas_convertidas.fillna(df_send["data_da_conclusao"])
-        logging.debug("Coluna 'data_da_conclusao' para novos protocolos preparada com segurança.")
-    
-    # Substitui NaT (Not a Time) por None, que gspread entende como célula vazia.
-    df_send = df_send.replace({pd.NaT: None})
-# --------------------------------------------------------------------------
 
 # ----------------------------------------------------------
 # CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
