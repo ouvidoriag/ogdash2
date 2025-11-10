@@ -865,6 +865,73 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.6 (Responsavel): {e}", exc_info=True)
 
+        # 7.x Mapeamento: responsavel -> Ouvidoria (preenche unidade_cadastro)
+   
+    try:
+        if "responsavel" in df_loc.columns:
+            # --- Dicionário fornecido pelo usuário ---
+            map_responsavel_para_ouvidoria = {
+                "1ª Residência de Obras": "Ouvidoria Setorial de Obras",
+                "2ª Residência de Obras A": "Ouvidoria Setorial de Obras",
+                "2ª Residência de Obras B": "Ouvidoria Setorial de Obras",
+                "3ª Residência de Obras": "Ouvidoria Setorial de Obras",
+                "Aitana de Jesus Santos": "Ouvidoria Setorial de Obras",
+                "Amanda Fernandes de Oliveira": "Ouvidoria Setorial de Obras",
+                "Ana Paula Cassiano de Oliveira": "Ouvidoria Setorial de Obras",
+                "Brenda Rhaianny Machado Lima": "Ouvidoria Setorial de Urbanismo",
+                "Departamento de Fiscalização (Meio Ambiente)": "Ouvidoria Setorial de Meio Ambiente",
+                "GPE": "Ouvidoria Setorial de Obras",
+                "Guilherme Gomes": "Ouvidoria Setorial de Obras",
+                "Jessica Cristina Soares Trajano da Rocha": "Ouvidoria Setorial de Obras",
+                "Ouvidoria Geral (ADM)": "Ouvidoria Geral",
+                "Priscila Tavares Salcedo": "Ouvidoria Setorial de Obras",
+                "Secretaria Municipal de Obras": "Ouvidoria Setorial de Obras",
+                "Secretaria Municipal de Segurança Pública": "Ouvidoria Setorial de Segurança Pública",
+                "Secretaria Municipal de Transportes e Serviços Públicos": "Ouvidoria Geral",
+                "Superintendência de Limpeza Urbana": "Ouvidoria Setorial de Obras",
+                "Thayná Cristina Dias de Souza": "Ouvidoria Setorial de Obras",
+            }
+
+            # Normaliza as chaves do dicionário para lookup robusto (remove acento, lower, strip)
+            _map_resp_norm = { _canon_txt(k): v for k, v in map_responsavel_para_ouvidoria.items() }
+
+            # Função que encontra mapeamento a partir do campo 'responsavel'
+            def _map_responsavel(row_responsavel):
+                if pd.isna(row_responsavel) or str(row_responsavel).strip() == "":
+                    return None
+                key = _canon_txt(str(row_responsavel))
+                return _map_resp_norm.get(key)
+
+            # Prepara coluna unidade_cadastro caso não exista
+            if "unidade_cadastro" not in df_loc.columns:
+                df_loc["unidade_cadastro"] = ""
+
+            # Mascara: onde aplicar o preenchimento
+            # aplicamos quando unidade_cadastro é vazia/nao-informada OU é genérica 'ouvidoria setorial' OU contém a palavra 'ouvidoria'
+            mask_unidade_vazia = df_loc["unidade_cadastro"].astype(str).str.strip().str.lower().isin(["", "nan", "none", "n/a", "não informado", "nao informado"])
+            mask_ouvidoria_setorial = df_loc["unidade_cadastro"].astype(str).str.match(r"(?i)^\s*ouvidoria\s+setorial\s*$", na=False)
+            mask_contains_ouvidoria = df_loc["unidade_cadastro"].astype(str).str.contains(r"(?i)\bouvidoria\b", na=False)
+
+            mask_apply = mask_unidade_vazia | mask_ouvidoria_setorial | mask_contains_ouvidoria
+
+            # Executa o mapeamento e aplica somente quando mapeamento existir
+            mapped_series = df_loc.loc[mask_apply, "responsavel"].astype(str).apply(_map_responsavel)
+            # Apenas atualiza as linhas cujo mapping retornou um valor (não None)
+            to_update_idx = mapped_series[mapped_series.notna()].index
+            if len(to_update_idx):
+                df_loc.loc[to_update_idx, "unidade_cadastro"] = mapped_series.loc[to_update_idx].values
+                logging.info(f"Mapeamento responsavel->unidade_cadastro aplicado em {len(to_update_idx)} linhas (novos).")
+
+            # Opcional: padronizar texto de unidade_cadastro após a aplicação
+            df_loc["unidade_cadastro"] = df_loc["unidade_cadastro"].astype(str).apply(_clean_whitespace)
+            # Normaliza 'Ouvidoria Geral' variantes
+            mask_ouvid_geral = df_loc["unidade_cadastro"].astype(str).str.match(r"(?i)^\s*ouvidoria\s+geral\b.*$", na=False)
+            if mask_ouvid_geral.any():
+                df_loc.loc[mask_ouvid_geral, "unidade_cadastro"] = "Ouvidoria Geral"
+
+    except Exception as e:
+        logging.error(f"Erro no mapeamento responsavel->ouvidoria: {e}", exc_info=True)
+
     # 7.7 Datas e tipos
     try:
         if "data_da_criacao" in df_loc.columns:
@@ -1436,56 +1503,202 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
         _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
 
 # ========================================================
-# 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias)
+# 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias, prazo_restante)
 # ========================================================
 
-_BANNER("10) DELTAS HISTÓRICOS (ajustado para novos protocolos)")
+_BANNER("10) DELTAS HISTÓRICOS (ajustado — sincroniza 4 colunas de exceção)")
 
 # --- Alinha colunas do df_send ao schema da tratada ---
 try:
     cols_tratada = list(df_tratada.columns)
-    # df_send pode não existir (caso nenhum novo); garante variável
     if 'df_send' not in globals():
         df_send = pd.DataFrame(columns=cols_tratada)
     df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
     df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
 except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
-    # fallback simples: tenta usar df_send como fonte
     df_full = df_send.copy()
 
-# --- Garante existência das colunas *_OLD para comparações de histórico ---
-for col in ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias"]:
+# --- Garantia de colunas OLD para histórico ---
+EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias", "prazo_restante"]
+for col in EXCEPTION_COLS:
     old_col = f"{col}_OLD"
     if old_col not in df_full.columns:
-        # copia o valor atual para coluna OLD (se não existir), normalizando nulos
         df_full[old_col] = df_full.get(col, "").fillna("")
+
+# --- Prepara lookup da BRUTA por protocolo (última ocorrência)
+# Normaliza e garante colunas na bruta
+for c in EXCEPTION_COLS:
+    if c not in df_bruta.columns:
+        df_bruta[c] = pd.NA
+
+df_bruta['protocolo'] = df_bruta.get('protocolo', pd.Series([''] * len(df_bruta))).astype(str).str.strip().str.upper()
+df_full['protocolo']   = df_full.get('protocolo', pd.Series([''] * len(df_full))).astype(str).str.strip().str.upper()
+
+# Criar lookup: mantém última ocorrência se houver duplicatas
+df_bruta_lookup = df_bruta.set_index('protocolo', drop=False).loc[:, EXCEPTION_COLS].copy()
+df_bruta_lookup = df_bruta_lookup[~df_bruta_lookup.index.duplicated(keep='last')]
+
+# helper: considera valor "presente" quando não vazio/nulo/token inválido
+_invalid_tokens_str = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
+def _bruta_has_value(v):
+    if pd.isna(v):
+        return False
+    s = str(v).strip()
+    if s == "":
+        return False
+    return s.lower() not in _invalid_tokens_str
+
+# Normalizações vindas da bruta (aplicar conversões por coluna)
+#  - data_da_conclusao: aplicar _conclusao_strict para formatar DD/MM/AAAA ou 'Não concluído'
+#  - tempo_de_resolucao_em_dias: converter vírgula -> ponto e para numérico
+#  - status_demanda: normalizar para 'CONCLUÍDA' / 'EM ANDAMENTO' quando possível
+#  - prazo_restante: aplicar _canon_prazo_restante e regra de 'Demanda Concluída' quando status for concluída
+try:
+    # prepara colunas temporárias com versões normalizadas vindas da bruta
+    bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
+
+    # data_da_conclusao
+    if "data_da_conclusao" in df_bruta_lookup.columns:
+        try:
+            bruta_norm["data_da_conclusao"] = _conclusao_strict(df_bruta_lookup["data_da_conclusao"]).astype(object)
+        except Exception:
+            # fallback genérico
+            bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
+
+    # tempo_de_resolucao_em_dias
+    if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
+        s = df_bruta_lookup["tempo_de_resolucao_em_dias"].astype(str).str.strip()
+        s = s.replace({"": pd.NA})
+        # tokens inválidos -> NA
+        s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
+        # vírgula decimal -> ponto
+        s_valid = s.where(s.notna())
+        if s_valid is not None and not s_valid.empty:
+            s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
+        bruta_norm["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
+
+    # status_demanda
+    if "status_demanda" in df_bruta_lookup.columns:
+        s_status = df_bruta_lookup["status_demanda"].astype(str).str.strip()
+        def _map_status_bruta(x):
+            if not _bruta_has_value(x):
+                return pd.NA
+            if _is_concluida(x):
+                return "CONCLUÍDA"
+            # se contém alguma palavra, mantemos e marcamos EM ANDAMENTO
+            return "EM ANDAMENTO" if str(x).strip() != "" else pd.NA
+        bruta_norm["status_demanda"] = s_status.apply(_map_status_bruta)
+
+    # prazo_restante
+    if "prazo_restante" in df_bruta_lookup.columns:
+        s_pr = df_bruta_lookup["prazo_restante"].astype(str)
+        # aplica canonização parcial
+        bruta_norm["prazo_restante"] = s_pr.apply(lambda x: _canon_prazo_restante(x) if _bruta_has_value(x) else pd.NA)
+
+except Exception as e:
+    logging.exception(f"Erro ao normalizar campos de exceção vindos da bruta: {e}")
+    bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
+
+# --- Agora: sincroniza os valores da BRUTA para o df_full (somente quando a bruta tem valor não-vazio)
+# Mantemos valores existentes na tratada quando bruta não tem valor
+if not bruta_norm.empty:
+    # iterar por protocolos presentes em df_full que também existam na bruta_lookup
+    protocolo_to_rows = {}
+    for i, p in enumerate(df_full['protocolo'].astype(str)):
+        protocolo_to_rows.setdefault(str(p).strip().upper(), []).append(i)
+
+    applied_counts = {c:0 for c in EXCEPTION_COLS}
+
+    for proto, rows_idx in protocolo_to_rows.items():
+        if proto in bruta_norm.index:
+            row_vals = bruta_norm.loc[proto]
+            for col in EXCEPTION_COLS:
+                try:
+                    val = row_vals.get(col, pd.NA) if proto in bruta_norm.index else pd.NA
+                    if pd.isna(val):
+                        continue  # nada a sobrescrever
+                    # Especial: se for data_da_conclusao e for 'Não concluído' ou string, já vem formatado por _conclusao_strict
+                    # Para prazo_restante: se status_concluida set 'Demanda Concluída' — mas respeitamos bruta em primeiro lugar
+                    for ridx in rows_idx:
+                        # apply conversion just before assignment for safety
+                        if col == "data_da_conclusao":
+                            # val já deveria estar em DD/MM/AAAA ou 'Não concluído'
+                            assign_val = val
+                        elif col == "tempo_de_resolucao_em_dias":
+                            # armazena número (float) — manter tipo coerente
+                            assign_val = val
+                        elif col == "status_demanda":
+                            assign_val = val
+                        elif col == "prazo_restante":
+                            assign_val = val
+                        else:
+                            assign_val = val
+                        df_full.at[ridx, col] = assign_val
+                        applied_counts[col] += 1
+                except Exception as e:
+                    logging.debug(f"Não foi possível sincronizar protocolo {proto} coluna {col}: {e}")
+
+    logging.info(f"Sincronização a partir da bruta aplicada. Contagens por coluna: {applied_counts}")
+else:
+    logging.info("Nenhum valor normalizado encontrado na bruta para sincronização.")
+
+# --- Reaplica regras derivadas (ex.: se status == CONCLUÍDA então prazo_restante='Demanda Concluída') ---
+try:
+    if "status_demanda" in df_full.columns and "prazo_restante" in df_full.columns:
+        mask_conc = df_full["status_demanda"].map(_is_concluida)
+        if mask_conc.any():
+            df_full.loc[mask_conc, "prazo_restante"] = "Demanda Concluída"
+            logging.info(f"Regra pós-sincronização aplicada: prazo_restante setado para 'Demanda Concluída' em {mask_conc.sum()} linhas.")
+except Exception as e:
+    logging.debug(f"Erro ao aplicar regra pós-sincronização para prazo_restante: {e}")
+
+# --- Atualiza as colunas *_OLD (garante comparação correta): já criadas acima ---
 
 # --- Função delta robusta (com fillna e casting a str) ---
 def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
     old_col = f"{col}_OLD"
-    if old_col in df_full_local.columns:
-        left = df_full_local.get(col, "").fillna("").astype(str)
-        right = df_full_local.get(old_col, "").fillna("").astype(str)
-        return df_full_local[left != right].copy()
-    else:
-        # se não há coluna OLD, considera apenas os recém marcados como 'eh_novo'
-        return df_full_local[df_full_local.get("eh_novo", False) == True].copy()
+    left = df_full_local.get(col, "").fillna("").astype(str)
+    right = df_full_local.get(old_col, "").fillna("").astype(str)
+    return df_full_local[left != right].copy()
 
 # --- Calcula deltas específicos (apenas uma vez e sem sobrescritas) ---
 delta_status = _delta_df(df_full, "status_demanda")
-delta_conc = _delta_df(df_full, "data_da_conclusao")
-delta_tempo = _delta_df(df_full, "tempo_de_resolucao_em_dias")
+delta_conc   = _delta_df(df_full, "data_da_conclusao")
+delta_tempo  = _delta_df(df_full, "tempo_de_resolucao_em_dias")
+delta_prazo  = _delta_df(df_full, "prazo_restante")
 
 # --- Logs e verificações ---
 logging.info(f"Delta STATUS: {len(delta_status)} linhas alteradas/novas")
 logging.info(f"Delta DATA_CONCLUSAO: {len(delta_conc)} linhas alteradas/novas")
 logging.info(f"Delta TEMPO_DE_RESOLUCAO: {len(delta_tempo)} linhas alteradas/novas")
+logging.info(f"Delta PRAZO_RESTANTE: {len(delta_prazo)} linhas alteradas/novas")
 
 print(f"📊 Deltas calculados com sucesso:")
 print(f"   • STATUS: {len(delta_status)}")
 print(f"   • DATA_CONCLUSAO: {len(delta_conc)}")
 print(f"   • TEMPO_DE_RESOLUCAO: {len(delta_tempo)}")
+print(f"   • PRAZO_RESTANTE: {len(delta_prazo)}")
+
+# --- Opcional: aplicar patches na aba_tratada (se disponível)
+try:
+    if 'aba_tratada' in globals() and aba_tratada is not None:
+        # Para cada delta chama o patch grouped (usa coluna 'protocolo' como chave)
+        if not delta_status.empty:
+            _patch_grouped_force(delta_status, key_col="protocolo", value_col="status_demanda", sheet=aba_tratada)
+        if not delta_conc.empty:
+            _patch_grouped_force(delta_conc, key_col="protocolo", value_col="data_da_conclusao", sheet=aba_tratada)
+        if not delta_tempo.empty:
+            _patch_grouped_force(delta_tempo, key_col="protocolo", value_col="tempo_de_resolucao_em_dias", sheet=aba_tratada)
+        if not delta_prazo.empty:
+            _patch_grouped_force(delta_prazo, key_col="protocolo", value_col="prazo_restante", sheet=aba_tratada)
+    else:
+        logging.info("aba_tratada não disponível — deltas calculados mas não aplicados diretamente (fallback).")
+except Exception as e:
+    logging.exception(f"Erro ao aplicar patches das deltas na aba_tratada: {e}")
+
+# --- Logs finais do item 10 ---
+logging.info("Item 10 finalizado: sincronização das 4 colunas de exceção concluída.")
 
 # ========================================================
 # 11) QA & SUMÁRIO FINAL
