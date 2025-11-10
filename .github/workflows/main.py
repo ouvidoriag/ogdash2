@@ -478,6 +478,87 @@ except Exception as e:
     novos_protos = []
     nao_enviados = []
 
+# ===================================================================================
+# 5.5) SINCRONIZAÇÃO DIRECIONADA DE 'tempo_de_resolucao_em_dias' (REMOVER APÓS 1ª EXECUÇÃO)
+# ===================================================================================
+_BANNER("5.5) SINCRONIZAÇÃO DIRECIONADA DE 'tempo_de_resolucao_em_dias' (REMOVER DEPOIS)")
+print(" Executando sincronização de 'tempo_de_resolucao_em_dias' para protocolos padrão 'C...'...")
+logging.info("INICIANDO: Sincronização direcionada da coluna 'tempo_de_resolucao_em_dias'.")
+
+try:
+    _SUB("Carregando bases para a sincronização...")
+    
+    # 1. PREPARA A BASE BRUTA COMO FONTE DA VERDADE
+    # Usa a df_bruta já carregada no Item 2
+    df_bruta_mapa = df_bruta.copy()
+    df_bruta_mapa.columns = [normalizar_nome_coluna(c) for c in df_bruta_mapa.columns]
+    df_bruta_mapa.drop_duplicates(subset=['protocolo'], keep='first', inplace=True)
+    
+    # 2. CARREGA A BASE TRATADA PARA SER ATUALIZADA
+    df_tratada_hist = pd.DataFrame(aba_tratada.get_all_records())
+    df_tratada_hist.columns = [normalizar_nome_coluna(c) for c in df_tratada_hist.columns]
+    
+    # 3. VERIFICA SE AS COLUNAS NECESSÁRIAS EXISTEM
+    if 'protocolo' not in df_bruta_mapa.columns or 'tempo_de_resolucao_em_dias' not in df_bruta_mapa.columns or 'protocolo' not in df_tratada_hist.columns:
+        raise ValueError("Colunas 'protocolo' ou 'tempo_de_resolucao_em_dias' não encontradas.")
+
+    _SUB("Criando mapa de valores da base bruta...")
+    # Cria o mapa {protocolo: tempo_de_resolucao_correto}
+    mapa_tempo_bruta = df_bruta_mapa.set_index('protocolo')['tempo_de_resolucao_em_dias'].to_dict()
+
+    _SUB("Identificando protocolos alvo e preparando para atualização...")
+
+    # 4. FILTRA A BASE TRATADA PARA ENCONTRAR OS PROTOCOLOS-ALVO
+    # O padrão é: começar com 'C' (case-insensitive) seguido por 10 ou mais dígitos.
+    padrao_protocolo_alvo = r'^C\d{10,}$'
+    df_alvo_para_atualizar = df_tratada_hist[df_tratada_hist['protocolo'].str.match(padrao_protocolo_alvo, case=False)].copy()
+
+    if not df_alvo_para_atualizar.empty:
+        print(f" Encontrados {len(df_alvo_para_atualizar)} protocolos no padrão 'C...' na base tratada para verificar.")
+
+        # 5. APLICA O MAPA APENAS NOS PROTOCOLOS-ALVO
+        df_alvo_para_atualizar['tempo_corrigido'] = df_alvo_para_atualizar['protocolo'].map(mapa_tempo_bruta)
+
+        # Remove linhas onde o protocolo alvo não foi encontrado na base bruta (para evitar o erro 'nan')
+        df_alvo_para_atualizar.dropna(subset=['tempo_corrigido'], inplace=True)
+        
+        # Compara a coluna original com a corrigida para encontrar o que realmente precisa mudar
+        df_alvo_para_atualizar = df_alvo_para_atualizar[
+            df_alvo_para_atualizar['tempo_de_resolucao_em_dias'].astype(str) != df_alvo_para_atualizar['tempo_corrigido'].astype(str)
+        ]
+
+        if not df_alvo_para_atualizar.empty:
+            print(f" -> Desses, {len(df_alvo_para_atualizar)} precisam de atualização na coluna 'tempo_de_resolucao_em_dias'.")
+            logging.info(f"Backfill: {len(df_alvo_para_atualizar)} linhas de 'tempo_de_resolucao_em_dias' para sincronizar.")
+
+            _SUB("Preparando e enviando a atualização para o Google Sheets...")
+            TARGET_COL_INDEX = df_tratada_hist.columns.get_loc('tempo_de_resolucao_em_dias') + 1
+            
+            protocolos_na_sheet = aba_tratada.col_values(1)
+            protocolo_para_linha = {proto: i + 1 for i, proto in enumerate(protocolos_na_sheet)}
+            
+            cells_to_update = []
+            for _, row in df_alvo_para_atualizar.iterrows():
+                protocolo = row['protocolo']
+                tempo_corrigido = row['tempo_corrigido']
+                if protocolo in protocolo_para_linha:
+                    linha_idx = protocolo_para_linha[protocolo]
+                    cells_to_update.append(gspread.Cell(row=linha_idx, col=TARGET_COL_INDEX, value=str(tempo_corrigido)))
+
+            if cells_to_update:
+                aba_tratada.update_cells(cells_to_update, value_input_option='USER_ENTERED')
+                print(f"✅ Sincronização direcionada concluída. {len(cells_to_update)} células foram atualizadas.")
+                logging.info(f"CONCLUÍDO: Sincronização. {len(cells_to_update)} células de 'tempo_de_resolucao_em_dias' foram atualizadas.")
+        else:
+            print("✅ Os protocolos no padrão 'C...' já estão sincronizados.")
+    else:
+        print("✅ Nenhum protocolo no padrão 'C...' foi encontrado na base tratada para verificar.")
+        logging.info("Backfill: Nenhum protocolo no padrão 'C...' encontrado na base tratada.")
+
+except Exception as e:
+    print(f"❌ Erro crítico durante o backfill de 'tempo_de_resolucao_em_dias': {e}")
+    logging.error(f"Erro crítico durante o backfill de 'tempo_de_resolucao_em_dias': {e}", exc_info=True)
+
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
