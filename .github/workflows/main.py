@@ -481,11 +481,9 @@ except Exception as e:
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
-print("🧹 Limpando e identificando novos protocolos...")
-df_tratada_protocolos = df_tratada["protocolo"].astype(str).str.strip().tolist()
-df["protocolo"] = df["protocolo"].astype(str).str.strip()
+print("🧹 Recortando para novos protocolos identificados...")
+# A coluna 'eh_novo' já foi criada corretamente no Item 5, vamos apenas usá-la.
 
-df["eh_novo"] = ~df["protocolo"].isin(df_tratada_protocolos)
 novos = df[df["eh_novo"] == True]
 existentes = df[df["eh_novo"] == False]
 
@@ -676,14 +674,12 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # =======================================================================
     try:
         if "tempo_de_resolucao_em_dias" in df_loc.columns:
-            # Converte a coluna para string para garantir que o .replace funcione
-            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].astype(str)
-            # Substitui a string "Não há dados" por uma string vazia ""
-            # Adicionado .replace("nan", "") para limpar possíveis nulos convertidos para texto
-            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].replace({"Não há dados": "", "nan": ""})
+            # Substitui textos indesejados por None (valor nulo)
+            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].replace(["Não há dados", "nan", ""], None)
             logging.info("Tratamento 7.10 (Limpeza de 'tempo_de_resolucao_em_dias') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
+        
     # =======================================================================
 
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
@@ -902,14 +898,6 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
                 return "Não concluído"
 
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
-
-    # 4️⃣ Limpeza de "Não há dados"
-    for col in ["tempo_de_resolucao_em_dias"]:
-        if col in df.columns:
-            df[col] = df[col].replace("Não há dados", "")
-
-    return df
-
 
 # --------------------------------------------------------
 # Fallback de envio de lotes (log)
