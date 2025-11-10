@@ -865,11 +865,11 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.6 (Responsavel): {e}", exc_info=True)
 
-        # 7.x Mapeamento: responsavel -> Ouvidoria (preenche unidade_cadastro)
-   
+    # ------------------------------------------------------------
+    # 7.6.1 Mapeamento de 'responsavel' -> Ouvidoria (aplica somente em df_novos)
+    # ------------------------------------------------------------
     try:
         if "responsavel" in df_loc.columns:
-            # --- Dicionário fornecido pelo usuário ---
             map_responsavel_para_ouvidoria = {
                 "1ª Residência de Obras": "Ouvidoria Setorial de Obras",
                 "2ª Residência de Obras A": "Ouvidoria Setorial de Obras",
@@ -892,45 +892,23 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 "Thayná Cristina Dias de Souza": "Ouvidoria Setorial de Obras",
             }
 
-            # Normaliza as chaves do dicionário para lookup robusto (remove acento, lower, strip)
+            # Normaliza chaves para lookup tolerante (remove acentos, lower, trim)
             _map_resp_norm = { _canon_txt(k): v for k, v in map_responsavel_para_ouvidoria.items() }
 
-            # Função que encontra mapeamento a partir do campo 'responsavel'
-            def _map_responsavel(row_responsavel):
-                if pd.isna(row_responsavel) or str(row_responsavel).strip() == "":
-                    return None
-                key = _canon_txt(str(row_responsavel))
-                return _map_resp_norm.get(key)
+            def _map_responsavel_to_ouvidoria(valor):
+                if pd.isna(valor) or str(valor).strip() == "":
+                    return valor
+                key = _canon_txt(str(valor))
+                return _map_resp_norm.get(key, valor)  # mantém original caso não exista no dicionário
 
-            # Prepara coluna unidade_cadastro caso não exista
-            if "unidade_cadastro" not in df_loc.columns:
-                df_loc["unidade_cadastro"] = ""
-
-            # Mascara: onde aplicar o preenchimento
-            # aplicamos quando unidade_cadastro é vazia/nao-informada OU é genérica 'ouvidoria setorial' OU contém a palavra 'ouvidoria'
-            mask_unidade_vazia = df_loc["unidade_cadastro"].astype(str).str.strip().str.lower().isin(["", "nan", "none", "n/a", "não informado", "nao informado"])
-            mask_ouvidoria_setorial = df_loc["unidade_cadastro"].astype(str).str.match(r"(?i)^\s*ouvidoria\s+setorial\s*$", na=False)
-            mask_contains_ouvidoria = df_loc["unidade_cadastro"].astype(str).str.contains(r"(?i)\bouvidoria\b", na=False)
-
-            mask_apply = mask_unidade_vazia | mask_ouvidoria_setorial | mask_contains_ouvidoria
-
-            # Executa o mapeamento e aplica somente quando mapeamento existir
-            mapped_series = df_loc.loc[mask_apply, "responsavel"].astype(str).apply(_map_responsavel)
-            # Apenas atualiza as linhas cujo mapping retornou um valor (não None)
-            to_update_idx = mapped_series[mapped_series.notna()].index
-            if len(to_update_idx):
-                df_loc.loc[to_update_idx, "unidade_cadastro"] = mapped_series.loc[to_update_idx].values
-                logging.info(f"Mapeamento responsavel->unidade_cadastro aplicado em {len(to_update_idx)} linhas (novos).")
-
-            # Opcional: padronizar texto de unidade_cadastro após a aplicação
-            df_loc["unidade_cadastro"] = df_loc["unidade_cadastro"].astype(str).apply(_clean_whitespace)
-            # Normaliza 'Ouvidoria Geral' variantes
-            mask_ouvid_geral = df_loc["unidade_cadastro"].astype(str).str.match(r"(?i)^\s*ouvidoria\s+geral\b.*$", na=False)
-            if mask_ouvid_geral.any():
-                df_loc.loc[mask_ouvid_geral, "unidade_cadastro"] = "Ouvidoria Geral"
-
+            # Aplicação e logging de QA
+            before_vals = df_loc["responsavel"].astype(str).copy()
+            df_loc["responsavel"] = df_loc["responsavel"].astype(str).apply(_map_responsavel_to_ouvidoria)
+            changed_mask = before_vals != df_loc["responsavel"].astype(str)
+            changed_count = int(changed_mask.sum())
+            logging.info(f"Tratamento 7.6.1: Mapeamento de 'responsavel' aplicado. {changed_count} linhas alteradas.")
     except Exception as e:
-        logging.error(f"Erro no mapeamento responsavel->ouvidoria: {e}", exc_info=True)
+        logging.error(f"Erro no mapeamento 7.6.1 da coluna 'responsavel': {e}", exc_info=True)
 
     # 7.7 Datas e tipos
     try:
