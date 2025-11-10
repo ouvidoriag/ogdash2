@@ -481,9 +481,11 @@ except Exception as e:
 # ========================================================
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
-print("🧹 Recortando para novos protocolos identificados...")
-# A coluna 'eh_novo' já foi criada corretamente no Item 5, vamos apenas usá-la.
+print("🧹 Limpando e identificando novos protocolos...")
+df_tratada_protocolos = df_tratada["protocolo"].astype(str).str.strip().tolist()
+df["protocolo"] = df["protocolo"].astype(str).str.strip()
 
+df["eh_novo"] = ~df["protocolo"].isin(df_tratada_protocolos)
 novos = df[df["eh_novo"] == True]
 existentes = df[df["eh_novo"] == False]
 
@@ -631,22 +633,14 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # 7.7 Datas e tipos
     try:
         if "data_da_criacao" in df_loc.columns:
-            # Converte para objeto de data e ZERA a informação de hora
-            df_loc["data_da_criacao"] = pd.to_datetime(_parse_dt_cmp(df_loc["data_da_criacao"])).dt.normalize()
-            logging.info("Tratamento 7.7 (data_da_criacao para objeto Date) aplicado.")
-        
+            df_loc["data_da_criacao"] = _parse_dt_cmp(df_loc["data_da_criacao"]) # <-- Retorna objeto de data
+            logging.info("Tratamento 7.7 (data_da_criacao para objeto datetime) aplicado.")
         if "status_demanda" in df_loc.columns:
             df_loc["status_demanda"] = df_loc["status_demanda"].astype(str)
-            logging.info("Tratamento 7.7 (status_demanda tipo) aplicado.")
-        
+            logging.info("Tratamento 7.7 (status_demanda) tipo aplicado.")
         if "data_da_conclusao" in df_loc.columns:
-            # A função _conclusao_strict já retorna texto, então vamos primeiro convertê-la para data e depois normalizar
-            # Para evitar erros, primeiro aplicamos o tratamento de texto
-            datas_texto = _conclusao_strict(df_loc["data_da_conclusao"])
-            # Depois, convertemos para data (o que for texto inválido vira NaT) e normalizamos
-            df_loc["data_da_conclusao"] = pd.to_datetime(datas_texto, format='%d/%m/%Y', errors='coerce').dt.normalize()
-            logging.info("Tratamento 7.7 (data_da_conclusao para objeto Date) aplicado.")
-
+            df_loc["data_da_conclusao"] = _conclusao_strict(df_loc["data_da_conclusao"])
+            logging.info("Tratamento 7.7 (data_da_conclusao) strict aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.7 (Datas e Tipos): {e}", exc_info=True)
 
@@ -674,12 +668,14 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # =======================================================================
     try:
         if "tempo_de_resolucao_em_dias" in df_loc.columns:
-            # Substitui textos indesejados por None (valor nulo)
-            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].replace(["Não há dados", "nan", ""], None)
+            # Converte a coluna para string para garantir que o .replace funcione
+            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].astype(str)
+            # Substitui a string "Não há dados" por uma string vazia ""
+            # Adicionado .replace("nan", "") para limpar possíveis nulos convertidos para texto
+            df_loc["tempo_de_resolucao_em_dias"] = df_loc["tempo_de_resolucao_em_dias"].replace({"Não há dados": "", "nan": ""})
             logging.info("Tratamento 7.10 (Limpeza de 'tempo_de_resolucao_em_dias') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
-        
     # =======================================================================
 
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
@@ -796,6 +792,30 @@ except Exception as e:
     logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
     raise
 
+# --------------------------------------------------------------------------
+# PREPARAÇÃO FINAL DAS DATAS ANTES DO ENVIO (LÓGICA SEGURA INTEGRADA)
+# --------------------------------------------------------------------------
+if not df_send.empty:
+    _SUB("Preparando colunas de data para envio (lógica segura)...")
+    
+    # --- Coluna 'data_da_criacao' ---
+    if "data_da_criacao" in df_send.columns:
+        # Tenta converter para data. O que falhar (texto, etc.) vira NaT (nulo).
+        datas_convertidas = pd.to_datetime(df_send["data_da_criacao"], errors='coerce').dt.normalize()
+        # Onde a conversão falhou, preenche de volta com o valor ORIGINAL. Isso impede que dados sejam apagados.
+        df_send["data_da_criacao"] = datas_convertidas.fillna(df_send["data_da_criacao"])
+        logging.debug("Coluna 'data_da_criacao' para novos protocolos preparada com segurança.")
+
+    # --- Coluna 'data_da_conclusao' ---
+    if "data_da_conclusao" in df_send.columns:
+        datas_convertidas = pd.to_datetime(df_send["data_da_conclusao"], errors='coerce').dt.normalize()
+        df_send["data_da_conclusao"] = datas_convertidas.fillna(df_send["data_da_conclusao"])
+        logging.debug("Coluna 'data_da_conclusao' para novos protocolos preparada com segurança.")
+    
+    # Substitui NaT (Not a Time) por None, que gspread entende como célula vazia.
+    df_send = df_send.replace({pd.NaT: None})
+# --------------------------------------------------------------------------
+
 # ----------------------------------------------------------
 # CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
 # ----------------------------------------------------------
@@ -857,17 +877,6 @@ else:
 print("✅ Atualização da planilha tratada concluída com sucesso.")
 logging.info("✅ Atualização da planilha tratada concluída com sucesso.")
 
-# 8.1) PREPARAÇÃO FINAL PARA ENVIO (SERIALIZAÇÃO DE DATAS PARA DD/MM/AAAA)
-
-if not df_send.empty:
-    _SUB("Serializando colunas de data para o formato de API (DD/MM/AAAA)...")
-    for col in ["data_da_criacao", "data_da_conclusao"]:
-        if col in df_send.columns and pd.api.types.is_datetime64_any_dtype(df_send[col]):
-            # Converte o objeto de data para string no formato DD/MM/AAAA
-            # Onde for NaT (nulo), transforma em uma string vazia
-            df_send[col] = df_send[col].dt.strftime('%d/%m/%Y').fillna('')
-    logging.info("Colunas de data serializadas para envio como string DD/MM/AAAA.")
-
 # ========================================================
 # 9) PATCH / ATUALIZAÇÃO DE STATUS E DELTA HISTÓRICO (CORRIGIDO)
 # ========================================================
@@ -909,6 +918,14 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
                 return "Não concluído"
 
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
+
+    # 4️⃣ Limpeza de "Não há dados"
+    for col in ["tempo_de_resolucao_em_dias"]:
+        if col in df.columns:
+            df[col] = df[col].replace("Não há dados", "")
+
+    return df
+
 
 # --------------------------------------------------------
 # Fallback de envio de lotes (log)
