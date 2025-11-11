@@ -1432,14 +1432,14 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
         else:
             logging.warning(f"Protocolo '{key}' não encontrado na planilha.")
 
-    # --- ATUALIZAÇÃO EM BATCH ---
+   # --- ATUALIZAÇÃO EM BATCH ---
     total_updated = 0
     for i in range(0, len(to_update), batch_size):
         batch = to_update[i:i + batch_size]
         if not batch:
             continue
 
-                cleaned_batch = []
+        cleaned_batch = []
         for r in batch:
             value = r[2]
 
