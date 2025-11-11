@@ -1668,37 +1668,54 @@ except Exception as e:
     logging.exception(f"Erro ao normalizar campos de exceção vindos da bruta: {e}")
     bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
 
-# --- Agora: sincroniza os valores da BRUTA para o df_full (somente quando a bruta tem valor não-vazio)
-# Mantemos valores existentes na tratada quando bruta não tem valor
+# --- PATCH: sincronização vetorizada apenas para protocolos C\d+ da bruta ---
+
 if not bruta_norm.empty:
-    # iterar por protocolos presentes em df_full que também existam na bruta_lookup
-    protocolo_to_rows = {}
-    for i, p in enumerate(df_full['protocolo'].astype(str)):
-        protocolo_to_rows.setdefault(str(p).strip().upper(), []).append(i)
+    # normaliza index da bruta_norm
+    bruta_norm = bruta_norm.copy()
+    bruta_norm.index = bruta_norm.index.astype(str).str.strip().str.upper()
 
-    applied_counts = {c:0 for c in EXCEPTION_COLS}
+    # garante formato da coluna protocolo em df_full
+    df_full['protocolo'] = df_full.get('protocolo', pd.Series([''] * len(df_full))).astype(str).str.strip().str.upper()
 
-    for proto, rows_idx in protocolo_to_rows.items():
-        if proto in bruta_norm.index:
-            row_vals = bruta_norm.loc[proto]
-            for col in EXCEPTION_COLS:
-                try:
-                    val = row_vals.get(col, pd.NA) if proto in bruta_norm.index else pd.NA
-                    if pd.isna(val):
-                        continue  # nada a sobrescrever
-                    for ridx in rows_idx:
-                        # assign preserving dtype: numérico para tempo, string para outros
-                        if col == "tempo_de_resolucao_em_dias":
-                            df_full.at[ridx, col] = val
-                        else:
-                            df_full.at[ridx, col] = val
-                        applied_counts[col] += 1
-                except Exception as e:
-                    logging.debug(f"Não foi possível sincronizar protocolo {proto} coluna {col}: {e}")
+    applied_counts = {c: 0 for c in EXCEPTION_COLS}
 
-    logging.info(f"Sincronização a partir da bruta aplicada. Contagens por coluna: {applied_counts}")
+    # filtra apenas protocolos da bruta que seguem o padrão C\d+
+    prot_c_mask = pd.Series(bruta_norm.index).str.match(r"^C\d+$", na=False)
+    prot_c = pd.Series(bruta_norm.index)[prot_c_mask].unique().tolist()
+
+    if len(prot_c) == 0:
+        logging.info("Nenhum protocolo C... válido encontrado em bruta_norm para sincronizar.")
+    else:
+        # cria lookup apenas com protocolos C...
+        bruta_c_lookup = bruta_norm.loc[bruta_norm.index.isin(prot_c)].copy()
+
+        for col in EXCEPTION_COLS:
+            if col not in bruta_c_lookup.columns:
+                continue
+
+            serie_bruta = bruta_c_lookup[col].copy()
+
+            # Para tempo_de_resolucao_em_dias: coerção numérica
+            if col == "tempo_de_resolucao_em_dias":
+                serie_bruta = pd.to_numeric(serie_bruta, errors="coerce")
+
+            mapa = serie_bruta[~serie_bruta.isna()]
+            if mapa.empty:
+                logging.debug(f"Nenhum valor válido na bruta (C...) para coluna '{col}', pulando.")
+                continue
+
+            # aplica apenas às linhas de df_full cujo protocolo está em mapa.index
+            mask_apply = df_full['protocolo'].isin(mapa.index)
+            if mask_apply.any():
+                df_full.loc[mask_apply, col] = df_full.loc[mask_apply, 'protocolo'].map(mapa)
+                applied_counts[col] = int(mask_apply.sum())
+            else:
+                applied_counts[col] = 0
+
+        logging.info(f"Sincronização (C... da bruta) aplicada. Contagens por coluna: {applied_counts}")
 else:
-    logging.info("Nenhum valor normalizado encontrado na bruta para sincronização.")
+    logging.info("bruta_norm vazio — nada a sincronizar.")
 
 # --- Reaplica regras derivadas (ex.: se status == Concluído então prazo_restante='Demanda Concluída') ---
 try:
