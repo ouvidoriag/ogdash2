@@ -521,8 +521,9 @@ try:
         return "S" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:18].upper()
 
     def _choose_protocolo_final(p: str, row) -> str:
-        
-        """Retorna protocolo 'p' se estiver no padrão C\\d+, senão gera protocolo simulado."""
+        """
+        Retorna protocolo 'p' se estiver no padrão C\d+, senão gera protocolo simulado.
+        """
         p = str(p or "").strip().upper()
         if re.match(r"^C\d+$", p):
             return p
@@ -1106,15 +1107,8 @@ try:
             if c not in df_novos.columns:
                 df_novos[c] = ""
 
-        # reindex sem forçar strings; preencher somente colunas ausentes com pd.NA
-        df_send = df_novos.reindex(columns=cols_alvo_tratada)
-        missing = [c for c in cols_alvo_tratada if c not in df_send.columns]
-        for c in missing:
-            df_send[c] = pd.NA
-        # garantia: colunas que devem ser numéricas (se existir a lista) manter como pd.NA quando ausentes
-        # Ex: tempo_de_resolucao_em_dias -> pd.NA por padrão
-        if "tempo_de_resolucao_em_dias" in cols_alvo_tratada and "tempo_de_resolucao_em_dias" not in df_send.columns:
-            df_send["tempo_de_resolucao_em_dias"] = pd.NA
+        # Alinha as colunas do df_novos com as da planilha tratada, preenchendo com "" as que faltarem.
+        df_send = df_novos.reindex(columns=cols_alvo_tratada, fill_value="")
         logging.info(f"df_send alinhado com as colunas da planilha alvo. Shape final: {df_send.shape}")
 
 except Exception as e:
@@ -1242,18 +1236,8 @@ else:
     # Garante que todos os valores nulos (exceto os de data que já são None) virem strings vazias
     # Criamos uma cópia para append para NÃO poluir df_send (assim mantemos as versões numéricas para QA)
     df_send_for_append = df_send.copy()
-
-    # Preencher somente colunas NÃO numéricas com ''.
-    # Mantemos coluna de tempo em formato numérico (Int64/Float64) até o envio*.
-    cols_to_stringify = [c for c in df_send_for_append.columns if c != "tempo_de_resolucao_em_dias"]
-    df_send_for_append[cols_to_stringify] = df_send_for_append[cols_to_stringify].fillna('')
-    
-    # Para a coluna tempo_de_resolucao_em_dias, para envio ao Sheets:
-    if "tempo_de_resolucao_em_dias" in df_send_for_append.columns:
-        # converte Int64/Float64/NAt -> '' para append; mantém números como int/float
-        df_send_for_append["tempo_de_resolucao_em_dias"] = df_send_for_append["tempo_de_resolucao_em_dias"].apply(
-            lambda v: '' if pd.isna(v) else (int(v) if float(v).is_integer() else float(v))
-        )
+    # Convertendo colunas de data já formatadas e substituindo NaNs por ''
+    df_send_for_append = df_send_for_append.fillna('')
 
     lote = 500
     total_lotes = (len(df_send_for_append) + lote - 1) // lote
@@ -1384,11 +1368,9 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
 
     # 4️⃣ Limpeza de "Não há dados"
-    _invalid_tokens = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
-    if "tempo_de_resolucao_em_dias" in df.columns:
-        df["tempo_de_resolucao_em_dias"] = df["tempo_de_resolucao_em_dias"].apply(
-            lambda v: pd.NA if (pd.isna(v) or (isinstance(v, str) and str(v).strip().lower() in _invalid_tokens)) else v
-        )
+    for col in ["tempo_de_resolucao_em_dias"]:
+        if col in df.columns:
+            df[col] = df[col].replace("Não há dados", "")
 
     return df
 
@@ -1419,36 +1401,14 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
 
     # Aplica padronizações completas
     df = _prepare_status(df)
-
-    # chave sempre como string (protocolo)
     df[key_col] = df[key_col].astype(str).str.strip()
+    df[value_col] = df[value_col].astype(str).str.strip()
 
-    # Para value_col: preserve numeric dtype se for 'tempo_de_resolucao_em_dias'
-    if value_col == "tempo_de_resolucao_em_dias":
-        # limpa tokens inválidos transformando em pd.NA, mas NÃO força str
-        _invalid_tokens = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
-        def _clean_tempo(v):
-            if pd.isna(v):
-                return pd.NA
-            # se já for numérico, devolve como está
-            if isinstance(v, (int, float, np.integer, np.floating, pd.Int64Dtype, pd.Float64Dtype)):
-                return v
-            s = str(v).strip()
-            if s == "" or s.lower() in _invalid_tokens:
-                return pd.NA
-            # tenta converter para número
-            try:
-                # aceita inteiros representados como '1' ou '1.0'
-                num = float(s.replace(",", "."))
-                if num.is_integer():
-                    return int(num)
-                return num
-            except Exception:
-                return pd.NA
-        df[value_col] = df[value_col].apply(_clean_tempo)
-    else:
-        # comport. anterior para colunas texto: strip & cast string
-        df[value_col] = df[value_col].astype(str).str.strip()
+    # 🔒 Corrige 'data_da_conclusao' pós-stringificação
+    if value_col == "data_da_conclusao":
+        df[value_col] = df[value_col].apply(
+            lambda x: "Não concluído" if str(x).strip().lower() in ["", "nan", "na", "n/a", "none", "nat"] else x
+        )
 
     if sheet is None:
         _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
@@ -1472,7 +1432,6 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
     to_update = []
     for _, row in df.iterrows():
         key = row[key_col]
-        # prioriza versão tratada se existir
         value = row.get(f"{value_col}_trat", row[value_col])
         if key in key_list:
             row_idx = key_list.index(key) + 1
@@ -1490,37 +1449,10 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
         cleaned_batch = []
         for r in batch:
             value = r[2]
-            # Normalização de valores "vazios" / Não concluído
-            if value_col == "data_da_conclusao":
-                if pd.isna(value) or str(value).strip() == "":
-                    value_out = "Não concluído"
-                else:
-                    value_out = str(value).strip()
-                # sempre string para datas
-                cleaned_batch.append((r[0], r[1], value_out))
-            elif value_col == "tempo_de_resolucao_em_dias":
-                # MANTEM numérico quando possível; converte pd.NA ou "Não há dados" para '' para envio ao Sheets
-                if pd.isna(value):
-                    value_out = ""   # sheets recebe célula vazia
-                else:
-                    # se for texto igual a "não há dados", tratamos como vazio para a sheet
-                    sval = str(value).strip()
-                    if sval.lower() == "não há dados" or sval.lower() == "nao ha dados":
-                        value_out = ""
-                    else:
-                        try:
-                            # se for float mas inteiro, envie como int
-                            if isinstance(value, float) and value.is_integer():
-                                value_out = int(value)
-                            elif isinstance(value, (int, np.integer)):
-                                value_out = int(value)
-                            else:
-                                # mantém número ou string numérica
-                                value_out = float(str(value).replace(",", ".")) if re.match(r"^-?\d+(\.\d+)?$", str(value).replace(",", ".")) else str(value)
-                        except Exception:
-                            # fallback: vazio
-                            value_out = ""
-                cleaned_batch.append((r[0], r[1], value_out))
+            if pd.isna(value) or str(value).strip() == "":
+                value = "Não concluído" if value_col == "data_da_conclusao" else ""
+            value = str(value).strip()
+            cleaned_batch.append((r[0], r[1], value))
 
         range_rows = [r[0] for r in cleaned_batch]
         values = [[r[2]] for r in cleaned_batch]
@@ -1559,42 +1491,18 @@ try:
     cols_tratada = list(df_tratada.columns)
     if 'df_send' not in globals():
         df_send = pd.DataFrame(columns=cols_tratada)
-
     df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
     df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
-
-except Exception as e:
-    print("Erro ao concatenar dataframes:", e)
-
-    # NÃO forçamos Float64 aqui de forma agressiva — em vez disso,
-    # deixamos a coluna como object quando houver misturas (números + tokens como "Não há dados"),
-    # e só convertimos números onde for seguro.
-    if "tempo_de_resolucao_em_dias" in df_full.columns:
-        # tenta converter os valores numéricos; mantém strings intactas
-        tmp = df_full["tempo_de_resolucao_em_dias"].astype(object).copy()
-        # detecta valores convertíveis para número
-        conv = pd.to_numeric(tmp.astype(str).str.replace(",", ".", regex=False), errors="coerce")
-        # onde conv é numérico, substitui por número (Float64); senão mantém string original
-        is_num = conv.notna()
-        # inicia coluna como object para permitir misturas
-        out = tmp.copy()
-        out.loc[is_num] = conv.loc[is_num].apply(lambda x: int(x) if float(x).is_integer() else float(x))
-        df_full["tempo_de_resolucao_em_dias"] = out  # dtype object possivelmente
-
 except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
     df_full = df_send.copy()
 
-# --- Garantia de colunas OLD para histórico (bloco seguro) ---
+# --- Garantia de colunas OLD para histórico ---
 EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias", "prazo_restante"]
-
 for col in EXCEPTION_COLS:
     old_col = f"{col}_OLD"
     if old_col not in df_full.columns:
-        # obtém a série original (ou cria série com pd.NA com mesmo index)
-        src = df_full.get(col, pd.Series(pd.NA, index=df_full.index)).copy()
-        # preserva pd.NA para entradas ausentes e armazena como object para evitar casts agressivos
-        df_full[old_col] = src.astype(object).where(~pd.isna(src), other=pd.NA)
+        df_full[old_col] = df_full.get(col, "").fillna("")
 
 # --- Prepara lookup da BRUTA por protocolo (última ocorrência)
 # Normaliza e garante colunas na bruta
@@ -1621,8 +1529,8 @@ def _bruta_has_value(v):
 
 # Normalizações vindas da bruta (aplicar conversões por coluna)
 #  - data_da_conclusao: aplicar _conclusao_strict para formatar DD/MM/AAAA ou 'Não concluído'
-#  - tempo_de_resolucao_em_dias: PRESERVAR valor numérico de dias (inteiro) salvo tokens inválidos -> pd.NA
-#  - status_demanda: normalizar para 'Concluído' / 'Em atendimento' quando possível
+#  - tempo_de_resolucao_em_dias: converter vírgula -> ponto e para numérico
+#  - status_demanda: normalizar para 'CONCLUÍDA' / 'EM ANDAMENTO' quando possível
 #  - prazo_restante: aplicar _canon_prazo_restante e regra de 'Demanda Concluída' quando status for concluída
 try:
     # prepara colunas temporárias com versões normalizadas vindas da bruta
@@ -1636,179 +1544,87 @@ try:
             # fallback genérico
             bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
 
-    # ----------------------------
-    # tempo_de_resolucao_em_dias (TRATAR COMO NUMÉRICO INTEIRO)
-    # ----------------------------
+    # tempo_de_resolucao_em_dias
     if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
         s = df_bruta_lookup["tempo_de_resolucao_em_dias"].astype(str).str.strip()
+        s = s.replace({"": pd.NA})
         # tokens inválidos -> NA
         s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
+        # vírgula decimal -> ponto
+        s_valid = s.where(s.notna())
+        if s_valid is not None and not s_valid.empty:
+            s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
+        bruta_norm["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
 
-        # substitui vírgula por ponto (se houver), porém você disse que não há vírgulas — ainda assim robusto:
-        s = s.where(s.isna(), s.str.replace(",", ".", regex=False))
-
-        # converte para numérico (coerce => NaN para valores inválidos)
-        num = pd.to_numeric(s, errors="coerce")
-
-        # Queremos dtype inteiro quando possível; usamos dtype 'Int64' (nullable integer)
-        # Convertemos valores numéricos sem casas decimais para Int64, mantendo NaN onde aplicável.
-        # Se alguma entrada for decimal (ex: 1.5) — não esperado, mas será mantida como float.
-        # Primeiro detecta quais são inteiros
-        is_int_like = num.notna() & (num.fillna(0) == num.fillna(0).astype(int))
-        # cria série coerente: inteiros como Int64, decimais mantidos como float
-        # estratégia: se todos não-nulos forem inteiros -> cast Int64; caso contrário, manter float
-        if num.dropna().empty:
-            bruta_norm["tempo_de_resolucao_em_dias"] = num.astype("Float64")
-        else:
-            if is_int_like.all():
-                # todos os não-nulos são inteiros -> usamos Int64 (nullable int)
-                bruta_norm["tempo_de_resolucao_em_dias"] = num.astype("Int64")
-            else:
-                # há decimais (improvável para dias) -> mantemos Float64 nullable
-                bruta_norm["tempo_de_resolucao_em_dias"] = num.astype("Float64")
-
-    # status_demanda (mapear para as labels institucionais pedidas)
+    # status_demanda
     if "status_demanda" in df_bruta_lookup.columns:
         s_status = df_bruta_lookup["status_demanda"].astype(str).str.strip()
         def _map_status_bruta(x):
             if not _bruta_has_value(x):
                 return pd.NA
             if _is_concluida(x):
-                return "Concluído"
-            # se contém alguma palavra, mantemos e marcamos Em atendimento
-            return "Em atendimento" if str(x).strip() != "" else pd.NA
+                return "CONCLUÍDA"
+            # se contém alguma palavra, mantemos e marcamos EM ANDAMENTO
+            return "EM ANDAMENTO" if str(x).strip() != "" else pd.NA
         bruta_norm["status_demanda"] = s_status.apply(_map_status_bruta)
 
     # prazo_restante
     if "prazo_restante" in df_bruta_lookup.columns:
         s_pr = df_bruta_lookup["prazo_restante"].astype(str)
-        # aplica canonização parcial — somente quando a bruta tem valor
+        # aplica canonização parcial
         bruta_norm["prazo_restante"] = s_pr.apply(lambda x: _canon_prazo_restante(x) if _bruta_has_value(x) else pd.NA)
 
 except Exception as e:
     logging.exception(f"Erro ao normalizar campos de exceção vindos da bruta: {e}")
     bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
 
-# --- PATCH: sincronização vetorizada apenas para protocolos C\d+ da bruta (SOBRESCREVE COM O QUE HÁ NA BRUTA;
-#     texto "Não há dados" virará célula vazia na tratada) ---
+# --- Agora: sincroniza os valores da BRUTA para o df_full (somente quando a bruta tem valor não-vazio)
+# Mantemos valores existentes na tratada quando bruta não tem valor
 if not bruta_norm.empty:
-    bruta_norm = bruta_norm.copy()
-    bruta_norm.index = bruta_norm.index.astype(str).str.strip().str.upper()
+    # iterar por protocolos presentes em df_full que também existam na bruta_lookup
+    protocolo_to_rows = {}
+    for i, p in enumerate(df_full['protocolo'].astype(str)):
+        protocolo_to_rows.setdefault(str(p).strip().upper(), []).append(i)
 
-    # garante formato da coluna protocolo em df_full
-    df_full['protocolo'] = df_full.get('protocolo', pd.Series([''] * len(df_full))).astype(str).str.strip().str.upper()
+    applied_counts = {c:0 for c in EXCEPTION_COLS}
 
-    applied_counts = {c: 0 for c in EXCEPTION_COLS}
+    for proto, rows_idx in protocolo_to_rows.items():
+        if proto in bruta_norm.index:
+            row_vals = bruta_norm.loc[proto]
+            for col in EXCEPTION_COLS:
+                try:
+                    val = row_vals.get(col, pd.NA) if proto in bruta_norm.index else pd.NA
+                    if pd.isna(val):
+                        continue  # nada a sobrescrever
+                    # Especial: se for data_da_conclusao e for 'Não concluído' ou string, já vem formatado por _conclusao_strict
+                    # Para prazo_restante: se status_concluida set 'Demanda Concluída' — mas respeitamos bruta em primeiro lugar
+                    for ridx in rows_idx:
+                        # apply conversion just before assignment for safety
+                        if col == "data_da_conclusao":
+                            # val já deveria estar em DD/MM/AAAA ou 'Não concluído'
+                            assign_val = val
+                        elif col == "tempo_de_resolucao_em_dias":
+                            # armazena número (float) — manter tipo coerente
+                            assign_val = val
+                        elif col == "status_demanda":
+                            assign_val = val
+                        elif col == "prazo_restante":
+                            assign_val = val
+                        else:
+                            assign_val = val
+                        df_full.at[ridx, col] = assign_val
+                        applied_counts[col] += 1
+                except Exception as e:
+                    logging.debug(f"Não foi possível sincronizar protocolo {proto} coluna {col}: {e}")
 
-    # filtra apenas protocolos da bruta que seguem o padrão C\d+
-    prot_c_mask = pd.Series(bruta_norm.index).str.match(r"^C\d+$", na=False)
-    prot_c = pd.Series(bruta_norm.index)[prot_c_mask].unique().tolist()
-
-    if len(prot_c) == 0:
-        logging.info("Nenhum protocolo C... válido encontrado em bruta_norm para sincronizar.")
-    else:
-        # cria lookup apenas com protocolos C...
-        bruta_c_lookup = bruta_norm.loc[bruta_norm.index.isin(prot_c)].copy()
-
-        # --- Para garantir robustez, vamos construir um mapa por coluna que inclui
-        #     valores textuais (ex: 'Não há dados') e valores numéricos.
-        for col in EXCEPTION_COLS:
-            if col not in bruta_c_lookup.columns:
-                continue
-
-            # pega série bruta original (sem dropar NA agora)
-            serie_bruta_raw = bruta_c_lookup[col].copy()
-
-            # Normalização básica: strip para strings
-            # (manter NaNs como pd.NA; manter strings como estão)
-            serie_bruta_raw = serie_bruta_raw.where(~serie_bruta_raw.isna(), pd.NA)
-
-            # Tratamento ESPECIAL para tempo_de_resolucao_em_dias:
-            # - se for número válido -> manter número (int ou float)
-            # - se for string 'Não há dados' (ou tokens similares) -> manter como pd.NA aqui,
-            #   mas vamos **incluir** o mapeamento para sobrescrever na tratada (será convertido para vazio)
-            if col == "tempo_de_resolucao_em_dias":
-                # mantém original, mas tenta converter números onde aplicável
-                def _to_num_or_keep(x):
-                    if pd.isna(x):
-                        return pd.NA
-                    # se já for numérico
-                    if isinstance(x, (int, float, np.integer, np.floating)):
-                        return x
-                    s = str(x).strip()
-                    if s == "":
-                        return pd.NA
-                    # tokens que queremos que sejam considerados "presente" e convertidos para célula vazia na tratada:
-                    tokens_quero_vazio = {"não há dados", "nao ha dados", "não há dado", "não ha dado"}
-                    if s.casefold() in tokens_quero_vazio:
-                        return pd.NA
-                    # tenta converter número (aceita vírgula)
-                    try:
-                        num = float(s.replace(",", "."))
-                        if num.is_integer():
-                            return int(num)
-                        return num
-                    except Exception:
-                        # mantém como pd.NA se não for conversível
-                        return pd.NA
-
-                serie_mapped = serie_bruta_raw.apply(_to_num_or_keep)
-
-                # mapa contém índices onde a bruta tem *qualquer* informação (inclusive strings que viraram NA acima)
-                # Mas queremos sobrescrever na tratada tanto quando for número quanto quando bruta indicou "Não há dados".
-                # Para capturar também os casos originais string 'Não há dados', usamos a versão string para identificar esses índices.
-                raw_strings = bruta_c_lookup[col].astype(str).str.strip()
-                mask_presente = raw_strings.str.lower().ne("nan") & raw_strings.str.strip().ne("")
-                # cria mapa final: para índices mask_presente usamos valor numérico quando houver, senão pd.NA
-                mapa = pd.Series(index=bruta_c_lookup.index, dtype="object")
-                for idx in bruta_c_lookup.index:
-                    if not mask_presente.loc[idx]:
-                        # bruta realmente vazia -> não incluir no mapa (mantemos comportamento opcional)
-                        continue
-                    val_num = serie_mapped.loc[idx]
-                    if not pd.isna(val_num):
-                        mapa.loc[idx] = val_num
-                    else:
-                        # bruta tem algo (por exemplo 'Não há dados' ou texto não-numérico) -> marcamos pd.NA
-                        # que será interpretado como célula vazia na tratada
-                        mapa.loc[idx] = pd.NA
-
-            else:
-                # Para colunas textuais: queremos pegar o que estiver na bruta, inclusive strings como 'Não há dados'
-                # Vamos transformar pd.NA em string 'Não concluído' apenas para data_da_conclusao? Não — deixamos o valor da bruta.
-                # Criamos mapa incluindo todos os índices cuja bruta tem algo não vazio (incluindo 'Não há dados').
-                raw = bruta_c_lookup[col].copy()
-                raw = raw.where(~raw.isna(), pd.NA)
-                # consideramos "presente" quando não é NA e não é string vazia
-                mask_presente = raw.astype(str).str.strip().ne("") & ~raw.isna()
-                mapa = raw[mask_presente].astype(object)
-
-            if mapa.empty:
-                logging.debug(f"Nenhum valor válido (segundo regra nova) na bruta (C...) para coluna '{col}', pulando.")
-                applied_counts[col] = 0
-                continue
-
-            # agora aplica às linhas de df_full cujo protocolo está em mapa.index
-            mask_apply = df_full['protocolo'].isin(mapa.index)
-            if mask_apply.any():
-                # Para tempo_de_resolucao_em_dias: assegura dtype object para evitar erros de fillna/astype mais adiante
-                if col == "tempo_de_resolucao_em_dias":
-                    df_full[col] = df_full[col].astype(object)
-
-                # Faz o mapeamento direto (sobrescreve inclusive com pd.NA para strings 'Não há dados')
-                df_full.loc[mask_apply, col] = df_full.loc[mask_apply, 'protocolo'].map(mapa)
-                applied_counts[col] = int(mask_apply.sum())
-            else:
-                applied_counts[col] = 0
-
-        logging.info(f"Sincronização (C... da bruta) aplicada (modo SOBRESCREVER). Contagens por coluna: {applied_counts}")
+    logging.info(f"Sincronização a partir da bruta aplicada. Contagens por coluna: {applied_counts}")
 else:
-    logging.info("bruta_norm vazio — nada a sincronizar.")
+    logging.info("Nenhum valor normalizado encontrado na bruta para sincronização.")
 
-# --- Reaplica regras derivadas (ex.: se status == Concluído então prazo_restante='Demanda Concluída') ---
+# --- Reaplica regras derivadas (ex.: se status == CONCLUÍDA então prazo_restante='Demanda Concluída') ---
 try:
     if "status_demanda" in df_full.columns and "prazo_restante" in df_full.columns:
-        mask_conc = df_full["status_demanda"].map(lambda x: True if (not pd.isna(x) and str(x).strip().lower() == "concluído") else False)
+        mask_conc = df_full["status_demanda"].map(_is_concluida)
         if mask_conc.any():
             df_full.loc[mask_conc, "prazo_restante"] = "Demanda Concluída"
             logging.info(f"Regra pós-sincronização aplicada: prazo_restante setado para 'Demanda Concluída' em {mask_conc.sum()} linhas.")
@@ -1817,43 +1633,12 @@ except Exception as e:
 
 # --- Atualiza as colunas *_OLD (garante comparação correta): já criadas acima ---
 
-# --- SUBSTITUIÇÃO ROBUSTA: _delta_df que suporta dtypes Int64/Float64 e strings ---
+# --- Função delta robusta (com fillna e casting a str) ---
 def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
     old_col = f"{col}_OLD"
-
-    # se coluna inexistente, retorna vazio com mesmas colunas (evita KeyErrors posteriores)
-    if col not in df_full_local.columns or old_col not in df_full_local.columns:
-        return pd.DataFrame(columns=df_full_local.columns)
-
-    # pega séries com índice alinhado
-    left = df_full_local[col].copy()
-    right = df_full_local[old_col].copy()
-
-    # Normaliza índices/cópias para evitar efeitos colaterais
-    left.index = df_full_local.index
-    right.index = df_full_local.index
-
-    # detecta se alguma das séries é numérica (inclui Int64/Float64 nullable)
-    try:
-        is_numeric = pd.api.types.is_numeric_dtype(left.dtype) or pd.api.types.is_numeric_dtype(right.dtype)
-    except Exception:
-        is_numeric = False
-
-    if is_numeric:
-        # comparamos numericamente; valores não-convertíveis viram NaN -> serão considerados diferentes
-        left_num = pd.to_numeric(left, errors="coerce")
-        right_num = pd.to_numeric(right, errors="coerce")
-
-        # cria máscara onde valores numéricos são diferentes, tratando NaN==NaN como igual
-        neq_mask = (~(left_num == right_num)) & ~(left_num.isna() & right_num.isna())
-        return df_full_local.loc[neq_mask].copy()
-    else:
-        # força object antes de fillna para evitar TypeError em dtypes numéricos
-        left_obj = left.astype(object).fillna("").astype(str)
-        right_obj = right.astype(object).fillna("").astype(str)
-
-        neq_mask = left_obj != right_obj
-        return df_full_local.loc[neq_mask].copy()
+    left = df_full_local.get(col, "").fillna("").astype(str)
+    right = df_full_local.get(old_col, "").fillna("").astype(str)
+    return df_full_local[left != right].copy()
 
 # --- Calcula deltas específicos (apenas uma vez e sem sobrescritas) ---
 delta_status = _delta_df(df_full, "status_demanda")
@@ -1873,7 +1658,7 @@ print(f"   • DATA_CONCLUSAO: {len(delta_conc)}")
 print(f"   • TEMPO_DE_RESOLUCAO: {len(delta_tempo)}")
 print(f"   • PRAZO_RESTANTE: {len(delta_prazo)}")
 
-# --- Opcional: aplicar patches na aba_tratada (se disponível) ---
+# --- Opcional: aplicar patches na aba_tratada (se disponível)
 try:
     if 'aba_tratada' in globals() and aba_tratada is not None:
         # Para cada delta chama o patch grouped (usa coluna 'protocolo' como chave)
