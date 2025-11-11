@@ -1294,7 +1294,11 @@ import time
 # 🔧 Helper principal de padronização de status e datas
 # --------------------------------------------------------
 def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
+    """
+    Padroniza valores de status_demanda, prazo_restante e data_da_conclusao
+    no DataFrame recebido. Retorna o DataFrame modificado (in-place style).
+    """
+    if df is None or getattr(df, "empty", True):
         return df
 
     # 1️⃣ Padroniza status_demanda (nova regra institucional)
@@ -1325,40 +1329,127 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
 
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
 
+    return df
+
+
+# --------------------------------------------------------
+# Helper robusto para calcular deltas entre col e col_OLD
+# --------------------------------------------------------
+def _delta_df(df_full: pd.DataFrame, col: str) -> pd.DataFrame:
+    """
+    Retorna um DataFrame com as linhas onde 'col' difere de 'col_OLD'.
+    Saída: colunas ['protocolo', col] — adequada para _patch_grouped_force.
+    """
+    old_col = f"{col}_OLD"
+
+    # Se df_full inexistente ou vazio, retorna vazio com colunas esperadas
+    if df_full is None or getattr(df_full, "empty", True):
+        return pd.DataFrame(columns=["protocolo", col])
+
+    # se coluna principal não existir, nada a fazer
+    if col not in df_full.columns:
+        return pd.DataFrame(columns=["protocolo", col])
+
+    # coluna antiga — se não existir, cria série de NA compatível
+    if old_col in df_full.columns:
+        s_old = df_full[old_col].copy()
+    else:
+        s_old = pd.Series([pd.NA] * len(df_full), index=df_full.index)
+
+    s_new = df_full[col].copy()
+
+    # Normalização para comparação: tratar NA, strip e transformar em string segura
+    cmp_old = s_old.fillna("").astype(str).str.strip()
+    cmp_new = s_new.fillna("").astype(str).str.strip()
+
+    # Mascara das linhas diferentes
+    mask = cmp_old != cmp_new
+
+    # Seleciona as linhas modificadas e devolve apenas protocolo + coluna (mantendo os valores originais)
+    if not mask.any():
+        return pd.DataFrame(columns=["protocolo", col])
+
+    result = pd.DataFrame({
+        "protocolo": df_full.loc[mask, "protocolo"].values,
+        col: df_full.loc[mask, col].values
+    })
+
+    result = result.reset_index(drop=True)
+    return result
+
+
 # --------------------------------------------------------
 # Fallback de envio de lotes (log)
 # --------------------------------------------------------
 def _post_lotes(df: pd.DataFrame, msg: str, cols: list):
     logging.warning(f"Fallback acionado ({msg}) para {len(df)} linhas. Colunas: {cols}")
 
-# Criação dos deltas a partir do df_full consolidado (robusto e seguro)
-delta_status = _delta_df(df_full, "status_demanda")
-delta_conc = _delta_df(df_full, "data_da_conclusao")
-# tempo_de_resolucao_em_dias removido do tratamento conforme solicitado
+
+# --------------------------------------------------------
+# Garante que df_full exista e seja o consolidado correto
+# --------------------------------------------------------
+try:
+    # Se df_full já existir no escopo, usa; senão tenta construir a partir de objetos conhecidos
+    if 'df_full' in locals() and isinstance(df_full, pd.DataFrame):
+        _df_full = df_full
+    else:
+        # preferencialmente concatena tratada existente + envios
+        parts = []
+        if 'df_tratada_existente' in locals() and isinstance(df_tratada_existente, pd.DataFrame):
+            parts.append(df_tratada_existente.copy())
+        if 'df_send' in locals() and isinstance(df_send, pd.DataFrame):
+            parts.append(df_send.copy())
+        if parts:
+            _df_full = pd.concat(parts, ignore_index=True)
+        else:
+            _df_full = pd.DataFrame()
+except Exception as e:
+    logging.error(f"Erro ao construir df_full: {e}", exc_info=True)
+    _df_full = pd.DataFrame()
+
+# --------------------------------------------------------
+# Criação dos deltas de forma segura e consistente
+# --------------------------------------------------------
+# Nota: removemos intencionalmente o delta de tempo (tempo_de_resolucao_em_dias)
+delta_status = _delta_df(_df_full, "status_demanda")
+delta_conc = _delta_df(_df_full, "data_da_conclusao")
+
+logging.info(f"Deltas calculados: STATUS={len(delta_status)}, CONCLUSAO={len(delta_conc)}")
 
 # --------------------------------------------------------
 # PATCH principal — atualização de células no Google Sheets
 # --------------------------------------------------------
 def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=None):
-    if df.empty:
+    """
+    Atualiza a planilha em batches; espera df com colunas ['protocolo', value_col] (ou value_col_trat opcional).
+    """
+    if df is None or getattr(df, "empty", True):
         logging.info("Delta vazio. Nada a atualizar.")
         return
 
     batch_size = 50
 
     # Aplica padronizações completas
-    df = _prepare_status(df)
-    df[key_col] = df[key_col].astype(str).str.strip()
-    df[value_col] = df[value_col].astype(str).str.strip()
+    # (usar cópia leve para não poluir a origem)
+    df_local = df.copy()
+    df_local = _prepare_status(df_local)
+    # Normaliza chaves (protocolo)
+    if key_col in df_local.columns:
+        df_local[key_col] = df_local[key_col].astype(str).str.strip()
 
-    # 🔒 Corrige 'data_da_conclusao' pós-stringificação
-    if value_col == "data_da_conclusao":
-        df[value_col] = df[value_col].apply(
+    # Normaliza valor (se existir)
+    if value_col in df_local.columns:
+        # Não forçamos conversão numérica aqui — tratamos tudo como string para envio ao Sheets
+        df_local[value_col] = df_local[value_col].astype(str).str.strip()
+
+    # Correção específica para data_da_conclusao
+    if value_col == "data_da_conclusao" and value_col in df_local.columns:
+        df_local[value_col] = df_local[value_col].apply(
             lambda x: "Não concluído" if str(x).strip().lower() in ["", "nan", "na", "n/a", "none", "nat"] else x
         )
 
     if sheet is None:
-        _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
+        _post_lotes(df_local, f"{value_col} (fallback)", [key_col, value_col])
         return
 
     # Tenta localizar colunas no Sheets
@@ -1366,7 +1457,7 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
         key_list = sheet.col_values(1)
     except Exception as e:
         logging.error(f"Erro ao obter protocolos da planilha: {e}")
-        _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
+        _post_lotes(df_local, f"{value_col} (fallback)", [key_col, value_col])
         return
 
     try:
@@ -1377,9 +1468,9 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
 
     # --- PREPARA LISTA DE ATUALIZAÇÃO ---
     to_update = []
-    for _, row in df.iterrows():
-        key = row[key_col]
-        value = row.get(f"{value_col}_trat", row[value_col])
+    for _, row in df_local.iterrows():
+        key = row.get(key_col)
+        value = row.get(f"{value_col}_trat", row.get(value_col, ""))
         if key in key_list:
             row_idx = key_list.index(key) + 1
             to_update.append((row_idx, col_idx, value))
@@ -1422,10 +1513,23 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
                 [key_col, value_col],
             )
 
-    logging.info(f"✅ Status atualizado em batch: {total_updated}/{len(df)} linhas.")
+    logging.info(f"✅ Status atualizado em batch: {total_updated}/{len(df_local)} linhas.")
     if total_updated == 0:
         logging.info("Nenhuma linha atualizada diretamente. Enviando via _post_lotes como fallback.")
-        _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
+        _post_lotes(df_local, f"{value_col} (fallback)", [key_col, value_col])
+
+
+# --------------------------------------------------------
+#  Aplicar patches calculados
+# --------------------------------------------------------
+try:
+    if not delta_status.empty:
+        _patch_grouped_force(delta_status, key_col="protocolo", value_col="status_demanda", sheet=aba_tratada)
+    if not delta_conc.empty:
+        _patch_grouped_force(delta_conc, key_col="protocolo", value_col="data_da_conclusao", sheet=aba_tratada)
+    logging.info("✅ PATCH de status e conclusão aplicados com sucesso (tempo ignorado).")
+except Exception as e:
+    logging.error(f"Erro ao aplicar patches: {e}", exc_info=True)
 
 # ========================================================
 # 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias, prazo_restante)
