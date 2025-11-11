@@ -106,14 +106,34 @@ def get_latest_spreadsheet_df(folder_id: str, gspread_client, drive_svc) -> (str
         ).execute()
         files = res.get("files", [])
         if not files:
-            logging.critical(f"❌ Nenhuma planilha bruta encontrada na pasta do Google Drive com ID: '{folder_id}'. O pipeline será encerrado.", exc_info=True)
+            logging.critical(
+                f"❌ Nenhuma planilha bruta encontrada na pasta do Google Drive com ID: '{folder_id}'. O pipeline será encerrado.",
+                exc_info=True
+            )
             raise SystemExit("Erro crítico: Nenhuma planilha bruta encontrada.")
         latest = files[0]
         fid, fname = latest["id"], latest["name"]
+
+        # Abre a planilha pelo id (key) e pega a primeira aba
         sh = gspread_client.open_by_key(fid)
         aba = sh.sheet1
-        dfb = pd.DataFrame(aba.get_all_records())
+
+        # Lê os valores brutos (tudo como string) — PRESERVA exatamente a forma que está no Sheets
+        raw_vals = aba.get_all_values()  # lista de listas: [header_row, row1, row2, ...]
+        if not raw_vals or len(raw_vals) < 1:
+            logging.critical(f"❌ A planilha '{fname}' está vazia (get_all_values retornou vazio).")
+            raise SystemExit("Erro crítico: planilha bruta vazia.")
+
+        header = raw_vals[0]
+        rows = raw_vals[1:]
+
+        # Monta DataFrame PRESERVANDO strings (sem coercão de tipos).
+        # Isto garante que valores como "1", "1.0", "Não há dados", "01/01/2023" sejam mantidos tal como estão.
+        dfb = pd.DataFrame(rows, columns=header)
+
+        # Retorna id, nome e DataFrame (sem conversões automáticas)
         return fid, fname, dfb
+
     except Exception as e:
         logging.critical(f"❌ Erro ao obter a última planilha da pasta bruta '{folder_id}': {e}. O pipeline será encerrado.", exc_info=True)
         raise SystemExit("Erro crítico: Falha ao carregar planilha bruta.")
@@ -453,7 +473,12 @@ try:
     logging.info(f"Planilha tratada '{PLANILHA_TRATADA_ID}' aberta.")
 
     # === Normalizar colunas e padronizar protocolo na planilha tratada (snapshot) ===
-    df_tratada = pd.DataFrame(aba_tratada.get_all_records())
+    _vals = aba_tratada.get_all_values()
+    if _vals and len(_vals) > 0:
+        _hdr = _vals[0]
+        df_tratada = pd.DataFrame(_vals[1:], columns=_hdr)
+    else:
+        df_tratada = pd.DataFrame(columns=[])
     # usa a função normalizar_nome_coluna definida no Item 3 do script
     df_tratada.columns = [normalizar_nome_coluna(c) for c in df_tratada.columns]
 
@@ -1557,13 +1582,31 @@ try:
 
       # --- Normalizações vindas da bruta (AJUSTE: preservar valor original) ---
     if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
-        raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
-        # tokens considerados inválidos ou sem dados
-        _invalid_tokens_str = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
-        mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str)
-        preserved = raw_series.where(~mask_invalid, pd.NA)
-        # manter formato original sem coerção numérica
-        bruta_norm["tempo_de_resolucao_em_dias"] = preserved.astype(object)
+    raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
+    mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str)
+
+    # Preserva exato: usa a representação textual original; se for número, formata sem alterar a aparência
+    def _as_raw_text(v):
+        if pd.isna(v):
+            return pd.NA
+        if isinstance(v, str):
+            return v.strip()
+        try:
+            fv = float(v)
+            if fv.is_integer():
+                return str(int(fv))
+            else:
+                # evita notação científica e zeros desnecessários
+                text = format(fv, "f")
+                text = text.rstrip("0").rstrip(".") if "." in text else text
+                return text
+        except Exception:
+            return str(v)
+
+    preserved = raw_series.where(~mask_invalid, pd.NA)
+    bruta_norm["tempo_de_resolucao_em_dias"] = (
+        preserved.apply(lambda x: _as_raw_text(x) if pd.notna(x) else pd.NA).astype(object)
+    )
         logging.info("Preservando 'tempo_de_resolucao_em_dias' a partir da bruta (sem coerção numérica).")
 
     # status_demanda
