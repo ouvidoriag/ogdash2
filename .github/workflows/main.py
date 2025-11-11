@@ -95,7 +95,12 @@ except Exception as e:
 # ========================================================
 _BANNER("2) LEITURA DA PLANILHA BRUTA (GOOGLE DRIVE - DINÂMICO)")
 
+# As importações de 'googleapiclient.discovery', 'google.oauth2.service_account',
+# 'gspread', 'pandas', 'logging' já estão no topo do arquivo.
+# Não precisam ser repetidas aqui.
+
 # --- Função helper para obter a última planilha da pasta bruta ---
+# Esta função já estava bem definida.
 def get_latest_spreadsheet_df(folder_id: str, gspread_client, drive_svc) -> (str, str, pd.DataFrame):
     try:
         res = drive_svc.files().list(
@@ -118,47 +123,18 @@ def get_latest_spreadsheet_df(folder_id: str, gspread_client, drive_svc) -> (str
         logging.critical(f"❌ Erro ao obter a última planilha da pasta bruta '{folder_id}': {e}. O pipeline será encerrado.", exc_info=True)
         raise SystemExit("Erro crítico: Falha ao carregar planilha bruta.")
 
+
 # --- Uso ---
-FOLDER_ID_BRUTA = "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5"  # Mantenha seu ID de pasta aqui
+FOLDER_ID_BRUTA = "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5" # Mantenha seu ID de pasta aqui
 try:
     latest_file_id, latest_file_name, df_bruta = get_latest_spreadsheet_df(FOLDER_ID_BRUTA, gc, drive_service)
+    df = df_bruta.copy()
 
-    # --- Garantir normalização consistente IMEDIATAMENTE após leitura da planilha bruta ---
-    # Observação: aqui aplicamos uma normalização local de cabeçalhos (snake_case) sem depender
-    # da função normalizar_nome_coluna() que é definida mais adiante no script.
-    def _normalizar_cols_local(cols):
-        out = []
-        for col in cols:
-            if col is None:
-                out.append("")
-                continue
-            c = unicodedata.normalize("NFKD", str(col)).encode("ASCII", "ignore").decode("utf-8")
-            c = c.lower()
-            c = re.sub(r"[^a-z0-9]+", "_", c)
-            c = re.sub(r"_+", "_", c).strip("_")
-            out.append(c)
-        return out
-
-    # aplica normalização nos nomes de coluna e cria df normalizado
-    df_bruta.columns = _normalizar_cols_local(df_bruta.columns.tolist())
-    df = df_bruta.copy()  # DataFrame principal a ser usado no pipeline
-
-    # Normalizar coluna 'protocolo' (strip + upper) na bruta desde já
-    if "protocolo" in df_bruta.columns:
-        df_bruta["protocolo"] = df_bruta["protocolo"].astype(str).str.strip().str.upper()
-        df["protocolo"] = df_bruta["protocolo"]
-    else:
-        # Garante a existência da coluna 'protocolo' (vazia por ora) para evitar key errors posteriores
-        df_bruta["protocolo"] = pd.Series([""] * len(df_bruta))
-        df["protocolo"] = df_bruta["protocolo"]
-
-    logging.info("Normalização inicial aplicada em df_bruta (colunas e protocolo).")
     print(f"📂 Última planilha encontrada: {latest_file_name} ({latest_file_id})")
     logging.info(f"Última planilha encontrada: {latest_file_name} ({latest_file_id})")
     print(f"✅ Planilha bruta importada com sucesso: {df_bruta.shape}")
     logging.info(f"Planilha bruta importada com sucesso: {df_bruta.shape}")
-
-except SystemExit:  # Captura o SystemExit da função helper para não logar novamente
+except SystemExit: # Captura o SystemExit da função helper para não logar novamente
     raise
 except Exception as e:
     logging.critical(f"❌ Erro ao processar a planilha bruta principal. Verifique o FOLDER_ID_BRUTA e permissões. Erro: {e}. O pipeline será encerrado.", exc_info=True)
@@ -445,32 +421,18 @@ _BANNER("5) COLETA DE PROTOCOLOS EXISTENTES NA PLANILHA TRATADA")
 try:
     # ---------- CONSTANTES / IDs ----------
     # Defina PLANILHA_TRATADA_ID no topo do arquivo ou altere aqui diretamente:
-    PLANILHA_TRATADA_ID = "1aF0I8pxABXhqyO2DmzBV9aoWHQN2h7LpTN-qdkGLc_g"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
+    PLANILHA_TRATADA_ID = "1SmO5yTD5B6fN_gT-7m1wosP_sbzmtd0agTC-LNCnX9Y"  # <-- coloque aqui o ID CORRETO da planilha tratada fixa
 
     # ---------- ABRE A PLANILHA TRATADA (única fonte) ----------
-    planilha_tratada_gs = gc.open_by_key(PLANILHA_TRATADA_ID)  # Renomeado para evitar conflito com df_tratada
+    planilha_tratada_gs = gc.open_by_key(PLANILHA_TRATADA_ID) # Renomeado para evitar conflito com df_tratada
     aba_tratada = planilha_tratada_gs.sheet1
     logging.info(f"Planilha tratada '{PLANILHA_TRATADA_ID}' aberta.")
 
-    # === Normalizar colunas e padronizar protocolo na planilha tratada (snapshot) ===
     df_tratada = pd.DataFrame(aba_tratada.get_all_records())
-    # usa a função normalizar_nome_coluna definida no Item 3 do script
     df_tratada.columns = [normalizar_nome_coluna(c) for c in df_tratada.columns]
 
-    # Padroniza a coluna 'protocolo' na tratada (strip + upper)
-    if "protocolo" in df_tratada.columns:
-        df_tratada["protocolo"] = df_tratada["protocolo"].astype(str).str.strip().str.upper()
-    else:
-        # Garante existência para operações posteriores
-        df_tratada["protocolo"] = pd.Series([""] * len(df_tratada))
-
-    logging.info("Normalização aplicada em df_tratada (colunas e protocolo).")
-
-    # Também aplica normalize_protocolo_col caso queira (mantive sua função por compatibilidade)
     df_tratada = normalize_protocolo_col(df_tratada, "protocolo")
-
-    # Constrói o conjunto de protocolos existentes (normalizado)
-    protocolos_existentes_set = set([str(x).strip().upper() for x in df_tratada["protocolo"].tolist() if str(x).strip() != ""])
+    protocolos_existentes_set = set(df_tratada["protocolo"].astype(str).tolist())
 
     # ---------- LÊ A ÚLTIMA PLANILHA BRUTA (reutiliza FOLDER_ID_BRUTA e helper) ----------
     # IMPORTANTE: get_latest_spreadsheet_df deve existir (Item 2)
@@ -485,68 +447,17 @@ try:
     df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns]
     df_bruta = normalize_protocolo_col(df_bruta, "protocolo")
 
-    # === Cria 'protocolo_final' com fallback (protocolo existente ou protocolo_simulado) ===
-    # Normaliza protocolo atual na bruta
-    df_bruta["protocolo"] = df_bruta.get("protocolo", pd.Series([""] * len(df_bruta))).astype(str).str.strip().str.upper()
-
-    # ---------- GERAÇÃO DE PROTOCOLO SIMULADO (robusto) ----------
-    def _criar_protocolo_simulado(row) -> str:
-        """
-        Gera um protocolo simulado com prefixo 'S' a partir de uma combinação
-        de campos candidatos (data_da_criacao, assunto, descricao, conteudo, manifestacao, mensagem).
-        Retorna string vazia se não houver dados suficientes.
-        """
-        candidate_fields = ["data_da_criacao", "assunto", "descricao", "conteudo", "manifestacao", "mensagem"]
-        parts = []
-        for f in candidate_fields:
-            v = ""
-            try:
-                # pd.Series e dict têm .get; garantimos acesso seguro
-                if hasattr(row, "get"):
-                    v = row.get(f, "")
-                else:
-                    # tenta acessar por label/index quando possível (ex.: pd.Series)
-                    v = row[f] if f in getattr(row, "index", []) else ""
-            except Exception:
-                try:
-                    v = row[f]
-                except Exception:
-                    v = ""
-            if pd.notna(v) and str(v).strip() != "":
-                parts.append(str(v).strip())
-        key = "|".join(parts)
-        if not key:
-            return ""
-        # prefixo 'S' para diferenciar dos protocolos 'C...'
-        return "S" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:18].upper()
-
-    def _choose_protocolo_final(p: str, row) -> str:
-        """
-        Retorna protocolo 'p' se estiver no padrão C\d+, senão gera protocolo simulado.
-        """
-        p = str(p or "").strip().upper()
-        if re.match(r"^C\d+$", p):
-            return p
-        simulated = _criar_protocolo_simulado(row)
-        return simulated if simulated else p
-
-    # Usa a função robusta para criar protocolo_final
-    df_bruta["protocolo_final"] = df_bruta.apply(lambda r: _choose_protocolo_final(r.get("protocolo", ""), r), axis=1)
-    df_bruta["protocolo_final"] = df_bruta["protocolo_final"].astype(str).str.strip().str.upper()
-
-    # Marca novos protocolos comparando protocolo_final com o conjunto da tratada
-    df_bruta["eh_novo"] = ~df_bruta["protocolo_final"].isin(protocolos_existentes_set)
-
-    # Prepara lista de novos (usando protocolo_final para consistência)
-    novos_protos = df_bruta.loc[df_bruta["eh_novo"], "protocolo_final"].tolist()
+    # Marca novos protocolos (comparação com o conjunto da tratada)
+    df_bruta["eh_novo"] = ~df_bruta["protocolo"].isin(protocolos_existentes_set)
+    novos_protos = df_bruta.loc[df_bruta["eh_novo"], "protocolo"].tolist()
 
     print(f"🔑 Protocolos já na planilha tratada: {len(protocolos_existentes_set)}")
     print(f"🆕 Protocolos detectados como novos: {len(novos_protos)}")
     logging.info(f"Protocolos já na planilha tratada: {len(protocolos_existentes_set)}")
     logging.info(f"Protocolos detectados como novos: {novos_protos[:50]}")
 
-    # Log dos existentes que não serão enviados (baseado em protocolo_final)
-    nao_enviados = df_bruta.loc[~df_bruta["eh_novo"], "protocolo_final"].tolist()
+    # Log dos existentes que não serão enviados
+    nao_enviados = df_bruta.loc[~df_bruta["eh_novo"], "protocolo"].tolist()
     print(f"⚠️ Protocolos existentes que não serão enviados (não novos): {len(nao_enviados)}")
     logging.info(f"Protocolos existentes que não serão enviados: {nao_enviados[:50]}")
 
@@ -555,34 +466,7 @@ try:
         raise Exception("A planilha bruta mais recente está vazia ou não pôde ser lida.")
 
     # Substitui df pelo df_bruta "oficial" para manter compatibilidade posterior
-    # (mantemos também a coluna 'protocolo_final' para uso nas etapas seguintes)
     df = df_bruta.copy()
-
-# === 5.5) CAPTURA BRUTA EXATA: preserva texto original de 'tempo_de_resolucao_em_dias' ===
-    # Objetivo: guardar o valor textual **exato** vindo da bruta antes de qualquer normalização
-    # (será usado depois durante a sincronização/deltas para garantir identidade com a bruta).
-    try:
-        # Mantém coluna raw com o texto tal como veio (strip apenas de espaços extremos)
-        if "tempo_de_resolucao_em_dias" in df_bruta.columns:
-            df_bruta["tempo_de_resolucao_em_dias_raw"] = df_bruta["tempo_de_resolucao_em_dias"].astype(object).apply(
-                lambda v: (str(v).strip() if not pd.isna(v) else pd.NA)
-            )
-        else:
-            df_bruta["tempo_de_resolucao_em_dias_raw"] = pd.Series([pd.NA] * len(df_bruta))
-
-        # Cria um lookup rápido: protocolo -> texto bruto preservado (útil em Item 10)
-        # Garante normalização do protocolo como chave
-        df_bruta["protocolo"] = df_bruta.get("protocolo", pd.Series([""] * len(df_bruta))).astype(str).str.strip().str.upper()
-        bruta_tempo_raw_map = (
-            df_bruta.loc[df_bruta["protocolo"].astype(str).str.strip() != "", 
-                         ["protocolo", "tempo_de_resolucao_em_dias_raw"]]
-            .set_index("protocolo")["tempo_de_resolucao_em_dias_raw"]
-            .to_dict()
-        )
-        logging.info(f"5.5) Preservado tempo_de_resolucao_em_dias_raw para {len(bruta_tempo_raw_map)} protocolos (map).")
-    except Exception as e:
-        logging.warning(f"5.5) Falha ao preservar tempo_de_resolucao_em_dias_raw: {e}")
-        bruta_tempo_raw_map = {}
 
 except Exception as e:
     print(f"⚠️ Erro ao carregar planilhas: {e}")
@@ -598,44 +482,12 @@ except Exception as e:
 # 6) LIMPEZA BÁSICA + RECORTE PARA NOVOS POR PROTOCOLO
 # ========================================================
 print("🧹 Limpando e identificando novos protocolos...")
+df_tratada_protocolos = df_tratada["protocolo"].astype(str).str.strip().tolist()
+df["protocolo"] = df["protocolo"].astype(str).str.strip()
 
-# --- Garantias de normalização do DataFrame atual (df) ---
-# Normaliza nomes de coluna no df (caso não tenha sido feito antes)
-if not df.empty:
-    df.columns = [normalizar_nome_coluna(c) for c in df.columns]
-
-# Garante que a planilha tratada tem a lista de protocolos normalizada (fallback caso não exista)
-if 'df_tratada' in globals() and not df_tratada.empty and "protocolo" in df_tratada.columns:
-    df_tratada_protocolos = [str(x).strip().upper() for x in df_tratada["protocolo"].tolist() if str(x).strip() != ""]
-else:
-    df_tratada_protocolos = []
-
-# --- Prepara a coluna 'protocolo' no df usando 'protocolo_final' quando disponível ---
-def _normalize_protocol_row(r):
-    # prioridade: protocolo_final (quando presente), senão protocolo, senão ""
-    pf = r.get("protocolo_final", "")
-    p  = r.get("protocolo", "")
-    chosen = pf if pd.notna(pf) and str(pf).strip() != "" else p
-    return str(chosen).strip().upper()
-
-# Se df estiver vazio, mantém as variáveis para frente
-if df.empty:
-    df["protocolo"] = ""
-else:
-    # Cria/normaliza a coluna protocolo definitiva a ser usada para comparação
-    df["protocolo"] = df.apply(_normalize_protocol_row, axis=1)
-
-# --- Marca novos comparando com os protocolos da planilha tratada ---
-if df_tratada_protocolos:
-    df["eh_novo"] = ~df["protocolo"].isin(df_tratada_protocolos)
-else:
-    # Se não temos referência de tratados (planilha tratada vazia ou sem coluna protocolo),
-    # assume tudo como novo (mas loga um warning)
-    logging.warning("df_tratada_protocolos vazio — assumindo todos os registros como novos.")
-    df["eh_novo"] = True
-
-novos = df[df["eh_novo"] == True].copy()
-existentes = df[df["eh_novo"] == False].copy()
+df["eh_novo"] = ~df["protocolo"].isin(df_tratada_protocolos)
+novos = df[df["eh_novo"] == True]
+existentes = df[df["eh_novo"] == False]
 
 print(f"🆕 Novos protocolos: {len(novos)}")
 print(f"🔄 Protocolos existentes: {len(existentes)}")
@@ -1030,9 +882,9 @@ if not df_novos.empty:
                     f"QA Pós-Tratamento (df_novos): Coluna '{col}' não é do tipo string após tratamento. Tipo atual: {df_novos[col].dtype}. Convertendo para string."
                 )
                 df_novos[col] = df_novos[col].astype(str)
-
+                
 # ========================================================
-# 8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS (VERSÃO CORRIGIDA E INTEGRADA)
+# 8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS
 # ========================================================
 _BANNER("8) ATUALIZAÇÃO NA PLANILHA TRATADA — APENAS NOVOS")
 
@@ -1044,8 +896,8 @@ try:
         raise SystemExit("❌ df_bruta não está definido ou está vazio. Carregue a base bruta antes do Item 8.")
     logging.info(f"df_bruta presente e com shape: {df_bruta.shape}")
 
-    df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns]  # Garante que está normalizado
-    df_bruta = normalize_protocolo_col(df_bruta, "protocolo")  # Garante que protocolo está padronizado
+    df_bruta.columns = [normalizar_nome_coluna(c) for c in df_bruta.columns] # Garante que está normalizado
+    df_bruta = normalize_protocolo_col(df_bruta, "protocolo") # Garante que protocolo está padronizado
     logging.debug("Colunas e protocolos de df_bruta normalizados.")
 except Exception as e:
     logging.critical(f"Erro na checagem inicial de df_bruta no Item 8: {e}", exc_info=True)
@@ -1054,21 +906,15 @@ except Exception as e:
 # ----------------------------------------------------------
 # CARREGA PLANILHA TRATADA E OBTÉM PROTOCOLOS EXISTENTES
 # ----------------------------------------------------------
+
 try:
     if 'client' not in globals() or client is None:
         raise SystemExit("❌ Cliente gspread não autenticado. Verifique Item 1.")
 
-    PLANILHA_TRATADA_ID = "1aF0I8pxABXhqyO2DmzBV9aoWHQN2h7LpTN-qdkGLc_g"
+    PLANILHA_TRATADA_ID = "1SmO5yTD5B6fN_gT-7m1wosP_sbzmtd0agTC-LNCnX9Y"
     planilha_tratada_gs = client.open_by_key(PLANILHA_TRATADA_ID)
     aba_tratada = planilha_tratada_gs.sheet1
     logging.info(f"Planilha tratada '{PLANILHA_TRATADA_ID}' aberta.")
-
-    # Cache inicial seguro: tentativa de ler todas as linhas (pode falhar em sheets muito grandes)
-    try:
-        _aba_cache_all = aba_tratada.get_all_values()  # lista de listas (pode ser None/[] em caso de sheet vazia)
-    except Exception:
-        _aba_cache_all = None
-
 except Exception as e:
     logging.critical(f"Erro ao abrir a planilha tratada ou autenticar no Item 8: {e}", exc_info=True)
     raise
@@ -1087,15 +933,15 @@ try:
         logging.warning("Coluna 'protocolo' não encontrada em df_tratada_existente. Não será possível identificar protocolos existentes.")
 
     cols_alvo_tratada = list(df_tratada_existente.columns)
-    if not cols_alvo_tratada:  # Se a planilha tratada estiver completamente vazia (sem cabeçalho)
+    if df_tratada_existente.empty:
         if 'df_novos' in globals() and not df_novos.empty:
             cols_alvo_tratada = list(df_novos.columns)
             logging.info("Planilha tratada vazia, usando colunas de df_novos como referência para o schema.")
         elif not df_bruta.empty:
-            cols_alvo_tratada = [normalizar_nome_coluna(c) for c in df_bruta.columns]
-            logging.info("Planilha tratada vazia e df_novos vazio, usando colunas de df_bruta como referência.")
+            cols_alvo_tratada = list(df_bruta.columns)
+            logging.info("Planilha tratada vazia e df_novos vazio, usando colunas de df_bruta como referência para o schema.")
         else:
-            logging.error("Não foi possível determinar o schema da planilha tratada.")
+            logging.error("Não foi possível determinar o schema da planilha tratada. df_tratada_existente, df_novos e df_bruta estão vazios.")
             raise ValueError("Não foi possível determinar o schema da planilha tratada.")
     logging.debug(f"Colunas alvo da planilha tratada: {cols_alvo_tratada}")
 
@@ -1106,97 +952,135 @@ except Exception as e:
 # ----------------------------------------------------------
 # IDENTIFICA E PREPARA NOVOS PROTOCOLOS PARA ENVIO
 # ----------------------------------------------------------
+
 try:
-    # A variável df_novos, contendo apenas os novos protocolos já tratados, vem da Seção 7.
-    if 'df_novos' not in globals() or df_novos.empty:
-        logging.info("Nenhum protocolo novo detectado para envio.")
+    novos_protocolos_a_enviar = set(df_bruta["protocolo"]) - protocolos_existentes_set_final
+    df_send_bruto = df_bruta[df_bruta["protocolo"].isin(novos_protocolos_a_enviar)].copy()
+
+    if df_send_bruto.empty:
+        logging.info("Nenhum protocolo novo detectado para envio. df_send será um DataFrame vazio.")
         print("🧹 Nenhum protocolo novo para enviar.")
-        df_send = pd.DataFrame()  # Cria um df_send vazio para que o script continue sem erros
+        df_send = pd.DataFrame(columns=cols_alvo_tratada) # Define df_send vazio com colunas corretas
     else:
-        logging.info(f"Detectados {len(df_novos)} protocolos novos para processar e enviar. Shape: {df_novos.shape}")
-        print(f"🧹 Novos protocolos a enviar: {len(df_novos)}")
+        logging.info(f"Detectados {len(df_send_bruto)} protocolos novos para processar e enviar. Shape inicial: {df_send_bruto.shape}")
+        print(f"🧹 Novos protocolos a enviar: {len(df_send_bruto)}")
 
-        # === A) Normalizar df_novos antes do reindex (garante nomes e protocolo) ===
-        # Normaliza nomes de coluna no df_novos para o mesmo padrão (snake_case)
-        df_novos.columns = [normalizar_nome_coluna(c) for c in df_novos.columns]
+        # APLICA TODOS OS TRATAMENTOS DE _tratar_full AQUI!
+        df_send = _tratar_full(df_send_bruto.copy())
+        logging.info(f"Função _tratar_full aplicada a df_send_bruto. Shape após tratamento: {df_send.shape}")
 
-        # Se existe protocolo_final (criado anteriormente), prioriza-o; senão usa 'protocolo'
-        if "protocolo_final" in df_novos.columns:
-            df_novos["protocolo"] = df_novos["protocolo_final"].astype(str).str.strip().str.upper()
-        elif "protocolo" in df_novos.columns:
-            df_novos["protocolo"] = df_novos["protocolo"].astype(str).str.strip().str.upper()
-        else:
-            df_novos["protocolo"] = pd.Series([""] * len(df_novos))
+        # Remove colunas auxiliares que não devem ser escritas no Google Sheets
+        cols_to_drop = []
+        if "eh_novo" in df_send.columns:
+            cols_to_drop.append("eh_novo")
+        # Adicione aqui outras colunas auxiliares
+        # if "alguma_coluna_temp" in df_send.columns: cols_to_drop.append("alguma_coluna_temp")
 
-        # Assegura que todas as colunas alvo existam em df_novos (para reindex)
-        for c in cols_alvo_tratada:
-            if c not in df_novos.columns:
-                df_novos[c] = ""
+        if cols_to_drop:
+            df_send = df_send.drop(columns=cols_to_drop)
+            logging.info(f"Colunas auxiliares removidas de df_send: {cols_to_drop}. Novo shape: {df_send.shape}")
 
-        # Alinha as colunas do df_novos com as da planilha tratada, preenchendo com "" as que faltarem.
-        df_send = df_novos.reindex(columns=cols_alvo_tratada, fill_value="")
-        logging.info(f"df_send alinhado com as colunas da planilha alvo. Shape final: {df_send.shape}")
+        # Garante que o df_send tem as colunas corretas e na ordem certa
+        df_send_final = df_send.reindex(columns=cols_alvo_tratada, fill_value="")
+        logging.info(f"df_send reindexado para alinhar com colunas alvo. Shape final: {df_send_final.shape}")
+
+        # QA: Verifica se alguma coluna do df_send_final contém valores inesperados antes do envio
+        for col_qa in ['orgaos', 'responsavel', 'status_demanda', 'data_da_conclusao']:
+            if col_qa in df_send_final.columns:
+                unexpected_values = df_send_final[col_qa].astype(str).str.contains(r'(?i)^(sim|nao|true|false|\?{2,}|nan|none)$')
+                if unexpected_values.any():
+                    logging.error(f"QA Pré-Envio (df_send): Coluna '{col_qa}' contém valores inesperados em {unexpected_values.sum()} linhas. Exemplos: {df_send_final.loc[unexpected_values, col_qa].unique()[:5].tolist()}",
+                                  extra={'data': df_send_final.loc[unexpected_values, ['protocolo', col_qa]].to_dict(orient='records')[:5]})
+                    # Considerar um raise SystemExit aqui se a qualidade do dado for crítica
+       
+        df_send = df_send_final.copy() # Atribui o DataFrame final preparado para df_send
 
 except Exception as e:
     logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
     raise
 
-# --------------------------------------------------------------------------
-# PREPARAÇÃO FINAL DAS DATAS ANTES DO ENVIO (LÓGICA SEGURA INTEGRADA)
-# --------------------------------------------------------------------------
-if not df_send.empty:
-    _SUB("Serializando datas e limpando nulos para o envio...")
+# ----------------------------------------------------------
+# TRATAMENTO CRÍTICO — DATA DA CONCLUSÃO (APÓS _tratar_full)
+# e PADRONIZA OUTRAS DATAS
+#
+# Com a aplicação de _tratar_full acima, estas funções devem ser menos necessárias.
+# Elas são mantidas como um último ajuste de formato para DD/MM/YYYY se _tratar_full
+# retornar DD/MM/YY e o GSheet esperar o ano com 4 dígitos.
+# ----------------------------------------------------------
+def tratar_data_conclusao_item8(x):
+    if pd.isna(x) or str(x).strip().lower() in ["", "nan", "na", "n/a", "none", "não concluído"]:
+        return "Não concluído"
+    try:
+        dt = pd.to_datetime(x, errors="coerce", dayfirst=True)
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+        else:
+            return "Não concluído"
+    except Exception:
+        return "Não concluído"
 
-    colunas_de_data = ["data_da_criacao", "data_da_conclusao"]
-    for coluna in colunas_de_data:
-        if coluna in df_send.columns:
-            # Converte para datetime (erros viram NaT) e depois para string DD/MM/AAAA
-            df_send[coluna] = pd.to_datetime(df_send[coluna], errors='coerce').dt.strftime('%d/%m/%Y')
-            logging.info(f"Coluna '{coluna}' convertida para texto DD/MM/AAAA.")
+if not df_send.empty and "data_da_conclusao" in df_send.columns:
+    df_send["data_da_conclusao"] = df_send["data_da_conclusao"].apply(tratar_data_conclusao_item8)
+    logging.debug("Re-aplicado tratamento de 'data_da_conclusao' para garantir formato DD/MM/YYYY.")
 
-    # --- B) QA PRE-APPEND: checagem de somas e contagens antes de enviar ===
-    def soma_tempo_serie_safe(df_local, col="tempo_de_resolucao_em_dias"):
-        if col not in df_local.columns:
-            return 0.0
-        return float(pd.to_numeric(df_local[col], errors="coerce").sum(min_count=1) or 0.0)
+def tratar_data_generica_item8_final(x):
+    """
+    Tratamento final robusto para garantir o formato DD/MM/AAAA para o Sheets,
+    lidando com valores que já são strings ou formatos de 2 dígitos.
+    """
+    s = str(x).strip()
+    if s.lower() in ["", "nan", "na", "n/a", "none"]:
+        return ""
 
-    soma_bruta_total = soma_tempo_serie_safe(df_bruta)
-    soma_tratada_atual = soma_tempo_serie_safe(df_tratada_existente)
-    soma_a_enviar = soma_tempo_serie_safe(df_send)
+    # Verifica se já está no formato DD/MM/AAAA. Se sim, mantém como string.
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
+        return s
+    
+    # 1. Tenta o parsing flexível (mais comum)
+    try:
+        dt = pd.to_datetime(s, errors="coerce", dayfirst=True)
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+        
+        # 2. Se falhou, tenta explicitamente formatos de 2 dígitos que podem ter escapado (DD/MM/AA)
+        if re.fullmatch(r"\d{2}/\d{2}/\d{2}", s):
+            dt_y = pd.to_datetime(s, format="%d/%m/%y", errors="coerce")
+            if pd.notna(dt_y):
+                return dt_y.strftime("%d/%m/%Y")
+        
+        # 3. Tenta formatos ISO (YYYY-MM-DD)
+        if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+            dt_iso = pd.to_datetime(s, errors="coerce", dayfirst=False)
+            if pd.notna(dt_iso):
+                return dt_iso.strftime("%d/%m/%Y")
+            
+        return "" # Se tudo falhou
+            
+    except Exception:
+        return "" # Em caso de erro de parsing
 
-    count_c_bruta = df_bruta["protocolo"].astype(str).str.match(r"^C\d+$").sum() if "protocolo" in df_bruta.columns else 0
-    count_c_tratada = df_tratada_existente["protocolo"].astype(str).str.match(r"^C\d+$").sum() if "protocolo" in df_tratada_existente.columns else 0
-    count_c_send = df_send["protocolo"].astype(str).str.match(r"^C\d+$").sum() if "protocolo" in df_send.columns else 0
+for col in ["data_da_criacao"]:
+    if not df_send.empty and col in df_send.columns:
+        # Aplica a função de tratamento final (com ano de 4 dígitos)
+        df_send[col] = df_send[col].apply(tratar_data_generica_item8_final)
+        
+        # GARANTE que a coluna FINAL é string (DD/MM/AAAA) para envio sem erro de tipo.
+        df_send[col] = df_send[col].astype(str)
+        logging.debug(f"Re-aplicado tratamento FINAL de '{col}' para garantir formato DD/MM/AAAA (String).")
 
-    logging.info(f"QA PRE-APPEND: soma_bruta={soma_bruta_total}, soma_tratada_antes={soma_tratada_atual}, soma_a_enviar={soma_a_enviar}")
-    logging.info(f"QA PRE-APPEND: count_C_bruta={count_c_bruta}, count_C_tratada={count_c_tratada}, count_C_send={count_c_send}")
-
-    # Se houver discrepância grande entre bruta e tratada+envio, emitir WARNING
-    if abs((soma_tratada_atual + soma_a_enviar) - soma_bruta_total) > 1:
-        logging.warning("QA PRE-APPEND: Diferença significativa detectada entre bruta e tratada+envio. Verifique mapeamento de colunas (ex.: tempo_de_resolucao_em_dias).")
-
-    # Substitui todos os tipos de nulos restantes (NaT, None, NaN) por uma string vazia
-    # Observação: mantemos a versão original df_send para QA; abaixo criaremos a versão para append.
-    # Não sobrescrevemos a coluna numérica 'tempo_de_resolucao_em_dias' até depois da dedupe final.
-    logging.info("Preparação de dados finalizada (datas serializadas).")
-
-# --------------------------------------------------------------------------
 
 # ----------------------------------------------------------
 # CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
 # ----------------------------------------------------------
 if not df_send.empty and "unidade_cadastro" in df_send.columns:
-    nulos_uc = int(df_send["unidade_cadastro"].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado', 'None']).sum())
+    nulos_uc = int(df_send["unidade_cadastro"].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']).sum())
     print(f"🧪 Checagem (NOVOS - PRONTOS PARA ENVIO): unidade_cadastro presente | vazios={nulos_uc}")
     logging.info(f"Checagem (NOVOS - PRONTOS PARA ENVIO): unidade_cadastro presente | vazios={nulos_uc}")
     if nulos_uc > 0:
-        logging.warning(f"QA Pré-Envio: 'unidade_cadastro' contém {nulos_uc} valores vazios/inválidos em df_send.")
+        logging.warning(f"QA Pré-Envio: 'unidade_cadastro' contém {nulos_uc} valores vazios/inválidos em df_send. Exemplos: {df_send.loc[df_send['unidade_cadastro'].astype(str).str.strip().isin(['', 'nan', 'none', 'n/a', 'não informado']), 'unidade_cadastro'].unique()[:5].tolist()}")
 else:
-    if df_send.empty:
-        logging.info("Checagem 'unidade_cadastro' pulada pois não há novos protocolos para enviar.")
-    else:
-        print("⚠️ Aviso: unidade_cadastro não está no DataFrame final a ser enviado.")
-        logging.warning("unidade_cadastro não está em df_send. Verifique a consistência do schema.")
+    print("⚠️ Aviso: unidade_cadastro não está em df_send ou df_send está vazio.")
+    logging.warning("unidade_cadastro não está em df_send ou df_send está vazio. Verifique a consistência do schema.")
 
 # ----------------------------------------------------------
 # ENVIO EM LOTES
@@ -1205,148 +1089,39 @@ if df_send.empty:
     logging.info("Nenhum protocolo para enviar, pulando envio em lotes.")
     print("📦 Nenhum protocolo para enviar.")
 else:
-    # === C) Dedup final: recarregar protocolos atuais diretamente da aba_tratada e remover linhas duplicadas de df_send ===
-    try:
-        # --- cache: tenta usar header cache se disponível para localizar índice do 'protocolo' ---
-        header_row = None
-        if _aba_cache_all and len(_aba_cache_all) > 0:
-            header_row = _aba_cache_all[0]
-        else:
-            try:
-                header_row = aba_tratada.row_values(1)
-            except Exception:
-                header_row = None
-
-        protocolo_col_idx = None
-        if header_row:
-            for idx, h in enumerate(header_row):
-                if isinstance(h, str) and re.sub(r"[^a-z0-9]+", "_", h.lower()).strip("_") == "protocolo":
-                    protocolo_col_idx = idx + 1
-                    break
-
-        # se não encontrou, assume primeira coluna (1) como fallback
-        if protocolo_col_idx is None:
-            protocolo_col_idx = 1
-            logging.warning("Não foi possível localizar coluna 'protocolo' por nome no cabeçalho. Usando coluna 1 como fallback.")
-
-        # agora pega os valores dessa coluna inteira (apenas essa coluna) -- mais barato que get_all_values()
-        try:
-            sheet_protocols_raw = aba_tratada.col_values(protocolo_col_idx)
-        except Exception:
-            # fallback: tenta usar cache completo se disponível
-            if _aba_cache_all and len(_aba_cache_all) > 0:
-                sheet_protocols_raw = [row[protocolo_col_idx - 1] if len(row) >= protocolo_col_idx else "" for row in _aba_cache_all]
-            else:
-                sheet_protocols_raw = []
-
-        # remove o cabeçalho (primeira linha) se ele estiver presente
-        if sheet_protocols_raw and len(sheet_protocols_raw) > 0:
-            sheet_protocols = [str(x).strip().upper() for x in sheet_protocols_raw[1:] if str(x).strip() != ""]
-        else:
-            sheet_protocols = []
-
-        sheet_protocols_set = set(sheet_protocols)
-
-        if "protocolo" in df_send.columns:
-            df_send["__protocolo_upper"] = df_send["protocolo"].astype(str).str.strip().str.upper()
-            before_dedupe = len(df_send)
-            df_send = df_send.loc[~df_send["__protocolo_upper"].isin(sheet_protocols_set)].copy()
-            after_dedupe = len(df_send)
-            logging.info(f"Dedup final: removidos {before_dedupe - after_dedupe} linhas já presentes na sheet tratada.")
-            df_send.drop(columns=["__protocolo_upper"], inplace=True, errors="ignore")
-        else:
-            logging.warning("Dedup final: coluna 'protocolo' não encontrada em df_send; não foi possível dedupe por protocolo.")
-    except Exception as e:
-        logging.exception(f"Erro ao executar dedupe final contra aba_tratada: {e}")
-
-    # Garante que todos os valores nulos (exceto os de data que já são None) virem strings vazias
-    # Criamos uma cópia para append para NÃO poluir df_send (assim mantemos as versões numéricas para QA)
-    df_send_for_append = df_send.copy()
-    # Convertendo colunas de data já formatadas e substituindo NaNs por ''
-    df_send_for_append = df_send_for_append.fillna('')
-
     lote = 500
-    total_lotes = (len(df_send_for_append) + lote - 1) // lote
-    print(f"📦 Envio — APENAS NOVOS (FINAL): {len(df_send_for_append)} linhas | {total_lotes} lotes")
-    logging.info(f"Envio — APENAS NOVOS (FINAL): {len(df_send_for_append)} linhas | {total_lotes} lotes")
+    total_lotes = (len(df_send) + lote - 1) // lote
+    print(f"📦 Envio — APENAS NOVOS (FINAL): {len(df_send)} linhas | {total_lotes} lotes")
+    logging.info(f"Envio — APENAS NOVOS (FINAL): {len(df_send)} linhas | {total_lotes} lotes")
 
-    # Se temos cache e ele indicou sheet vazia, podemos usar isso; senão, consulta mínima
-    try:
-        if _aba_cache_all is not None:
-            sheet_is_empty = (len(_aba_cache_all) == 0) or (len(_aba_cache_all) == 1 and (not any(_aba_cache_all[0])))
-        else:
-            # apenas se realmente necessário, lê o mínimo
-            sheet_vals = aba_tratada.get_all_values()
-            sheet_is_empty = (len(sheet_vals) == 0) or (len(sheet_vals) == 1 and (not any(sheet_vals[0])))
-    except Exception:
-        # fallback conservador
-        sheet_is_empty = False
+    existing_values = aba_tratada.get_all_values()
+    sheet_is_empty = len(existing_values) == 0
 
-    for i in range(0, len(df_send_for_append), lote):
-        chunk = df_send_for_append.iloc[i:i+lote].copy()
+    for i in range(0, len(df_send), lote):
+        chunk = df_send.iloc[i:i+lote].copy()
         rows = chunk.values.tolist()
         first_idx = i + 1
-        last_idx = min(i + lote, len(df_send_for_append))
+        last_idx = min(i + lote, len(df_send))
         protos_preview = list(chunk.get("protocolo", []))[:3]
         logging.debug(f"Processando lote {first_idx}-{last_idx}. Prévia protocolos: {protos_preview}")
         print(f"   • Enviando {first_idx}-{last_idx} (prévia protocolos: {protos_preview})")
 
         try:
-            # value_input_option='USER_ENTERED' é crucial para o Google Sheets interpretar as datas corretamente
             if sheet_is_empty:
                 header = chunk.columns.tolist()
-                aba_tratada.append_rows([header] + rows, value_input_option='USER_ENTERED')
+                aba_tratada.append_rows([header] + rows)
                 logging.info(f"Lote {first_idx}-{last_idx} enviado com cabeçalho.")
-                sheet_is_empty = False  # Garante que o cabeçalho não seja adicionado novamente
+                sheet_is_empty = False
             else:
-                aba_tratada.append_rows(rows, value_input_option='USER_ENTERED')
+                aba_tratada.append_rows(rows)
                 logging.info(f"Lote {first_idx}-{last_idx} enviado (sem cabeçalho).")
         except Exception as e:
             logging.exception(f"Erro CRÍTICO ao enviar lote {first_idx}-{last_idx}: {e}")
             print(f"❌ Erro ao enviar lote {first_idx}-{last_idx}: {e}")
-            try:
-                failed = chunk[["protocolo"]].copy()
-            except Exception:
-                failed = pd.DataFrame(chunk)  # fallback
+            failed = chunk[["protocolo"]].copy()
             timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
             failed.to_csv(f"failed_append_{first_idx}_{last_idx}_{timestamp}.csv", index=False, encoding="utf-8-sig")
-
-    # === D) Logs extras / verificação pós-append ===
-    logging.info(f"Envio finalizado. Total de linhas enviadas (estimado): {len(df_send_for_append)}")
-    try:
-        # Recontagem pós-append — tenta reutilizar protocolo_col_idx caso exista, senão tenta detectar
-        protocolo_col_idx_post = None
-        header_row_cache = None
-        if _aba_cache_all and len(_aba_cache_all) > 0:
-            header_row_cache = _aba_cache_all[0]
-        else:
-            try:
-                header_row_cache = aba_tratada.row_values(1)
-            except Exception:
-                header_row_cache = None
-
-        if header_row_cache:
-            for idx, h in enumerate(header_row_cache):
-                if isinstance(h, str) and re.sub(r"[^a-z0-9]+", "_", h.lower()).strip("_") == "protocolo":
-                    protocolo_col_idx_post = idx + 1
-                    break
-
-        if protocolo_col_idx_post is None:
-            protocolo_col_idx_post = 1
-
-        try:
-            atualizada_protocols_raw = aba_tratada.col_values(protocolo_col_idx_post)
-        except Exception:
-            # fallback ao cache (se houver)
-            if _aba_cache_all and len(_aba_cache_all) > 0:
-                atualizada_protocols_raw = [row[protocolo_col_idx_post - 1] if len(row) >= protocolo_col_idx_post else "" for row in _aba_cache_all]
-            else:
-                atualizada_protocols_raw = []
-
-        atualizada_protocols = [str(x).strip().upper() for x in atualizada_protocols_raw[1:] if str(x).strip() != ""] if atualizada_protocols_raw else []
-        logging.info(f"Após append, total protocolos na sheet (col {protocolo_col_idx_post}) = {len(atualizada_protocols)}")
-    except Exception as e:
-        logging.warning(f"Não foi possível validar contagem pós-append: {e}")
+            # Dependendo da severidade, você pode querer parar o pipeline aqui.
 
 print("✅ Atualização da planilha tratada concluída com sucesso.")
 logging.info("✅ Atualização da planilha tratada concluída com sucesso.")
@@ -1365,11 +1140,11 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # 1️⃣ Padroniza status_demanda (nova regra institucional)
+    # 1️⃣ Padroniza status_demanda
     if "status_demanda" in df.columns:
         df["status_demanda"] = df["status_demanda"].apply(
-            lambda v: "Concluído" if _is_concluida(v)
-            else "Em atendimento" if (v and str(v).strip() != "")
+            lambda v: "CONCLUÍDA" if _is_concluida(v)
+            else "EM ANDAMENTO" if (v and str(v).strip() != "")
             else v
         )
 
@@ -1412,8 +1187,8 @@ df = _prepare_status(df)  # garante que coluna principal esteja padronizada
 
 # Em seguida crie os deltas com base no df já padronizado:
 delta_status = df[df["status_demanda"] != df.get("status_demanda_OLD", df["status_demanda"])]
-delta_conc = df[df["data_da_conclusao"] != df.get("data_da_conclusao_OLD", df["data_da_conclusao"])]
-delta_tempo = df[df["tempo_de_resolucao_em_dias"] != df.get("tempo_de_resolucao_em_dias_OLD", df["tempo_de_resolucao_em_dias"])]
+delta_conc   = df[df["data_da_conclusao"] != df.get("data_da_conclusao_OLD", df["data_da_conclusao"])]
+delta_tempo  = df[df["tempo_de_resolucao_em_dias"] != df.get("tempo_de_resolucao_em_dias_OLD", df["tempo_de_resolucao_em_dias"])]
 
 # --------------------------------------------------------
 # PATCH principal — atualização de células no Google Sheets
@@ -1507,231 +1282,56 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
         _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
 
 # ========================================================
-# 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias, prazo_restante)
+# 10) DELTAS HISTÓRICOS (status_demanda, data_da_conclusao, tempo_de_resolucao_em_dias)
 # ========================================================
 
-_BANNER("10) DELTAS HISTÓRICOS (ajustado — sincroniza 4 colunas de exceção)")
+_BANNER("10) DELTAS HISTÓRICOS (ajustado para novos protocolos)")
 
 # --- Alinha colunas do df_send ao schema da tratada ---
 try:
     cols_tratada = list(df_tratada.columns)
+    # df_send pode não existir (caso nenhum novo); garante variável
     if 'df_send' not in globals():
         df_send = pd.DataFrame(columns=cols_tratada)
     df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
     df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
 except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
+    # fallback simples: tenta usar df_send como fonte
     df_full = df_send.copy()
 
-# --- Garantia de colunas OLD para histórico ---
-EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias", "prazo_restante"]
-for col in EXCEPTION_COLS:
+# --- Garante existência das colunas *_OLD para comparações de histórico ---
+for col in ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias"]:
     old_col = f"{col}_OLD"
     if old_col not in df_full.columns:
+        # copia o valor atual para coluna OLD (se não existir), normalizando nulos
         df_full[old_col] = df_full.get(col, "").fillna("")
-
-# --- Prepara lookup da BRUTA por protocolo (última ocorrência)
-# Normaliza e garante colunas na bruta
-for c in EXCEPTION_COLS:
-    if c not in df_bruta.columns:
-        df_bruta[c] = pd.NA
-
-df_bruta['protocolo'] = df_bruta.get('protocolo', pd.Series([''] * len(df_bruta))).astype(str).str.strip().str.upper()
-df_full['protocolo']   = df_full.get('protocolo', pd.Series([''] * len(df_full))).astype(str).str.strip().str.upper()
-
-# Criar lookup: mantém última ocorrência se houver duplicatas
-df_bruta_lookup = df_bruta.set_index('protocolo', drop=False).loc[:, EXCEPTION_COLS].copy()
-df_bruta_lookup = df_bruta_lookup[~df_bruta_lookup.index.duplicated(keep='last')]
-
-# helper: considera valor "presente" quando não vazio/nulo/token inválido
-_invalid_tokens_str = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
-def _bruta_has_value(v):
-    if pd.isna(v):
-        return False
-    s = str(v).strip()
-    if s == "":
-        return False
-    return s.lower() not in _invalid_tokens_str
-
-# Normalizações vindas da bruta (aplicar conversões por coluna)
-#  - data_da_conclusao: aplicar _conclusao_strict para formatar DD/MM/AAAA ou 'Não concluído'
-#  - tempo_de_resolucao_em_dias: converter vírgula -> ponto e para numérico
-#  - status_demanda: normalizar para 'CONCLUÍDA' / 'EM ANDAMENTO' quando possível
-#  - prazo_restante: aplicar _canon_prazo_restante e regra de 'Demanda Concluída' quando status for concluída
-try:
-    # prepara colunas temporárias com versões normalizadas vindas da bruta
-    bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
-
-    # data_da_conclusao
-    if "data_da_conclusao" in df_bruta_lookup.columns:
-        try:
-            bruta_norm["data_da_conclusao"] = _conclusao_strict(df_bruta_lookup["data_da_conclusao"]).astype(object)
-        except Exception:
-            # fallback genérico
-            bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
-
-    # tempo_de_resolucao_em_dias — preserva exatamente o valor textual da bruta
-    if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
-        _invalid_tokens_str_local = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
-
-        raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
-        mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str_local)
-
-        def _as_raw_text_local(v):
-            if pd.isna(v):
-                return pd.NA
-            if isinstance(v, str):
-                return v.strip()
-            try:
-                fv = float(v)
-                # evita notação científica e zeros supérfluos
-                if fv.is_integer():
-                    return str(int(fv))
-                text = format(fv, "f")
-                text = text.rstrip("0").rstrip(".") if "." in text else text
-                return text
-            except Exception:
-                return str(v)
-
-        preserved = raw_series.where(~mask_invalid, pd.NA)
-        bruta_norm["tempo_de_resolucao_em_dias"] = preserved.apply(
-            lambda x: _as_raw_text_local(x) if pd.notna(x) else pd.NA
-        ).astype(object)
-
-        # === NOVO: se existir o dicionário bruta_tempo_raw_map (do bloco 5.5), usa o valor exato da bruta ===
-        if "bruta_tempo_raw_map" in globals() and isinstance(bruta_tempo_raw_map, dict):
-            bruta_norm["tempo_de_resolucao_em_dias"] = bruta_norm.apply(
-                lambda r: (
-                    bruta_tempo_raw_map.get(r.name)
-                    if bruta_tempo_raw_map.get(r.name) not in [None, "", "nan"]
-                    else r["tempo_de_resolucao_em_dias"]
-                ),
-                axis=1
-            )
-
-        logging.info("Preservando 'tempo_de_resolucao_em_dias' a partir da bruta (usando texto original quando disponível).")
-
-    # status_demanda
-    if "status_demanda" in df_bruta_lookup.columns:
-        s_status = df_bruta_lookup["status_demanda"].astype(str).str.strip()
-        def _map_status_bruta(x):
-            if not _bruta_has_value(x):
-                return pd.NA
-            if _is_concluida(x):
-                return "CONCLUÍDA"
-            # se contém alguma palavra, mantemos e marcamos EM ANDAMENTO
-            return "EM ANDAMENTO" if str(x).strip() != "" else pd.NA
-        bruta_norm["status_demanda"] = s_status.apply(_map_status_bruta)
-
-    # prazo_restante
-    if "prazo_restante" in df_bruta_lookup.columns:
-        s_pr = df_bruta_lookup["prazo_restante"].astype(str)
-        # aplica canonização parcial
-        bruta_norm["prazo_restante"] = s_pr.apply(lambda x: _canon_prazo_restante(x) if _bruta_has_value(x) else pd.NA)
-
-except Exception as e:
-    logging.exception(f"Erro ao normalizar campos de exceção vindos da bruta: {e}")
-    bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
-
-# --- Agora: sincroniza os valores da BRUTA para o df_full (somente quando a bruta tem valor não-vazio)
-# Mantemos valores existentes na tratada quando bruta não tem valor
-if not bruta_norm.empty:
-    # iterar por protocolos presentes em df_full que também existam na bruta_lookup
-    protocolo_to_rows = {}
-    for i, p in enumerate(df_full['protocolo'].astype(str)):
-        protocolo_to_rows.setdefault(str(p).strip().upper(), []).append(i)
-
-    applied_counts = {c:0 for c in EXCEPTION_COLS}
-
-    for proto, rows_idx in protocolo_to_rows.items():
-        if proto in bruta_norm.index:
-            row_vals = bruta_norm.loc[proto]
-            for col in EXCEPTION_COLS:
-                try:
-                    val = row_vals.get(col, pd.NA) if proto in bruta_norm.index else pd.NA
-                    if pd.isna(val):
-                        continue  # nada a sobrescrever
-                    # Especial: se for data_da_conclusao e for 'Não concluído' ou string, já vem formatado por _conclusao_strict
-                    # Para prazo_restante: se status_concluida set 'Demanda Concluída' — mas respeitamos bruta em primeiro lugar
-                    for ridx in rows_idx:
-                        # apply conversion just before assignment for safety
-                        if col == "data_da_conclusao":
-                            # val já deveria estar em DD/MM/AAAA ou 'Não concluído'
-                            assign_val = val
-                        elif col == "tempo_de_resolucao_em_dias":
-                            # armazena número (float) — manter tipo coerente
-                            assign_val = val
-                        elif col == "status_demanda":
-                            assign_val = val
-                        elif col == "prazo_restante":
-                            assign_val = val
-                        else:
-                            assign_val = val
-                        df_full.at[ridx, col] = assign_val
-                        applied_counts[col] += 1
-                except Exception as e:
-                    logging.debug(f"Não foi possível sincronizar protocolo {proto} coluna {col}: {e}")
-
-    logging.info(f"Sincronização a partir da bruta aplicada. Contagens por coluna: {applied_counts}")
-else:
-    logging.info("Nenhum valor normalizado encontrado na bruta para sincronização.")
-
-# --- Reaplica regras derivadas (ex.: se status == CONCLUÍDA então prazo_restante='Demanda Concluída') ---
-try:
-    if "status_demanda" in df_full.columns and "prazo_restante" in df_full.columns:
-        mask_conc = df_full["status_demanda"].map(_is_concluida)
-        if mask_conc.any():
-            df_full.loc[mask_conc, "prazo_restante"] = "Demanda Concluída"
-            logging.info(f"Regra pós-sincronização aplicada: prazo_restante setado para 'Demanda Concluída' em {mask_conc.sum()} linhas.")
-except Exception as e:
-    logging.debug(f"Erro ao aplicar regra pós-sincronização para prazo_restante: {e}")
-
-# --- Atualiza as colunas *_OLD (garante comparação correta): já criadas acima ---
 
 # --- Função delta robusta (com fillna e casting a str) ---
 def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
     old_col = f"{col}_OLD"
-    left = df_full_local.get(col, "").fillna("").astype(str)
-    right = df_full_local.get(old_col, "").fillna("").astype(str)
-    return df_full_local[left != right].copy()
+    if old_col in df_full_local.columns:
+        left = df_full_local.get(col, "").fillna("").astype(str)
+        right = df_full_local.get(old_col, "").fillna("").astype(str)
+        return df_full_local[left != right].copy()
+    else:
+        # se não há coluna OLD, considera apenas os recém marcados como 'eh_novo'
+        return df_full_local[df_full_local.get("eh_novo", False) == True].copy()
 
 # --- Calcula deltas específicos (apenas uma vez e sem sobrescritas) ---
 delta_status = _delta_df(df_full, "status_demanda")
 delta_conc   = _delta_df(df_full, "data_da_conclusao")
 delta_tempo  = _delta_df(df_full, "tempo_de_resolucao_em_dias")
-delta_prazo  = _delta_df(df_full, "prazo_restante")
 
 # --- Logs e verificações ---
 logging.info(f"Delta STATUS: {len(delta_status)} linhas alteradas/novas")
 logging.info(f"Delta DATA_CONCLUSAO: {len(delta_conc)} linhas alteradas/novas")
 logging.info(f"Delta TEMPO_DE_RESOLUCAO: {len(delta_tempo)} linhas alteradas/novas")
-logging.info(f"Delta PRAZO_RESTANTE: {len(delta_prazo)} linhas alteradas/novas")
 
 print(f"📊 Deltas calculados com sucesso:")
 print(f"   • STATUS: {len(delta_status)}")
 print(f"   • DATA_CONCLUSAO: {len(delta_conc)}")
 print(f"   • TEMPO_DE_RESOLUCAO: {len(delta_tempo)}")
-print(f"   • PRAZO_RESTANTE: {len(delta_prazo)}")
-
-# --- Opcional: aplicar patches na aba_tratada (se disponível)
-try:
-    if 'aba_tratada' in globals() and aba_tratada is not None:
-        # Para cada delta chama o patch grouped (usa coluna 'protocolo' como chave)
-        if not delta_status.empty:
-            _patch_grouped_force(delta_status, key_col="protocolo", value_col="status_demanda", sheet=aba_tratada)
-        if not delta_conc.empty:
-            _patch_grouped_force(delta_conc, key_col="protocolo", value_col="data_da_conclusao", sheet=aba_tratada)
-        if not delta_tempo.empty:
-            _patch_grouped_force(delta_tempo, key_col="protocolo", value_col="tempo_de_resolucao_em_dias", sheet=aba_tratada)
-        if not delta_prazo.empty:
-            _patch_grouped_force(delta_prazo, key_col="protocolo", value_col="prazo_restante", sheet=aba_tratada)
-    else:
-        logging.info("aba_tratada não disponível — deltas calculados mas não aplicados diretamente (fallback).")
-except Exception as e:
-    logging.exception(f"Erro ao aplicar patches das deltas na aba_tratada: {e}")
-
-# --- Logs finais do item 10 ---
-logging.info("Item 10 finalizado: sincronização das 4 colunas de exceção concluída.")
 
 # ========================================================
 # 11) QA & SUMÁRIO FINAL
