@@ -520,8 +520,8 @@ try:
         # prefixo 'S' para diferenciar dos protocolos 'C...'
         return "S" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:18].upper()
 
-    def _choose_protocolo_final(p: str, row) -> str:
-        """
+     def _choose_protocolo_final(p: str, row) -> str:
+        r"""
         Retorna protocolo 'p' se estiver no padrão C\d+, senão gera protocolo simulado.
         """
         p = str(p or "").strip().upper()
@@ -946,20 +946,16 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # =======================================================================
     # 7.10 Limpeza de "Não há dados" para tempo_de_resolucao_em_dias (REFATORADO)
     # =======================================================================
-     try:
-            if "tempo_de_resolucao_em_dias" in df_loc.columns:
-                raw = df_loc["tempo_de_resolucao_em_dias"]
-                invalid_tokens = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
-                mask_invalid = raw.astype(str).str.strip().str.lower().isin(invalid_tokens)
-                df_loc["tempo_de_resolucao_em_dias"] = raw.where(~mask_invalid, pd.NA).astype(object)
-                logging.info(
-                    "Tratamento 7.10 (preservação de 'tempo_de_resolucao_em_dias' tal como na bruta) aplicado."
-                )
-        except Exception as e:
-            logging.error(
-                f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}",
-                exc_info=True
-            )
+    try:
+        if "tempo_de_resolucao_em_dias" in df_loc.columns:
+            raw = df_loc["tempo_de_resolucao_em_dias"]
+            invalid_tokens = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
+            mask_invalid = raw.astype(str).str.strip().str.lower().isin(invalid_tokens)
+            df_loc["tempo_de_resolucao_em_dias"] = raw.where(~mask_invalid, pd.NA).astype(object)
+            logging.info("Tratamento 7.10 (preservação de 'tempo_de_resolucao_em_dias' tal como na bruta) aplicado.")
+    except Exception as e:
+        logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
+
 
     # finalização / retorno da função (GARANTE retorno mesmo sem exceção)
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
