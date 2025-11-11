@@ -1107,8 +1107,15 @@ try:
             if c not in df_novos.columns:
                 df_novos[c] = ""
 
-        # Alinha as colunas do df_novos com as da planilha tratada, preenchendo com "" as que faltarem.
-        df_send = df_novos.reindex(columns=cols_alvo_tratada, fill_value="")
+        # reindex sem forçar strings; preencher somente colunas ausentes com pd.NA
+        df_send = df_novos.reindex(columns=cols_alvo_tratada)
+        missing = [c for c in cols_alvo_tratada if c not in df_send.columns]
+        for c in missing:
+            df_send[c] = pd.NA
+        # garantia: colunas que devem ser numéricas (se existir a lista) manter como pd.NA quando ausentes
+        # Ex: tempo_de_resolucao_em_dias -> pd.NA por padrão
+        if "tempo_de_resolucao_em_dias" in cols_alvo_tratada and "tempo_de_resolucao_em_dias" not in df_send.columns:
+            df_send["tempo_de_resolucao_em_dias"] = pd.NA
         logging.info(f"df_send alinhado com as colunas da planilha alvo. Shape final: {df_send.shape}")
 
 except Exception as e:
@@ -1236,8 +1243,18 @@ else:
     # Garante que todos os valores nulos (exceto os de data que já são None) virem strings vazias
     # Criamos uma cópia para append para NÃO poluir df_send (assim mantemos as versões numéricas para QA)
     df_send_for_append = df_send.copy()
-    # Convertendo colunas de data já formatadas e substituindo NaNs por ''
-    df_send_for_append = df_send_for_append.fillna('')
+
+    # Preencher somente colunas NÃO numéricas com ''.
+    # Mantemos coluna de tempo em formato numérico (Int64/Float64) até o envio*.
+    cols_to_stringify = [c for c in df_send_for_append.columns if c != "tempo_de_resolucao_em_dias"]
+    df_send_for_append[cols_to_stringify] = df_send_for_append[cols_to_stringify].fillna('')
+    
+    # Para a coluna tempo_de_resolucao_em_dias, para envio ao Sheets:
+    if "tempo_de_resolucao_em_dias" in df_send_for_append.columns:
+        # converte Int64/Float64/NAt -> '' para append; mantém números como int/float
+        df_send_for_append["tempo_de_resolucao_em_dias"] = df_send_for_append["tempo_de_resolucao_em_dias"].apply(
+            lambda v: '' if pd.isna(v) else (int(v) if float(v).is_integer() else float(v))
+        )
 
     lote = 500
     total_lotes = (len(df_send_for_append) + lote - 1) // lote
@@ -1368,9 +1385,11 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
 
     # 4️⃣ Limpeza de "Não há dados"
-    for col in ["tempo_de_resolucao_em_dias"]:
-        if col in df.columns:
-            df[col] = df[col].replace("Não há dados", "")
+    _invalid_tokens = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
+    if "tempo_de_resolucao_em_dias" in df.columns:
+        df["tempo_de_resolucao_em_dias"] = df["tempo_de_resolucao_em_dias"].apply(
+            lambda v: pd.NA if (pd.isna(v) or (isinstance(v, str) and str(v).strip().lower() in _invalid_tokens)) else v
+        )
 
     return df
 
@@ -1401,14 +1420,36 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
 
     # Aplica padronizações completas
     df = _prepare_status(df)
-    df[key_col] = df[key_col].astype(str).str.strip()
-    df[value_col] = df[value_col].astype(str).str.strip()
 
-    # 🔒 Corrige 'data_da_conclusao' pós-stringificação
-    if value_col == "data_da_conclusao":
-        df[value_col] = df[value_col].apply(
-            lambda x: "Não concluído" if str(x).strip().lower() in ["", "nan", "na", "n/a", "none", "nat"] else x
-        )
+    # chave sempre como string (protocolo)
+    df[key_col] = df[key_col].astype(str).str.strip()
+
+    # Para value_col: preserve numeric dtype se for 'tempo_de_resolucao_em_dias'
+    if value_col == "tempo_de_resolucao_em_dias":
+        # limpa tokens inválidos transformando em pd.NA, mas NÃO força str
+        _invalid_tokens = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
+        def _clean_tempo(v):
+            if pd.isna(v):
+                return pd.NA
+            # se já for numérico, devolve como está
+            if isinstance(v, (int, float, np.integer, np.floating, pd.Int64Dtype, pd.Float64Dtype)):
+                return v
+            s = str(v).strip()
+            if s == "" or s.lower() in _invalid_tokens:
+                return pd.NA
+            # tenta converter para número
+            try:
+                # aceita inteiros representados como '1' ou '1.0'
+                num = float(s.replace(",", "."))
+                if num.is_integer():
+                    return int(num)
+                return num
+            except Exception:
+                return pd.NA
+        df[value_col] = df[value_col].apply(_clean_tempo)
+    else:
+        # comport. anterior para colunas texto: strip & cast string
+        df[value_col] = df[value_col].astype(str).str.strip()
 
     if sheet is None:
         _post_lotes(df, f"{value_col} (fallback)", [key_col, value_col])
@@ -1432,6 +1473,7 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
     to_update = []
     for _, row in df.iterrows():
         key = row[key_col]
+        # prioriza versão tratada se existir
         value = row.get(f"{value_col}_trat", row[value_col])
         if key in key_list:
             row_idx = key_list.index(key) + 1
@@ -1449,10 +1491,39 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
         cleaned_batch = []
         for r in batch:
             value = r[2]
-            if pd.isna(value) or str(value).strip() == "":
-                value = "Não concluído" if value_col == "data_da_conclusao" else ""
-            value = str(value).strip()
-            cleaned_batch.append((r[0], r[1], value))
+            # Normalização de valores "vazios" / Não concluído
+            if value_col == "data_da_conclusao":
+                if pd.isna(value) or str(value).strip() == "":
+                    value_out = "Não concluído"
+                else:
+                    value_out = str(value).strip()
+                # sempre string para datas
+                cleaned_batch.append((r[0], r[1], value_out))
+            elif value_col == "tempo_de_resolucao_em_dias":
+                # MANTEM numérico quando possível; converte pd.NA -> '' para envio ao Sheets
+                if pd.isna(value):
+                    value_out = ""   # sheets recebe célula vazia
+                else:
+                    # se for float mas inteiro, envie como int para ficar "inteiro" na sheet
+                    try:
+                        if isinstance(value, float) and value.is_integer():
+                            value_out = int(value)
+                        else:
+                            value_out = value
+                    except Exception:
+                        # fallback: stringify apenas como último recurso
+                        try:
+                            value_out = int(float(str(value).replace(",", ".")))
+                        except Exception:
+                            value_out = ""
+                cleaned_batch.append((r[0], r[1], value_out))
+            else:
+                # colunas textuais: manter comportamento original (string)
+                if pd.isna(value) or str(value).strip() == "":
+                    value_out = ""
+                else:
+                    value_out = str(value).strip()
+                cleaned_batch.append((r[0], r[1], value_out))
 
         range_rows = [r[0] for r in cleaned_batch]
         values = [[r[2]] for r in cleaned_batch]
