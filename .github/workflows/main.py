@@ -1582,31 +1582,33 @@ try:
 
       # --- Normalizações vindas da bruta (AJUSTE: preservar valor original) ---
     if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
-    raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
-    mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str)
+        _invalid_tokens_str = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
 
-    # Preserva exato: usa a representação textual original; se for número, formata sem alterar a aparência
-    def _as_raw_text(v):
-        if pd.isna(v):
-            return pd.NA
-        if isinstance(v, str):
-            return v.strip()
-        try:
-            fv = float(v)
-            if fv.is_integer():
-                return str(int(fv))
-            else:
-                # evita notação científica e zeros desnecessários
-                text = format(fv, "f")
-                text = text.rstrip("0").rstrip(".") if "." in text else text
-                return text
-        except Exception:
-            return str(v)
+        raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
+        mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str)
 
-    preserved = raw_series.where(~mask_invalid, pd.NA)
-    bruta_norm["tempo_de_resolucao_em_dias"] = (
-        preserved.apply(lambda x: _as_raw_text(x) if pd.notna(x) else pd.NA).astype(object)
-    )
+        # Preserva exato: usa a representação textual original; se for número, formata sem alterar a aparência
+        def _as_raw_text(v):
+            if pd.isna(v):
+                return pd.NA
+            if isinstance(v, str):
+                return v.strip()
+            try:
+                fv = float(v)
+                if fv.is_integer():
+                    return str(int(fv))
+                else:
+                    # evita notação científica e zeros desnecessários
+                    text = format(fv, "f")
+                    text = text.rstrip("0").rstrip(".") if "." in text else text
+                    return text
+            except Exception:
+                return str(v)
+
+        preserved = raw_series.where(~mask_invalid, pd.NA)
+        bruta_norm["tempo_de_resolucao_em_dias"] = (
+            preserved.apply(lambda x: _as_raw_text(x) if pd.notna(x) else pd.NA).astype(object)
+        )
         logging.info("Preservando 'tempo_de_resolucao_em_dias' a partir da bruta (sem coerção numérica).")
 
     # status_demanda
