@@ -1529,8 +1529,8 @@ def _bruta_has_value(v):
 
 # Normalizações vindas da bruta (aplicar conversões por coluna)
 #  - data_da_conclusao: aplicar _conclusao_strict para formatar DD/MM/AAAA ou 'Não concluído'
-#  - tempo_de_resolucao_em_dias: converter vírgula -> ponto e para numérico
-#  - status_demanda: normalizar para 'CONCLUÍDA' / 'EM ANDAMENTO' quando possível
+#  - tempo_de_resolucao_em_dias: PRESERVAR valor numérico de dias (inteiro) salvo tokens inválidos -> pd.NA
+#  - status_demanda: normalizar para 'Concluído' / 'Em atendimento' quando possível
 #  - prazo_restante: aplicar _canon_prazo_restante e regra de 'Demanda Concluída' quando status for concluída
 try:
     # prepara colunas temporárias com versões normalizadas vindas da bruta
@@ -1544,34 +1544,53 @@ try:
             # fallback genérico
             bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
 
-    # tempo_de_resolucao_em_dias
+    # ----------------------------
+    # tempo_de_resolucao_em_dias (TRATAR COMO NUMÉRICO INTEIRO)
+    # ----------------------------
     if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
         s = df_bruta_lookup["tempo_de_resolucao_em_dias"].astype(str).str.strip()
-        s = s.replace({"": pd.NA})
         # tokens inválidos -> NA
         s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
-        # vírgula decimal -> ponto
-        s_valid = s.where(s.notna())
-        if s_valid is not None and not s_valid.empty:
-            s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
-        bruta_norm["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
 
-    # status_demanda
+        # substitui vírgula por ponto (se houver), porém você disse que não há vírgulas — ainda assim robusto:
+        s = s.where(s.isna(), s.str.replace(",", ".", regex=False))
+
+        # converte para numérico (coerce => NaN para valores inválidos)
+        num = pd.to_numeric(s, errors="coerce")
+
+        # Queremos dtype inteiro quando possível; usamos dtype 'Int64' (nullable integer)
+        # Convertemos valores numéricos sem casas decimais para Int64, mantendo NaN onde aplicável.
+        # Se alguma entrada for decimal (ex: 1.5) — não esperado, mas será mantida como float.
+        # Primeiro detecta quais são inteiros
+        is_int_like = num.notna() & (num.fillna(0) == num.fillna(0).astype(int))
+        # cria série coerente: inteiros como Int64, decimais mantidos como float
+        # estratégia: se todos não-nulos forem inteiros -> cast Int64; caso contrário, manter float
+        if num.dropna().empty:
+            bruta_norm["tempo_de_resolucao_em_dias"] = pd.Series(pd.NA, index=bruta_norm.index, dtype="Float64")
+        else:
+            if is_int_like.all():
+                # todos os não-nulos são inteiros -> usamos Int64 (nullable int)
+                bruta_norm["tempo_de_resolucao_em_dias"] = num.astype("Int64")
+            else:
+                # há decimais (improvável para dias) -> mantemos Float64 nullable
+                bruta_norm["tempo_de_resolucao_em_dias"] = num.astype("Float64")
+
+    # status_demanda (mapear para as labels institucionais pedidas)
     if "status_demanda" in df_bruta_lookup.columns:
         s_status = df_bruta_lookup["status_demanda"].astype(str).str.strip()
         def _map_status_bruta(x):
             if not _bruta_has_value(x):
                 return pd.NA
             if _is_concluida(x):
-                return "CONCLUÍDA"
-            # se contém alguma palavra, mantemos e marcamos EM ANDAMENTO
-            return "EM ANDAMENTO" if str(x).strip() != "" else pd.NA
+                return "Concluído"
+            # se contém alguma palavra, mantemos e marcamos Em atendimento
+            return "Em atendimento" if str(x).strip() != "" else pd.NA
         bruta_norm["status_demanda"] = s_status.apply(_map_status_bruta)
 
     # prazo_restante
     if "prazo_restante" in df_bruta_lookup.columns:
         s_pr = df_bruta_lookup["prazo_restante"].astype(str)
-        # aplica canonização parcial
+        # aplica canonização parcial — somente quando a bruta tem valor
         bruta_norm["prazo_restante"] = s_pr.apply(lambda x: _canon_prazo_restante(x) if _bruta_has_value(x) else pd.NA)
 
 except Exception as e:
@@ -1596,23 +1615,12 @@ if not bruta_norm.empty:
                     val = row_vals.get(col, pd.NA) if proto in bruta_norm.index else pd.NA
                     if pd.isna(val):
                         continue  # nada a sobrescrever
-                    # Especial: se for data_da_conclusao e for 'Não concluído' ou string, já vem formatado por _conclusao_strict
-                    # Para prazo_restante: se status_concluida set 'Demanda Concluída' — mas respeitamos bruta em primeiro lugar
                     for ridx in rows_idx:
-                        # apply conversion just before assignment for safety
-                        if col == "data_da_conclusao":
-                            # val já deveria estar em DD/MM/AAAA ou 'Não concluído'
-                            assign_val = val
-                        elif col == "tempo_de_resolucao_em_dias":
-                            # armazena número (float) — manter tipo coerente
-                            assign_val = val
-                        elif col == "status_demanda":
-                            assign_val = val
-                        elif col == "prazo_restante":
-                            assign_val = val
+                        # assign preserving dtype: numérico para tempo, string para outros
+                        if col == "tempo_de_resolucao_em_dias":
+                            df_full.at[ridx, col] = val
                         else:
-                            assign_val = val
-                        df_full.at[ridx, col] = assign_val
+                            df_full.at[ridx, col] = val
                         applied_counts[col] += 1
                 except Exception as e:
                     logging.debug(f"Não foi possível sincronizar protocolo {proto} coluna {col}: {e}")
@@ -1621,10 +1629,10 @@ if not bruta_norm.empty:
 else:
     logging.info("Nenhum valor normalizado encontrado na bruta para sincronização.")
 
-# --- Reaplica regras derivadas (ex.: se status == CONCLUÍDA então prazo_restante='Demanda Concluída') ---
+# --- Reaplica regras derivadas (ex.: se status == Concluído então prazo_restante='Demanda Concluída') ---
 try:
     if "status_demanda" in df_full.columns and "prazo_restante" in df_full.columns:
-        mask_conc = df_full["status_demanda"].map(_is_concluida)
+        mask_conc = df_full["status_demanda"].map(lambda x: True if (not pd.isna(x) and str(x).strip().lower() == "concluído") else False)
         if mask_conc.any():
             df_full.loc[mask_conc, "prazo_restante"] = "Demanda Concluída"
             logging.info(f"Regra pós-sincronização aplicada: prazo_restante setado para 'Demanda Concluída' em {mask_conc.sum()} linhas.")
@@ -1658,7 +1666,7 @@ print(f"   • DATA_CONCLUSAO: {len(delta_conc)}")
 print(f"   • TEMPO_DE_RESOLUCAO: {len(delta_tempo)}")
 print(f"   • PRAZO_RESTANTE: {len(delta_prazo)}")
 
-# --- Opcional: aplicar patches na aba_tratada (se disponível)
+# --- Opcional: aplicar patches na aba_tratada (se disponível) ---
 try:
     if 'aba_tratada' in globals() and aba_tratada is not None:
         # Para cada delta chama o patch grouped (usa coluna 'protocolo' como chave)
