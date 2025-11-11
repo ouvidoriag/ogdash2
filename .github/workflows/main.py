@@ -558,6 +558,32 @@ try:
     # (mantemos também a coluna 'protocolo_final' para uso nas etapas seguintes)
     df = df_bruta.copy()
 
+# === 5.5) CAPTURA BRUTA EXATA: preserva texto original de 'tempo_de_resolucao_em_dias' ===
+    # Objetivo: guardar o valor textual **exato** vindo da bruta antes de qualquer normalização
+    # (será usado depois durante a sincronização/deltas para garantir identidade com a bruta).
+    try:
+        # Mantém coluna raw com o texto tal como veio (strip apenas de espaços extremos)
+        if "tempo_de_resolucao_em_dias" in df_bruta.columns:
+            df_bruta["tempo_de_resolucao_em_dias_raw"] = df_bruta["tempo_de_resolucao_em_dias"].astype(object).apply(
+                lambda v: (str(v).strip() if not pd.isna(v) else pd.NA)
+            )
+        else:
+            df_bruta["tempo_de_resolucao_em_dias_raw"] = pd.Series([pd.NA] * len(df_bruta))
+
+        # Cria um lookup rápido: protocolo -> texto bruto preservado (útil em Item 10)
+        # Garante normalização do protocolo como chave
+        df_bruta["protocolo"] = df_bruta.get("protocolo", pd.Series([""] * len(df_bruta))).astype(str).str.strip().str.upper()
+        bruta_tempo_raw_map = (
+            df_bruta.loc[df_bruta["protocolo"].astype(str).str.strip() != "", 
+                         ["protocolo", "tempo_de_resolucao_em_dias_raw"]]
+            .set_index("protocolo")["tempo_de_resolucao_em_dias_raw"]
+            .to_dict()
+        )
+        logging.info(f"5.5) Preservado tempo_de_resolucao_em_dias_raw para {len(bruta_tempo_raw_map)} protocolos (map).")
+    except Exception as e:
+        logging.warning(f"5.5) Falha ao preservar tempo_de_resolucao_em_dias_raw: {e}")
+        bruta_tempo_raw_map = {}
+
 except Exception as e:
     print(f"⚠️ Erro ao carregar planilhas: {e}")
     logging.warning(f"Erro ao carregar planilhas: {e}")
@@ -1544,17 +1570,46 @@ try:
             # fallback genérico
             bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
 
-    # tempo_de_resolucao_em_dias
+    # tempo_de_resolucao_em_dias — preserva exatamente o valor textual da bruta
     if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
-        s = df_bruta_lookup["tempo_de_resolucao_em_dias"].astype(str).str.strip()
-        s = s.replace({"": pd.NA})
-        # tokens inválidos -> NA
-        s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
-        # vírgula decimal -> ponto
-        s_valid = s.where(s.notna())
-        if s_valid is not None and not s_valid.empty:
-            s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
-        bruta_norm["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
+        _invalid_tokens_str_local = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
+
+        raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
+        mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str_local)
+
+        def _as_raw_text_local(v):
+            if pd.isna(v):
+                return pd.NA
+            if isinstance(v, str):
+                return v.strip()
+            try:
+                fv = float(v)
+                # evita notação científica e zeros supérfluos
+                if fv.is_integer():
+                    return str(int(fv))
+                text = format(fv, "f")
+                text = text.rstrip("0").rstrip(".") if "." in text else text
+                return text
+            except Exception:
+                return str(v)
+
+        preserved = raw_series.where(~mask_invalid, pd.NA)
+        bruta_norm["tempo_de_resolucao_em_dias"] = preserved.apply(
+            lambda x: _as_raw_text_local(x) if pd.notna(x) else pd.NA
+        ).astype(object)
+
+        # === NOVO: se existir o dicionário bruta_tempo_raw_map (do bloco 5.5), usa o valor exato da bruta ===
+        if "bruta_tempo_raw_map" in globals() and isinstance(bruta_tempo_raw_map, dict):
+            bruta_norm["tempo_de_resolucao_em_dias"] = bruta_norm.apply(
+                lambda r: (
+                    bruta_tempo_raw_map.get(r.name)
+                    if bruta_tempo_raw_map.get(r.name) not in [None, "", "nan"]
+                    else r["tempo_de_resolucao_em_dias"]
+                ),
+                axis=1
+            )
+
+        logging.info("Preservando 'tempo_de_resolucao_em_dias' a partir da bruta (usando texto original quando disponível).")
 
     # status_demanda
     if "status_demanda" in df_bruta_lookup.columns:
