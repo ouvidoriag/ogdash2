@@ -1668,48 +1668,73 @@ except Exception as e:
     logging.exception(f"Erro ao normalizar campos de exceção vindos da bruta: {e}")
     bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
 
-# --- PATCH: sincronização vetorizada apenas para protocolos C\d+ da bruta ---
-
+# --- PATCH REVISADO: sincronização vetorizada apenas para protocolos C\d+ da bruta (robusto) ---
 if not bruta_norm.empty:
-    # normaliza index da bruta_norm
+    # cópia defensiva e normalização do index (protocolo) da bruta_norm
     bruta_norm = bruta_norm.copy()
     bruta_norm.index = bruta_norm.index.astype(str).str.strip().str.upper()
+    bruta_norm = bruta_norm[~bruta_norm.index.duplicated(keep='last')]  # garante última ocorrência
 
     # garante formato da coluna protocolo em df_full
     df_full['protocolo'] = df_full.get('protocolo', pd.Series([''] * len(df_full))).astype(str).str.strip().str.upper()
 
     applied_counts = {c: 0 for c in EXCEPTION_COLS}
 
-    # filtra apenas protocolos da bruta que seguem o padrão C\d+
-    prot_c_mask = pd.Series(bruta_norm.index).str.match(r"^C\d+$", na=False)
-    prot_c = pd.Series(bruta_norm.index)[prot_c_mask].unique().tolist()
-
-    if len(prot_c) == 0:
+    # filtra apenas protocolos C\d+ presentes na bruta_norm
+    prot_c = [p for p in bruta_norm.index if re.match(r"^C\d+$", p)]
+    if not prot_c:
         logging.info("Nenhum protocolo C... válido encontrado em bruta_norm para sincronizar.")
     else:
-        # cria lookup apenas com protocolos C...
         bruta_c_lookup = bruta_norm.loc[bruta_norm.index.isin(prot_c)].copy()
 
+        # Para cada coluna de exceção, criamos um mapa consistente (index = protocolo)
         for col in EXCEPTION_COLS:
             if col not in bruta_c_lookup.columns:
+                logging.debug(f"Coluna '{col}' não existe em bruta_c_lookup — pulando.")
                 continue
 
             serie_bruta = bruta_c_lookup[col].copy()
 
-            # Para tempo_de_resolucao_em_dias: coerção numérica
-            if col == "tempo_de_resolucao_em_dias":
-                serie_bruta = pd.to_numeric(serie_bruta, errors="coerce")
+            # normaliza série para remover tokens inválidos (mesma lista usada antes)
+            _invalid_tokens_str = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
 
-            mapa = serie_bruta[~serie_bruta.isna()]
+            if col == "tempo_de_resolucao_em_dias":
+                # coerção robusta para numérico (mantém NaN onde inválido)
+                s = serie_bruta.astype(str).str.strip()
+                s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
+                s = s.where(s.isna(), s.str.replace(",", ".", regex=False))
+                s_num = pd.to_numeric(s, errors="coerce")
+                # mantém dtype nullable inteiro quando possível
+                if not s_num.dropna().empty and (s_num.dropna() == s_num.dropna().astype(int)).all():
+                    s_num = s_num.astype("Int64")
+                serie_bruta = s_num
+            else:
+                # para colunas textuais: considera tokens inválidos como pd.NA e strip
+                serie_bruta = serie_bruta.where(~serie_bruta.astype(str).str.strip().str.lower().isin(_invalid_tokens_str), pd.NA)
+                serie_bruta = serie_bruta.astype(object).where(serie_bruta.isna(), serie_bruta.astype(str).str.strip())
+
+            # cria mapa apenas com valores válidos (não NA)
+            mapa = serie_bruta[~serie_bruta.isna()].copy()
             if mapa.empty:
                 logging.debug(f"Nenhum valor válido na bruta (C...) para coluna '{col}', pulando.")
                 continue
 
-            # aplica apenas às linhas de df_full cujo protocolo está em mapa.index
+            # Aplica map **vetorizado** sobre df_full.protocolo.
+            # Usamos Series.map(mapa) que preserva tipos dos valores no mapa.
             mask_apply = df_full['protocolo'].isin(mapa.index)
             if mask_apply.any():
+                # aplica o mapeamento somente nas linhas cujo protocolo existe no mapa
                 df_full.loc[mask_apply, col] = df_full.loc[mask_apply, 'protocolo'].map(mapa)
                 applied_counts[col] = int(mask_apply.sum())
+
+                # pós-processamento: garantir dtype adequado para tempo_de_resolucao_em_dias
+                if col == "tempo_de_resolucao_em_dias":
+                    # converte coluna para numeric novamente, preferindo Int64 quando aplicável
+                    tmp = pd.to_numeric(df_full[col], errors="coerce")
+                    if not tmp.dropna().empty and (tmp.dropna() == tmp.dropna().astype(int)).all():
+                        df_full[col] = tmp.astype("Int64")
+                    else:
+                        df_full[col] = tmp.astype("Float64")
             else:
                 applied_counts[col] = 0
 
