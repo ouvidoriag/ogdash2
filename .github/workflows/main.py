@@ -1564,8 +1564,13 @@ try:
         df_send = pd.DataFrame(columns=cols_tratada)
     df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
     df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
-        if "tempo_de_resolucao_em_dias" in df_full.columns:
-    df_full["tempo_de_resolucao_em_dias"] = pd.to_numeric(df_full["tempo_de_resolucao_em_dias"], errors="coerce").astype("Float64")
+
+    # Garante dtype numérico coerente para a coluna tempo_de_resolucao_em_dias
+    if "tempo_de_resolucao_em_dias" in df_full.columns:
+        df_full["tempo_de_resolucao_em_dias"] = pd.to_numeric(
+            df_full["tempo_de_resolucao_em_dias"], errors="coerce"
+        ).astype("Float64")
+
 except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
     df_full = df_send.copy()
@@ -1670,77 +1675,119 @@ except Exception as e:
     logging.exception(f"Erro ao normalizar campos de exceção vindos da bruta: {e}")
     bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
 
-# --- PATCH REVISADO: sincronização vetorizada apenas para protocolos C\d+ da bruta (robusto) ---
+# --- PATCH: sincronização vetorizada apenas para protocolos C\d+ da bruta (SOBRESCREVE COM O QUE HÁ NA BRUTA;
+#     texto "Não há dados" virará célula vazia na tratada) ---
 if not bruta_norm.empty:
-    # cópia defensiva e normalização do index (protocolo) da bruta_norm
     bruta_norm = bruta_norm.copy()
     bruta_norm.index = bruta_norm.index.astype(str).str.strip().str.upper()
-    bruta_norm = bruta_norm[~bruta_norm.index.duplicated(keep='last')]  # garante última ocorrência
 
     # garante formato da coluna protocolo em df_full
     df_full['protocolo'] = df_full.get('protocolo', pd.Series([''] * len(df_full))).astype(str).str.strip().str.upper()
 
     applied_counts = {c: 0 for c in EXCEPTION_COLS}
 
-    # filtra apenas protocolos C\d+ presentes na bruta_norm
-    prot_c = [p for p in bruta_norm.index if re.match(r"^C\d+$", p)]
-    if not prot_c:
+    # filtra apenas protocolos da bruta que seguem o padrão C\d+
+    prot_c_mask = pd.Series(bruta_norm.index).str.match(r"^C\d+$", na=False)
+    prot_c = pd.Series(bruta_norm.index)[prot_c_mask].unique().tolist()
+
+    if len(prot_c) == 0:
         logging.info("Nenhum protocolo C... válido encontrado em bruta_norm para sincronizar.")
     else:
+        # cria lookup apenas com protocolos C...
         bruta_c_lookup = bruta_norm.loc[bruta_norm.index.isin(prot_c)].copy()
 
-        # Para cada coluna de exceção, criamos um mapa consistente (index = protocolo)
+        # --- Para garantir robustez, vamos construir um mapa por coluna que inclui
+        #     valores textuais (ex: 'Não há dados') e valores numéricos.
         for col in EXCEPTION_COLS:
             if col not in bruta_c_lookup.columns:
-                logging.debug(f"Coluna '{col}' não existe em bruta_c_lookup — pulando.")
                 continue
 
-            serie_bruta = bruta_c_lookup[col].copy()
+            # pega série bruta original (sem dropar NA agora)
+            serie_bruta_raw = bruta_c_lookup[col].copy()
 
-            # normaliza série para remover tokens inválidos (mesma lista usada antes)
-            _invalid_tokens_str = {"", "nan", "none", "na", "n/a", "não há dados", "não ha dados", "não informado", "nao informado", "null"}
+            # Normalização básica: strip para strings
+            # (manter NaNs como pd.NA; manter strings como estão)
+            serie_bruta_raw = serie_bruta_raw.where(~serie_bruta_raw.isna(), pd.NA)
 
+            # Tratamento ESPECIAL para tempo_de_resolucao_em_dias:
+            # - se for número válido -> manter número (int ou float)
+            # - se for string 'Não há dados' (ou tokens similares) -> manter como pd.NA aqui,
+            #   mas vamos **incluir** o mapeamento para sobrescrever na tratada (será convertido para vazio)
             if col == "tempo_de_resolucao_em_dias":
-                # coerção robusta para numérico (mantém NaN onde inválido)
-                s = serie_bruta.astype(str).str.strip()
-                s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
-                s = s.where(s.isna(), s.str.replace(",", ".", regex=False))
-                s_num = pd.to_numeric(s, errors="coerce")
-                # mantém dtype nullable inteiro quando possível
-                if not s_num.dropna().empty and (s_num.dropna() == s_num.dropna().astype(int)).all():
-                    s_num = s_num.astype("Int64")
-                serie_bruta = s_num
-            else:
-                # para colunas textuais: considera tokens inválidos como pd.NA e strip
-                serie_bruta = serie_bruta.where(~serie_bruta.astype(str).str.strip().str.lower().isin(_invalid_tokens_str), pd.NA)
-                serie_bruta = serie_bruta.astype(object).where(serie_bruta.isna(), serie_bruta.astype(str).str.strip())
+                # mantém original, mas tenta converter números onde aplicável
+                def _to_num_or_keep(x):
+                    if pd.isna(x):
+                        return pd.NA
+                    # se já for numérico
+                    if isinstance(x, (int, float, np.integer, np.floating)):
+                        return x
+                    s = str(x).strip()
+                    if s == "":
+                        return pd.NA
+                    # tokens que queremos que sejam considerados "presente" e convertidos para célula vazia na tratada:
+                    tokens_quero_vazio = {"não há dados", "nao ha dados", "não há dado", "não ha dado"}
+                    if s.casefold() in tokens_quero_vazio:
+                        return pd.NA
+                    # tenta converter número (aceita vírgula)
+                    try:
+                        num = float(s.replace(",", "."))
+                        if num.is_integer():
+                            return int(num)
+                        return num
+                    except Exception:
+                        # mantém como pd.NA se não for conversível
+                        return pd.NA
 
-            # cria mapa apenas com valores válidos (não NA)
-            mapa = serie_bruta[~serie_bruta.isna()].copy()
+                serie_mapped = serie_bruta_raw.apply(_to_num_or_keep)
+
+                # mapa contém índices onde a bruta tem *qualquer* informação (inclusive strings que viraram NA acima)
+                # Mas queremos sobrescrever na tratada tanto quando for número quanto quando bruta indicou "Não há dados".
+                # Para capturar também os casos originais string 'Não há dados', usamos a versão string para identificar esses índices.
+                raw_strings = bruta_c_lookup[col].astype(str).str.strip()
+                mask_presente = raw_strings.str.lower().ne("nan") & raw_strings.str.strip().ne("")
+                # cria mapa final: para índices mask_presente usamos valor numérico quando houver, senão pd.NA
+                mapa = pd.Series(index=bruta_c_lookup.index, dtype="object")
+                for idx in bruta_c_lookup.index:
+                    if not mask_presente.loc[idx]:
+                        # bruta realmente vazia -> não incluir no mapa (mantemos comportamento opcional)
+                        continue
+                    val_num = serie_mapped.loc[idx]
+                    if not pd.isna(val_num):
+                        mapa.loc[idx] = val_num
+                    else:
+                        # bruta tem algo (por exemplo 'Não há dados' ou texto não-numérico) -> marcamos pd.NA
+                        # que será interpretado como célula vazia na tratada
+                        mapa.loc[idx] = pd.NA
+
+            else:
+                # Para colunas textuais: queremos pegar o que estiver na bruta, inclusive strings como 'Não há dados'
+                # Vamos transformar pd.NA em string 'Não concluído' apenas para data_da_conclusao? Não — deixamos o valor da bruta.
+                # Criamos mapa incluindo todos os índices cuja bruta tem algo não vazio (incluindo 'Não há dados').
+                raw = bruta_c_lookup[col].copy()
+                raw = raw.where(~raw.isna(), pd.NA)
+                # consideramos "presente" quando não é NA e não é string vazia
+                mask_presente = raw.astype(str).str.strip().ne("") & ~raw.isna()
+                mapa = raw[mask_presente].astype(object)
+
             if mapa.empty:
-                logging.debug(f"Nenhum valor válido na bruta (C...) para coluna '{col}', pulando.")
+                logging.debug(f"Nenhum valor válido (segundo regra nova) na bruta (C...) para coluna '{col}', pulando.")
+                applied_counts[col] = 0
                 continue
 
-            # Aplica map **vetorizado** sobre df_full.protocolo.
-            # Usamos Series.map(mapa) que preserva tipos dos valores no mapa.
+            # agora aplica às linhas de df_full cujo protocolo está em mapa.index
             mask_apply = df_full['protocolo'].isin(mapa.index)
             if mask_apply.any():
-                # aplica o mapeamento somente nas linhas cujo protocolo existe no mapa
+                # Para tempo_de_resolucao_em_dias: assegura dtype object para evitar erros de fillna/astype mais adiante
+                if col == "tempo_de_resolucao_em_dias":
+                    df_full[col] = df_full[col].astype(object)
+
+                # Faz o mapeamento direto (sobrescreve inclusive com pd.NA para strings 'Não há dados')
                 df_full.loc[mask_apply, col] = df_full.loc[mask_apply, 'protocolo'].map(mapa)
                 applied_counts[col] = int(mask_apply.sum())
-
-                # pós-processamento: garantir dtype adequado para tempo_de_resolucao_em_dias
-                if col == "tempo_de_resolucao_em_dias":
-                    # converte coluna para numeric novamente, preferindo Int64 quando aplicável
-                    tmp = pd.to_numeric(df_full[col], errors="coerce")
-                    if not tmp.dropna().empty and (tmp.dropna() == tmp.dropna().astype(int)).all():
-                        df_full[col] = tmp.astype("Int64")
-                    else:
-                        df_full[col] = tmp.astype("Float64")
             else:
                 applied_counts[col] = 0
 
-        logging.info(f"Sincronização (C... da bruta) aplicada. Contagens por coluna: {applied_counts}")
+        logging.info(f"Sincronização (C... da bruta) aplicada (modo SOBRESCREVER). Contagens por coluna: {applied_counts}")
 else:
     logging.info("bruta_norm vazio — nada a sincronizar.")
 
