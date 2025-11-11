@@ -521,9 +521,8 @@ try:
         return "S" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:18].upper()
 
     def _choose_protocolo_final(p: str, row) -> str:
-        """
-        Retorna protocolo 'p' se estiver no padrão C\d+, senão gera protocolo simulado.
-        """
+        
+        """Retorna protocolo 'p' se estiver no padrão C\\d+, senão gera protocolo simulado."""
         p = str(p or "").strip().upper()
         if re.match(r"^C\d+$", p):
             return p
@@ -1558,10 +1557,14 @@ _BANNER("10) DELTAS HISTÓRICOS (ajustado — sincroniza 4 colunas de exceção)
 # --- Alinha colunas do df_send ao schema da tratada ---
 try:
     cols_tratada = list(df_tratada.columns)
-    if 'df_send' not in globals():
-        df_send = pd.DataFrame(columns=cols_tratada)
-    df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
-       df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
+if 'df_send' not in globals():
+    df_send = pd.DataFrame(columns=cols_tratada)
+
+# Alinha df_send com o schema da planilha tratada
+df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
+
+# Concatena tratada + novos (sem alterar dtypes agressivamente)
+df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
 
     # NÃO forçamos Float64 aqui de forma agressiva — em vez disso,
     # deixamos a coluna como object quando houver misturas (números + tokens como "Não há dados"),
@@ -1582,22 +1585,15 @@ except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
     df_full = df_send.copy()
 
-# --- Garantia de colunas OLD para histórico ---
+# --- Garantia de colunas OLD para histórico (bloco seguro) ---
 EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias", "prazo_restante"]
+
 for col in EXCEPTION_COLS:
     old_col = f"{col}_OLD"
     if old_col not in df_full.columns:
-        # Pega a série original (ou cria série com pd.NA com mesmo index)
+        # obtém a série original (ou cria série com pd.NA com mesmo index)
         src = df_full.get(col, pd.Series(pd.NA, index=df_full.index)).copy()
-        # NÃO forcamos strings vazias em colunas numéricas — preservamos pd.NA.
-        # Armazenamos uma cópia segura em dtype object (evita problemas com Int64/Float64)
-        df_full[old_col] = src.astype(object).where(~pd.isna(src), other=pd.NA)for col in EXCEPTION_COLS:
-    old_col = f"{col}_OLD"
-    if old_col not in df_full.columns:
-        # Pega a série original (ou cria série com pd.NA com mesmo index)
-        src = df_full.get(col, pd.Series(pd.NA, index=df_full.index)).copy()
-        # NÃO forcamos strings vazias em colunas numéricas — preservamos pd.NA.
-        # Armazenamos uma cópia segura em dtype object (evita problemas com Int64/Float64)
+        # preserva pd.NA para entradas ausentes e armazena como object para evitar casts agressivos
         df_full[old_col] = src.astype(object).where(~pd.isna(src), other=pd.NA)
 
 # --- Prepara lookup da BRUTA por protocolo (última ocorrência)
