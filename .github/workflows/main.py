@@ -1754,12 +1754,41 @@ except Exception as e:
 
 # --- Atualiza as colunas *_OLD (garante comparação correta): já criadas acima ---
 
-# --- Função delta robusta (com fillna e casting a str) ---
+# --- SUBSTITUIÇÃO ROBUSTA: _delta_df que suporta dtypes Int64/Float64 e strings ---
 def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
+    """
+    Retorna as linhas onde col != col_OLD, comparando de maneira segura:
+     - para colunas numéricas (inclui Int64 nullable) compara numericamente tratando NaN==NaN;
+     - para colunas texto compara strings com fillna('') depois de coerção segura;
+    Retorna DataFrame (cópia) das linhas onde houver diferença.
+    """
     old_col = f"{col}_OLD"
-    left = df_full_local.get(col, "").fillna("").astype(str)
-    right = df_full_local.get(old_col, "").fillna("").astype(str)
-    return df_full_local[left != right].copy()
+
+    # se alguma coluna ausente, não há delta
+    if col not in df_full_local.columns or old_col not in df_full_local.columns:
+        return pd.DataFrame(columns=df_full_local.columns)
+
+    left = df_full_local[col]
+    right = df_full_local[old_col]
+
+    # Caso numérico (inclui Int64/Float64/nullable): comparar numericamente
+    try:
+        is_numeric = pd.api.types.is_numeric_dtype(left.dtype) or pd.api.types.is_numeric_dtype(right.dtype)
+    except Exception:
+        is_numeric = False
+
+    if is_numeric:
+        left_num = pd.to_numeric(left, errors="coerce")
+        right_num = pd.to_numeric(right, errors="coerce")
+        # máscara onde são diferentes, considerando NaN == NaN
+        neq_mask = (~(left_num == right_num)) & ~(left_num.isna() & right_num.isna())
+        return df_full_local.loc[neq_mask].copy()
+    else:
+        # Texto / misto: comparar como string após normalizar NA -> ''
+        left_s = left.fillna("").astype(str)
+        right_s = right.fillna("").astype(str)
+        neq_mask = left_s != right_s
+        return df_full_local.loc[neq_mask].copy()
 
 # --- Calcula deltas específicos (apenas uma vez e sem sobrescritas) ---
 delta_status = _delta_df(df_full, "status_demanda")
