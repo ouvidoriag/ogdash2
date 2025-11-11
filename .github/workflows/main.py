@@ -1331,12 +1331,10 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
 def _post_lotes(df: pd.DataFrame, msg: str, cols: list):
     logging.warning(f"Fallback acionado ({msg}) para {len(df)} linhas. Colunas: {cols}")
 
-# Antes de criar/usar os deltas, aplique o prepare em todo df (ou pelo menos nos deltas)
-df = _prepare_status(df)  # garante que coluna principal esteja padronizada
-
-# Em seguida crie os deltas com base no df já padronizado:
-delta_status = df[df["status_demanda"] != df.get("status_demanda_OLD", df["status_demanda"])]
-delta_conc = df[df["data_da_conclusao"] != df.get("data_da_conclusao_OLD", df["data_da_conclusao"])]
+# Criação dos deltas a partir do df_full consolidado (robusto e seguro)
+delta_status = _delta_df(df_full, "status_demanda")
+delta_conc = _delta_df(df_full, "data_da_conclusao")
+# tempo_de_resolucao_em_dias removido do tratamento conforme solicitado
 
 # --------------------------------------------------------
 # PATCH principal — atualização de células no Google Sheets
