@@ -1557,14 +1557,14 @@ _BANNER("10) DELTAS HISTÓRICOS (ajustado — sincroniza 4 colunas de exceção)
 # --- Alinha colunas do df_send ao schema da tratada ---
 try:
     cols_tratada = list(df_tratada.columns)
-if 'df_send' not in globals():
-    df_send = pd.DataFrame(columns=cols_tratada)
+    if 'df_send' not in globals():
+        df_send = pd.DataFrame(columns=cols_tratada)
 
-# Alinha df_send com o schema da planilha tratada
-df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
+    df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
+    df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
 
-# Concatena tratada + novos (sem alterar dtypes agressivamente)
-df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
+except Exception as e:
+    print("Erro ao concatenar dataframes:", e)
 
     # NÃO forçamos Float64 aqui de forma agressiva — em vez disso,
     # deixamos a coluna como object quando houver misturas (números + tokens como "Não há dados"),
