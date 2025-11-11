@@ -1500,29 +1500,27 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
                 # sempre string para datas
                 cleaned_batch.append((r[0], r[1], value_out))
             elif value_col == "tempo_de_resolucao_em_dias":
-                # MANTEM numérico quando possível; converte pd.NA -> '' para envio ao Sheets
+                # MANTEM numérico quando possível; converte pd.NA ou "Não há dados" para '' para envio ao Sheets
                 if pd.isna(value):
                     value_out = ""   # sheets recebe célula vazia
                 else:
-                    # se for float mas inteiro, envie como int para ficar "inteiro" na sheet
-                    try:
-                        if isinstance(value, float) and value.is_integer():
-                            value_out = int(value)
-                        else:
-                            value_out = value
-                    except Exception:
-                        # fallback: stringify apenas como último recurso
+                    # se for texto igual a "não há dados", tratamos como vazio para a sheet
+                    sval = str(value).strip()
+                    if sval.lower() == "não há dados" or sval.lower() == "nao ha dados":
+                        value_out = ""
+                    else:
                         try:
-                            value_out = int(float(str(value).replace(",", ".")))
+                            # se for float mas inteiro, envie como int
+                            if isinstance(value, float) and value.is_integer():
+                                value_out = int(value)
+                            elif isinstance(value, (int, np.integer)):
+                                value_out = int(value)
+                            else:
+                                # mantém número ou string numérica
+                                value_out = float(str(value).replace(",", ".")) if re.match(r"^-?\d+(\.\d+)?$", str(value).replace(",", ".")) else str(value)
                         except Exception:
+                            # fallback: vazio
                             value_out = ""
-                cleaned_batch.append((r[0], r[1], value_out))
-            else:
-                # colunas textuais: manter comportamento original (string)
-                if pd.isna(value) or str(value).strip() == "":
-                    value_out = ""
-                else:
-                    value_out = str(value).strip()
                 cleaned_batch.append((r[0], r[1], value_out))
 
         range_rows = [r[0] for r in cleaned_batch]
@@ -1563,13 +1561,22 @@ try:
     if 'df_send' not in globals():
         df_send = pd.DataFrame(columns=cols_tratada)
     df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
-    df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
+       df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
 
-    # Garante dtype numérico coerente para a coluna tempo_de_resolucao_em_dias
+    # NÃO forçamos Float64 aqui de forma agressiva — em vez disso,
+    # deixamos a coluna como object quando houver misturas (números + tokens como "Não há dados"),
+    # e só convertimos números onde for seguro.
     if "tempo_de_resolucao_em_dias" in df_full.columns:
-        df_full["tempo_de_resolucao_em_dias"] = pd.to_numeric(
-            df_full["tempo_de_resolucao_em_dias"], errors="coerce"
-        ).astype("Float64")
+        # tenta converter os valores numéricos; mantém strings intactas
+        tmp = df_full["tempo_de_resolucao_em_dias"].astype(object).copy()
+        # detecta valores convertíveis para número
+        conv = pd.to_numeric(tmp.astype(str).str.replace(",", ".", regex=False), errors="coerce")
+        # onde conv é numérico, substitui por número (Float64); senão mantém string original
+        is_num = conv.notna()
+        # inicia coluna como object para permitir misturas
+        out = tmp.copy()
+        out.loc[is_num] = conv.loc[is_num].apply(lambda x: int(x) if float(x).is_integer() else float(x))
+        df_full["tempo_de_resolucao_em_dias"] = out  # dtype object possivelmente
 
 except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
@@ -1580,7 +1587,18 @@ EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_
 for col in EXCEPTION_COLS:
     old_col = f"{col}_OLD"
     if old_col not in df_full.columns:
-        df_full[old_col] = df_full.get(col, "").fillna("")
+        # Pega a série original (ou cria série com pd.NA com mesmo index)
+        src = df_full.get(col, pd.Series(pd.NA, index=df_full.index)).copy()
+        # NÃO forcamos strings vazias em colunas numéricas — preservamos pd.NA.
+        # Armazenamos uma cópia segura em dtype object (evita problemas com Int64/Float64)
+        df_full[old_col] = src.astype(object).where(~pd.isna(src), other=pd.NA)for col in EXCEPTION_COLS:
+    old_col = f"{col}_OLD"
+    if old_col not in df_full.columns:
+        # Pega a série original (ou cria série com pd.NA com mesmo index)
+        src = df_full.get(col, pd.Series(pd.NA, index=df_full.index)).copy()
+        # NÃO forcamos strings vazias em colunas numéricas — preservamos pd.NA.
+        # Armazenamos uma cópia segura em dtype object (evita problemas com Int64/Float64)
+        df_full[old_col] = src.astype(object).where(~pd.isna(src), other=pd.NA)
 
 # --- Prepara lookup da BRUTA por protocolo (última ocorrência)
 # Normaliza e garante colunas na bruta
@@ -1807,29 +1825,38 @@ except Exception as e:
 def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
     old_col = f"{col}_OLD"
 
-    # se coluna inexistente, retorna vazio
+    # se coluna inexistente, retorna vazio com mesmas colunas (evita KeyErrors posteriores)
     if col not in df_full_local.columns or old_col not in df_full_local.columns:
         return pd.DataFrame(columns=df_full_local.columns)
 
-    left = df_full_local[col]
-    right = df_full_local[old_col]
+    # pega séries com índice alinhado
+    left = df_full_local[col].copy()
+    right = df_full_local[old_col].copy()
 
-    # detecta se é dtype numérico
+    # Normaliza índices/cópias para evitar efeitos colaterais
+    left.index = df_full_local.index
+    right.index = df_full_local.index
+
+    # detecta se alguma das séries é numérica (inclui Int64/Float64 nullable)
     try:
         is_numeric = pd.api.types.is_numeric_dtype(left.dtype) or pd.api.types.is_numeric_dtype(right.dtype)
     except Exception:
         is_numeric = False
 
     if is_numeric:
+        # comparamos numericamente; valores não-convertíveis viram NaN -> serão considerados diferentes
         left_num = pd.to_numeric(left, errors="coerce")
         right_num = pd.to_numeric(right, errors="coerce")
-        # compara numericamente, tratando NaN == NaN
+
+        # cria máscara onde valores numéricos são diferentes, tratando NaN==NaN como igual
         neq_mask = (~(left_num == right_num)) & ~(left_num.isna() & right_num.isna())
         return df_full_local.loc[neq_mask].copy()
     else:
-        left_s = left.fillna("").astype(str)
-        right_s = right.fillna("").astype(str)
-        neq_mask = left_s != right_s
+        # força object antes de fillna para evitar TypeError em dtypes numéricos
+        left_obj = left.astype(object).fillna("").astype(str)
+        right_obj = right.astype(object).fillna("").astype(str)
+
+        neq_mask = left_obj != right_obj
         return df_full_local.loc[neq_mask].copy()
 
 # --- Calcula deltas específicos (apenas uma vez e sem sobrescritas) ---
