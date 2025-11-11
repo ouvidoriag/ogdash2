@@ -490,6 +490,7 @@ try:
     df_bruta["protocolo"] = df_bruta.get("protocolo", pd.Series([""] * len(df_bruta))).astype(str).str.strip().str.upper()
 
     # ---------- GERAÇÃO DE PROTOCOLO SIMULADO (robusto) ----------
+       # ---------- GERAÇÃO DE PROTOCOLO SIMULADO (robusto) ----------
     def _criar_protocolo_simulado(row) -> str:
         """
         Gera um protocolo simulado com prefixo 'S' a partir de uma combinação
@@ -520,7 +521,7 @@ try:
         # prefixo 'S' para diferenciar dos protocolos 'C...'
         return "S" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:18].upper()
 
-     def _choose_protocolo_final(p: str, row) -> str:
+    def _choose_protocolo_final(p: str, row) -> str:
         r"""
         Retorna protocolo 'p' se estiver no padrão C\d+, senão gera protocolo simulado.
         """
