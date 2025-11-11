@@ -1564,7 +1564,7 @@ try:
         df_send = pd.DataFrame(columns=cols_tratada)
     df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
     df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
-    if "tempo_de_resolucao_em_dias" in df_full.columns:
+        if "tempo_de_resolucao_em_dias" in df_full.columns:
     df_full["tempo_de_resolucao_em_dias"] = pd.to_numeric(df_full["tempo_de_resolucao_em_dias"], errors="coerce").astype("Float64")
 except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
