@@ -560,6 +560,87 @@ try:
     df_bruta["protocolo_final"] = df_bruta.apply(lambda r: _choose_protocolo_final(r.get("protocolo", ""), r), axis=1)
     df_bruta["protocolo_final"] = df_bruta["protocolo_final"].astype(str).str.strip().str.upper()
 
+     # --- SINCRONIZAÇÃO RÁPIDA BRUTA -> TRATADA (aplicar antes de marcar 'eh_novo') ---
+    EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias", "prazo_restante"]
+
+    # Garante que colunas existem na bruta
+    for _c in EXCEPTION_COLS:
+        if _c not in df_bruta.columns:
+            df_bruta[_c] = pd.NA
+
+    # Cria lookup indexado por protocolo (mantendo última ocorrência)
+    df_bruta_lookup = df_bruta.set_index('protocolo', drop=False).loc[:, EXCEPTION_COLS].copy()
+    df_bruta_lookup = df_bruta_lookup[~df_bruta_lookup.index.duplicated(keep='last')]
+
+    # Normalizações / preservações vindas da bruta
+    bruta_norm = pd.DataFrame(index=df_bruta_lookup.index)
+
+    # data_da_conclusao -> formato DD/MM/YYYY ou 'Não concluído'
+    if "data_da_conclusao" in df_bruta_lookup.columns:
+        try:
+            bruta_norm["data_da_conclusao"] = _conclusao_strict(df_bruta_lookup["data_da_conclusao"]).astype(object)
+        except Exception:
+            bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
+
+    # tempo_de_resolucao_em_dias -> preservar aparência textual (não forçar float)
+    if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
+        _invalid_tokens_str_local = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
+        raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
+        mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str_local)
+
+        def _as_raw_text_local(v):
+            if pd.isna(v):
+                return pd.NA
+            if isinstance(v, str):
+                return v.strip()
+            try:
+                fv = float(v)
+                if fv.is_integer():
+                    return str(int(fv))
+                text = format(fv, "f")
+                text = text.rstrip("0").rstrip(".") if "." in text else text
+                return text
+            except Exception:
+                return str(v)
+
+        preserved = raw_series.where(~mask_invalid, pd.NA)
+        bruta_norm["tempo_de_resolucao_em_dias"] = preserved.apply(lambda x: _as_raw_text_local(x) if pd.notna(x) else pd.NA).astype(object)
+
+    # status_demanda -> mapear para 'CONCLUÍDA' / 'EM ANDAMENTO' / pd.NA
+    if "status_demanda" in df_bruta_lookup.columns:
+        s_status = df_bruta_lookup["status_demanda"].astype(str).str.strip()
+        def _map_status_bruta_local(x):
+            if pd.isna(x) or str(x).strip() == "":
+                return pd.NA
+            if _is_concluida(x):
+                return "CONCLUÍDA"
+            return "EM ANDAMENTO"
+        bruta_norm["status_demanda"] = s_status.apply(_map_status_bruta_local)
+
+    # prazo_restante -> aplicar canonização parcial
+    if "prazo_restante" in df_bruta_lookup.columns:
+        s_pr = df_bruta_lookup["prazo_restante"].astype(str)
+        bruta_norm["prazo_restante"] = s_pr.apply(lambda x: _canon_prazo_restante(x) if x and str(x).strip() != "" else pd.NA)
+
+    # Aplica valores da bruta sobre df_tratada (sobrescreve apenas quando bruta tem valor)
+    if not bruta_norm.empty and 'df_tratada' in globals() and not df_tratada.empty:
+        # cria mapping upper -> indices em df_tratada
+        prot_to_idx_tratada = {}
+        for idx, p in enumerate(df_tratada['protocolo'].astype(str).str.strip().str.upper()):
+            prot_to_idx_tratada.setdefault(p, []).append(idx)
+
+        for proto in bruta_norm.index:
+            proto_up = str(proto).strip().upper()
+            if proto_up in prot_to_idx_tratada:
+                for col in EXCEPTION_COLS:
+                    if col in bruta_norm.columns:
+                        val = bruta_norm.at[proto, col]
+                        if pd.isna(val):
+                            continue
+                        for ridx in prot_to_idx_tratada[proto_up]:
+                            df_tratada.at[ridx, col] = val
+        logging.info("Sincronização rápida BRUTA -> TRATADA aplicada (antes de calcular eh_novo).")
+
     # Marca novos protocolos comparando protocolo_final com o conjunto da tratada
     df_bruta["eh_novo"] = ~df_bruta["protocolo_final"].isin(protocolos_existentes_set)
 
