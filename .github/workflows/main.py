@@ -1564,6 +1564,8 @@ try:
         df_send = pd.DataFrame(columns=cols_tratada)
     df_send_aligned = df_send.reindex(columns=cols_tratada, fill_value="")
     df_full = pd.concat([df_tratada, df_send_aligned], ignore_index=True, sort=False)
+    if "tempo_de_resolucao_em_dias" in df_full.columns:
+    df_full["tempo_de_resolucao_em_dias"] = pd.to_numeric(df_full["tempo_de_resolucao_em_dias"], errors="coerce").astype("Float64")
 except Exception as e:
     logging.warning(f"Falha ao concatenar bases tratada + novos: {e}")
     df_full = df_send.copy()
@@ -1637,7 +1639,7 @@ try:
         # cria série coerente: inteiros como Int64, decimais mantidos como float
         # estratégia: se todos não-nulos forem inteiros -> cast Int64; caso contrário, manter float
         if num.dropna().empty:
-            bruta_norm["tempo_de_resolucao_em_dias"] = pd.Series(pd.NA, index=bruta_norm.index, dtype="Float64")
+            bruta_norm["tempo_de_resolucao_em_dias"] = num.astype("Float64")
         else:
             if is_int_like.all():
                 # todos os não-nulos são inteiros -> usamos Int64 (nullable int)
@@ -1756,22 +1758,16 @@ except Exception as e:
 
 # --- SUBSTITUIÇÃO ROBUSTA: _delta_df que suporta dtypes Int64/Float64 e strings ---
 def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
-    """
-    Retorna as linhas onde col != col_OLD, comparando de maneira segura:
-     - para colunas numéricas (inclui Int64 nullable) compara numericamente tratando NaN==NaN;
-     - para colunas texto compara strings com fillna('') depois de coerção segura;
-    Retorna DataFrame (cópia) das linhas onde houver diferença.
-    """
     old_col = f"{col}_OLD"
 
-    # se alguma coluna ausente, não há delta
+    # se coluna inexistente, retorna vazio
     if col not in df_full_local.columns or old_col not in df_full_local.columns:
         return pd.DataFrame(columns=df_full_local.columns)
 
     left = df_full_local[col]
     right = df_full_local[old_col]
 
-    # Caso numérico (inclui Int64/Float64/nullable): comparar numericamente
+    # detecta se é dtype numérico
     try:
         is_numeric = pd.api.types.is_numeric_dtype(left.dtype) or pd.api.types.is_numeric_dtype(right.dtype)
     except Exception:
@@ -1780,11 +1776,10 @@ def _delta_df(df_full_local: pd.DataFrame, col: str) -> pd.DataFrame:
     if is_numeric:
         left_num = pd.to_numeric(left, errors="coerce")
         right_num = pd.to_numeric(right, errors="coerce")
-        # máscara onde são diferentes, considerando NaN == NaN
+        # compara numericamente, tratando NaN == NaN
         neq_mask = (~(left_num == right_num)) & ~(left_num.isna() & right_num.isna())
         return df_full_local.loc[neq_mask].copy()
     else:
-        # Texto / misto: comparar como string após normalizar NA -> ''
         left_s = left.fillna("").astype(str)
         right_s = right.fillna("").astype(str)
         neq_mask = left_s != right_s
