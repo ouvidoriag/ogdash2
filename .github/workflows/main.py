@@ -946,30 +946,20 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     # =======================================================================
     # 7.10 Limpeza de "Não há dados" para tempo_de_resolucao_em_dias (REFATORADO)
     # =======================================================================
-    try:
-        if "tempo_de_resolucao_em_dias" in df_loc.columns:
-            raw = df_loc["tempo_de_resolucao_em_dias"]
-
-            # Converte para string temporariamente para detectar tokens inválidos
-            s = raw.astype(str).str.strip()
-
-            # Marca tokens que devem ser considerados como "sem dado"
-            invalid_tokens = {"nan", "none", "na", "não há dados", "n/a", ""}
-            mask_invalid = s.str.lower().isin(invalid_tokens)
-
-            # Substitui os inválidos por NA (pd.NA)
-            s = s.where(~mask_invalid, pd.NA)
-
-            # Em valores válidos, padroniza vírgula decimal para ponto
-            if s.notna().any():
-                s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
-
-            # Converte para numérico (erros -> NaN)
-            df_loc["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
-
-            logging.info("Tratamento 7.10 (Limpeza e conversão numérica de 'tempo_de_resolucao_em_dias') aplicado.")
-    except Exception as e:
-        logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
+     try:
+            if "tempo_de_resolucao_em_dias" in df_loc.columns:
+                raw = df_loc["tempo_de_resolucao_em_dias"]
+                invalid_tokens = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
+                mask_invalid = raw.astype(str).str.strip().str.lower().isin(invalid_tokens)
+                df_loc["tempo_de_resolucao_em_dias"] = raw.where(~mask_invalid, pd.NA).astype(object)
+                logging.info(
+                    "Tratamento 7.10 (preservação de 'tempo_de_resolucao_em_dias' tal como na bruta) aplicado."
+                )
+        except Exception as e:
+            logging.error(
+                f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}",
+                exc_info=True
+            )
 
     # finalização / retorno da função (GARANTE retorno mesmo sem exceção)
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
@@ -1368,9 +1358,9 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
 
     # 4️⃣ Limpeza de "Não há dados"
-    for col in ["tempo_de_resolucao_em_dias"]:
-        if col in df.columns:
-            df[col] = df[col].replace("Não há dados", "")
+      # Não alteraremos o token "Não há dados" para preservar o valor original da bruta.
+    # Caso deseje célula vazia na planilha tratada, isso será feito apenas no momento do envio.
+    logging.info("Pulando limpeza automática de 'Não há dados' para tempo_de_resolucao_em_dias (preservação).")
 
     return df
 
@@ -1402,7 +1392,13 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
     # Aplica padronizações completas
     df = _prepare_status(df)
     df[key_col] = df[key_col].astype(str).str.strip()
-    df[value_col] = df[value_col].astype(str).str.strip()
+
+    # EXCEÇÃO: não forçar astype(str) globalmente para tempo_de_resolucao_em_dias
+    if value_col != "tempo_de_resolucao_em_dias":
+        df[value_col] = df[value_col].astype(str).str.strip()
+    else:
+        df[value_col] = df[value_col].astype(object)
+        logging.info("Preparando patch: exceção aplicada para 'tempo_de_resolucao_em_dias'.")
 
     # 🔒 Corrige 'data_da_conclusao' pós-stringificação
     if value_col == "data_da_conclusao":
@@ -1446,13 +1442,31 @@ def _patch_grouped_force(df: pd.DataFrame, key_col: str, value_col: str, sheet=N
         if not batch:
             continue
 
-        cleaned_batch = []
+                cleaned_batch = []
         for r in batch:
             value = r[2]
-            if pd.isna(value) or str(value).strip() == "":
-                value = "Não concluído" if value_col == "data_da_conclusao" else ""
-            value = str(value).strip()
-            cleaned_batch.append((r[0], r[1], value))
+
+            if value_col == "tempo_de_resolucao_em_dias":
+                if pd.isna(value) or str(value).strip() == "":
+                    value_out = ""
+                else:
+                    try:
+                        vnum = float(value)
+                        if vnum.is_integer():
+                            value_out = str(int(vnum))
+                        else:
+                            value_out = str(vnum)
+                    except Exception:
+                        # mantém o formato exato da bruta
+                        value_out = str(value).strip()
+            else:
+                # comportamento normal para outras colunas
+                if pd.isna(value) or str(value).strip() == "":
+                    value_out = "Não concluído" if value_col == "data_da_conclusao" else ""
+                else:
+                    value_out = str(value).strip()
+
+            cleaned_batch.append((r[0], r[1], value_out))
 
         range_rows = [r[0] for r in cleaned_batch]
         values = [[r[2]] for r in cleaned_batch]
@@ -1544,17 +1558,16 @@ try:
             # fallback genérico
             bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
 
-    # tempo_de_resolucao_em_dias
+      # --- Normalizações vindas da bruta (AJUSTE: preservar valor original) ---
     if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
-        s = df_bruta_lookup["tempo_de_resolucao_em_dias"].astype(str).str.strip()
-        s = s.replace({"": pd.NA})
-        # tokens inválidos -> NA
-        s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
-        # vírgula decimal -> ponto
-        s_valid = s.where(s.notna())
-        if s_valid is not None and not s_valid.empty:
-            s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
-        bruta_norm["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
+        raw_series = df_bruta_lookup["tempo_de_resolucao_em_dias"]
+        # tokens considerados inválidos ou sem dados
+        _invalid_tokens_str = {"nan", "none", "na", "n/a", "não há dados", "nao ha dados", ""}
+        mask_invalid = raw_series.astype(str).str.strip().str.lower().isin(_invalid_tokens_str)
+        preserved = raw_series.where(~mask_invalid, pd.NA)
+        # manter formato original sem coerção numérica
+        bruta_norm["tempo_de_resolucao_em_dias"] = preserved.astype(object)
+        logging.info("Preservando 'tempo_de_resolucao_em_dias' a partir da bruta (sem coerção numérica).")
 
     # status_demanda
     if "status_demanda" in df_bruta_lookup.columns:
