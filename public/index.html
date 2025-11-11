@@ -60,6 +60,36 @@
         }
       }
       
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px) scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      
+      .animate-fade-in {
+        animation: fadeIn 0.3s ease-out;
+      }
+      
+      /* Estilos para elementos com filtro ativo */
+      .filter-active {
+        border-color: rgba(34, 211, 238, 0.6) !important;
+        background: rgba(34, 211, 238, 0.1) !important;
+        box-shadow: 0 0 20px rgba(34, 211, 238, 0.3) !important;
+      }
+      
+      .filter-active-title {
+        padding: 12px 20px;
+        background: linear-gradient(90deg, rgba(34, 211, 238, 0.1), rgba(34, 211, 238, 0.05));
+        border-left: 4px solid #22d3ee;
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+      
       /* Animações removidas para melhor performance */
       .cora-avatar {
         position: relative;
@@ -250,6 +280,9 @@
       <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">
         <!-- Indicador de Filtros Ativos -->
         <div id="filterIndicator" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-50"></div>
+        
+        <!-- Título dinâmico da página (mostra filtro ativo) -->
+        <div id="pageTitle" class="mb-4"></div>
         
         <!-- Página Home: Apresentação da Cora -->
         <section id="page-home" class="">
@@ -1536,14 +1569,33 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    
+    <!-- Módulos JavaScript modulares -->
+    <script src="/scripts/config.js"></script>
+    <script src="/scripts/dateUtils.js"></script>
+    <script src="/scripts/api.js"></script>
+    <script src="/scripts/utils.js"></script>
+    <script src="/scripts/filters.js"></script>
+    <script src="/scripts/charts.js"></script>
+    <script src="/scripts/data.js"></script>
+    <script src="/scripts/main.js"></script>
+    <!-- Script de testes (carregar apenas se ?test=true na URL) -->
+    <script src="/scripts/test.js"></script>
+    <script src="/scripts/test-pages.js"></script>
+    
     <script>
       // Registrar plugin de datalabels
       if (typeof ChartDataLabels !== 'undefined') {
         Chart.register(ChartDataLabels);
       }
       
-      // Função helper para criar tooltips melhorados
+      // Função movida para scripts/utils.js
+      // Alias para compatibilidade
       function createEnhancedTooltip() {
+        if (window.utils?.createEnhancedTooltip) {
+          return window.utils.createEnhancedTooltip();
+        }
+        // Fallback
         return {
           enabled: true,
           backgroundColor: 'rgba(15, 23, 42, 0.95)',
@@ -1568,8 +1620,13 @@
         };
       }
       
-      // Função helper para configurar datalabels
+      // Função movida para scripts/utils.js
+      // Alias para compatibilidade
       function createDataLabelsConfig(showPercentage = false, chartType = 'bar', showAll = true) {
+        if (window.utils?.createDataLabelsConfig) {
+          return window.utils.createDataLabelsConfig(showPercentage, chartType, showAll);
+        }
+        // Fallback
         // Configurações base por tipo de gráfico
         const baseConfig = {
           color: '#e2e8f0',
@@ -1613,8 +1670,13 @@
         return baseConfig;
       }
       
-      // Função helper para adicionar eventos de clique
+      // Função movida para scripts/charts.js
+      // Alias para compatibilidade
       function addChartClickHandler(chart, onClickCallback, chartId = null) {
+        if (window.charts?.addChartClickHandler) {
+          return window.charts.addChartClickHandler(chart, onClickCallback, chartId);
+        }
+        // Fallback
         chart.canvas.style.cursor = 'pointer';
         chart.canvas.onclick = function(evt) {
           const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
@@ -1623,11 +1685,18 @@
             const label = chart.data.labels[firstPoint.index];
             const value = chart.data.datasets[firstPoint.datasetIndex].data[firstPoint.index];
             
-            // Aplicar filtro global se chartId for fornecido
-            if (chartId && chartFieldMap[chartId]) {
+            // Aplicar filtro global se chartId for fornecido (com toggle)
+            const chartFieldMap = window.chartFieldMap || window.filters?.chartFieldMap;
+            if (chartId && chartFieldMap?.[chartId]) {
               const fieldConfig = chartFieldMap[chartId];
               if (fieldConfig.field) {
-                applyGlobalFilter(fieldConfig.field, label, chartId);
+                // Criar elemento virtual para realce visual
+                const virtualElement = { 
+                  classList: { add: () => {}, remove: () => {} },
+                  setAttribute: () => {},
+                  removeAttribute: () => {}
+                };
+                applyGlobalFilter(fieldConfig.field, label, chartId, virtualElement);
               }
             }
             
@@ -1638,8 +1707,13 @@
         };
       }
       
-      // Função para mostrar feedback visual ao clicar
+      // Função movida para scripts/utils.js
+      // Alias para compatibilidade
       function showClickFeedback(element, label, value) {
+        if (window.utils?.showClickFeedback) {
+          return window.utils.showClickFeedback(element, label, value);
+        }
+        // Fallback
         const feedback = document.createElement('div');
         feedback.className = 'fixed top-4 right-4 glass rounded-lg p-4 z-50';
         feedback.innerHTML = `
@@ -1653,82 +1727,121 @@
         }, 2000);
       }
       
+      // Função movida para scripts/utils.js
+      // Alias para compatibilidade
       function gradient(ctx, from, to) {
+        if (window.utils?.gradient) {
+          return window.utils.gradient(ctx, from, to);
+        }
+        // Fallback
         const g = ctx.createLinearGradient(0, 0, 0, 300);
         g.addColorStop(0, from);
         g.addColorStop(1, to);
         return g;
       }
 
+      // Funções de API movidas para scripts/api.js
+      // Aliases otimizados - delegam diretamente para window.api
       async function fetchJSON(url, opts) {
+        return window.api?.fetchJSON(url, opts) || (async () => {
           const res = await fetch(url, opts);
-        if (!res.ok) throw new Error('Request failed');
-        return res.json();
+          if (!res.ok) throw new Error('Request failed');
+          return res.json();
+        })();
+      }
+      
+      async function fetchJSONWithFilters(url, opts = {}) {
+        return window.api?.fetchJSONWithFilters(url, opts) || window.api?.fetchJSONWithFilter(url, opts) || fetchJSON(url, opts);
+      }
+      
+      async function fetchJSONWithFilter(url, opts = {}) {
+        return window.api?.fetchJSONWithFilter(url, opts) || fetchJSONWithFilters(url, opts);
       }
 
       // ========== SISTEMA DE FILTROS GLOBAL ==========
-      // Estado global de filtros
-      window.globalFilters = {
-        filters: [],
-        activeField: null,
-        activeValue: null
-      };
+      // Sistema de filtros movido para scripts/filters.js
+      // Usar window.filters.applyGlobalFilter, window.filters.chartFieldMap, etc.
+      // OU window.chartFieldMap (exportado diretamente para compatibilidade)
+      
+      // NOTA: chartFieldMap já está disponível via window.chartFieldMap ou window.filters.chartFieldMap
+      // NÃO redeclarar aqui para evitar erro "already declared"
 
-      // Mapeamento de campos de gráficos para campos de filtro
-      const chartFieldMap = {
-        'chartStatus': { field: 'Status', op: 'eq' },
-        'chartStatusPage': { field: 'Status', op: 'eq' },
-        'chartStatusTema': { field: 'Status', op: 'eq' },
-        'chartStatusAssunto': { field: 'Status', op: 'eq' },
-        'chartTrend': { field: 'Data', op: 'contains' },
-        'chartTopOrgaos': { field: 'Orgaos', op: 'contains' },
-        'chartTopTemas': { field: 'Tema', op: 'eq' },
-        'chartFunnelStatus': { field: 'Status', op: 'eq' },
-        'chartSlaOverview': { field: null, op: null },
-        'chartOrgaoMes': { field: 'Orgaos', op: 'contains' },
-        'chartSecretaria': { field: 'Secretaria', op: 'contains' },
-        'chartTipo': { field: 'Tipo', op: 'eq' },
-        'chartSetor': { field: 'Setor', op: 'contains' },
-        'chartCategoria': { field: 'Categoria', op: 'eq' },
-        'chartBairro': { field: 'Bairro', op: 'contains' },
-        'chartUAC': { field: 'UAC', op: 'contains' },
-        'chartResponsavel': { field: 'Responsavel', op: 'contains' },
-        'chartCanal': { field: 'Canal', op: 'eq' },
-        'chartPrioridade': { field: 'Prioridade', op: 'eq' },
-        'chartTema': { field: 'Tema', op: 'eq' },
-        'chartAssunto': { field: 'Assunto', op: 'contains' },
-        'chartMonth': { field: 'Data', op: 'contains' },
-        'chartTempoMedio': { field: 'Orgaos', op: 'contains' },
-        'chartTempoMedioMes': { field: 'Data', op: 'contains' },
-        'chartCount': { field: null, op: null }, // Campo dinâmico
-        'chartTime': { field: null, op: null }, // Campo dinâmico
-        'chartSla': { field: null, op: null } // Não filtra
-      };
-
-      // Função para aplicar filtro
-      function applyGlobalFilter(field, value, chartId = null) {
-        if (!field || !value) return;
-        
-        // Determinar operação baseado no tipo de campo
-        let op = 'contains';
-        if (chartId && chartFieldMap[chartId]) {
-          op = chartFieldMap[chartId].op || 'contains';
-          field = chartFieldMap[chartId].field || field;
+      // Função movida para scripts/filters.js
+      // Alias otimizado
+      function applyGlobalFilter(field, value, chartId = null, element = null) {
+        if (window.filters?.applyGlobalFilter) {
+          return window.filters.applyGlobalFilter(field, value, chartId, element);
         }
+        console.warn('Módulo de filtros não carregado');
+      }
+      
+      // Funções auxiliares de filtros movidas para scripts/filters.js
+      // Usar window.filters.addFilterHighlight, window.filters.removeFilterHighlight, etc.
+      
+      // Função movida para scripts/filters.js
+      // Alias para compatibilidade
+      function updateAllFilterHighlights() {
+        if (window.filters?.updateAllFilterHighlights) {
+          return window.filters.updateAllFilterHighlights();
+        }
+        // Fallback
+        // Atualizar cartões de status
+        if (window.globalFilters.filters.length > 0) {
+          window.globalFilters.filters.forEach(filter => {
+            // Procurar por elementos com o valor do filtro
+            const elements = document.querySelectorAll(`[data-filter-value="${filter.value}"], [id*="${filter.value.toLowerCase().replace(/\s+/g, '-')}"]`);
+            elements.forEach(el => {
+              if (el.classList) {
+                const isActive = window.globalFilters.filters.some(f => f.field === filter.field && f.value === filter.value);
+                if (isActive) {
+                  el.classList.add('filter-active');
+                } else {
+                  el.classList.remove('filter-active');
+                }
+              }
+            });
+          });
+        } else {
+          // Remover todos os realces
+          document.querySelectorAll('.filter-active').forEach(el => {
+            el.classList.remove('filter-active');
+          });
+        }
+      }
+      
+      // Função movida para scripts/filters.js
+      // Alias para compatibilidade
+      function updatePageTitle() {
+        if (window.filters?.updatePageTitle) {
+          return window.filters.updatePageTitle();
+        }
+        // Fallback
+        const pageTitleEl = document.getElementById('pageTitle');
+        if (!pageTitleEl) return;
         
-        // Remover filtros anteriores do mesmo campo
-        window.globalFilters.filters = window.globalFilters.filters.filter(f => f.field !== field);
-        
-        // Adicionar novo filtro
-        window.globalFilters.filters.push({ field, value, op });
-        window.globalFilters.activeField = field;
-        window.globalFilters.activeValue = value;
-        
-        // Atualizar indicador visual
-        updateFilterIndicator();
-        
-        // Recarregar todos os dados
-        reloadAllData();
+        if (window.globalFilters.filters.length > 0) {
+          const filterText = window.globalFilters.filters.map(f => {
+            const fieldName = f.field === 'Orgaos' ? 'Órgão' : 
+                             f.field === 'Status' ? 'Status' :
+                             f.field === 'Tema' ? 'Tema' :
+                             f.field === 'Secretaria' ? 'Secretaria' :
+                             f.field === 'Bairro' ? 'Bairro' :
+                             f.field === 'Assunto' ? 'Assunto' :
+                             f.field;
+            return `${fieldName}: ${f.value}`;
+          }).join(' • ');
+          
+          pageTitleEl.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span>📊</span>
+              <span>Filtrado por: <span class="text-cyan-300 font-semibold">${filterText}</span></span>
+            </div>
+          `;
+          pageTitleEl.classList.add('filter-active-title');
+        } else {
+          pageTitleEl.innerHTML = '';
+          pageTitleEl.classList.remove('filter-active-title');
+        }
       }
 
       // Função para limpar todos os filtros (global)
@@ -1736,22 +1849,73 @@
         window.globalFilters.filters = [];
         window.globalFilters.activeField = null;
         window.globalFilters.activeValue = null;
+        
+        // Limpar localStorage
+        try {
+          localStorage.removeItem('dashboardFilters');
+        } catch (e) {
+          console.warn('Erro ao limpar filtros do localStorage:', e);
+        }
+        
         updateFilterIndicator();
+        updatePageTitle();
+        updateAllFilterHighlights();
         reloadAllData();
+        
+        // Feedback visual
+        const feedback = document.createElement('div');
+        feedback.className = 'fixed top-20 left-1/2 transform -translate-x-1/2 z-50';
+        feedback.innerHTML = `
+          <div class="glass rounded-xl p-4 border border-emerald-500/50 shadow-lg">
+            <div class="flex items-center gap-3">
+              <div class="text-2xl">✨</div>
+              <div class="text-emerald-300 font-bold text-sm">Filtros Limpos</div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(feedback);
+        setTimeout(() => {
+          feedback.style.opacity = '0';
+          feedback.style.transition = 'opacity 0.3s';
+          setTimeout(() => feedback.remove(), 300);
+        }, 2000);
       }
 
-      // Função para atualizar indicador visual de filtros
+      // Função movida para scripts/filters.js
+      // Alias para compatibilidade
       function updateFilterIndicator() {
+        if (window.filters?.updateFilterIndicator) {
+          return window.filters.updateFilterIndicator();
+        }
+        // Fallback
         const indicator = document.getElementById('filterIndicator');
         if (!indicator) return;
         
         if (window.globalFilters.filters.length > 0) {
-          const filterText = window.globalFilters.filters.map(f => `${f.field}: ${f.value}`).join(', ');
+          const filterText = window.globalFilters.filters.map(f => {
+            const fieldName = f.field === 'Orgaos' ? 'Órgão' : 
+                             f.field === 'Status' ? 'Status' :
+                             f.field === 'Tema' ? 'Tema' :
+                             f.field === 'Secretaria' ? 'Secretaria' :
+                             f.field === 'Bairro' ? 'Bairro' :
+                             f.field === 'Assunto' ? 'Assunto' :
+                             f.field;
+            return `<span class="font-semibold">${fieldName}</span>: <span class="text-cyan-200">${f.value}</span>`;
+          }).join(', ');
+          
           indicator.innerHTML = `
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-500/20 border border-cyan-500/30">
-              <span class="text-cyan-300 text-sm">🔍 Filtro ativo:</span>
+            <div class="flex items-center gap-3 px-4 py-2 rounded-xl glass border border-cyan-500/40 shadow-lg backdrop-blur-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-2xl animate-pulse">🔍</span>
+                <div class="flex flex-col">
+                  <span class="text-cyan-300 text-xs font-semibold uppercase tracking-wider">Filtro Inteligente Ativo</span>
               <span class="text-slate-200 text-sm">${filterText}</span>
-              <button onclick="clearGlobalFilters()" class="ml-2 text-cyan-300 hover:text-cyan-100 text-sm font-bold">✕</button>
+                </div>
+              </div>
+              <button onclick="clearGlobalFilters()" 
+                      class="ml-2 px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 hover:border-rose-500/50 text-rose-300 hover:text-rose-100 text-sm font-bold transition-all cursor-pointer">
+                ✕ Limpar
+              </button>
             </div>
           `;
           indicator.classList.remove('hidden');
@@ -1760,63 +1924,27 @@
         }
       }
 
-      // Função para recarregar todos os dados com filtros
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function reloadAllData() {
-        const currentPage = document.querySelector('[data-page].active')?.getAttribute('data-page') || 'main';
-        
-        // Recarregar dados da página principal (usar Overview completo)
-        if (currentPage === 'main' || currentPage === '') {
-          await loadOverview();
+        if (window.data?.reloadAllData) {
+          return await window.data.reloadAllData();
         }
-        
-        // Recarregar dados específicos da página atual
-        if (currentPage === 'orgao-mes') await loadOrgaoMes();
-        if (currentPage === 'tempo-medio') {
-          await loadTempoMedio();
-        }
-        if (currentPage === 'tema') await loadTema();
-        if (currentPage === 'assunto') await loadAssunto();
-        if (currentPage === 'cadastrante') await loadCadastrante();
-        if (currentPage === 'reclamacoes') await loadReclamacoes();
-        if (currentPage === 'projecao-2026') await loadProjecao2026();
-        if (currentPage === 'status') await loadStatusPage();
-        if (currentPage === 'bairro') await loadBairro();
-        if (currentPage === 'uac') await loadUAC();
-        if (currentPage === 'responsavel') await loadResponsavel();
-        if (currentPage === 'canal') await loadCanal();
-        if (currentPage === 'prioridade') await loadPrioridade();
-        if (currentPage === 'categoria') await loadCategoria();
+        // Fallback se módulo não carregou
+        console.warn('Módulo data não carregado');
       }
 
-      // Função para buscar dados com filtros aplicados
-      async function fetchJSONWithFilters(url, opts = {}) {
-        if (window.globalFilters.filters.length === 0) {
-          return await fetchJSON(url, opts);
-        }
-        
-        // Se há filtros, usar endpoint de filtro
-        const filterUrl = '/api/filter';
-        const filterOpts = {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filters: window.globalFilters.filters })
-        };
-        
-        const filteredData = await fetchJSON(filterUrl, filterOpts);
-        
-        // Para endpoints de agregação, precisamos processar os dados filtrados
-        // Por enquanto, retornamos os dados filtrados e processamos no cliente
-        return filteredData;
-      }
-      
-      // Alias para compatibilidade - usar fetchJSONWithFilters
-      async function fetchJSONWithFilter(url, opts = {}) {
-        return await fetchJSONWithFilters(url, opts);
-      }
+      // Funções removidas - já implementadas em scripts/api.js
+      // Usar window.api.fetchJSONWithFilters ou window.api.fetchJSONWithFilter
 
       // ========== Carregamento da Visão Geral ==========
-      // Função para carregar insights com IA
+      // Funções movidas para scripts/data.js
+      // Aliases para compatibilidade
       async function loadAIInsights() {
+        if (window.data?.loadAIInsights) {
+          return await window.data.loadAIInsights();
+        }
+        // Fallback
         try {
           const data = await fetchJSONWithFilter('/api/ai/insights').catch(() => ({ insights: [], geradoPorIA: false }));
           
@@ -1865,8 +1993,13 @@
         }
       }
 
-      // Função para carregar Status Overview
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadStatusOverview() {
+        if (window.data?.loadStatusOverview) {
+          return await window.data.loadStatusOverview();
+        }
+        // Fallback
         try {
           const statusData = await fetchJSONWithFilter('/api/stats/status-overview').catch(() => null);
           const statusCards = document.getElementById('statusOverviewCards');
@@ -1916,14 +2049,33 @@
           
           statusCards.innerHTML = cards.map(card => {
             const colors = colorClasses[card.color] || colorClasses.cyan;
+            // Mapear labels para campos de filtro
+            const filterFieldMap = {
+              'Total': null, // Não filtra por total
+              'Concluídas': 'Status',
+              'Em Atendimento': 'Status',
+              'Pendentes': 'Status'
+            };
+            const filterField = filterFieldMap[card.label];
+            const canFilter = filterField !== null;
+            
+            const isActive = window.globalFilters.filters.some(f => f.field === filterField && f.value === card.label);
+            const cardId = `status-card-${card.label.replace(/\s+/g, '-').toLowerCase()}`;
+            
             return `
-            <div class="glass rounded-xl p-4 border ${colors.border} ${colors.borderHover} transition-all">
+            <div id="${cardId}" class="glass rounded-xl p-4 border ${colors.border} ${colors.borderHover} transition-all ${canFilter ? 'cursor-pointer hover:scale-105 active:scale-95' : ''} ${isActive ? 'filter-active border-cyan-500/60 bg-cyan-500/10' : ''}" 
+                 ${canFilter ? `onclick="const el = document.getElementById('${cardId}'); applyGlobalFilter('${filterField}', '${card.label}', null, el);"` : ''}
+                 title="${canFilter ? (isActive ? 'Clique novamente para remover o filtro' : 'Clique para filtrar por ' + card.label) : ''}">
               <div class="flex items-center justify-between mb-2">
                 <div class="text-xs text-slate-400 font-medium">${card.label}</div>
+                <div class="flex items-center gap-2">
+                  ${isActive ? '<span class="text-cyan-400 text-sm">✓</span>' : ''}
                 <div class="text-xl">${card.icon}</div>
+                </div>
               </div>
               <div class="text-2xl font-bold ${colors.text}">${(card.value || 0).toLocaleString('pt-BR')}</div>
               ${card.percent !== undefined ? `<div class="text-xs text-slate-400 mt-1">${card.percent.toFixed(1)}%</div>` : ''}
+              ${canFilter ? `<div class="text-xs ${isActive ? 'text-cyan-400' : 'text-cyan-400 opacity-0 group-hover:opacity-100'} mt-2 transition-opacity">${isActive ? '✓ Filtro ativo - Clique para remover' : '🔍 Clique para filtrar'}</div>` : ''}
             </div>
           `;
           }).join('');
@@ -1936,534 +2088,124 @@
         }
       }
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadOverview() {
-        try {
-          // Carregar KPIs primeiro (mais importante para o usuário ver)
-          await loadKpis();
-          
-          // Buscar summary uma vez e reutilizar (evita duplicação)
-          let summaryData = null;
-          
-          // Fazer TODAS as requisições em PARALELO para melhor performance
-          const [
-            byMonth,
-            orgaos,
-            temas,
-            summary
-          ] = await Promise.all([
-            fetchJSONWithFilter('/api/aggregate/by-month'),
-            fetchJSONWithFilter('/api/aggregate/count-by?field=Orgaos'),
-            fetchJSONWithFilter('/api/aggregate/by-theme'),
-            fetchJSONWithFilter('/api/summary')
-          ]);
-          
-          summaryData = summary; // Guardar para reutilizar
-
-          // Processar dados de tendência mensal
-          const labels = byMonth.map(x => {
-            const ym = x.ym || x.month || '';
-            if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
-            const parts = ym.split('-');
-            if (parts.length < 2) return ym;
-            const [year, month] = parts;
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : ym;
-          });
-          const values = byMonth.map(x => x.count || 0);
-          if (window.chartTrend instanceof Chart) window.chartTrend.destroy();
-          const ctxTrend = document.getElementById('chartTrend')?.getContext('2d');
-          if (ctxTrend) {
-            window.chartTrend = new Chart(ctxTrend, {
-              type: 'line',
-              data: { labels, datasets: [{
-                  label: 'Manifestações',
-                  data: values,
-                  fill: true,
-                  borderColor: '#22d3ee',
-                  backgroundColor: gradient(ctxTrend, 'rgba(34,211,238,0.35)', 'rgba(34,211,238,0.05)'),
-                  tension: 0.35,
-                  borderWidth: 2,
-                pointRadius: 3
-              }]},
-              options: {
-                responsive: true,
-                plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: { display: false } },
-                scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } }
-              }
-            });
-            addChartClickHandler(window.chartTrend, (label, value) => showClickFeedback(null, label, value), 'chartTrend');
-          }
-
-          // Top Órgãos
-          const orgLabels = orgaos.slice(0, 10).map(x => x.key);
-          const orgValues = orgaos.slice(0, 10).map(x => x.count);
-          if (window.chartTopOrgaos instanceof Chart) window.chartTopOrgaos.destroy();
-          const ctxOrg = document.getElementById('chartTopOrgaos')?.getContext('2d');
-          if (ctxOrg) {
-            window.chartTopOrgaos = new Chart(ctxOrg, {
-              type: 'bar',
-              data: { labels: orgLabels, datasets: [{ data: orgValues, backgroundColor: 'rgba(167,139,250,0.7)', borderColor: 'rgba(167,139,250,1)', borderWidth: 1 }] },
-              options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
-            });
-            addChartClickHandler(window.chartTopOrgaos, (label, value) => showClickFeedback(null, label, value), 'chartTopOrgaos');
-          }
-
-          // Top Temas
-          const temaLabels = temas.slice(0, 10).map(x => x.tema);
-          const temaValues = temas.slice(0, 10).map(x => x.quantidade);
-          if (window.chartTopTemas instanceof Chart) window.chartTopTemas.destroy();
-          const ctxTemas = document.getElementById('chartTopTemas')?.getContext('2d');
-          if (ctxTemas) {
-            window.chartTopTemas = new Chart(ctxTemas, {
-              type: 'bar',
-              data: { labels: temaLabels, datasets: [{ data: temaValues, backgroundColor: 'rgba(34,211,238,0.7)', borderColor: 'rgba(34,211,238,1)', borderWidth: 1 }] },
-              options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
-            });
-            addChartClickHandler(window.chartTopTemas, (label, value) => showClickFeedback(null, label, value), 'chartTopTemas');
-          }
-
-          // Funil por status (reutiliza summary já carregado)
-          const statusCounts = (summaryData.statusCounts || []).slice(0, 6);
-          const funilLabels = statusCounts.map(s => s.status);
-          const funilValues = statusCounts.map(s => s.count);
-          if (window.chartFunnelStatus instanceof Chart) window.chartFunnelStatus.destroy();
-          const ctxFunnel = document.getElementById('chartFunnelStatus')?.getContext('2d');
-          if (ctxFunnel) {
-            window.chartFunnelStatus = new Chart(ctxFunnel, {
-              type: 'bar',
-              data: { labels: funilLabels, datasets: [{ data: funilValues, backgroundColor: ['#22d3ee','#a78bfa','#34d399','#f59e0b','#fb7185','#e879f9'] }] },
-              options: { responsive: true, plugins: { legend: { display: false }, tooltip: createEnhancedTooltip(), datalabels: createDataLabelsConfig() }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } }
-            });
-            addChartClickHandler(window.chartFunnelStatus, (label, value) => showClickFeedback(null, label, value), 'chartFunnelStatus');
-          }
-
-          // Sparks e deltas rápidos usando byMonth
-          const totalNow = values[values.length-1] || 0;
-          const totalPrev = values[values.length-2] || 0;
-          const delta = totalPrev ? (((totalNow-totalPrev)/totalPrev)*100).toFixed(1) : 0;
-          const deltaEl = document.getElementById('kpiTotalDelta');
-          if (deltaEl) deltaEl.textContent = `${delta>=0?'+':''}${delta}% vs mês anterior`;
-
-          // Desenhar sparks simples
-          const drawSpark = (canvasId, data, color) => {
-            const c = document.getElementById(canvasId);
-            if (!c) return;
-            const ctx = c.getContext('2d');
-            ctx.clearRect(0,0,c.width,c.height);
-            const w = c.width || c.offsetWidth; const h = c.height || 32;
-            const max = Math.max(...data,1); const step = w/(data.length-1 || 1);
-            ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-            data.forEach((v,i)=>{ const x=i*step; const y=h - (v/max)*h; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
-            ctx.stroke();
-          };
-          drawSpark('sparkTotal', values.slice(-12), '#22d3ee');
-
-          // Carregar insights com IA
-          await loadAIInsights();
-          
-          // Carregar Status Overview
-          await loadStatusOverview();
-          
-          // Insights básicos (fallback)
-          const insights = [];
-          if (orgaos.length) insights.push(`Maior volume: ${orgaos[0].key} (${orgaos[0].count.toLocaleString('pt-BR')}).`);
-          const upIdx = values.length>2 ? values[values.length-1] - values[values.length-2] : 0;
-          if (upIdx>0) insights.push(`Crescimento de ${upIdx.toLocaleString('pt-BR')} em relação ao mês anterior.`);
-          
-          // Buscar dados adicionais para insights básicos
-          Promise.all([
-            fetchJSONWithFilter('/api/aggregate/by-subject').catch(() => []),
-            fetchJSONWithFilter('/api/aggregate/count-by?field=UAC').catch(() => []),
-            fetchJSONWithFilter('/api/stats/average-time/stats').catch(() => null)
-          ]).then(([assuntos, unidades, tempoMedioStats]) => {
-            if (assuntos.length > 0) {
-              insights.push(`Assunto mais frequente: ${assuntos[0].assunto} (${assuntos[0].quantidade.toLocaleString('pt-BR')}).`);
-            }
-            if (unidades.length > 0) {
-              insights.push(`Unidade de cadastro com maior volume: ${unidades[0].key} (${unidades[0].count.toLocaleString('pt-BR')}).`);
-            }
-            if (tempoMedioStats && tempoMedioStats.media) {
-              insights.push(`Tempo Médio de Resposta global: ${tempoMedioStats.media.toFixed(1)} dias.`);
-            }
-            
-            const insightsBox = document.getElementById('insightsBox');
-            if (insightsBox) {
-              insightsBox.innerHTML = insights.length ? insights.map(t=>`<div class="text-slate-400">• ${t}</div>`).join('') : '<div class="text-slate-500">Sem insights básicos no momento.</div>';
-            }
-          });
-          
-          // Exibir insights iniciais enquanto carrega os adicionais
-          const insightsBox = document.getElementById('insightsBox');
-          if (insightsBox) {
-            insightsBox.innerHTML = insights.length ? insights.map(t=>`<div>• ${t}</div>`).join('') : '<div class="text-slate-500">Carregando insights...</div>';
-          }
-
-          // Heatmap dinâmico já conectado ao seletor (reuso existente)
-          const dimSel = document.getElementById('heatmapDim');
-          if (dimSel) dimSel.dispatchEvent(new Event('change'));
-          
-          // Carregar novos gráficos avançados
-          await loadAdvancedCharts();
-        } catch (e) {
-          console.error('Erro ao carregar Visão Geral', e);
+        if (window.data?.loadOverview) {
+          return await window.data.loadOverview();
         }
+        // Fallback se módulo não carregou
+        console.warn('Módulo data não carregado - loadOverview não disponível');
       }
 
-      // Função para carregar gráficos avançados (Sankey, TreeMap, Mapa)
-      async function loadAdvancedCharts() {
-        try {
-          // Carregar dados necessários em paralelo
-          const [temas, orgaos, status, bairros] = await Promise.all([
-            fetchJSONWithFilter('/api/aggregate/by-theme').catch(() => []),
-            fetchJSONWithFilter('/api/aggregate/count-by?field=Orgaos').catch(() => []),
-            fetchJSONWithFilter('/api/aggregate/count-by?field=status').catch(() => []),
-            fetchJSONWithFilter('/api/aggregate/count-by?field=Bairro').catch(() => [])
-          ]);
-          
-          // 1. Sankey Diagram: Tema → Órgão → Status
-          await loadSankeyChart(temas, orgaos, status);
-          
-          // 2. TreeMap: Proporção por Categoria
-          await loadTreeMapChart(temas);
-          
-          // 3. Mapa de Calor Geográfico: Bairros
-          await loadGeographicMap(bairros);
-        } catch (error) {
-          console.error('❌ Erro ao carregar gráficos avançados:', error);
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
+      async function loadAdvancedCharts(temas = null, orgaos = null) {
+        if (window.data?.loadAdvancedCharts) {
+          return await window.data.loadAdvancedCharts(temas, orgaos);
         }
+        console.warn('Módulo data não carregado - loadAdvancedCharts não disponível');
       }
 
-      // Função para criar Sankey Diagram
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadSankeyChart(temas, orgaos, status) {
-        try {
-          if (typeof Plotly === 'undefined') {
-            console.warn('Plotly.js não carregado');
-            return;
-          }
-          
-          // Buscar dados cruzados do backend
-          const flowData = await fetchJSONWithFilter('/api/aggregate/sankey-flow').catch(() => null);
-          
-          if (!flowData || !flowData.nodes || !flowData.links) {
-            // Fallback: usar dados agregados
-            const topTemas = temas.slice(0, 5);
-            const topOrgaos = orgaos.slice(0, 5);
-            const topStatus = status.slice(0, 3);
-            
-            const labels = [
-              ...topTemas.map(t => t.tema || 'Não informado'),
-              ...topOrgaos.map(o => o.key || 'Não informado'),
-              ...topStatus.map(s => s.key || 'Não informado')
-            ];
-            
-            const temaIndices = topTemas.map((_, i) => i);
-            const orgaoIndices = topOrgaos.map((_, i) => topTemas.length + i);
-            const statusIndices = topStatus.map((_, i) => topTemas.length + topOrgaos.length + i);
-            
-            const source = [];
-            const target = [];
-            const value = [];
-            
-            topTemas.forEach((tema, tIdx) => {
-              topOrgaos.forEach((orgao, oIdx) => {
-                source.push(temaIndices[tIdx]);
-                target.push(orgaoIndices[oIdx]);
-                value.push(Math.round((tema.quantidade || 0) * (orgao.count || 0) / 1000));
-              });
-            });
-            
-            topOrgaos.forEach((orgao, oIdx) => {
-              topStatus.forEach((st, sIdx) => {
-                source.push(orgaoIndices[oIdx]);
-                target.push(statusIndices[sIdx]);
-                value.push(Math.round((orgao.count || 0) * (st.count || 0) / 1000));
-              });
-            });
-            
-            const data = [{
-              type: 'sankey',
-              node: {
-                pad: 15,
-                thickness: 20,
-                line: { color: '#0f172a', width: 0.5 },
-                label: labels,
-                color: [
-                  ...topTemas.map(() => '#22d3ee'),
-                  ...topOrgaos.map(() => '#a78bfa'),
-                  ...topStatus.map(() => '#34d399')
-                ]
-              },
-              link: {
-                source: source,
-                target: target,
-                value: value,
-                color: ['rgba(34,211,238,0.4)']
-              }
-            }];
-            
-            const layout = {
-              title: '',
-              font: { color: '#94a3b8', size: 12 },
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent'
-            };
-            
-            Plotly.newPlot('sankeyChart', data, layout, { responsive: true, displayModeBar: false });
-            return;
-          }
-          
-          // Usar dados reais do backend
-          const allNodes = [
-            ...flowData.nodes.temas,
-            ...flowData.nodes.orgaos,
-            ...flowData.nodes.statuses
-          ];
-          
-          const nodeMap = new Map();
-          allNodes.forEach((node, idx) => {
-            nodeMap.set(node, idx);
-          });
-          
-          const source = [];
-          const target = [];
-          const value = [];
-          
-          flowData.links.forEach(link => {
-            const srcIdx = nodeMap.get(link.source);
-            const tgtIdx = nodeMap.get(link.target);
-            if (srcIdx !== undefined && tgtIdx !== undefined) {
-              source.push(srcIdx);
-              target.push(tgtIdx);
-              value.push(link.value);
-            }
-          });
-          
-          const nodeColors = [
-            ...flowData.nodes.temas.map(() => '#22d3ee'),
-            ...flowData.nodes.orgaos.map(() => '#a78bfa'),
-            ...flowData.nodes.statuses.map(() => '#34d399')
-          ];
-          
-          const data = [{
-            type: 'sankey',
-            node: {
-              pad: 15,
-              thickness: 20,
-              line: { color: '#0f172a', width: 0.5 },
-              label: allNodes,
-              color: nodeColors
-            },
-            link: {
-              source: source,
-              target: target,
-              value: value,
-              color: ['rgba(34,211,238,0.4)']
-            }
-          }];
-          
-          const layout = {
-            title: '',
-            font: { color: '#94a3b8', size: 12 },
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent'
-          };
-          
-          Plotly.newPlot('sankeyChart', data, layout, { responsive: true, displayModeBar: false });
-        } catch (error) {
-          console.error('❌ Erro ao criar Sankey:', error);
-          document.getElementById('sankeyChart').innerHTML = '<div class="p-4 text-center text-slate-400">Erro ao carregar gráfico Sankey</div>';
+        if (window.data?.loadSankeyChart) {
+          return await window.data.loadSankeyChart(temas, orgaos, status);
         }
+        console.warn('Módulo data não carregado - loadSankeyChart não disponível');
       }
+      
+      // Função _loadSankeyChart_OLD removida - código migrado para scripts/data.js
 
-      // Função para criar TreeMap
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadTreeMapChart(temas) {
-        try {
-          if (typeof Plotly === 'undefined') {
-            console.warn('Plotly.js não carregado');
-            return;
-          }
-          
-          // Preparar dados para TreeMap (top 20 temas)
-          const topTemas = temas.slice(0, 20);
-          
-          const data = [{
-            type: 'treemap',
-            labels: topTemas.map(t => t.tema || 'Não informado'),
-            values: topTemas.map(t => t.quantidade || 0),
-            parents: topTemas.map(() => ''),
-            textinfo: 'label+value',
-            textfont: { color: '#ffffff', size: 12 },
-            marker: {
-              colors: topTemas.map((_, i) => {
-                const colors = ['#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#e879f9', '#8b5cf6', '#06b6d4'];
-                return colors[i % colors.length];
-              }),
-              line: { color: '#0f172a', width: 2 }
-            }
-          }];
-          
-          const layout = {
-            title: '',
-            font: { color: '#94a3b8' },
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent',
-            margin: { l: 0, r: 0, t: 0, b: 0 }
-          };
-          
-          Plotly.newPlot('treemapChart', data, layout, { responsive: true, displayModeBar: false });
-        } catch (error) {
-          console.error('❌ Erro ao criar TreeMap:', error);
-          document.getElementById('treemapChart').innerHTML = '<div class="p-4 text-center text-slate-400">Erro ao carregar TreeMap</div>';
+        if (window.data?.loadTreeMapChart) {
+          return await window.data.loadTreeMapChart(temas);
         }
+        console.warn('Módulo data não carregado - loadTreeMapChart não disponível');
       }
+      
+      // Função _loadTreeMapChart_OLD removida - código migrado para scripts/data.js
 
-      // Função para criar Mapa de Calor Geográfico
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadGeographicMap(bairros) {
-        try {
-          // Usar fallback direto (lista visual) já que Mapbox requer token válido
-          const topBairros = (bairros || []).slice(0, 15);
-          
-          if (topBairros.length === 0) {
-            document.getElementById('mapChart').innerHTML = '<div class="p-4 text-center text-slate-400">Nenhum dado de bairro disponível</div>';
-            return;
-          }
-          
-          const maxCount = Math.max(...topBairros.map(b => b.count || 0), 1);
-          
-          // Criar visualização de mapa de calor usando gráfico de barras horizontais
-          const labels = topBairros.map(b => b.key || 'Não informado');
-          const values = topBairros.map(b => b.count || 0);
-          
-          // Usar Chart.js para criar um gráfico de barras horizontais estilizado como mapa
-          const ctx = document.createElement('canvas');
-          ctx.id = 'mapChartCanvas';
-          const container = document.getElementById('mapChart');
-          container.innerHTML = '';
-          container.appendChild(ctx);
-          
-          if (window.chartMap instanceof Chart) window.chartMap.destroy();
-          
-          window.chartMap = new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [{
-                label: 'Manifestações',
-                data: values,
-                backgroundColor: values.map(v => {
-                  const intensity = v / maxCount;
-                  if (intensity > 0.7) return 'rgba(239,68,68,0.8)'; // Vermelho - alto
-                  if (intensity > 0.4) return 'rgba(167,139,250,0.8)'; // Violeta - médio
-                  return 'rgba(34,211,238,0.8)'; // Cyan - baixo
-                }),
-                borderColor: values.map(v => {
-                  const intensity = v / maxCount;
-                  if (intensity > 0.7) return 'rgba(239,68,68,1)';
-                  if (intensity > 0.4) return 'rgba(167,139,250,1)';
-                  return 'rgba(34,211,238,1)';
-                }),
-                borderWidth: 1
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              indexAxis: 'y',
-              plugins: {
-                legend: { display: false },
-                tooltip: createEnhancedTooltip(),
-                datalabels: {
-                  ...createDataLabelsConfig(),
-                  anchor: 'start',
-                  align: 'end'
-                }
-              },
-              scales: {
-                x: { 
-                  beginAtZero: true, 
-                  ticks: { color: '#94a3b8' }, 
-                  grid: { color: 'rgba(255,255,255,0.05)' } 
-                },
-                y: { 
-                  ticks: { color: '#94a3b8', font: { size: 10 } }, 
-                  grid: { color: 'rgba(255,255,255,0.05)' } 
-                }
-              }
-            }
-          });
-        } catch (error) {
-          console.error('❌ Erro ao criar mapa geográfico:', error);
-          // Fallback: mostrar lista simples
-          const topBairros = (bairros || []).slice(0, 10);
-          const maxCount = Math.max(...topBairros.map(b => b.count || 0), 1);
-          document.getElementById('mapChart').innerHTML = `
-            <div class="p-4">
-              <div class="text-slate-400 text-sm mb-4">Top Bairros por Volume</div>
-              <div class="space-y-2">
-                ${topBairros.map((b, idx) => `
-                  <div class="flex items-center gap-3">
-                    <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-                    <div class="flex-1">
-                      <div class="text-sm text-slate-300">${b.key || 'Não informado'}</div>
-                      <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-gradient-to-r from-emerald-500 to-cyan-500" style="width: ${((b.count || 0) / maxCount) * 100}%"></div>
-                      </div>
-                    </div>
-                    <div class="text-sm font-bold text-emerald-300">${(b.count || 0).toLocaleString('pt-BR')}</div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
+        if (window.data?.loadGeographicMap) {
+          return await window.data.loadGeographicMap(bairros);
         }
+        console.warn('Módulo data não carregado - loadGeographicMap não disponível');
       }
+      
+      // Função _loadGeographicMap_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       function buildHeatmap(containerId, labels, rows) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-        
-        // Verificar se há dados válidos
-        if (!rows || rows.length === 0 || !labels || labels.length === 0) {
-          container.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">Nenhum dado disponível para o heatmap</div>';
-          return;
+        if (window.data?.buildHeatmap) {
+          return window.data.buildHeatmap(containerId, labels, rows);
         }
-        
-        try {
-          const validRows = rows.filter(r => r && r.values && Array.isArray(r.values));
-          if (validRows.length === 0) {
-            container.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">Nenhum dado válido para o heatmap</div>';
-            return;
-          }
-          
-          const max = Math.max(1, ...validRows.flatMap(r => r.values || []));
-        const toBg = (v) => {
-            const numValue = Number(v) || 0;
-            const alpha = numValue === 0 ? 0.05 : Math.min(0.9, 0.15 + 0.75 * (numValue / max));
-          return `rgba(34,211,238,${alpha})`;
-        };
-          
-        let html = '<div class="min-w-max"><table class="text-xs w-full">';
-          html += '<thead><tr><th class="px-2 py-1 text-left text-slate-400">Chave</th>' + labels.map(l=>`<th class="px-2 py-1 text-slate-400">${l || ''}</th>`).join('') + '</tr></thead>';
-          html += '<tbody>' + validRows.map(r=>{
-            const cells = (r.values || []).map(v=>`<td class="px-2 py-1" style="background:${toBg(v)}">${v || 0}</td>`).join('');
-            return `<tr><td class="px-2 py-1 text-slate-300">${r.key || 'Não informado'}</td>${cells}</tr>`;
-        }).join('') + '</tbody></table></div>';
-        container.innerHTML = html;
-        } catch (error) {
-          console.error('Erro ao construir heatmap:', error);
-          container.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">Erro ao carregar heatmap</div>';
+        console.warn('Módulo data não carregado - buildHeatmap não disponível');
+      }
+      
+      // Função _buildHeatmap_OLD removida - código migrado para scripts/data.js
+
+      // Funções movidas para scripts/data.js
+      // Aliases para compatibilidade
+      async function loadKpisWithData(sum, dailyData, byMonth = null) {
+        if (window.data?.loadKpisWithData) {
+          return await window.data.loadKpisWithData(sum, dailyData, byMonth);
         }
+        // Fallback
+        if (!byMonth) {
+          byMonth = await fetchJSONWithFilter('/api/aggregate/by-month');
+        }
+        await renderKpis(sum, dailyData, byMonth);
       }
 
       async function loadKpis(defaultCountField, defaultDateField) {
-        const [sum, dailyData] = await Promise.all([
+        if (window.data?.loadKpis) {
+          return await window.data.loadKpis(defaultCountField, defaultDateField);
+        }
+        // Fallback
+        const [sum, dailyData, byMonth] = await Promise.all([
           fetchJSONWithFilters('/api/summary'),
-          fetchJSONWithFilters('/api/aggregate/by-day').catch(() => [])
+          fetchJSONWithFilters('/api/aggregate/by-day').catch(() => []),
+          fetchJSONWithFilter('/api/aggregate/by-month')
         ]);
+        await renderKpis(sum, dailyData, byMonth);
+      }
+
+      // Implementação real de renderKpis (extraída para evitar loop)
+      async function renderKpisImplementation(sum, dailyData, byMonth) {
+        // Atualizar KPIs e adicionar handlers de clique
+        const kpiTotalEl = document.getElementById('kpiTotal');
+        const kpi7El = document.getElementById('kpi7');
+        const kpi30El = document.getElementById('kpi30');
         
-        document.getElementById('kpiTotal').textContent = (sum.total ?? 0).toLocaleString('pt-BR');
-        document.getElementById('kpi7').textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
-        document.getElementById('kpi30').textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
+        if (kpiTotalEl) {
+          kpiTotalEl.textContent = (sum.total ?? 0).toLocaleString('pt-BR');
+          // KPI Total não filtra, mas pode ser clicável para limpar filtros
+          const kpiTotalCard = kpiTotalEl.closest('.glass');
+          if (kpiTotalCard && window.globalFilters.filters.length > 0) {
+            kpiTotalCard.classList.add('cursor-pointer', 'hover:scale-105', 'transition-transform');
+            kpiTotalCard.onclick = () => {
+              if (window.globalFilters.filters.length > 0) {
+                clearGlobalFilters();
+              }
+            };
+            kpiTotalCard.title = 'Clique para limpar filtros';
+          }
+        }
+        
+        if (kpi7El) {
+          kpi7El.textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
+        }
+        
+        if (kpi30El) {
+          kpi30El.textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
+        }
         
         // Calcular deltas e sparklines para últimos 7 e 30 dias
         if (dailyData && dailyData.length > 0) {
@@ -2573,7 +2315,13 @@
                   const idx = elements[0].index;
                   const label = window.chartStatus.data.labels[idx];
                   const value = window.chartStatus.data.datasets[0].data[idx];
-                  showClickFeedback(null, label, value);
+                  // Aplicar filtro inteligente ao clicar (com toggle)
+                  const virtualElement = { 
+                    classList: { add: () => {}, remove: () => {} },
+                    setAttribute: () => {},
+                    removeAttribute: () => {}
+                  };
+                  applyGlobalFilter('Status', label, 'chartStatus', virtualElement);
                 }
               }
             } 
@@ -2658,8 +2406,7 @@
           // Remover skeleton após carregar
           document.getElementById('chartStatus').classList.remove('skeleton');
         }
-        // Série temporal mensal 12M
-          const byMonth = await fetchJSONWithFilter('/api/aggregate/by-month');
+        // Série temporal mensal 12M (usar byMonth já obtido)
         const monthCanvas = document.getElementById('chartMonth');
         if (monthCanvas) {
         const ctxM = monthCanvas.getContext('2d');
@@ -2702,12 +2449,12 @@
         addChartClickHandler(window.chartMonth, (label, value) => showClickFeedback(null, label, value), 'chartMonth');
         // Remover skeleton após carregar
         monthCanvas.classList.remove('skeleton');
-        }
-
-        // SLA chart
-        const sla = await fetchJSON('/api/sla/summary');
-        const chartSlaEl = document.getElementById('chartSla');
-        if (!chartSlaEl) return;
+      }
+      
+      // SLA chart
+      const sla = await fetchJSON('/api/sla/summary');
+      const chartSlaEl = document.getElementById('chartSla');
+      if (chartSlaEl) {
         const ctxS = chartSlaEl.getContext('2d');
         if (window.chartSla instanceof Chart) window.chartSla.destroy();
         window.chartSla = new Chart(ctxS, {
@@ -2736,18 +2483,46 @@
         });
         addChartClickHandler(window.chartSla, (label, value) => showClickFeedback(null, label, value));
         // Remover skeleton após carregar
-        document.getElementById('chartSla').classList.remove('skeleton');
+        chartSlaEl.classList.remove('skeleton');
       }
+      } // Fim da função renderKpisImplementation
+      
+      // Função wrapper renderKpis (evita loop infinito)
+      async function renderKpis(sum, dailyData, byMonth) {
+        // Se já estamos em uma chamada do módulo, executar implementação direta
+        if (window._renderKpisCalling) {
+          return await renderKpisImplementation(sum, dailyData, byMonth);
+        }
+        
+        // Se módulo data.js está disponível, chamar ele (que vai chamar a implementação)
+        if (window.data?.renderKpis) {
+          return await window.data.renderKpis(sum, dailyData, byMonth);
+        }
+        
+        // Fallback: executar implementação direta
+        return await renderKpisImplementation(sum, dailyData, byMonth);
+      }
+      
+      // Exportar implementação para uso direto
+      window.renderKpisImplementation = renderKpisImplementation;
 
-      let currentTableData = [];
-      let currentTableHeaders = [];
+      // Variáveis movidas para scripts/data.js - usar as globais do módulo
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadTable(limit = 50) {
+        if (window.data?.loadTable) {
+          return await window.data.loadTable(limit);
+        }
+        // Fallback
         try {
           const pageSize = limit === 'all' ? 10000 : parseInt(limit) || 50;
           const data = await fetchJSON(`/api/records?page=1&pageSize=${pageSize}`);
         const rows = data.rows || [];
-          currentTableData = rows;
+          // Usar variável global do módulo data.js
+          if (window.data) {
+            window.data.currentTableData = rows;
+          }
           
         const tbody = document.getElementById('tbody');
         const thead = document.getElementById('thead');
@@ -3042,118 +2817,27 @@
 
       let chartCount, chartTime;
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadCountChart(field) {
-        try {
-          console.log('Carregando gráfico de contagem para campo:', field);
-          const data = await fetchJSON(`/api/aggregate/count-by?field=${encodeURIComponent(field)}`);
-          console.log('Dados recebidos:', data.length, 'itens');
-          const labels = data.slice(0, 20).map(x => x.key);
-          const values = data.slice(0, 20).map(x => x.count);
-          const ctx = document.getElementById('chartCount');
-          if (!ctx) {
-            console.warn('Canvas chartCount não encontrado (pode não estar na página atual)');
-            return;
-          }
-          const ctx2d = ctx.getContext('2d');
-          if (chartCount) chartCount.destroy();
-        chartCount = new Chart(ctx2d, {
-          type: 'bar',
-          data: { labels, datasets: [{
-            label: `Contagem por ${field}`,
-            data: values,
-            borderRadius: 8,
-            backgroundColor: gradient(ctx2d, 'rgba(34,211,238,0.8)', 'rgba(167,139,250,0.2)'),
-            borderColor: 'rgba(34,211,238,1)',
-            borderWidth: 1
-          }]},
-          options: {
-            responsive: true,
-            animation: false,
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', false)
-            },
-            scales: {
-              x: { 
-                grid: { color: 'rgba(255,255,255,0.06)' },
-                ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }
-              },
-              y: { 
-                grid: { color: 'rgba(255,255,255,0.06)' },
-                ticks: { color: '#94a3b8' },
-                beginAtZero: true
-              }
-            }
-          }
-        });
-        addChartClickHandler(chartCount, (label, value) => showClickFeedback(null, label, value));
-        document.getElementById('chartCount').classList.remove('skeleton');
-        console.log('Gráfico de contagem criado com sucesso');
-        } catch (error) {
-          console.error('Erro em loadCountChart:', error);
-          throw error;
+        if (window.data?.loadCountChart) {
+          return await window.data.loadCountChart(field);
         }
+        console.warn('Módulo data não carregado - loadCountChart não disponível');
       }
+      
+      // Função _loadCountChart_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadTimeChart(field) {
-        try {
-          console.log('Carregando gráfico de série temporal para campo:', field);
-          const data = await fetchJSON(`/api/aggregate/time-series?field=${encodeURIComponent(field)}`);
-          console.log('Dados recebidos:', data.length, 'itens');
-          const labels = data.map(x => x.date);
-          const values = data.map(x => x.count);
-          const ctx = document.getElementById('chartTime');
-          if (!ctx) {
-            console.warn('Canvas chartTime não encontrado (pode não estar na página atual)');
-            return;
-          }
-          const ctx2d = ctx.getContext('2d');
-          if (chartTime) chartTime.destroy();
-        chartTime = new Chart(ctx2d, {
-          type: 'line',
-          data: { labels, datasets: [{
-            label: `Registros por dia (${field})`,
-            data: values,
-            fill: true,
-            borderWidth: 2,
-            tension: 0.35,
-            borderColor: 'rgba(52,211,153,1)',
-            backgroundColor: gradient(ctx2d, 'rgba(52,211,153,0.35)', 'rgba(52,211,153,0.05)'),
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            pointBackgroundColor: 'rgba(52,211,153,1)',
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2
-          }]},
-          options: {
-            responsive: true,
-            animation: false,
-            plugins: { 
-              legend: { labels: { color: '#cbd5e1' } },
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                display: function(context) {
-                  // Mostrar apenas em alguns pontos para não poluir
-                  return context.dataIndex % Math.ceil(context.dataset.data.length / 10) === 0;
-                }
-              }
-            },
-            scales: {
-              x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 } },
-              y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94a3b8' }, beginAtZero: true }
-            }
-          }
-        });
-        addChartClickHandler(chartTime, (label, value) => showClickFeedback(null, label, value));
-        document.getElementById('chartTime').classList.remove('skeleton');
-        console.log('Gráfico de série temporal criado com sucesso');
-        } catch (error) {
-          console.error('Erro em loadTimeChart:', error);
-          throw error;
+        if (window.data?.loadTimeChart) {
+          return await window.data.loadTimeChart(field);
         }
+        console.warn('Módulo data não carregado - loadTimeChart não disponível');
       }
+      
+      // Função _loadTimeChart_OLD removida - código migrado para scripts/data.js
 
 
       // Heatmap main interactions
@@ -3193,9 +2877,14 @@
       }
       
       // Eventos dos botões de exportação
+      // Event listeners movidos para scripts/main.js
+      // Inicialização agora é feita pelo main.js via initEventListeners()
+      // Manter código aqui apenas como fallback se main.js não carregar
+      if (!window.main) {
       const btnExportCSV = document.getElementById('btnExportCSV');
       if (btnExportCSV) {
         btnExportCSV.addEventListener('click', async () => {
+            const exportMenu = document.getElementById('exportMenu');
           if (exportMenu) exportMenu.classList.add('hidden');
           await exportCSV();
         });
@@ -3204,6 +2893,7 @@
       const btnExportExcel = document.getElementById('btnExportExcel');
       if (btnExportExcel) {
         btnExportExcel.addEventListener('click', async () => {
+            const exportMenu = document.getElementById('exportMenu');
           if (exportMenu) exportMenu.classList.add('hidden');
           await exportExcel();
         });
@@ -3212,6 +2902,7 @@
       const btnExportChartData = document.getElementById('btnExportChartData');
       if (btnExportChartData) {
         btnExportChartData.addEventListener('click', async () => {
+            const exportMenu = document.getElementById('exportMenu');
           if (exportMenu) exportMenu.classList.add('hidden');
           await exportChartData();
         });
@@ -3220,17 +2911,22 @@
       const btnExportSummary = document.getElementById('btnExportSummary');
       if (btnExportSummary) {
         btnExportSummary.addEventListener('click', async () => {
+            const exportMenu = document.getElementById('exportMenu');
           if (exportMenu) exportMenu.classList.add('hidden');
           await exportSummary();
         });
       }
       
-      // Atualizar tabela quando mudar o limite
       const exportLimit = document.getElementById('exportLimit');
       if (exportLimit) {
         exportLimit.addEventListener('change', (e) => {
+            if (window.data?.loadTable) {
+              window.data.loadTable(e.target.value);
+            } else if (window.loadTable) {
           loadTable(e.target.value);
+            }
         });
+        }
       }
 
       // initial load - otimizado: carregar em paralelo e de forma progressiva
@@ -3695,27 +3391,28 @@
         }
       }
 
-      // SPA Page switch
+      // Navegação SPA movida para scripts/main.js
+      // Inicialização agora é feita pelo main.js via initNavigation()
+      // Manter código aqui apenas como fallback se main.js não carregar
+      if (!window.main) {
       const sideMenu = document.getElementById('sideMenu');
-      const pages = document.getElementById('pages').children;
+        const pages = document.getElementById('pages');
+        if (sideMenu && pages) {
       sideMenu.querySelectorAll('div[data-page]').forEach(btn => {
         btn.onclick = () => {
           sideMenu.querySelectorAll('div[data-page]').forEach(b=>b.classList.remove('active'));
           btn.classList.add('active');
-          Array.from(pages).forEach(page => page.style.display = 'none');
+              Array.from(pages.children).forEach(page => page.style.display = 'none');
           const pageId = 'page-'+btn.getAttribute('data-page');
           const targetPage = document.getElementById(pageId);
           if (targetPage) {
             targetPage.style.display='block';
           }
-          // Carrega conteúdo específico
           const pageName = btn.getAttribute('data-page');
           loadSection(pageName);
-          // Atualizar indicador de filtro global se houver
-          if (window.updateGlobalFilterIndicator) {
-            updateGlobalFilterIndicator();
+              if (window.filters?.updateFilterIndicator) {
+                window.filters.updateFilterIndicator();
           }
-          // Re-inicializar chat se necessário
           if (pageName === 'cora-chat') {
             setTimeout(() => {
               console.log('🔄 Re-inicializando página do chat após navegação');
@@ -3726,745 +3423,173 @@
           }
         };
       });
+        }
+      }
       // Função para carregar a página Home (não precisa carregar dados)
+      // Funções movidas para scripts/main.js
+      // Aliases para compatibilidade
       function loadHome() {
-        // A página home é estática, não precisa carregar dados
+        if (window.main?.loadHome) {
+          return window.main.loadHome();
+        }
+        // Fallback
         console.log('🏠 Página Home carregada');
       }
       
+      // Função movida para scripts/main.js
+      // Alias otimizado
       function loadSection(page) {
-        if(page==='home') loadHome();
-        if(page==='main') loadOverview();
-        if(page==='cora-chat') loadCoraChat();
-        if(page==='orgao-mes') loadOrgaoMes();
-        if(page==='tempo-medio') loadTempoMedio();
-        if(page==='tema') loadTema();
-        if(page==='assunto') loadAssunto();
-        if(page==='cadastrante') loadCadastrante();
-        if(page==='reclamacoes') loadReclamacoes();
-        if(page==='projecao-2026') loadProjecao2026();
-        if(page==='secretaria') loadSecretaria();
-        if(page==='secretarias-distritos') loadSecretariasDistritos();
-        if(page && page.startsWith('unit-')) {
-          const unitName = page.replace('unit-', '').replace(/-/g, ' ');
-          loadUnit(unitName);
+        if (window.main?.loadSection) {
+          return window.main.loadSection(page);
         }
-        if(page==='tipo') loadTipo();
-        if(page==='setor') loadSetor();
-        if(page==='categoria') loadCategoria();
-        if(page==='status') loadStatusPage();
-        if(page==='bairro') loadBairro();
-        if(page==='uac') loadUAC();
-        if(page==='responsavel') loadResponsavel();
-        if(page==='canal') loadCanal();
-        if(page==='prioridade') loadPrioridade();
+        console.warn('Módulo main não carregado - loadSection não disponível');
       }
       // Funções para carregar cada seção temática
         enableCharts(); // chamada para garantir que gráficos não quebrem
       
-      // Carregar Home automaticamente ao abrir a página
+      // Função movida para scripts/main.js
+      // Alias para compatibilidade
       function initPage() {
-        // Garantir que todas as outras páginas estão ocultas
-        const allPages = document.getElementById('pages').children;
-        Array.from(allPages).forEach(page => {
+        if (window.main?.initPage) {
+          return window.main.initPage();
+        }
+        // Fallback - código original mantido temporariamente
+        if (window.globalFilters?.filters?.length > 0) {
+          if (window.filters?.updateFilterIndicator) {
+            window.filters.updateFilterIndicator();
+          }
+          if (window.filters?.updatePageTitle) {
+            window.filters.updatePageTitle();
+          }
+          console.log('🔍 Filtros restaurados:', window.globalFilters.filters);
+        }
+        
+        const allPages = document.getElementById('pages');
+        if (allPages) {
+          Array.from(allPages.children).forEach(page => {
           if (page.id !== 'page-home') {
             page.style.display = 'none';
           }
         });
+        }
         
-        // Garantir que a página home está visível
         const homePage = document.getElementById('page-home');
         if (homePage) {
           homePage.style.display = 'block';
         }
         
-        // Garantir que o botão "Home" está ativo
+        const sideMenu = document.getElementById('sideMenu');
+        if (sideMenu) {
         const homeBtn = sideMenu.querySelector('[data-page="home"]');
         if (homeBtn) {
           sideMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active'));
           homeBtn.classList.add('active');
+          }
         }
       }
       
+      // Inicialização agora é feita pelo main.js
+      // Manter aqui apenas para compatibilidade se main.js não carregar
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initPage);
+        document.addEventListener('DOMContentLoaded', () => {
+          if (!window.main) {
+            initPage();
+          }
+        });
       } else {
-        // DOM já carregado
+        if (!window.main) {
         initPage();
+        }
       }
       
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadOrgaoMes() {
-        // Carregar dados de secretarias/órgãos (com filtro se houver)
-        const dataOrgaos = await fetchJSONWithFilter('/api/aggregate/count-by?field=Secretaria');
-        const totalOrgaos = dataOrgaos.length;
-        document.getElementById('totalOrgaos').textContent = totalOrgaos;
-        
-        // Criar lista visual de órgãos (estilo Looker Studio)
-        const listaOrgaos = document.getElementById('listaOrgaos');
-        const maxValue = Math.max(...dataOrgaos.map(d => d.count), 1);
-        listaOrgaos.innerHTML = dataOrgaos.map(item => {
-          const width = (item.count / maxValue) * 100;
-          return `
-            <div class="flex items-center gap-3 py-2 border-b border-white/5">
-              <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate">${item.key}</div>
-                <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
-                </div>
-              </div>
-              <div class="text-lg font-bold text-cyan-300 min-w-[60px] text-right">${item.count.toLocaleString('pt-BR')}</div>
-            </div>
-          `;
-        }).join('');
-        
-        // Carregar dados mensais (com filtro se houver)
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
-        const labels = dataMensal.map(x => {
-          const ym = x.ym || x.month || '';
-          if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
-          const parts = ym.split('-');
-          if (parts.length < 2) return ym;
-          const [year, month] = parts;
-          if (!year || !month) return ym;
-          const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          const monthIndex = parseInt(month) - 1;
-          return monthIndex >= 0 && monthIndex < 12 ? `${monthNames[monthIndex]}. de ${year}` : ym;
-        });
-        const values = dataMensal.map(x => x.count);
-        
-        // Criar gráfico de barras mensal
-        if (window.chartOrgaoMes instanceof Chart) window.chartOrgaoMes.destroy();
-        const ctx = document.getElementById('chartOrgaoMes').getContext('2d');
-        window.chartOrgaoMes = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Manifestações',
-              data: values,
-              backgroundColor: 'rgba(167,139,250,0.7)',
-              borderColor: 'rgba(167,139,250,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            indexAxis: 'y',
-            plugins: {
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end'
-              }
-            },
-            scales: {
-              x: {
-                beginAtZero: true,
-                ticks: { color: '#94a3b8' },
-                grid: { color: 'rgba(255,255,255,0.05)' }
-              },
-              y: {
-                ticks: { color: '#94a3b8' },
-                grid: { color: 'rgba(255,255,255,0.05)' }
-              }
-            }
-          }
-        });
-        addChartClickHandler(window.chartOrgaoMes, (label, value) => showClickFeedback(null, label, value), 'chartOrgaoMes');
-        
-        // Atualizar KPI total
-        const total = dataOrgaos.reduce((sum, item) => sum + item.count, 0);
-        document.getElementById('totalOrgaoMes').textContent = total.toLocaleString('pt-BR');
-        
-        // Carregar e exibir tabela Por Órgão e Mês
-        const dataOrgaoMes = await fetchJSONWithFilter('/api/aggregate/count-by-orgao-mes').catch(() => []);
-        if (dataOrgaoMes && dataOrgaoMes.length > 0) {
-          const orgaosUnicos = [...new Set(dataOrgaoMes.map(d => d.orgao))].sort();
-          const mesesUnicos = [...new Set(dataOrgaoMes.map(d => d.month))].sort();
-          
-          let html = '<table class="w-full text-sm border-collapse">';
-          html += '<thead><tr class="border-b border-white/10">';
-          html += '<th class="px-4 py-3 text-left text-slate-300 font-semibold">Órgão</th>';
-          mesesUnicos.forEach(mes => {
-            if (!mes || typeof mes !== 'string') {
-              html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${mes || 'N/A'}</th>`;
-            } else {
-              const parts = mes.split('-');
-              if (parts.length >= 2) {
-                const [year, month] = parts;
-                const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-                html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${monthNames[parseInt(month) - 1]}/${year.slice(-2)}</th>`;
-              } else {
-                html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${mes}</th>`;
-              }
-            }
-          });
-          html += '<th class="px-4 py-3 text-center text-slate-300 font-semibold">Total</th>';
-          html += '</tr></thead><tbody>';
-          
-          orgaosUnicos.forEach(orgao => {
-            let totalOrgao = 0;
-            html += '<tr class="border-b border-white/5 hover:bg-white/5">';
-            html += `<td class="px-4 py-2 text-slate-200 font-medium">${orgao || 'Não informado'}</td>`;
-            mesesUnicos.forEach(mes => {
-              const item = dataOrgaoMes.find(d => d.orgao === orgao && d.month === mes);
-              const count = item ? (item.count || 0) : 0;
-              totalOrgao += count;
-              html += `<td class="px-4 py-2 text-center text-slate-300">${count.toLocaleString('pt-BR')}</td>`;
-            });
-            html += `<td class="px-4 py-2 text-center text-cyan-300 font-bold">${totalOrgao.toLocaleString('pt-BR')}</td>`;
-            html += '</tr>';
-          });
-          
-          // Linha de totais
-          html += '<tr class="border-t-2 border-cyan-500/50 bg-cyan-500/10 font-bold">';
-          html += '<td class="px-4 py-3 text-cyan-300">TOTAL</td>';
-          mesesUnicos.forEach(mes => {
-            const totalMes = dataOrgaoMes.filter(d => d.month === mes).reduce((sum, d) => sum + (d.count || 0), 0);
-            html += `<td class="px-4 py-3 text-center text-cyan-300">${totalMes.toLocaleString('pt-BR')}</td>`;
-          });
-          html += `<td class="px-4 py-3 text-center text-cyan-300">${total.toLocaleString('pt-BR')}</td>`;
-          html += '</tr>';
-          
-          html += '</tbody></table>';
-          document.getElementById('tabelaOrgaoMes').innerHTML = html;
+        if (window.data?.loadOrgaoMes) {
+          return await window.data.loadOrgaoMes();
         }
+        console.warn('Módulo data não carregado - loadOrgaoMes não disponível');
       }
       
+      // Função _loadOrgaoMes_OLD removida - código migrado para scripts/data.js
+      
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadSecretariasDistritos() {
-        try {
-          // Carregar dados de distritos e secretarias
-          const distritosData = await fetchJSON('/api/distritos').catch(() => null);
-          
-          if (!distritosData || !distritosData.distritos) {
-            document.getElementById('listaDistritos').innerHTML = '<div class="text-center text-slate-400 py-4">Erro ao carregar dados de distritos</div>';
-            return;
-          }
-          
-          const distritos = distritosData.distritos;
-          const estatisticas = distritosData.estatisticas || {};
-          
-          // Renderizar lista de distritos
-          const listaDistritos = document.getElementById('listaDistritos');
-          listaDistritos.innerHTML = Object.entries(distritos).map(([nome, info]) => `
-            <div class="distrito-item p-4 rounded-lg border border-white/10 hover:border-cyan-400/50 hover:bg-white/5 cursor-pointer transition-all" 
-                 data-distrito="${nome}" 
-                 data-code="${info.code || ''}">
-              <div class="flex items-center justify-between">
-                <div>
-                  <div class="font-semibold text-cyan-300">${nome}</div>
-                  <div class="text-xs text-slate-400 mt-1">
-                    ${info.bairros ? info.bairros.length + ' bairros' : ''}
-                    ${estatisticas.secretariasPorDistrito && estatisticas.secretariasPorDistrito[nome] 
-                      ? ' • ' + estatisticas.secretariasPorDistrito[nome] + ' secretarias' 
-                      : ''}
-                  </div>
-                </div>
-                <div class="text-2xl">${info.code || '📍'}</div>
-              </div>
-            </div>
-          `).join('');
-          
-          // Adicionar event listeners para seleção de distrito
-          document.querySelectorAll('.distrito-item').forEach(item => {
-            item.addEventListener('click', async () => {
-              // Remover seleção anterior
-              document.querySelectorAll('.distrito-item').forEach(i => {
-                i.classList.remove('border-cyan-400', 'bg-cyan-500/10');
-                i.classList.add('border-white/10');
-              });
-              
-              // Marcar como selecionado
-              item.classList.remove('border-white/10');
-              item.classList.add('border-cyan-400', 'bg-cyan-500/10');
-              
-              const distritoNome = item.dataset.distrito;
-              const distritoCode = item.dataset.code;
-              
-              // Atualizar nome do distrito selecionado
-              document.getElementById('distritoSelecionadoNome').textContent = distritoNome;
-              
-              // Carregar secretarias do distrito
-              await loadSecretariasPorDistrito(distritoNome, distritoCode);
-            });
-          });
-          
-          // Renderizar estatísticas
-          const estatisticasDiv = document.getElementById('estatisticasDistritos');
-          estatisticasDiv.innerHTML = `
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Total de Secretarias</div>
-              <div class="text-2xl font-bold text-cyan-300">${estatisticas.totalSecretarias || 0}</div>
-            </div>
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Total de Distritos</div>
-              <div class="text-2xl font-bold text-violet-300">${estatisticas.totalDistritos || 0}</div>
-            </div>
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Total de Bairros</div>
-              <div class="text-2xl font-bold text-emerald-300">${estatisticas.totalBairros || 0}</div>
-            </div>
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Média Secretarias/Distrito</div>
-              <div class="text-2xl font-bold text-amber-300">${estatisticas.totalSecretarias && estatisticas.totalDistritos 
-                ? (estatisticas.totalSecretarias / estatisticas.totalDistritos).toFixed(1) 
-                : 0}</div>
-            </div>
-          `;
-          
-          // Criar gráfico de distribuição de secretarias por distrito
-          if (estatisticas.secretariasPorDistrito) {
-            const distritoLabels = Object.keys(estatisticas.secretariasPorDistrito);
-            const distritoValues = Object.values(estatisticas.secretariasPorDistrito);
-            
-            if (window.chartSecretariasDistritos instanceof Chart) window.chartSecretariasDistritos.destroy();
-            const ctx = document.getElementById('chartSecretariasDistritos')?.getContext('2d');
-            if (ctx) {
-              window.chartSecretariasDistritos = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                  labels: distritoLabels.map(d => d.replace('º Distrito - ', '').split('(')[0].trim()),
-                  datasets: [{
-                    label: 'Quantidade de Secretarias',
-                    data: distritoValues,
-                    backgroundColor: 'rgba(245,158,11,0.7)',
-                    borderColor: 'rgba(245,158,11,1)',
-                    borderWidth: 1
-                  }]
-                },
-                options: {
-                  responsive: true,
-                  plugins: {
-                    legend: { display: false },
-                    tooltip: createEnhancedTooltip(),
-                    datalabels: createDataLabelsConfig()
-                  },
-                  scales: {
-                    y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                  }
-                }
-              });
-            }
-          }
-        } catch (error) {
-          console.error('❌ Erro ao carregar secretarias e distritos:', error);
-          document.getElementById('listaDistritos').innerHTML = '<div class="text-center text-slate-400 py-4">Erro ao carregar dados</div>';
+        if (window.data?.loadSecretariasDistritos) {
+          return await window.data.loadSecretariasDistritos();
         }
+        console.warn('Módulo data não carregado - loadSecretariasDistritos não disponível');
       }
       
+      // Função _loadSecretariasDistritos_OLD removida - código migrado para scripts/data.js
+      
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadSecretariasPorDistrito(distritoNome, distritoCode) {
-        try {
-          // Buscar secretarias do distrito
-          const response = await fetch(`/api/secretarias/${encodeURIComponent(distritoCode || distritoNome)}`);
-          const data = await response.json().catch(() => ({ secretarias: [] }));
-          
-          const secretarias = data.secretarias || [];
-          const listaSecretarias = document.getElementById('listaSecretarias');
-          
-          if (secretarias.length === 0) {
-            listaSecretarias.innerHTML = '<div class="text-center text-slate-400 py-8">Nenhuma secretaria encontrada para este distrito</div>';
-            return;
-          }
-          
-          listaSecretarias.innerHTML = secretarias.map(sec => `
-            <div class="glass rounded-xl p-4 border border-white/10 hover:border-violet-400/50 transition-all">
-              <div class="flex items-start justify-between gap-4">
-                <div class="flex-1">
-                  <h4 class="font-semibold text-violet-300 mb-2">${sec.name || 'Secretaria'}</h4>
-                  ${sec.address ? `<div class="text-sm text-slate-400 mb-1">📍 ${sec.address}</div>` : ''}
-                  ${sec.phone ? `<div class="text-sm text-slate-400 mb-1">📞 ${sec.phone}</div>` : ''}
-                  ${sec.email ? `<div class="text-sm text-slate-400 mb-1">✉️ ${sec.email}</div>` : ''}
-                  ${sec.workingHours ? `<div class="text-sm text-slate-400 mb-2">🕐 ${sec.workingHours}</div>` : ''}
-                  ${sec.services && sec.services.length > 0 ? `
-                    <div class="mt-3">
-                      <div class="text-xs text-slate-500 mb-1">Serviços oferecidos:</div>
-                      <div class="flex flex-wrap gap-1">
-                        ${sec.services.map(s => `<span class="px-2 py-1 text-xs rounded bg-slate-800/50 text-slate-300">${s}</span>`).join('')}
-                      </div>
-                    </div>
-                  ` : ''}
-                </div>
-              </div>
-            </div>
-          `).join('');
-        } catch (error) {
-          console.error('❌ Erro ao carregar secretarias do distrito:', error);
-          document.getElementById('listaSecretarias').innerHTML = '<div class="text-center text-slate-400 py-8">Erro ao carregar secretarias</div>';
+        if (window.data?.loadSecretariasPorDistrito) {
+          return await window.data.loadSecretariasPorDistrito(distritoNome, distritoCode);
         }
+        console.warn('Módulo data não carregado - loadSecretariasPorDistrito não disponível');
       }
+      
+      // Função _loadSecretariasPorDistrito_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadSecretaria() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Secretaria');
-        const labels = data.slice(0, 10).map(x=>x.key);
-        const values = data.slice(0, 10).map(x=>x.count);
-        if (window.chartSecretaria instanceof Chart) window.chartSecretaria.destroy();
-        const ctx = document.getElementById('chartSecretaria').getContext('2d');
-        window.chartSecretaria = new Chart(ctx, {
-          type:'bar', 
-          data:{labels,datasets:[{label:'Secretaria',data:values,backgroundColor:'#22d3ee',borderColor:'#22d3ee',borderWidth:1}]},
-          options: {
-            responsive:true, 
-            animation:false, 
-            plugins:{
-              legend:{display:false},
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', false)
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          }
-        });
-        addChartClickHandler(window.chartSecretaria, (label, value) => showClickFeedback(null, label, value), 'chartSecretaria');
-        document.getElementById('rankSecretaria').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
-        
-        // Gráfico mensal
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
-        if (dataMensal && dataMensal.length > 0) {
-          const labelsMes = dataMensal.map(x => {
-            const [year, month] = (x.ym || x.month || '').split('-');
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
-          });
-          const valuesMes = dataMensal.map(x => x.count || 0);
-          
-          if (window.chartSecretariaMes instanceof Chart) window.chartSecretariaMes.destroy();
-          const ctxMes = document.getElementById('chartSecretariaMes')?.getContext('2d');
-          if (ctxMes) {
-            window.chartSecretariaMes = new Chart(ctxMes, {
-              type: 'bar',
-              data: {
-                labels: labelsMes,
-                datasets: [{
-                  label: 'Manifestações',
-                  data: valuesMes,
-                  backgroundColor: 'rgba(34,211,238,0.7)',
-                  borderColor: 'rgba(34,211,238,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: {
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'bar', false)
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
+        if (window.data?.loadSecretaria) {
+          return await window.data.loadSecretaria();
         }
+        console.warn('Módulo data não carregado - loadSecretaria não disponível');
       }
+      
+      // Função _loadSecretaria_OLD removida - código migrado para scripts/data.js
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadTipo() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Tipo');
-        const labels = data.slice(0, 10).map(x=>x.key);
-        const values = data.slice(0, 10).map(x=>x.count);
-        if(window.chartTipo instanceof Chart) window.chartTipo.destroy();
-        const ctx = document.getElementById('chartTipo').getContext('2d');
-        window.chartTipo = new Chart(ctx, {
-          type:'pie', 
-          data:{labels,datasets:[{label:'Tipo Manifestação',data:values,backgroundColor:['#c084fc','#22d3ee','#facc15','#fb7185']}]}, 
-          options:{
-            responsive:true,
-            animation:false,
-            plugins: {
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(true, 'pie')
-            }
-          } 
-        });
-        addChartClickHandler(window.chartTipo, (label, value) => showClickFeedback(null, label, value), 'chartTipo');
-        document.getElementById('rankTipo').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
+        if (window.data?.loadTipo) {
+          return await window.data.loadTipo();
+        }
+        console.warn('Módulo data não carregado - loadTipo não disponível');
       }
+      
+      // Função _loadTipo_OLD removida - código migrado para scripts/data.js
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadSetor() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Setor');
-        const labels = data.slice(0, 10).map(x=>x.key);
-        const values = data.slice(0, 10).map(x=>x.count);
-        if(window.chartSetor instanceof Chart) window.chartSetor.destroy();
-        const ctx = document.getElementById('chartSetor').getContext('2d');
-        window.chartSetor = new Chart(ctx, {
-          type:'bar', 
-          data:{labels,datasets:[{label:'Setor',data:values,backgroundColor:'#34d399',borderColor:'#34d399',borderWidth:1}]}, 
-          options:{
-            responsive:true,
-            animation:false, 
-            indexAxis:'y', 
-            plugins:{
-              legend:{display:false},
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end'
-              }
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          }
-        });
-        addChartClickHandler(window.chartSetor, (label, value) => showClickFeedback(null, label, value), 'chartSetor');
-        document.getElementById('rankSetor').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
+        if (window.data?.loadSetor) {
+          return await window.data.loadSetor();
+        }
+        console.warn('Módulo data não carregado - loadSetor não disponível');
       }
+      
+      // Função _loadSetor_OLD removida - código migrado para scripts/data.js
       function enableCharts() {
         // dummy para garantir que não quebre ao carregar direto
       }
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadCategoria() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Categoria');
-        const labels = data.slice(0, 15).map(x=>x.key);
-        const values = data.slice(0, 15).map(x=>x.count);
-        if (window.chartCategoria instanceof Chart) window.chartCategoria.destroy();
-        const ctx = document.getElementById('chartCategoria').getContext('2d');
-        window.chartCategoria = new Chart(ctx, { 
-          type:'bar', 
-          data:{ labels, datasets:[{ label:'Categoria', data: values, backgroundColor:'#f472b6', borderColor:'#f472b6', borderWidth:1 }] }, 
-          options:{ 
-            responsive:true,
-            indexAxis:'y',
-            plugins:{ 
-              legend:{ display:false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', true)
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          } 
-        });
-        addChartClickHandler(window.chartCategoria, (label, value) => showClickFeedback(null, label, value), 'chartCategoria');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Categoria').catch(() => ({ labels: [], rows: [] }));
-        buildHeatmap('heatmapCategoria', hm.labels || [], hm.rows || []);
-        
-        // Gráfico mensal
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
-        if (dataMensal && dataMensal.length > 0) {
-          const labelsMes = dataMensal.map(x => {
-            const [year, month] = (x.ym || x.month || '').split('-');
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
-          });
-          const valuesMes = dataMensal.map(x => x.count || 0);
-          
-          if (window.chartCategoriaMes instanceof Chart) window.chartCategoriaMes.destroy();
-          const ctxMes = document.getElementById('chartCategoriaMes')?.getContext('2d');
-          if (ctxMes) {
-            window.chartCategoriaMes = new Chart(ctxMes, {
-              type: 'bar',
-              data: {
-                labels: labelsMes,
-                datasets: [{
-                  label: 'Manifestações',
-                  data: valuesMes,
-                  backgroundColor: 'rgba(244,114,182,0.7)',
-                  borderColor: 'rgba(244,114,182,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'bar', false)
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
+        if (window.data?.loadCategoria) {
+          return await window.data.loadCategoria();
         }
+        console.warn('Módulo data não carregado - loadCategoria não disponível');
       }
+      
+      // Função _loadCategoria_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadStatusPage() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=status');
-        if (!data || data.length === 0) {
-          console.warn('⚠️ Nenhum dado de status disponível');
-          const ctx = document.getElementById('chartStatusPage')?.getContext('2d');
-          if (ctx && window.chartStatusPage instanceof Chart) {
-            window.chartStatusPage.destroy();
-            window.chartStatusPage = null;
-          }
-          return;
+        if (window.data?.loadStatusPage) {
+          return await window.data.loadStatusPage();
         }
-        
-        const labels = data.map(x => x.key || 'Não informado');
-        const values = data.map(x => x.count || 0);
-        
-        if (window.chartStatusPage instanceof Chart) window.chartStatusPage.destroy();
-        const ctx = document.getElementById('chartStatusPage')?.getContext('2d');
-        if (ctx) {
-          const colors = ['#38bdf8', '#22d3ee', '#fbbf24', '#34d399', '#fb7185', '#e879f9', '#a78bfa', '#8b5cf6', '#06b6d4', '#10b981'];
-        window.chartStatusPage = new Chart(ctx, { 
-          type:'doughnut', 
-            data:{ 
-              labels, 
-              datasets:[{ 
-                data: values, 
-                backgroundColor: labels.map((_, i) => colors[i % colors.length])
-              }] 
-            }, 
-          options:{ 
-            responsive:true,
-            plugins: {
-                legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(true, 'doughnut')
-            }
-          } 
-        });
-        addChartClickHandler(window.chartStatusPage, (label, value) => showClickFeedback(null, label, value), 'chartStatusPage');
-        }
-        
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Status').catch(() => ({ labels: [], rows: [] }));
-        buildHeatmap('heatmapStatus', hm.labels || [], hm.rows || []);
-        
-        // Gráfico Status por Mês
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/count-by-status-mes').catch(() => []);
-        if (dataMensal && dataMensal.length > 0) {
-          const statuses = [...new Set(dataMensal.map(d => d.status))];
-          const meses = [...new Set(dataMensal.map(d => d.month))].sort();
-          const colors = ['#38bdf8', '#22d3ee', '#fbbf24', '#34d399', '#fb7185', '#e879f9', '#a78bfa', '#8b5cf6', '#06b6d4', '#10b981'];
-          
-          const datasets = statuses.slice(0, 10).map((status, idx) => ({
-            label: status || 'Não informado',
-            data: meses.map(month => {
-              const item = dataMensal.find(d => d.month === month && d.status === status);
-              return item ? (item.count || 0) : 0;
-            }),
-            backgroundColor: colors[idx % colors.length] + '80',
-            borderColor: colors[idx % colors.length],
-            borderWidth: 1
-          }));
-          
-          const labelsMes = meses.map(m => {
-            if (!m || typeof m !== 'string') return m || 'Data inválida';
-            const parts = m.split('-');
-            if (parts.length < 2) return m;
-            const [year, month] = parts;
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : m;
-          });
-          
-          if (window.chartStatusMes instanceof Chart) window.chartStatusMes.destroy();
-          const ctxMes = document.getElementById('chartStatusMes')?.getContext('2d');
-          if (ctxMes) {
-            window.chartStatusMes = new Chart(ctxMes, {
-              type: 'line',
-              data: {
-                labels: labelsMes,
-                datasets: datasets
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: { display: false }
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
-        }
-        
-        // Aba Por Tema
-        const dataTema = await fetchJSONWithFilter('/api/aggregate/count-by?field=tema').catch(() => []);
-        if (dataTema && dataTema.length > 0) {
-          const labelsTema = dataTema.slice(0, 15).map(x => x.key || 'Não informado');
-          const valuesTema = dataTema.slice(0, 15).map(x => x.count || 0);
-          
-          if (window.chartStatusTema instanceof Chart) window.chartStatusTema.destroy();
-          const ctxTema = document.getElementById('chartStatusTema')?.getContext('2d');
-          if (ctxTema) {
-            window.chartStatusTema = new Chart(ctxTema, {
-              type: 'bar',
-              data: {
-                labels: labelsTema,
-                datasets: [{
-                  label: 'Quantidade',
-                  data: valuesTema,
-                  backgroundColor: 'rgba(56,189,248,0.7)',
-                  borderColor: 'rgba(56,189,248,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                indexAxis: 'y',
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'bar', true)
-                },
-                scales: {
-                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
-          
-          const hmTema = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Categoria').catch(() => ({ labels: [], rows: [] }));
-          buildHeatmap('heatmapStatusTema', hmTema.labels || [], hmTema.rows || []);
-        }
-        
-        // Aba Por Órgão
-        const dataOrgao = await fetchJSONWithFilter('/api/aggregate/count-by?field=Orgaos').catch(() => []);
-        if (dataOrgao && dataOrgao.length > 0) {
-          const labelsOrgao = dataOrgao.slice(0, 15).map(x => x.key || 'Não informado');
-          const valuesOrgao = dataOrgao.slice(0, 15).map(x => x.count || 0);
-          
-          if (window.chartStatusOrgao instanceof Chart) window.chartStatusOrgao.destroy();
-          const ctxOrgao = document.getElementById('chartStatusOrgao')?.getContext('2d');
-          if (ctxOrgao) {
-            window.chartStatusOrgao = new Chart(ctxOrgao, {
-              type: 'bar',
-              data: {
-                labels: labelsOrgao,
-                datasets: [{
-                  label: 'Quantidade',
-                  data: valuesOrgao,
-                  backgroundColor: 'rgba(34,211,238,0.7)',
-                  borderColor: 'rgba(34,211,238,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                indexAxis: 'y',
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'bar', true)
-                },
-                scales: {
-                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
-          
-          const hmOrgao = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Secretaria').catch(() => ({ labels: [], rows: [] }));
-          buildHeatmap('heatmapStatusOrgao', hmOrgao.labels || [], hmOrgao.rows || []);
-        }
+        console.warn('Módulo data não carregado - loadStatusPage não disponível');
       }
+      
+      // Função _loadStatusPage_OLD removida - código migrado para scripts/data.js
       
       // Gerenciar abas na página de Status
       if (!window.statusTabsInitialized) {
@@ -4500,887 +3625,93 @@
         }, 100);
       }
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadBairro() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Bairro');
-        const labels = data.slice(0, 15).map(x=>x.key);
-        const values = data.slice(0, 15).map(x=>x.count);
-        if (window.chartBairro instanceof Chart) window.chartBairro.destroy();
-        const ctx = document.getElementById('chartBairro').getContext('2d');
-        window.chartBairro = new Chart(ctx, { 
-          type:'bar', 
-          data:{ labels, datasets:[{ label:'Bairro', data: values, backgroundColor:'#f59e0b', borderColor:'#f59e0b', borderWidth:1 }] }, 
-          options:{ 
-            responsive:true, 
-            plugins:{ 
-              legend:{ display:false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end'
-              }
-            }, 
-            indexAxis:'y',
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          } 
-        });
-        addChartClickHandler(window.chartBairro, (label, value) => showClickFeedback(null, label, value), 'chartBairro');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Bairro').catch(() => ({ labels: [], rows: [] }));
-        buildHeatmap('heatmapBairro', hm.labels || [], hm.rows || []);
-        
-        // Gráfico mensal
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
-        if (dataMensal && dataMensal.length > 0) {
-          const labelsMes = dataMensal.map(x => {
-            const [year, month] = (x.ym || x.month || '').split('-');
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
-          });
-          const valuesMes = dataMensal.map(x => x.count || 0);
-          
-          if (window.chartBairroMes instanceof Chart) window.chartBairroMes.destroy();
-          const ctxMes = document.getElementById('chartBairroMes')?.getContext('2d');
-          if (ctxMes) {
-            window.chartBairroMes = new Chart(ctxMes, {
-              type: 'bar',
-              data: {
-                labels: labelsMes,
-                datasets: [{
-                  label: 'Manifestações',
-                  data: valuesMes,
-                  backgroundColor: 'rgba(245,158,11,0.7)',
-                  borderColor: 'rgba(245,158,11,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'bar', false)
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
+        if (window.data?.loadBairro) {
+          return await window.data.loadBairro();
         }
+        console.warn('Módulo data não carregado - loadBairro não disponível');
       }
+      
+      // Função _loadBairro_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadUAC() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=UAC');
-        const labels = data.slice(0, 15).map(x=>x.key);
-        const values = data.slice(0, 15).map(x=>x.count);
-        if (window.chartUAC instanceof Chart) window.chartUAC.destroy();
-        const ctx = document.getElementById('chartUAC').getContext('2d');
-        window.chartUAC = new Chart(ctx, { 
-          type:'bar', 
-          data:{ labels, datasets:[{ label:'UAC', data: values, backgroundColor:'#22d3ee', borderColor:'#22d3ee', borderWidth:1 }] }, 
-          options:{ 
-            responsive:true, 
-            animation:false, 
-            indexAxis:'y', 
-            plugins:{
-              legend:{display:false},
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end'
-              }
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          } 
-        });
-        addChartClickHandler(window.chartUAC, (label, value) => showClickFeedback(null, label, value), 'chartUAC');
-        document.getElementById('rankUAC').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=UAC');
-        buildHeatmap('heatmapUAC', hm.labels, hm.rows);
+        if (window.data?.loadUAC) {
+          return await window.data.loadUAC();
+        }
+        console.warn('Módulo data não carregado - loadUAC não disponível');
       }
+      
+      // Função _loadUAC_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadResponsavel() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Responsavel');
-        const labels = data.slice(0, 15).map(x=>x.key);
-        const values = data.slice(0, 15).map(x=>x.count);
-        if (window.chartResponsavel instanceof Chart) window.chartResponsavel.destroy();
-        const ctx = document.getElementById('chartResponsavel').getContext('2d');
-        window.chartResponsavel = new Chart(ctx, { 
-          type:'bar', 
-          data:{ labels, datasets:[{ label:'Responsável', data: values, backgroundColor:'#a78bfa', borderColor:'#a78bfa', borderWidth:1 }] }, 
-          options:{ 
-            responsive:true, 
-            animation:false, 
-            indexAxis:'y', 
-            plugins:{
-              legend:{display:false},
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end'
-              }
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          } 
-        });
-        addChartClickHandler(window.chartResponsavel, (label, value) => showClickFeedback(null, label, value), 'chartResponsavel');
-        document.getElementById('rankResponsavel').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-violet-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Responsavel');
-        buildHeatmap('heatmapResponsavel', hm.labels, hm.rows);
+        if (window.data?.loadResponsavel) {
+          return await window.data.loadResponsavel();
+        }
+        console.warn('Módulo data não carregado - loadResponsavel não disponível');
       }
+      
+      // Função _loadResponsavel_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadCanal() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Canal');
-        const labels = data.map(x=>x.key);
-        const values = data.map(x=>x.count);
-        if (window.chartCanal instanceof Chart) window.chartCanal.destroy();
-        const ctx = document.getElementById('chartCanal').getContext('2d');
-        window.chartCanal = new Chart(ctx, { 
-          type:'doughnut', 
-          data:{ labels, datasets:[{ data: values, backgroundColor:['#34d399','#22d3ee','#fbbf24','#a78bfa','#fb7185','#e879f9'] }] }, 
-          options:{ 
-            responsive:true, 
-            plugins:{
-              legend:{display:true, position:'right'},
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(true),
-                anchor: 'center',
-                align: 'center'
-              }
-            }
-          } 
-        });
-        addChartClickHandler(window.chartCanal, (label, value) => showClickFeedback(null, label, value), 'chartCanal');
-        document.getElementById('rankCanal').innerHTML=data.slice(0,10).map(e=>`<li><span class='text-emerald-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Canal');
-        buildHeatmap('heatmapCanal', hm.labels, hm.rows);
+        if (window.data?.loadCanal) {
+          return await window.data.loadCanal();
+        }
+        console.warn('Módulo data não carregado - loadCanal não disponível');
       }
+      
+      // Função _loadCanal_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadPrioridade() {
-        const data = await fetchJSONWithFilter('/api/aggregate/count-by?field=Prioridade');
-        const labels = data.map(x=>x.key);
-        const values = data.map(x=>x.count);
-        if (window.chartPrioridade instanceof Chart) window.chartPrioridade.destroy();
-        const ctx = document.getElementById('chartPrioridade').getContext('2d');
-        // Cores específicas por prioridade: Alta=vermelho, Média=amarelo, Baixa=verde
-        const colors = labels.map(l => {
-          const low = l.toLowerCase();
-          if(low.includes('alta')) return '#fb7185';
-          if(low.includes('média') || low.includes('media')) return '#fbbf24';
-          if(low.includes('baixa')) return '#34d399';
-          return '#94a3b8';
-        });
-        window.chartPrioridade = new Chart(ctx, { 
-          type:'bar', 
-          data:{ labels, datasets:[{ label:'Prioridade', data: values, backgroundColor: colors, borderColor: colors, borderWidth: 1 }] }, 
-          options:{ 
-            responsive:true, 
-            plugins:{
-              legend:{display:false},
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', false)
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          } 
-        });
-        addChartClickHandler(window.chartPrioridade, (label, value) => showClickFeedback(null, label, value), 'chartPrioridade');
-        document.getElementById('rankPrioridade').innerHTML=data.map(e=>`<li><span class='text-rose-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count.toLocaleString('pt-BR')}</span></li>`).join('');
-        const hm = await fetchJSONWithFilter('/api/aggregate/heatmap?dim=Prioridade');
-        buildHeatmap('heatmapPrioridade', hm.labels, hm.rows);
+        if (window.data?.loadPrioridade) {
+          return await window.data.loadPrioridade();
+        }
+        console.warn('Módulo data não carregado - loadPrioridade não disponível');
       }
+      
+      // Função _loadPrioridade_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadTempoMedio() {
-        try {
-          console.log('📊 Carregando dados de tempo médio...');
-          // Carregar todos os dados em paralelo
-          const [data, stats, dataDia, dataSemana, dataMes, dataUnidade, dataUnidadeMes] = await Promise.all([
-            fetchJSONWithFilter('/api/stats/average-time').catch(e => { console.error('Erro ao carregar average-time:', e); return []; }),
-            fetchJSONWithFilter('/api/stats/average-time/stats').catch(e => { console.error('Erro ao carregar stats:', e); return null; }),
-            fetchJSONWithFilter('/api/stats/average-time/by-day').catch(e => { console.error('Erro ao carregar by-day:', e); return []; }),
-            fetchJSONWithFilter('/api/stats/average-time/by-week').catch(e => { console.error('Erro ao carregar by-week:', e); return []; }),
-            fetchJSONWithFilter('/api/stats/average-time/by-month').catch(e => { console.error('Erro ao carregar by-month:', e); return []; }),
-            fetchJSONWithFilter('/api/stats/average-time/by-unit').catch(e => { console.error('Erro ao carregar by-unit:', e); return []; }),
-            fetchJSONWithFilter('/api/stats/average-time/by-month-unit').catch(e => { console.error('Erro ao carregar by-month-unit:', e); return []; })
-          ]);
-          
-          console.log('📊 Dados carregados:', {
-            data: data?.length || 0,
-            stats: stats ? 'OK' : 'null',
-            dataDia: dataDia?.length || 0,
-            dataSemana: dataSemana?.length || 0,
-            dataMes: dataMes?.length || 0
-          });
-          
-          // Atualizar estatísticas gerais
-          if (stats) {
-            document.getElementById('statMedia').textContent = stats.media || '0';
-            document.getElementById('statMediana').textContent = stats.mediana || '0';
-            document.getElementById('statMinimo').textContent = stats.minimo || '0';
-            document.getElementById('statMaximo').textContent = stats.maximo || '0';
-          }
-          
-          // Verificar se há dados
-          if (!data || !Array.isArray(data) || data.length === 0) {
-            console.warn('⚠️ Nenhum dado de tempo médio disponível');
-            document.getElementById('chartTempoMedio').getContext('2d').clearRect(0, 0, 0, 0);
-            document.getElementById('listaTempoMedio').innerHTML = '<div class="text-slate-400 text-center py-8">Nenhum dado disponível. Verifique se há registros com data de criação e conclusão.</div>';
-            return;
-          }
-          
-          const labels = data.map(x => x.org);
-          const values = data.map(x => x.dias);
-          
-          // Gráfico de barras horizontais por órgão
-          if (window.chartTempoMedio instanceof Chart) window.chartTempoMedio.destroy();
-          const ctx = document.getElementById('chartTempoMedio').getContext('2d');
-          window.chartTempoMedio = new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [{
-                label: 'Dias',
-                data: values,
-                backgroundColor: 'rgba(34,211,238,0.7)',
-                borderColor: 'rgba(34,211,238,1)',
-                borderWidth: 1
-              }]
-            },
-            options: {
-              responsive: true,
-              indexAxis: 'y',
-              plugins: { 
-                legend: { display: false },
-                tooltip: createEnhancedTooltip(),
-                datalabels: {
-                  ...createDataLabelsConfig(),
-                  anchor: 'start',
-                  align: 'end'
-                }
-              },
-              scales: {
-                x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-              }
-            }
-          });
-          addChartClickHandler(window.chartTempoMedio, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedio');
-          
-          // Lista de ranking
-          document.getElementById('listaTempoMedio').innerHTML = data.map((item, idx) => `
-            <div class="flex items-center gap-3 py-2 border-b border-white/5">
-              <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-              <div class="flex-1 text-sm text-slate-300 truncate">${item.org}</div>
-              <div class="text-lg font-bold text-cyan-300 min-w-[60px] text-right">${item.dias.toFixed(2)}</div>
-            </div>
-          `).join('');
-          
-          // Gráfico por Dia (linha)
-          if (dataDia && Array.isArray(dataDia) && dataDia.length > 0) {
-            console.log('📊 Dados por dia:', dataDia.slice(0, 5));
-            const labelsDia = dataDia.map(x => {
-              if (!x.date) return 'Data inválida';
-              try {
-                const d = new Date(x.date);
-                if (isNaN(d.getTime())) return 'Data inválida';
-                return `${d.getDate()}/${d.getMonth() + 1}`;
-              } catch (e) {
-                return 'Data inválida';
-              }
-            });
-            const valuesDia = dataDia.map(x => x.dias || 0);
-            
-            if (window.chartTempoMedioDia instanceof Chart) window.chartTempoMedioDia.destroy();
-            const ctxDia = document.getElementById('chartTempoMedioDia').getContext('2d');
-            window.chartTempoMedioDia = new Chart(ctxDia, {
-              type: 'line',
-              data: {
-                labels: labelsDia,
-                datasets: [{
-                  label: 'Tempo Médio (dias)',
-                  data: valuesDia,
-                  borderColor: 'rgba(34,211,238,1)',
-                  backgroundColor: 'rgba(34,211,238,0.1)',
-                  borderWidth: 2,
-                  fill: true,
-                  tension: 0.4
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'line', false)
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-            addChartClickHandler(window.chartTempoMedioDia, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioDia');
-          }
-          
-          // Gráfico por Semana (linha)
-          if (dataSemana && Array.isArray(dataSemana) && dataSemana.length > 0) {
-            console.log('📊 Dados por semana:', dataSemana.slice(0, 5));
-            const labelsSemana = dataSemana.map(x => {
-              if (!x.week || typeof x.week !== 'string') return 'Semana inválida';
-              return x.week.replace('W', ' Semana ');
-            });
-            const valuesSemana = dataSemana.map(x => x.dias || 0);
-            
-            if (window.chartTempoMedioSemana instanceof Chart) window.chartTempoMedioSemana.destroy();
-            const ctxSemana = document.getElementById('chartTempoMedioSemana').getContext('2d');
-            window.chartTempoMedioSemana = new Chart(ctxSemana, {
-              type: 'line',
-              data: {
-                labels: labelsSemana,
-                datasets: [{
-                  label: 'Tempo Médio (dias)',
-                  data: valuesSemana,
-                  borderColor: 'rgba(167,139,250,1)',
-                  backgroundColor: 'rgba(167,139,250,0.1)',
-                  borderWidth: 2,
-                  fill: true,
-                  tension: 0.4
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'line', false)
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-            addChartClickHandler(window.chartTempoMedioSemana, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioSemana');
-          }
-          
-          // Gráfico por Mês (barra)
-          if (dataMes && Array.isArray(dataMes) && dataMes.length > 0) {
-            console.log('📊 Dados por mês:', dataMes.slice(0, 5));
-            const labelsMes = dataMes.map(x => {
-              const monthStr = x.month || x.ym || '';
-              if (!monthStr || typeof monthStr !== 'string') return monthStr || 'Data inválida';
-              const parts = monthStr.split('-');
-              if (parts.length < 2) return monthStr;
-              const [year, month] = parts;
-              const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-              return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : monthStr;
-            });
-            const valuesMes = dataMes.map(x => x.dias || 0);
-            
-            if (window.chartTempoMedioMes instanceof Chart) window.chartTempoMedioMes.destroy();
-            const ctxMes = document.getElementById('chartTempoMedioMes').getContext('2d');
-            window.chartTempoMedioMes = new Chart(ctxMes, {
-              type: 'bar',
-              data: {
-                labels: labelsMes,
-                datasets: [{
-                  label: 'Tempo Médio (dias)',
-                  data: valuesMes,
-                  backgroundColor: 'rgba(167,139,250,0.7)',
-                  borderColor: 'rgba(167,139,250,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'bar', false)
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-            addChartClickHandler(window.chartTempoMedioMes, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioMes');
-          }
-          
-          // Gráfico por Unidade de Cadastro
-          if (dataUnidade && dataUnidade.length > 0) {
-            const labelsUnidade = dataUnidade.map(x => x.unit || 'Não informado');
-            const valuesUnidade = dataUnidade.map(x => x.dias || 0);
-            
-            if (window.chartTempoMedioUnidade instanceof Chart) window.chartTempoMedioUnidade.destroy();
-            const ctxUnidade = document.getElementById('chartTempoMedioUnidade').getContext('2d');
-            window.chartTempoMedioUnidade = new Chart(ctxUnidade, {
-              type: 'bar',
-              data: {
-                labels: labelsUnidade,
-                datasets: [{
-                  label: 'Dias',
-                  data: valuesUnidade,
-                  backgroundColor: 'rgba(167,139,250,0.7)',
-                  borderColor: 'rgba(167,139,250,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                indexAxis: 'y',
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: {
-                    ...createDataLabelsConfig(),
-                    anchor: 'start',
-                    align: 'end'
-                  }
-                },
-                scales: {
-                  x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-            addChartClickHandler(window.chartTempoMedioUnidade, (label, value) => showClickFeedback(null, label, value), 'chartTempoMedioUnidade');
-          }
-          
-          // Gráfico por Unidade de Cadastro por Mês
-          if (dataUnidadeMes && dataUnidadeMes.length > 0) {
-            // Agrupar dados por mês e criar datasets para cada unidade
-            // Filtrar meses inválidos antes de processar
-            const meses = [...new Set(dataUnidadeMes.map(d => d.month).filter(m => m && typeof m === 'string' && m.includes('-')))].sort();
-            const unidades = [...new Set(dataUnidadeMes.map(d => d.unit).filter(u => u))];
-            const colors = ['#34d399', '#10b981', '#059669', '#047857', '#065f46', '#064e3b', '#a78bfa', '#8b5cf6', '#7c3aed', '#6d28d9'];
-            
-            const datasets = unidades.slice(0, 10).map((unit, idx) => ({
-              label: unit || 'Não informado',
-              data: meses.map(month => {
-                const item = dataUnidadeMes.find(d => d.month === month && d.unit === unit);
-                return item ? (item.dias || 0) : 0;
-              }),
-              backgroundColor: colors[idx % colors.length] + '80',
-              borderColor: colors[idx % colors.length],
-              borderWidth: 1
-            }));
-            
-            const labelsMes = meses.map(m => {
-              // Validação robusta antes de fazer split
-              if (!m || typeof m !== 'string' || !m.includes('-')) {
-                return m || 'Data inválida';
-              }
-              const parts = m.split('-');
-              if (parts.length < 2) {
-                return m;
-              }
-              const [year, month] = parts;
-              const monthNum = parseInt(month);
-              if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
-                return m;
-              }
-              const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-              return `${monthNames[monthNum - 1]}. de ${year}`;
-            });
-            
-            if (window.chartTempoMedioUnidadeMes instanceof Chart) window.chartTempoMedioUnidadeMes.destroy();
-            const ctxUnidadeMes = document.getElementById('chartTempoMedioUnidadeMes').getContext('2d');
-            window.chartTempoMedioUnidadeMes = new Chart(ctxUnidadeMes, {
-              type: 'line',
-              data: {
-                labels: labelsMes,
-                datasets: datasets
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: { display: false }
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
-        } catch (error) {
-          console.error('❌ Erro ao carregar tempo médio:', error);
-          const errorMsg = error.message || 'Erro desconhecido ao carregar dados';
-          document.getElementById('listaTempoMedio').innerHTML = `<div class="text-red-400 text-center py-8">Erro ao carregar dados: ${errorMsg}</div>`;
+        if (window.data?.loadTempoMedio) {
+          return await window.data.loadTempoMedio();
         }
+        console.warn('Módulo data não carregado - loadTempoMedio não disponível');
       }
+      
+      // Função _loadTempoMedio_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadTema() {
-        const data = await fetchJSONWithFilter('/api/aggregate/by-theme');
-        // Mostrar todos os temas, sem limitação
-        const labels = data.map(x => x.tema);
-        const values = data.map(x => x.quantidade);
-        
-        // Gráfico de temas
-        if (window.chartTema instanceof Chart) window.chartTema.destroy();
-        const ctx = document.getElementById('chartTema').getContext('2d');
-        window.chartTema = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Quantidade',
-              data: values,
-              backgroundColor: 'rgba(167,139,250,0.7)',
-              borderColor: 'rgba(167,139,250,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            indexAxis: 'y',
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end'
-              }
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          }
-        });
-        addChartClickHandler(window.chartTema, (label, value) => showClickFeedback(null, label, value), 'chartTema');
-        
-        // Status geral
-        const status = await fetchJSONWithFilter('/api/stats/status-overview');
-        if (window.chartStatusTema instanceof Chart) window.chartStatusTema.destroy();
-        const ctxStatus = document.getElementById('chartStatusTema').getContext('2d');
-          window.chartStatusTema = new Chart(ctxStatus, {
-            type: 'doughnut',
-            data: {
-              labels: ['Concluída', 'Em atendimento'],
-              datasets: [{
-              data: [status.concluida.percentual, status.emAtendimento.percentual],
-                backgroundColor: ['#38bdf8', '#fbbf24']
-              }]
-            },
-            options: { 
-              responsive: true,
-              plugins: {
-                tooltip: createEnhancedTooltip(),
-                datalabels: {
-                  ...createDataLabelsConfig(true),
-                  anchor: 'center',
-                  align: 'center'
-                }
-              }
-            }
-          });
-        addChartClickHandler(window.chartStatusTema, (label, value) => showClickFeedback(null, label, value), 'chartStatusTema');
-        document.getElementById('statusTemaInfo').innerHTML = `
-          <div class="text-cyan-300">Concluída: ${status.concluida.percentual}%</div>
-          <div class="text-amber-300">Em atendimento: ${status.emAtendimento.percentual}%</div>
-        `;
-        
-        // Gráfico mensal
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
-        const labelsMes = dataMensal.map(x => {
-          const ym = x.ym || x.month || '';
-          if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
-          const parts = ym.split('-');
-          if (parts.length < 2) return ym;
-          const [year, month] = parts;
-          if (!year || !month) return ym;
-          const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          const monthIndex = parseInt(month) - 1;
-          return monthIndex >= 0 && monthIndex < 12 ? `${monthNames[monthIndex]}. de ${year}` : ym;
-        });
-        const valuesMes = dataMensal.map(x => x.count);
-        
-        if (window.chartTemaMes instanceof Chart) window.chartTemaMes.destroy();
-        const ctxMes = document.getElementById('chartTemaMes').getContext('2d');
-        window.chartTemaMes = new Chart(ctxMes, {
-          type: 'bar',
-          data: {
-            labels: labelsMes,
-            datasets: [{
-              label: 'Quantidade',
-              data: valuesMes,
-              backgroundColor: 'rgba(167,139,250,0.7)',
-              borderColor: 'rgba(167,139,250,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          }
-        });
-        
-        // Lista completa de temas
-        const listaTemas = document.getElementById('listaTemas');
-        if (listaTemas) {
-          const maxQuantidade = Math.max(...data.map(d => d.quantidade), 1);
-          listaTemas.innerHTML = data.map((item, idx) => {
-            const width = (item.quantidade / maxQuantidade) * 100;
-            return `
-              <div class="flex items-center gap-3 py-2 border-b border-white/5">
-                <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm text-slate-300 truncate font-medium">${item.tema}</div>
-                  <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                    <div class="h-full bg-gradient-to-r from-violet-500 to-cyan-500" style="width: ${width}%"></div>
-                  </div>
-                </div>
-                <div class="text-lg font-bold text-violet-300 min-w-[80px] text-right">${item.quantidade.toLocaleString('pt-BR')}</div>
-              </div>
-            `;
-          }).join('');
+        if (window.data?.loadTema) {
+          return await window.data.loadTema();
         }
-        
-        // Exibir filtros aplicados
-        const filtrosTemaInfo = document.getElementById('filtrosTemaInfo');
-        if (filtrosTemaInfo) {
-          const filtros = [];
-          if (window.globalFilters?.filters && window.globalFilters.filters.length > 0) {
-            window.globalFilters.filters.forEach(f => {
-              if (f.field === 'Data' || f.field === 'Mês') {
-                const meses = Array.isArray(f.value) ? f.value : [f.value];
-                meses.forEach(mes => {
-                  if (mes && typeof mes === 'string') {
-                    const parts = mes.split('-');
-                    if (parts.length >= 2) {
-                      const [year, month] = parts;
-                      const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-                      filtros.push(`${monthNames[parseInt(month) - 1]}/${year}`);
-                    } else {
-                      filtros.push(`Mês: ${mes}`);
-                    }
-                  }
-                });
-              } else {
-                filtros.push(`${f.field}: ${f.value}`);
-              }
-            });
-          }
-          if (filtros.length > 0) {
-            filtrosTemaInfo.innerHTML = `🔍 Filtros: ${filtros.join(', ')}`;
-            filtrosTemaInfo.classList.remove('hidden');
-          } else {
-            filtrosTemaInfo.innerHTML = '';
-            filtrosTemaInfo.classList.add('hidden');
-          }
-        }
+        console.warn('Módulo data não carregado - loadTema não disponível');
       }
+      
+      // Função _loadTema_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadAssunto() {
-        const data = await fetchJSONWithFilter('/api/aggregate/by-subject');
-        
-        // Limitar gráfico "Top Assuntos" para Top 15 para melhor legibilidade
-        // A lista completa abaixo mostra todos os assuntos
-        const topAssuntos = data.slice(0, 15);
-        const labels = topAssuntos.map(x => {
-          // Truncar labels muito longos (máximo 50 caracteres)
-          const label = x.assunto || 'Não informado';
-          return label.length > 50 ? label.substring(0, 47) + '...' : label;
-        });
-        const labelsFull = topAssuntos.map(x => x.assunto || 'Não informado'); // Labels completos para tooltip
-        const values = topAssuntos.map(x => x.quantidade);
-        
-        // Gráfico de assuntos (Top 15)
-        const canvasAssunto = document.getElementById('chartAssunto');
-        if (!canvasAssunto) {
-          console.warn('Canvas chartAssunto não encontrado');
-          return;
+        if (window.data?.loadAssunto) {
+          return await window.data.loadAssunto();
         }
-        
-        // Destruir gráfico anterior se existir
-        if (window.chartAssunto instanceof Chart) {
-          try {
-            window.chartAssunto.destroy();
-          } catch (e) {
-            console.warn('Erro ao destruir gráfico anterior:', e);
-          }
-          window.chartAssunto = null;
-        }
-        
-        // Aguardar um frame para garantir que o canvas está livre
-        await new Promise(resolve => setTimeout(resolve, 50));
-        
-        const ctx = canvasAssunto.getContext('2d');
-        window.chartAssunto = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Quantidade',
-              data: values,
-              backgroundColor: 'rgba(34,211,238,0.7)',
-              borderColor: 'rgba(34,211,238,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { 
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function(context) {
-                    const fullLabel = labelsFull[context.dataIndex];
-                    const value = context.parsed.x;
-                    return `${fullLabel}: ${value.toLocaleString('pt-BR')}`;
-                  }
-                }
-              },
-              datalabels: {
-                ...createDataLabelsConfig(),
-                anchor: 'start',
-                align: 'end',
-                display: function(context) {
-                  // Mostrar apenas se houver espaço suficiente
-                  return context.dataIndex < 10;
-                }
-              }
-            },
-            scales: {
-              x: { 
-                beginAtZero: true, 
-                ticks: { color: '#94a3b8', font: { size: 11 } }, 
-                grid: { color: 'rgba(255,255,255,0.05)' } 
-              },
-              y: { 
-                ticks: { 
-                  color: '#94a3b8',
-                  font: { size: 10 },
-                  maxRotation: 0,
-                  minRotation: 0,
-                  callback: function(value, index) {
-                    // Garantir que labels truncados sejam mostrados
-                    return labels[index] || '';
-                  }
-                }, 
-                grid: { color: 'rgba(255,255,255,0.05)' }
-              }
-            },
-            layout: {
-              padding: {
-                left: 10,
-                right: 10,
-                top: 10,
-                bottom: 10
-              }
-            }
-          }
-        });
-        addChartClickHandler(window.chartAssunto, (label, value) => showClickFeedback(null, label, value), 'chartAssunto');
-        
-        // Status geral
-        const status = await fetchJSONWithFilter('/api/stats/status-overview');
-        if (window.chartStatusAssunto instanceof Chart) window.chartStatusAssunto.destroy();
-        const ctxStatus = document.getElementById('chartStatusAssunto').getContext('2d');
-          window.chartStatusAssunto = new Chart(ctxStatus, {
-            type: 'doughnut',
-            data: {
-              labels: ['Concluída', 'Em atendimento'],
-              datasets: [{
-              data: [status.concluida.percentual, status.emAtendimento.percentual],
-                backgroundColor: ['#38bdf8', '#fbbf24']
-              }]
-            },
-            options: { responsive: true }
-          });
-        document.getElementById('statusAssuntoInfo').innerHTML = `
-          <div class="text-cyan-300">Concluída: ${status.concluida.percentual}%</div>
-          <div class="text-amber-300">Em atendimento: ${status.emAtendimento.percentual}%</div>
-        `;
-        
-        // Lista completa de assuntos
-        const listaAssuntos = document.getElementById('listaAssuntos');
-        if (listaAssuntos) {
-          const maxQuantidade = Math.max(...data.map(d => d.quantidade), 1);
-          listaAssuntos.innerHTML = data.map((item, idx) => {
-            const width = (item.quantidade / maxQuantidade) * 100;
-          return `
-            <div class="flex items-center gap-3 py-2 border-b border-white/5">
-              <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-              <div class="flex-1 min-w-0">
-                  <div class="text-sm text-slate-300 truncate font-medium">${item.assunto}</div>
-                <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
-                </div>
-              </div>
-              <div class="text-lg font-bold text-cyan-300 min-w-[80px] text-right">${item.quantidade.toLocaleString('pt-BR')}</div>
-            </div>
-          `;
-        }).join('');
-        }
-        
-        // Gráfico mensal
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month').catch(() => []);
-        if (dataMensal && dataMensal.length > 0) {
-          const labelsMes = dataMensal.map(x => {
-            const [year, month] = (x.ym || x.month || '').split('-');
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : (x.ym || x.month || '');
-          });
-          const valuesMes = dataMensal.map(x => x.count || 0);
-          
-          if (window.chartAssuntoMes instanceof Chart) window.chartAssuntoMes.destroy();
-          const ctxMes = document.getElementById('chartAssuntoMes')?.getContext('2d');
-          if (ctxMes) {
-            window.chartAssuntoMes = new Chart(ctxMes, {
-              type: 'bar',
-              data: {
-                labels: labelsMes,
-                datasets: [{
-                  label: 'Manifestações',
-                  data: valuesMes,
-                  backgroundColor: 'rgba(34,211,238,0.7)',
-                  borderColor: 'rgba(34,211,238,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: { 
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(false, 'bar', false)
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                  x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-              }
-            });
-          }
-        }
+        console.warn('Módulo data não carregado - loadAssunto não disponível');
       }
+      
+      // Função _loadAssunto_OLD removida - código migrado para scripts/data.js
 
       // Sistema de filtro global unificado
       if (!window.globalFilters) {
@@ -5716,508 +4047,49 @@
         window.clearGlobalCadastranteFilter();
       };
       
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadCadastrante() {
-        // Servidores
-        const servidores = await fetchJSONWithFilter('/api/aggregate/by-server');
-        const listaServidores = document.getElementById('listaServidores');
-        listaServidores.innerHTML = servidores.map((item, idx) => {
-          const width = (item.quantidade / Math.max(...servidores.map(d => d.quantidade), 1)) * 100;
-          const isActive = window.globalFilters?.cadastranteFilter?.type === 'servidor' && window.globalFilters.cadastranteFilter.value === item.servidor;
-          return `
-            <div class="servidor-item flex items-center gap-3 py-2 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-all ${isActive ? 'bg-cyan-500/20 border-cyan-500/30 border-l-4' : ''}" 
-                 data-servidor="${item.servidor.replace(/"/g, '&quot;')}">
-              <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate font-medium">${item.servidor}</div>
-                <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
-                </div>
-              </div>
-              <div class="text-lg font-bold text-cyan-300 min-w-[80px] text-right">${item.quantidade.toLocaleString('pt-BR')}</div>
-            </div>
-          `;
-        }).join('');
-        
-        // Adicionar event listeners aos servidores
-        listaServidores.querySelectorAll('.servidor-item').forEach(item => {
-          item.addEventListener('click', function() {
-            const servidor = this.getAttribute('data-servidor');
-            updateCadastranteCharts({ type: 'servidor', value: servidor });
-          });
-        });
-        
-        // Unidades de Cadastro (UAC)
-        const uacs = await fetchJSONWithFilter('/api/aggregate/count-by?field=UAC');
-        const listaUnidades = document.getElementById('listaUnidadesCadastro');
-        listaUnidades.innerHTML = uacs.map((item, idx) => {
-          const width = (item.count / Math.max(...uacs.map(d => d.count), 1)) * 100;
-          const isActive = window.globalFilters?.cadastranteFilter?.type === 'unidadeCadastro' && window.globalFilters.cadastranteFilter.value === item.key;
-          return `
-            <div class="unidade-item flex items-center gap-3 py-2 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-all ${isActive ? 'bg-violet-500/20 border-violet-500/30 border-l-4' : ''}" 
-                 data-unidade="${item.key.replace(/"/g, '&quot;')}">
-              <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate font-medium">${item.key}</div>
-                <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-violet-500 to-cyan-500" style="width: ${width}%"></div>
-                </div>
-              </div>
-              <div class="text-lg font-bold text-violet-300 min-w-[80px] text-right">${item.count.toLocaleString('pt-BR')}</div>
-            </div>
-          `;
-        }).join('');
-        
-        // Adicionar event listeners às unidades
-        listaUnidades.querySelectorAll('.unidade-item').forEach(item => {
-          item.addEventListener('click', function() {
-            const unidade = this.getAttribute('data-unidade');
-            updateCadastranteCharts({ type: 'unidadeCadastro', value: unidade });
-          });
-        });
-        
-        // Gráfico mensal (com filtro se houver)
-        const dataMensal = await fetchJSONWithFilter('/api/aggregate/by-month');
-        const labelsMes = dataMensal.map(x => {
-          const ym = x.ym || x.month || '';
-          if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
-          const parts = ym.split('-');
-          if (parts.length < 2) return ym;
-          const [year, month] = parts;
-          if (!year || !month) return ym;
-          const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          const monthIndex = parseInt(month) - 1;
-          return monthIndex >= 0 && monthIndex < 12 ? `${monthNames[monthIndex]}. de ${year}` : ym;
-        });
-        const valuesMes = dataMensal.map(x => x.count);
-        
-        if (window.chartCadastranteMes instanceof Chart) window.chartCadastranteMes.destroy();
-        const ctxMes = document.getElementById('chartCadastranteMes').getContext('2d');
-        window.chartCadastranteMes = new Chart(ctxMes, {
-          type: 'bar',
-          data: {
-            labels: labelsMes,
-            datasets: [{
-              label: 'Quantidade',
-              data: valuesMes,
-              backgroundColor: 'rgba(167,139,250,0.7)',
-              borderColor: 'rgba(167,139,250,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', false)
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          }
-        });
-        
-        // Total (com filtro se houver)
-        const summary = await fetchJSONWithFilter('/api/summary');
-        document.getElementById('totalCadastrante').textContent = (summary.total || 0).toLocaleString('pt-BR');
-        
-        // Atualizar exibição de filtros
-        updateCadastranteFiltersDisplay();
-        
-        // Se já houver filtro ativo, atualizar gráficos adicionais
-        if (window.globalFilters?.cadastranteFilter) {
-          await updateCadastranteCharts(window.globalFilters.cadastranteFilter);
+        if (window.data?.loadCadastrante) {
+          return await window.data.loadCadastrante();
         }
+        console.warn('Módulo data não carregado - loadCadastrante não disponível');
       }
+      
+      // Função _loadCadastrante_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadReclamacoes() {
-        const [data, dataMensal] = await Promise.all([
-          fetchJSONWithFilter('/api/complaints-denunciations'),
-          fetchJSONWithFilter('/api/aggregate/by-month').catch(() => [])
-        ]);
-        
-        const assuntos = data.assuntos || [];
-        const tipos = data.tipos || [];
-        
-        // Lista de assuntos
-        document.getElementById('listaReclamacoes').innerHTML = assuntos.map((item, idx) => {
-          const width = assuntos.length > 0 ? (item.quantidade / Math.max(...assuntos.map(d => d.quantidade), 1)) * 100 : 0;
-          return `
-            <div class="flex items-center gap-3 py-2 border-b border-white/5">
-              <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate font-medium">${item.assunto}</div>
-                <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-rose-500 to-pink-500" style="width: ${width}%"></div>
-                </div>
-              </div>
-              <div class="text-lg font-bold text-rose-300 min-w-[80px] text-right">${item.quantidade.toLocaleString('pt-BR')}</div>
-            </div>
-          `;
-        }).join('');
-        
-        // Gráfico de tipos de ação
-        const labels = tipos.map(t => t.tipo);
-        const values = tipos.map(t => t.quantidade);
-        
-        if (window.chartReclamacoesTipo instanceof Chart) window.chartReclamacoesTipo.destroy();
-        const ctx = document.getElementById('chartReclamacoesTipo').getContext('2d');
-        window.chartReclamacoesTipo = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Quantidade',
-              data: values,
-              backgroundColor: 'rgba(239,68,68,0.7)',
-              borderColor: 'rgba(239,68,68,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            indexAxis: 'y',
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', true)
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          }
-        });
-        
-        // Gráfico por mês
-        if (dataMensal && dataMensal.length > 0) {
-          const labelsMes = dataMensal.map(x => {
-            const ym = x.ym || x.month || '';
-            if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
-            const parts = ym.split('-');
-            if (parts.length < 2) return ym;
-            const [year, month] = parts;
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : ym;
-          });
-          const valuesMes = dataMensal.map(x => x.count);
-          
-          if (window.chartReclamacoesMes instanceof Chart) window.chartReclamacoesMes.destroy();
-          const ctxMes = document.getElementById('chartReclamacoesMes').getContext('2d');
-          window.chartReclamacoesMes = new Chart(ctxMes, {
-            type: 'bar',
-            data: {
-              labels: labelsMes,
-              datasets: [{
-                label: 'Quantidade',
-                data: valuesMes,
-                backgroundColor: 'rgba(239,68,68,0.7)',
-                borderColor: 'rgba(239,68,68,1)',
-                borderWidth: 1
-              }]
-            },
-            options: {
-              responsive: true,
-              plugins: { 
-                legend: { display: false },
-                tooltip: createEnhancedTooltip(),
-                datalabels: createDataLabelsConfig(false, 'bar', false)
-              },
-              scales: {
-                y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-              }
-            }
-          });
+        if (window.data?.loadReclamacoes) {
+          return await window.data.loadReclamacoes();
         }
+        console.warn('Módulo data não carregado - loadReclamacoes não disponível');
       }
+      
+      // Função _loadReclamacoes_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadProjecao2026() {
-        try {
-          // Carregar dados históricos
-          const [byMonth, temas, status] = await Promise.all([
-            fetchJSONWithFilter('/api/aggregate/by-month'),
-            fetchJSONWithFilter('/api/aggregate/by-theme'),
-            fetchJSONWithFilter('/api/stats/status-overview')
-          ]);
-          
-          // Processar dados mensais históricos
-          const historico = byMonth.map(x => {
-            const ym = x.ym || x.month || '';
-            if (!ym || typeof ym !== 'string') {
-              return {
-                label: ym || 'Data inválida',
-                value: x.count || 0,
-                year: 0,
-                month: 0
-              };
-            }
-            const parts = ym.split('-');
-            if (parts.length < 2) {
-              return {
-                label: ym,
-                value: x.count || 0,
-                year: 0,
-                month: 0
-              };
-            }
-            const [year, month] = parts;
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            return {
-              label: month ? `${monthNames[parseInt(month) - 1]}. de ${year}` : ym,
-              value: x.count || 0,
-              year: parseInt(year) || 0,
-              month: parseInt(month) || 0
-            };
-          });
-          
-          // Calcular média mensal dos últimos 12 meses
-          const ultimos12Meses = historico.slice(-12);
-          const mediaMensal = ultimos12Meses.reduce((sum, item) => sum + item.value, 0) / ultimos12Meses.length;
-          
-          // Gerar projeção para 2026 (12 meses)
-          const projecao2026 = [];
-          for (let mes = 1; mes <= 12; mes++) {
-            const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-            projecao2026.push({
-              label: `${monthNames[mes - 1]}. de 2026`,
-              value: Math.round(mediaMensal * (1 + (Math.random() * 0.2 - 0.1))) // Variação de ±10%
-            });
-          }
-          
-          // Combinar histórico e projeção
-          const todosLabels = [...historico.map(h => h.label), ...projecao2026.map(p => p.label)];
-          const todosValores = [...historico.map(h => h.value), ...projecao2026.map(p => p.value)];
-          const pontoDivisao = historico.length;
-          
-          // Gráfico de tendência mensal com projeção
-          if (window.chartProjecaoMensal instanceof Chart) window.chartProjecaoMensal.destroy();
-          const ctxMensal = document.getElementById('chartProjecaoMensal')?.getContext('2d');
-          if (ctxMensal) {
-            window.chartProjecaoMensal = new Chart(ctxMensal, {
-              type: 'line',
-              data: {
-                labels: todosLabels,
-                datasets: [
-                  {
-                    label: 'Histórico',
-                    data: [...historico.map(h => h.value), ...Array(12).fill(null)],
-                    borderColor: '#22d3ee',
-                    backgroundColor: 'rgba(34,211,238,0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4
-                  },
-                  {
-                    label: 'Projeção 2026',
-                    data: [...Array(historico.length).fill(null), ...projecao2026.map(p => p.value)],
-                    borderColor: '#a78bfa',
-                    backgroundColor: 'rgba(167,139,250,0.1)',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    fill: true,
-                    tension: 0.4
-                  }
-                ]
-              },
-              options: {
-                responsive: true,
-                plugins: {
-                  legend: { display: true, position: 'top', labels: { color: '#94a3b8' } },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: { display: false }
-                },
-                scales: {
-                  x: { ticks: { color: '#94a3b8', maxRotation: 45 } },
-                  y: { ticks: { color: '#94a3b8' }, beginAtZero: true }
-                }
-              }
-            });
-          }
-          
-          // Gráfico de temas (top 10)
-          const topTemas = temas.slice(0, 10);
-          const labelsTemas = topTemas.map(t => t.tema || 'Não informado');
-          const valoresTemas = topTemas.map(t => t.quantidade || 0);
-          
-          if (window.chartProjecaoTema instanceof Chart) window.chartProjecaoTema.destroy();
-          const ctxTema = document.getElementById('chartProjecaoTema')?.getContext('2d');
-          if (ctxTema) {
-            window.chartProjecaoTema = new Chart(ctxTema, {
-              type: 'bar',
-              data: {
-                labels: labelsTemas,
-                datasets: [{
-                  label: 'Quantidade',
-                  data: valoresTemas,
-                  backgroundColor: 'rgba(167,139,250,0.7)',
-                  borderColor: 'rgba(167,139,250,1)',
-                  borderWidth: 1
-                }]
-              },
-              options: {
-                responsive: true,
-                indexAxis: 'y',
-                plugins: {
-                  legend: { display: false },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig()
-                },
-                scales: {
-                  x: { beginAtZero: true, ticks: { color: '#94a3b8' } },
-                  y: { ticks: { color: '#94a3b8' } }
-                }
-              }
-            });
-          }
-          
-          // Gráfico de status
-          if (window.chartProjecaoStatus instanceof Chart) window.chartProjecaoStatus.destroy();
-          const ctxStatus = document.getElementById('chartProjecaoStatus')?.getContext('2d');
-          if (ctxStatus) {
-            window.chartProjecaoStatus = new Chart(ctxStatus, {
-              type: 'doughnut',
-              data: {
-                labels: ['Concluída', 'Em atendimento'],
-                datasets: [{
-                  data: [status.concluida?.percentual || 0, status.emAtendimento?.percentual || 0],
-                  backgroundColor: ['#38bdf8', '#fbbf24']
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: {
-                  legend: { display: true, position: 'right', labels: { color: '#94a3b8' } },
-                  tooltip: createEnhancedTooltip(),
-                  datalabels: createDataLabelsConfig(true, 'doughnut')
-                }
-              }
-            });
-          }
-          
-          document.getElementById('projecaoStatusInfo').innerHTML = `
-            <div class="text-cyan-300">Concluída: ${status.concluida?.percentual || 0}%</div>
-            <div class="text-amber-300">Em atendimento: ${status.emAtendimento?.percentual || 0}%</div>
-          `;
-          
-          // Resumo de projeções
-          const totalProjetado = projecao2026.reduce((sum, item) => sum + item.value, 0);
-          const totalHistorico = historico.reduce((sum, item) => sum + item.value, 0);
-          const crescimento = ((totalProjetado - totalHistorico) / totalHistorico * 100).toFixed(1);
-          
-          document.getElementById('resumoProjecao').innerHTML = `
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Total Projetado 2026</div>
-              <div class="text-2xl font-bold text-cyan-300">${totalProjetado.toLocaleString('pt-BR')}</div>
-            </div>
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Média Mensal</div>
-              <div class="text-2xl font-bold text-violet-300">${Math.round(mediaMensal).toLocaleString('pt-BR')}</div>
-            </div>
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Crescimento Estimado</div>
-              <div class="text-2xl font-bold ${crescimento >= 0 ? 'text-emerald-300' : 'text-rose-300'}">${crescimento >= 0 ? '+' : ''}${crescimento}%</div>
-            </div>
-            <div class="glass rounded-xl p-4">
-              <div class="text-slate-400 text-sm mb-1">Total Histórico</div>
-              <div class="text-2xl font-bold text-amber-300">${totalHistorico.toLocaleString('pt-BR')}</div>
-            </div>
-          `;
-        } catch (error) {
-          console.error('❌ Erro ao carregar projeção 2026:', error);
+        if (window.data?.loadProjecao2026) {
+          return await window.data.loadProjecao2026();
         }
+        console.warn('Módulo data não carregado - loadProjecao2026 não disponível');
       }
+      
+      // Função _loadProjecao2026_OLD removida - código migrado para scripts/data.js
 
+      // Função movida para scripts/data.js
+      // Alias para compatibilidade
       async function loadUnit(unitName) {
-        // Mapear nomes das unidades para os nomes no banco
-        const unitMap = {
-          'adao': 'ADÃO',
-          'cer iv': 'CER IV',
-          'hospital olho': 'Hospital do Olho',
-          'hospital duque': 'Hospital Duque',
-          'hospital infantil': 'Hospital Infantil',
-          'hospital moacyr': 'Hospital Moacyr',
-          'maternidade santa cruz': 'Maternidade Santa Cruz',
-          'upa beira mar': 'UPA Beira Mar',
-          'uph pilar': 'UPH Pilar',
-          'uph saracuruna': 'UPH Saracuruna',
-          'uph xerem': 'UPH Xerém',
-          'hospital veterinario': 'Hospital Veterinário',
-          'upa walter garcia': 'UPA Walter Garcia',
-          'uph campos eliseos': 'UPH Campos Elíseos',
-          'uph parque equitativa': 'UPH Parque Equitativa',
-          'ubs antonio granja': 'UBS Antonio Granja',
-          'upa sarapui': 'UPA Sarapuí',
-          'uph imbarie': 'UPH Imbariê'
-        };
-        
-        const searchName = unitMap[unitName.toLowerCase()] || unitName;
-        const data = await fetchJSON(`/api/unit/${encodeURIComponent(searchName)}`);
-        
-        // Encontrar a seção da unidade
-        const pageId = `page-unit-${unitName.replace(/\s+/g, '-').toLowerCase()}`;
-        const section = document.getElementById(pageId);
-        if (!section) return;
-        
-        const assuntosContainer = section.querySelector('.unit-assuntos');
-        const tiposCanvas = section.querySelector('.unit-tipos');
-        
-        // Lista de assuntos
-        const assuntos = data.assuntos || [];
-        assuntosContainer.innerHTML = assuntos.map((item, idx) => {
-          const width = assuntos.length > 0 ? (item.quantidade / Math.max(...assuntos.map(d => d.quantidade), 1)) * 100 : 0;
-          return `
-            <div class="flex items-center gap-3 py-2 border-b border-white/5">
-              <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-300 truncate">${item.assunto}</div>
-                <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
-                </div>
-              </div>
-              <div class="text-lg font-bold text-cyan-300 min-w-[80px] text-right">${item.quantidade.toLocaleString('pt-BR')}</div>
-            </div>
-          `;
-        }).join('');
-        
-        // Gráfico de tipos de ação
-        const tipos = data.tipos || [];
-        const labels = tipos.map(t => t.tipo);
-        const values = tipos.map(t => t.quantidade);
-        
-        // Destruir gráfico anterior se existir
-        const chartId = `chartUnit${unitName.replace(/\s+/g, '')}`;
-        if (window[chartId] instanceof Chart) window[chartId].destroy();
-        
-        const ctx = tiposCanvas.getContext('2d');
-        window[chartId] = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Quantidade',
-              data: values,
-              backgroundColor: 'rgba(34,211,238,0.7)',
-              borderColor: 'rgba(34,211,238,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            indexAxis: 'y',
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', true)
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          }
-        });
+        if (window.data?.loadUnit) {
+          return await window.data.loadUnit(unitName);
+        }
+        console.warn('Módulo data não carregado - loadUnit não disponível');
       }
+      
+      // Função _loadUnit_OLD removida - código migrado para scripts/data.js
     </script>
   </body>
   </html>

@@ -26,7 +26,10 @@
     "db:reset": "node scripts/resetDb.js",
     "db:analyze": "node scripts/analyzeDbStructure.js",
     "cache:clear": "node scripts/clearCache.js",
-    "test": "echo 'No tests specified' && exit 0"
+    "test": "node scripts/run-tests.js",
+    "test:all": "node scripts/test-all-pages.js",
+    "test:browser": "echo 'Acesse http://localhost:3000/?test=true no navegador'",
+    "test:pages": "echo 'Acesse http://localhost:3000/?test=pages no navegador'"
   },
   "keywords": [
     "ouvidoria",

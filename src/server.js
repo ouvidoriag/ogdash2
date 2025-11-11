@@ -489,12 +489,44 @@ function readFileSafe(filePath) {
   try {
     const stat = fs.statSync(filePath);
     if (!stat.isFile()) return '';
+    
+    // ⚠️ FILTRO: Ignorar arquivos em node_modules, build, dist, .git
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    if (normalizedPath.includes('/node_modules/') || 
+        normalizedPath.includes('/build/') || 
+        normalizedPath.includes('/dist/') || 
+        normalizedPath.includes('/.git/') ||
+        normalizedPath.includes('/.next/') ||
+        normalizedPath.includes('/coverage/')) {
+      return '';
+    }
+    
     const ext = path.extname(filePath).toLowerCase();
-    if (['.md','.txt','.json','.csv'].includes(ext)) {
-      if (ext === '.json') {
-        const obj = JSON.parse(fs.readFileSync(filePath,'utf8'));
-        return JSON.stringify(obj).slice(0, 20000);
+    const fileName = path.basename(filePath).toLowerCase();
+    
+    // ⚠️ FILTRO: Ignorar arquivos de configuração TypeScript e outros que não são JSON válido
+    if (ext === '.json') {
+      // Ignorar tsconfig.json, package-lock.json muito grandes, e outros arquivos problemáticos
+      if (fileName === 'tsconfig.json' || 
+          fileName === 'tsdoc-metadata.json' ||
+          fileName === 'package-lock.json' ||
+          fileName.includes('tsconfig') ||
+          fileName.includes('tsdoc')) {
+        return ''; // Silenciosamente ignorar
       }
+      
+      // Tentar parsear JSON, mas silenciosamente ignorar erros
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const obj = JSON.parse(content);
+        return JSON.stringify(obj).slice(0, 20000);
+      } catch (error) {
+        // Silenciosamente ignorar arquivos JSON inválidos (tsconfig.json com comentários, etc.)
+        return '';
+      }
+    }
+    
+    if (['.md','.txt','.csv'].includes(ext)) {
       return fs.readFileSync(filePath,'utf8').slice(0, 20000);
     }
     return '';
@@ -504,12 +536,29 @@ function readFileSafe(filePath) {
 function walkDir(dir, files=[]) {
   try {
     for (const name of fs.readdirSync(dir)) {
+      // ⚠️ FILTRO: Ignorar diretórios que não precisamos indexar
+      if (name === 'node_modules' || 
+          name === 'build' || 
+          name === 'dist' || 
+          name === '.git' || 
+          name === '.next' ||
+          name === 'coverage' ||
+          name.startsWith('.')) {
+        continue;
+      }
+      
       const full = path.join(dir, name);
       const stat = fs.statSync(full);
-      if (stat.isDirectory()) walkDir(full, files);
-      else files.push(full);
+      if (stat.isDirectory()) {
+        walkDir(full, files);
+      } else {
+        files.push(full);
+      }
     }
-  } catch {}
+  } catch (error) {
+    // Silenciosamente ignorar erros de permissão ou arquivos corrompidos
+    // Não logar para evitar spam no console
+  }
   return files;
 }
 
@@ -750,7 +799,7 @@ app.get('/api/summary', async (req, res) => {
     const statusCounts = byStatus.map(r => ({ status: r.status ?? 'Não informado', count: r._count._all }))
       .sort((a,b) => b.count - a.count);
 
-    // Últimos 7 e 30 dias usando dataCriacaoIso (campo normalizado)
+    // Últimos 7 e 30 dias usando dataCriacaoIso (campo normalizado) - OTIMIZADO
     // Incluir hoje nos últimos 7 e 30 dias
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10); // YYYY-MM-DD (hoje)
@@ -767,42 +816,31 @@ app.get('/api/summary', async (req, res) => {
     
     console.log(`📅 Calculando últimos 7 e 30 dias: hoje=${todayStr}, últimos 7 dias de ${last7Str} até ${todayStr}, últimos 30 dias de ${last30Str} até ${todayStr}`);
     
-    // Buscar todos os registros e filtrar por data usando sistema global
-    const allRecords = await safePrismaQuery(async () => {
-      return await prisma.record.findMany({
-        where: where,
-        select: {
-          dataCriacaoIso: true,
-          dataDaCriacao: true,
-          data: true
-        }
-      });
-    });
-    
-    console.log(`📊 Total de registros encontrados: ${allRecords.length}`);
-    
-    // Filtrar usando função getDataCriacao (sistema global)
-    let last7 = 0;
-    let last30 = 0;
-    let semData = 0;
-    
-    allRecords.forEach(record => {
-      const dataCriacao = getDataCriacao(record);
-      if (!dataCriacao) {
-        semData++;
-        return;
+    // OTIMIZAÇÃO: Usar count com filtros de data diretamente no banco (muito mais rápido!)
+    // Em vez de buscar todos os registros, fazemos queries com filtros de data
+    const whereLast7 = {
+      ...where,
+      dataCriacaoIso: {
+        gte: last7Str,
+        lte: todayStr
       }
-      
-      // Comparar datas (formato YYYY-MM-DD - comparação lexicográfica funciona)
-      if (dataCriacao >= last7Str && dataCriacao <= todayStr) {
-        last7++;
-      }
-      if (dataCriacao >= last30Str && dataCriacao <= todayStr) {
-        last30++;
-      }
-    });
+    };
     
-    console.log(`📊 Resultado: últimos 7 dias=${last7}, últimos 30 dias=${last30}, sem data=${semData}`);
+    const whereLast30 = {
+      ...where,
+      dataCriacaoIso: {
+        gte: last30Str,
+        lte: todayStr
+      }
+    };
+    
+    // Executar contagens em paralelo (muito mais rápido que buscar todos os registros)
+    const [last7, last30] = await Promise.all([
+      prisma.record.count({ where: whereLast7 }),
+      prisma.record.count({ where: whereLast30 })
+    ]);
+    
+    console.log(`📊 Resultado (otimizado): últimos 7 dias=${last7}, últimos 30 dias=${last30}`);
 
     // Top dimensões normalizadas (usando novos campos)
     const top = async (col) => {
@@ -1019,7 +1057,7 @@ app.get('/api/aggregate/time-series', async (req, res) => {
   });
 });
 
-// Série mensal últimos 12 meses (usa dataCriacaoIso)
+// Série mensal últimos 12 meses (usa dataCriacaoIso) - OTIMIZADO
 app.get('/api/aggregate/by-month', async (req, res) => {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
@@ -1032,28 +1070,30 @@ app.get('/api/aggregate/by-month', async (req, res) => {
     const where = {};
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    where.dataCriacaoIso = { not: null }; // Usar campo normalizado com índice
     
-    const rows = await prisma.record.findMany({ 
-      where: { ...where, dataDaCriacao: { not: null } },
-      select: { 
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        data: true
-      } 
+    // OTIMIZAÇÃO: Usar groupBy do Prisma em vez de buscar todos os registros
+    // Agrupar por dataCriacaoIso e depois extrair o mês (YYYY-MM)
+    const rows = await prisma.record.groupBy({
+      by: ['dataCriacaoIso'],
+      where: where,
+      _count: { _all: true }
     });
+    
+    // Agrupar por mês (YYYY-MM) a partir do dataCriacaoIso
     const map = new Map();
     for (const r of rows) {
-      // Usar sistema global de datas
-      const mes = getMes(r);
-      if (!mes) continue;
-      map.set(mes, (map.get(mes) ?? 0) + 1);
+      if (!r.dataCriacaoIso) continue;
+      const mes = r.dataCriacaoIso.slice(0, 7); // YYYY-MM
+      map.set(mes, (map.get(mes) ?? 0) + r._count._all);
     }
+    
     return Array.from(map.entries()).map(([ym, count]) => ({ ym, count }))
       .sort((a,b) => a.ym.localeCompare(b.ym)).slice(-12);
   });
 });
 
-// Dados diários (últimos 30 dias) para KPIs e sparklines
+// Dados diários (últimos 30 dias) para KPIs e sparklines - OTIMIZADO
 app.get('/api/aggregate/by-day', async (req, res) => {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
@@ -1067,24 +1107,34 @@ app.get('/api/aggregate/by-day', async (req, res) => {
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
-    const rows = await prisma.record.findMany({ 
-      where: { ...where, dataDaCriacao: { not: null } },
-      select: { 
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        data: true
-      } 
+    // Calcular intervalo dos últimos 30 dias
+    const today = new Date();
+    const d30 = new Date(today);
+    d30.setDate(today.getDate() - 29); // Últimos 30 dias (incluindo hoje)
+    const last30Str = d30.toISOString().slice(0, 10);
+    const todayStr = today.toISOString().slice(0, 10);
+    
+    // OTIMIZAÇÃO: Filtrar apenas últimos 30 dias e usar groupBy
+    where.dataCriacaoIso = {
+      gte: last30Str,
+      lte: todayStr
+    };
+    
+    const rows = await prisma.record.groupBy({
+      by: ['dataCriacaoIso'],
+      where: where,
+      _count: { _all: true }
     });
     
+    // Criar mapa de datas
     const map = new Map();
     for (const r of rows) {
-      const dataCriacao = getDataCriacao(r);
-      if (!dataCriacao) continue;
-      map.set(dataCriacao, (map.get(dataCriacao) ?? 0) + 1);
+      if (r.dataCriacaoIso) {
+        map.set(r.dataCriacaoIso, r._count._all);
+      }
     }
     
-    // Gerar últimos 30 dias
-    const today = new Date();
+    // Gerar últimos 30 dias (garantir que todos os dias estejam presentes)
     const result = [];
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
@@ -1275,68 +1325,133 @@ app.get('/api/sla/summary', async (req, res) => {
 });
 
 // Simple filter endpoint: accepts field/value, returns matching rows
+// OTIMIZADO: Cache, query otimizada, timeout e melhor tratamento de erros
 app.post('/api/filter', async (req, res) => {
-  const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
-  // Tentar filtrar usando colunas normalizadas quando possível
-  const fieldMap = { 
-    Secretaria: 'orgaos', 
-    Setor: 'unidadeCadastro', 
-    Tipo: 'tipoDeManifestacao', 
-    Categoria: 'tema', 
-    Bairro: 'endereco', 
-    Status: 'status', 
-    StatusDemanda: 'statusDemanda',
-    Data: 'dataCriacaoIso', 
-    UAC: 'unidadeCadastro', 
-    Responsavel: 'responsavel', 
-    Canal: 'canal', 
-    Prioridade: 'prioridade', 
-    Orgaos: 'orgaos', 
-    UnidadeCadastro: 'unidadeCadastro', 
-    TipoManifestacao: 'tipoDeManifestacao', 
-    Tema: 'tema', 
-    Assunto: 'assunto',
-    // Nomes exatos da planilha
-    'protocolo': 'protocolo',
-    'data_da_criacao': 'dataDaCriacao',
-    'status_demanda': 'statusDemanda',
-    'prazo_restante': 'prazoRestante',
-    'data_da_conclusao': 'dataDaConclusao',
-    'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
-    'prioridade': 'prioridade',
-    'tipo_de_manifestacao': 'tipoDeManifestacao',
-    'tema': 'tema',
-    'assunto': 'assunto',
-    'canal': 'canal',
-    'endereco': 'endereco',
-    'unidade_cadastro': 'unidadeCadastro',
-    'unidade_saude': 'unidadeSaude',
-    'status': 'status',
-    'servidor': 'servidor',
-    'responsavel': 'responsavel',
-    'verificado': 'verificado',
-    'orgaos': 'orgaos'
-  };
-  // MongoDB não suporta contains diretamente, então buscamos todos e filtramos
-  const allRows = await prisma.record.findMany({ select: { id: true, data: true, ...Object.fromEntries(Object.values(fieldMap).map(col => [col, true])) } });
-  
-  const filtered = allRows.filter(r => {
+  try {
+    const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+    const originalUrl = req.body?.originalUrl || '';
+    
+    // OTIMIZAÇÃO: Se não há filtros, retornar vazio IMEDIATAMENTE (sem processar)
+    if (filters.length === 0) {
+      setCacheHeaders(res, 300);
+      return res.json([]);
+    }
+    
+    // Criar chave de cache baseada nos filtros e URL original
+    const cacheKey = `filter:${originalUrl}:${JSON.stringify(filters)}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      setCacheHeaders(res, 300); // 5 minutos de cache
+      return res.json(cached);
+    }
+    
+    // Mapeamento de campos otimizado
+    const fieldMap = { 
+      Secretaria: 'orgaos', 
+      Setor: 'unidadeCadastro', 
+      Tipo: 'tipoDeManifestacao', 
+      Categoria: 'tema', 
+      Bairro: 'endereco', 
+      Status: 'status', 
+      StatusDemanda: 'statusDemanda',
+      Data: 'dataCriacaoIso', 
+      UAC: 'unidadeCadastro', 
+      Responsavel: 'responsavel', 
+      Canal: 'canal', 
+      Prioridade: 'prioridade', 
+      Orgaos: 'orgaos', 
+      UnidadeCadastro: 'unidadeCadastro', 
+      TipoManifestacao: 'tipoDeManifestacao', 
+      Tema: 'tema', 
+      Assunto: 'assunto',
+      'protocolo': 'protocolo',
+      'data_da_criacao': 'dataDaCriacao',
+      'status_demanda': 'statusDemanda',
+      'prazo_restante': 'prazoRestante',
+      'data_da_conclusao': 'dataDaConclusao',
+      'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
+      'prioridade': 'prioridade',
+      'tipo_de_manifestacao': 'tipoDeManifestacao',
+      'tema': 'tema',
+      'assunto': 'assunto',
+      'canal': 'canal',
+      'endereco': 'endereco',
+      'unidade_cadastro': 'unidadeCadastro',
+      'unidade_saude': 'unidadeSaude',
+      'status': 'status',
+      'servidor': 'servidor',
+      'responsavel': 'responsavel',
+      'verificado': 'verificado',
+      'orgaos': 'orgaos'
+    };
+    
+    // Construir where clause otimizado
+    const whereClause = {};
+    const needsInMemoryFilter = [];
+    const fieldsNeeded = new Set(['id', 'data']); // Campos sempre necessários
+    
+    // Separar filtros que podem usar where clause
     for (const f of filters) {
       const col = fieldMap[f.field];
-      if (col) {
-        const value = r[col] || (r.data || {})[f.field] || '';
-        if (f.op === 'eq' && `${value}` !== `${f.value}`) return false;
-        if (f.op === 'contains' && !(`${value}`.toLowerCase().includes(`${f.value}`.toLowerCase()))) return false;
+      if (col && f.op === 'eq') {
+        whereClause[col] = f.value;
+        fieldsNeeded.add(col);
+      } else if (col && f.op === 'contains') {
+        // Para contains, usar contains do MongoDB (mais rápido que filtrar em memória)
+        whereClause[col] = { contains: f.value };
+        fieldsNeeded.add(col);
       } else {
-        const value = (r.data || {})[f.field] || '';
-        if (f.op === 'eq' && `${value}` !== `${f.value}`) return false;
-        if (f.op === 'contains' && !(`${value}`.toLowerCase().includes(`${f.value}`.toLowerCase()))) return false;
+        needsInMemoryFilter.push(f);
+        if (col) fieldsNeeded.add(col);
       }
     }
-    return true;
-  });
-  
-  res.json(filtered.map(r => ({ ...r, data: r.data || {} })));
+    
+    // OTIMIZAÇÃO: Buscar apenas campos necessários e limitar resultados
+    const selectFields = Object.fromEntries(Array.from(fieldsNeeded).map(f => [f, true]));
+    
+    // OTIMIZAÇÃO: Reduzir ainda mais o limite e timeout mais agressivo
+    const queryPromise = prisma.record.findMany({ 
+      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+      select: selectFields,
+      take: 1000 // Reduzido de 2k para 1k para melhor performance
+    });
+    
+    // Timeout mais agressivo: 15 segundos (reduzido de 20s)
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Query timeout após 15 segundos')), 15000)
+    );
+    
+    const allRows = await Promise.race([queryPromise, timeoutPromise]);
+    
+    // Aplicar filtros em memória apenas se necessário (casos especiais)
+    let filtered = allRows;
+    if (needsInMemoryFilter.length > 0) {
+      filtered = allRows.filter(r => {
+        for (const f of needsInMemoryFilter) {
+          const col = fieldMap[f.field];
+          const value = col ? (r[col] || (r.data || {})[f.field] || '') : ((r.data || {})[f.field] || '');
+          const valueStr = `${value}`.toLowerCase();
+          const filterStr = `${f.value}`.toLowerCase();
+          
+          if (f.op === 'eq' && valueStr !== filterStr) return false;
+          if (f.op === 'contains' && !valueStr.includes(filterStr)) return false;
+        }
+        return true;
+      });
+    }
+    
+    const result = filtered.map(r => ({ ...r, data: r.data || {} }));
+    
+    // Armazenar no cache (5 minutos - dados mudam apenas às 12h e 17h)
+    cache.set(cacheKey, result, 300);
+    setCacheHeaders(res, 300);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro no endpoint /api/filter:', error.message);
+    // Retornar array vazio em caso de erro (melhor que quebrar a aplicação)
+    res.status(500).json({ error: error.message || 'Erro ao processar filtros', data: [] });
+  }
 });
 
 // Tempo médio de atendimento por órgão/unidade
@@ -1376,12 +1491,12 @@ app.get('/api/stats/average-time', async (req, res) => {
         ];
       }
       
-      // Buscar registros com tempo de resolução ou datas de criação/conclusão
+      // OTIMIZAÇÃO: Buscar apenas registros com dados necessários, limitando resultado
+      // Usar select para buscar apenas campos necessários (reduz transferência de dados)
       const rows = await prisma.record.findMany({
         where: {
           ...where,
           dataDaCriacao: { not: null },
-          // Filtro já aplicado acima: dataDaCriacao: { not: null }
         },
         select: {
           orgaos: true,
@@ -1391,9 +1506,9 @@ app.get('/api/stats/average-time', async (req, res) => {
           dataCriacaoIso: true,
           dataDaCriacao: true,
           dataConclusaoIso: true,
-          dataDaConclusao: true,
-          data: true
-        }
+          dataDaConclusao: true
+        },
+        take: 10000 // Limitar para evitar timeout em bases muito grandes
       });
       
       // Agrupar por órgão/unidade e calcular média usando sistema global de datas
@@ -2455,11 +2570,59 @@ app.get('/api/stats/status-overview', async (req, res) => {
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
     const total = await prisma.record.count({ where });
-    // Otimizado: usar agregação do banco ao invés de buscar todos
-    // Buscar apenas campos necessários
+    // OTIMIZAÇÃO: Usar groupBy do Prisma para agregação no banco (muito mais rápido)
+    // Se groupBy não funcionar bem, usar select limitado
+    try {
+      // Tentar usar groupBy primeiro (mais eficiente)
+      const statusGroups = await prisma.record.groupBy({
+        by: ['status'],
+        where: Object.keys(where).length > 0 ? where : undefined,
+        _count: { _all: true }
+      });
+      
+      // Se groupBy retornou resultados, usar eles
+      if (statusGroups.length > 0) {
+        let concluidas = 0;
+        let emAtendimento = 0;
+        
+        for (const group of statusGroups) {
+          const statusValue = group.status || '';
+          const status = `${statusValue}`.toLowerCase();
+          
+          if (status.includes('concluída') || status.includes('concluida') || 
+              status.includes('encerrada') || status.includes('arquivamento') ||
+              status.includes('resposta final')) {
+            concluidas += group._count._all;
+          } else if (status.includes('em atendimento') || status.includes('aberto') || 
+                     status.includes('pendente') || status.includes('análise') ||
+                     status.includes('departamento') || status.includes('ouvidoria') ||
+                     status.length > 0) {
+            emAtendimento += group._count._all;
+          }
+        }
+        
+        return {
+          total,
+          concluida: {
+            quantidade: concluidas,
+            percentual: total > 0 ? Number(((concluidas / total) * 100).toFixed(1)) : 0
+          },
+          emAtendimento: {
+            quantidade: emAtendimento,
+            percentual: total > 0 ? Number(((emAtendimento / total) * 100).toFixed(1)) : 0
+          }
+        };
+      }
+    } catch (e) {
+      // Fallback: se groupBy falhar, usar método anterior
+      console.warn('⚠️ groupBy não disponível, usando fallback');
+    }
+    
+    // Fallback: buscar apenas campos necessários com limite
     const allRecords = await prisma.record.findMany({ 
       where: Object.keys(where).length > 0 ? where : undefined,
-      select: { status: true, statusDemanda: true } 
+      select: { status: true, statusDemanda: true },
+      take: 10000 // Limitar para evitar timeout
     });
     let concluidas = 0;
     let emAtendimento = 0;
@@ -2503,17 +2666,34 @@ app.get('/api/unit/:unitName', async (req, res) => {
   const key = `unit:${unitName}:v2`;
   // Cache de 1 hora
   return withCache(key, 3600, res, async () => {
-    // Otimizado: usar índices do MongoDB para buscar apenas campos necessários
-    // Buscar registros que tenham a unidade no UAC ou Responsável usando queries otimizadas
+    // OTIMIZAÇÃO: Usar queries com where clause usando índices (muito mais rápido)
+    // MongoDB não suporta contains case-insensitive, então buscamos com contains e filtramos
     const searchLower = unitName.toLowerCase();
     
-    // MongoDB: buscar todos e filtrar (mais eficiente que múltiplas queries)
-    // Buscar apenas campos necessários para otimizar
+    // Buscar com OR em múltiplos campos usando contains (usa índices!)
+    // Buscar variações do nome para melhor cobertura
+    const searchVariations = [
+      unitName,
+      unitName.toLowerCase(),
+      unitName.toUpperCase(),
+      unitName.charAt(0).toUpperCase() + unitName.slice(1).toLowerCase()
+    ];
+    
+    // Buscar registros que contenham o nome em qualquer um dos campos indexados
     const allRecords = await prisma.record.findMany({
-      select: { assunto: true, tipoDeManifestacao: true, unidadeCadastro: true, responsavel: true, orgaos: true, unidadeSaude: true }
+      where: {
+        OR: [
+          { unidadeCadastro: { contains: unitName } },
+          { responsavel: { contains: unitName } },
+          { orgaos: { contains: unitName } },
+          { unidadeSaude: { contains: unitName } }
+        ]
+      },
+      select: { assunto: true, tipoDeManifestacao: true, unidadeCadastro: true, responsavel: true, orgaos: true, unidadeSaude: true },
+      take: 5000 // Limitar para evitar timeout
     });
     
-    // Filtrar em memória (mais rápido que múltiplas queries no MongoDB)
+    // Filtrar em memória para case-insensitive (apenas nos resultados limitados)
     const records = allRecords.filter(r => {
       const unidadeCadastro = (r.unidadeCadastro || '').toLowerCase();
       const responsavel = (r.responsavel || '').toLowerCase();
@@ -2555,12 +2735,24 @@ app.get('/api/complaints-denunciations', async (_req, res) => {
   const key = 'complaints:v2';
   // Cache de 1 hora
   return withCache(key, 3600, res, async () => {
-    // Otimizado: buscar todos e filtrar (MongoDB não tem contains case-insensitive eficiente)
+    // OTIMIZAÇÃO: Usar where clause com OR para buscar tipos específicos (usa índices!)
+    // Buscar variações do texto para cobrir diferentes grafias
     const allRecords = await prisma.record.findMany({
-      select: { assunto: true, tipoDeManifestacao: true }
+      where: {
+        OR: [
+          { tipoDeManifestacao: { contains: 'Reclamação' } },
+          { tipoDeManifestacao: { contains: 'Reclamacao' } },
+          { tipoDeManifestacao: { contains: 'Reclama' } },
+          { tipoDeManifestacao: { contains: 'Denúncia' } },
+          { tipoDeManifestacao: { contains: 'Denuncia' } },
+          { tipoDeManifestacao: { contains: 'Denún' } }
+        ]
+      },
+      select: { assunto: true, tipoDeManifestacao: true },
+      take: 5000 // Limitar para evitar timeout
     });
     
-    // Filtrar apenas Reclamação e Denúncia
+    // Filtrar em memória para case-insensitive (apenas nos resultados limitados)
     const records = allRecords.filter(r => {
       const tipo = (r.tipoDeManifestacao || '').toLowerCase();
       return tipo.includes('reclamação') || tipo.includes('reclamacao') || 
@@ -2606,6 +2798,7 @@ async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
   tresMesesAtras.setMonth(tresMesesAtras.getMonth() - 3);
   
   // Buscar registros e agrupar por mês manualmente
+  // ⚠️ PERFORMANCE: Limitar busca para evitar problemas com grandes volumes
   const registros = await prisma.record.findMany({
     where: {
       ...where,
@@ -2615,7 +2808,8 @@ async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
       dataCriacaoIso: true,
       dataDaCriacao: true,
       data: true
-    }
+    },
+    take: 50000 // Limite razoável para análise de padrões
   });
   
   // Agrupar por mês usando a função getMes
@@ -2634,7 +2828,10 @@ async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
   if (meses.length >= 2) {
     const ultimoMes = meses[meses.length - 1];
     const penultimoMes = meses[meses.length - 2];
-    const aumento = ((ultimoMes[1] - penultimoMes[1]) / penultimoMes[1]) * 100;
+    // ⚠️ VALIDAÇÃO: Evitar divisão por zero
+    const aumento = penultimoMes[1] > 0 
+      ? ((ultimoMes[1] - penultimoMes[1]) / penultimoMes[1]) * 100 
+      : (ultimoMes[1] > 0 ? 100 : 0);
     
     if (aumento > 30) {
       anomalias.push({
@@ -2654,9 +2851,7 @@ async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
       ...where,
       orgaos: { not: null }
     },
-    _count: { _all: true },
-    orderBy: { _count: { _all: 'desc' } },
-    take: 10
+    _count: true
   });
   
   // Dados por assunto
@@ -2666,9 +2861,7 @@ async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
       ...where,
       assunto: { not: null }
     },
-    _count: { _all: true },
-    orderBy: { _count: { _all: 'desc' } },
-    take: 10
+    _count: true
   });
   
   // Dados por unidade de cadastro
@@ -2678,16 +2871,23 @@ async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
       ...where,
       unidadeCadastro: { not: null }
     },
-    _count: { _all: true },
-    orderBy: { _count: { _all: 'desc' } },
-    take: 10
+    _count: true
   });
   
   return {
     anomalias,
-    topSecretarias: porSecretaria.map(s => ({ nome: s.orgaos, count: s._count._all })),
-    topAssuntos: porAssunto.map(a => ({ nome: a.assunto, count: a._count._all })),
-    topUnidades: porUnidade.map(u => ({ nome: u.unidadeCadastro, count: u._count._all })),
+    topSecretarias: porSecretaria
+      .sort((a, b) => b._count - a._count)
+      .slice(0, 10)
+      .map(s => ({ nome: s.orgaos, count: s._count })),
+    topAssuntos: porAssunto
+      .sort((a, b) => b._count - a._count)
+      .slice(0, 10)
+      .map(a => ({ nome: a.assunto, count: a._count })),
+    topUnidades: porUnidade
+      .sort((a, b) => b._count - a._count)
+      .slice(0, 10)
+      .map(u => ({ nome: u.unidadeCadastro, count: u._count })),
     tendenciaMensal: meses.map(([mes, count]) => ({ mes, count }))
   };
 }
@@ -3029,10 +3229,19 @@ app.get('/api/aggregate/by-district', async (req, res) => {
   return withCache('aggregate-by-district', 300, res, async () => {
     try {
       const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
-      const distritosData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+      // ⚠️ VALIDAÇÃO: Adicionar tratamento de erro para JSON corrompido
+      let distritosData;
+      try {
+        const fileContent = fs.readFileSync(dataPath, 'utf8');
+        distritosData = JSON.parse(fileContent);
+      } catch (parseError) {
+        console.error('❌ Erro ao parsear secretarias-distritos.json:', parseError.message);
+        return res.status(500).json({ error: 'Erro ao carregar dados de distritos' });
+      }
       
       // Buscar todos os registros (vamos filtrar depois para ter mais flexibilidade)
       const records = await safePrismaQuery(async () => {
+        // ⚠️ PERFORMANCE: Limitar busca para evitar problemas com grandes volumes
         const allRecords = await prisma.record.findMany({
           select: {
             endereco: true,
@@ -3040,7 +3249,8 @@ app.get('/api/aggregate/by-district', async (req, res) => {
             statusDemanda: true,
             tipoDeManifestacao: true,
             dataCriacaoIso: true
-          }
+          },
+          take: 100000 // Limite para mapeamento de distritos
         });
         
         // Filtrar apenas registros que têm algum endereço/bairro
