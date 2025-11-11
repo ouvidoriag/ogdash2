@@ -943,34 +943,6 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento de 'canal': {e}", exc_info=True)
 
-    # =======================================================================
-    # 7.10 Limpeza de "Não há dados" para tempo_de_resolucao_em_dias (REFATORADO)
-    # =======================================================================
-    try:
-        if "tempo_de_resolucao_em_dias" in df_loc.columns:
-            raw = df_loc["tempo_de_resolucao_em_dias"]
-
-            # Converte para string temporariamente para detectar tokens inválidos
-            s = raw.astype(str).str.strip()
-
-            # Marca tokens que devem ser considerados como "sem dado"
-            invalid_tokens = {"nan", "none", "na", "não há dados", "n/a", ""}
-            mask_invalid = s.str.lower().isin(invalid_tokens)
-
-            # Substitui os inválidos por NA (pd.NA)
-            s = s.where(~mask_invalid, pd.NA)
-
-            # Em valores válidos, padroniza vírgula decimal para ponto
-            if s.notna().any():
-                s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
-
-            # Converte para numérico (erros -> NaN)
-            df_loc["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
-
-            logging.info("Tratamento 7.10 (Limpeza e conversão numérica de 'tempo_de_resolucao_em_dias') aplicado.")
-    except Exception as e:
-        logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
-
     # finalização / retorno da função (GARANTE retorno mesmo sem exceção)
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
     return df_loc
@@ -1128,26 +1100,12 @@ if not df_send.empty:
             df_send[coluna] = pd.to_datetime(df_send[coluna], errors='coerce').dt.strftime('%d/%m/%Y')
             logging.info(f"Coluna '{coluna}' convertida para texto DD/MM/AAAA.")
 
-    # --- B) QA PRE-APPEND: checagem de somas e contagens antes de enviar ===
-    def soma_tempo_serie_safe(df_local, col="tempo_de_resolucao_em_dias"):
-        if col not in df_local.columns:
-            return 0.0
-        return float(pd.to_numeric(df_local[col], errors="coerce").sum(min_count=1) or 0.0)
-
-    soma_bruta_total = soma_tempo_serie_safe(df_bruta)
-    soma_tratada_atual = soma_tempo_serie_safe(df_tratada_existente)
-    soma_a_enviar = soma_tempo_serie_safe(df_send)
-
     count_c_bruta = df_bruta["protocolo"].astype(str).str.match(r"^C\d+$").sum() if "protocolo" in df_bruta.columns else 0
     count_c_tratada = df_tratada_existente["protocolo"].astype(str).str.match(r"^C\d+$").sum() if "protocolo" in df_tratada_existente.columns else 0
     count_c_send = df_send["protocolo"].astype(str).str.match(r"^C\d+$").sum() if "protocolo" in df_send.columns else 0
 
     logging.info(f"QA PRE-APPEND: soma_bruta={soma_bruta_total}, soma_tratada_antes={soma_tratada_atual}, soma_a_enviar={soma_a_enviar}")
     logging.info(f"QA PRE-APPEND: count_C_bruta={count_c_bruta}, count_C_tratada={count_c_tratada}, count_C_send={count_c_send}")
-
-    # Se houver discrepância grande entre bruta e tratada+envio, emitir WARNING
-    if abs((soma_tratada_atual + soma_a_enviar) - soma_bruta_total) > 1:
-        logging.warning("QA PRE-APPEND: Diferença significativa detectada entre bruta e tratada+envio. Verifique mapeamento de colunas (ex.: tempo_de_resolucao_em_dias).")
 
     # Substitui todos os tipos de nulos restantes (NaT, None, NaN) por uma string vazia
     # Observação: mantemos a versão original df_send para QA; abaixo criaremos a versão para append.
@@ -1367,14 +1325,6 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
 
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
 
-    # 4️⃣ Limpeza de "Não há dados"
-    for col in ["tempo_de_resolucao_em_dias"]:
-        if col in df.columns:
-            df[col] = df[col].replace("Não há dados", "")
-
-    return df
-
-
 # --------------------------------------------------------
 # Fallback de envio de lotes (log)
 # --------------------------------------------------------
@@ -1387,7 +1337,6 @@ df = _prepare_status(df)  # garante que coluna principal esteja padronizada
 # Em seguida crie os deltas com base no df já padronizado:
 delta_status = df[df["status_demanda"] != df.get("status_demanda_OLD", df["status_demanda"])]
 delta_conc = df[df["data_da_conclusao"] != df.get("data_da_conclusao_OLD", df["data_da_conclusao"])]
-delta_tempo = df[df["tempo_de_resolucao_em_dias"] != df.get("tempo_de_resolucao_em_dias_OLD", df["tempo_de_resolucao_em_dias"])]
 
 # --------------------------------------------------------
 # PATCH principal — atualização de células no Google Sheets
@@ -1498,7 +1447,7 @@ except Exception as e:
     df_full = df_send.copy()
 
 # --- Garantia de colunas OLD para histórico ---
-EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "tempo_de_resolucao_em_dias", "prazo_restante"]
+EXCEPTION_COLS = ["status_demanda", "data_da_conclusao", "prazo_restante"]
 for col in EXCEPTION_COLS:
     old_col = f"{col}_OLD"
     if old_col not in df_full.columns:
@@ -1543,18 +1492,6 @@ try:
         except Exception:
             # fallback genérico
             bruta_norm["data_da_conclusao"] = _to_ddmmaa_text(df_bruta_lookup["data_da_conclusao"])
-
-    # tempo_de_resolucao_em_dias
-    if "tempo_de_resolucao_em_dias" in df_bruta_lookup.columns:
-        s = df_bruta_lookup["tempo_de_resolucao_em_dias"].astype(str).str.strip()
-        s = s.replace({"": pd.NA})
-        # tokens inválidos -> NA
-        s = s.where(~s.str.lower().isin(_invalid_tokens_str), pd.NA)
-        # vírgula decimal -> ponto
-        s_valid = s.where(s.notna())
-        if s_valid is not None and not s_valid.empty:
-            s.loc[s.notna()] = s.loc[s.notna()].str.replace(",", ".", regex=False)
-        bruta_norm["tempo_de_resolucao_em_dias"] = pd.to_numeric(s, errors="coerce")
 
     # status_demanda
     if "status_demanda" in df_bruta_lookup.columns:
@@ -1666,8 +1603,6 @@ try:
             _patch_grouped_force(delta_status, key_col="protocolo", value_col="status_demanda", sheet=aba_tratada)
         if not delta_conc.empty:
             _patch_grouped_force(delta_conc, key_col="protocolo", value_col="data_da_conclusao", sheet=aba_tratada)
-        if not delta_tempo.empty:
-            _patch_grouped_force(delta_tempo, key_col="protocolo", value_col="tempo_de_resolucao_em_dias", sheet=aba_tratada)
         if not delta_prazo.empty:
             _patch_grouped_force(delta_prazo, key_col="protocolo", value_col="prazo_restante", sheet=aba_tratada)
     else:
