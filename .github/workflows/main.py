@@ -1524,7 +1524,7 @@ logging.info("=== PATCH TEMPORÁRIO: ZERAR 29 PROTOCOLOS EXTRAS ===")
 
 # IDs e setup
 PLANILHA_TRATADA_ID = "1aF0I8pxABXhqyO2DmzBV9aoWHQN2h7LpTN-qdkGLc_g"
-SHEET_TRATADA = "Página1"  # ou sheet1 se for o nome padrão
+SHEET_TRATADA = "Sheet1"  # ou sheet1 se for o nome padrão
 
 # lista fixa dos 29 protocolos extras
 PROTOCOLOS_AZERAR = [
