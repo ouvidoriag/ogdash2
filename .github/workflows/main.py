@@ -949,186 +949,151 @@ except Exception as e:
     logging.critical(f"Erro ao processar df_tratada_existente ou definir schema alvo no Item 8: {e}", exc_info=True)
     raise
 
-# ===========================
-# SYNC: sincronizar tempo_de_resolucao_em_dias (BRUTA -> TRATADA)
-# Inserir IMEDIATAMENTE após carregar df_tratada_existente e df_bruta (Item 8)
-# ===========================
-def _convert_tempo_value_raw(v, convert_na_tokens=True):
-    """
-    Mantém o valor o mais 'bruto' possível:
-    - preserva ints/floats como números
-    - tenta converter strings numéricas para int/float
-    - converte tokens de 'Não há dados' para '' (vazio) se convert_na_tokens=True
-    """
-    na_tokens = {"nao ha dados", "não há dados", "não ha dados", "nan", "none", "n/a", "na", ""}
-    if pd.isna(v):
-        return ""
-    # se já for numérico, preserva
-    if isinstance(v, (int, np.integer)):
-        return int(v)
-    if isinstance(v, (float, np.floating)):
-        # se for inteiro em float, torna int
-        if float(v).is_integer():
-            return int(round(v))
-        return float(v)
-    s = str(v).strip()
-    if convert_na_tokens and s:
-        sval = unicodedata.normalize("NFKD", s).lower()
-        sval = re.sub(r"\s+", " ", sval).strip()
-        if sval in na_tokens:
-            return ""
-    # tenta interpretar números em strings (ex: "12", "12,0", "12,5")
-    s_num = s.replace(",", ".")
-    if re.fullmatch(r"-?\d+", s_num):
-        try:
-            return int(s_num)
-        except:
-            pass
-    if re.fullmatch(r"-?\d+\.\d+", s_num):
-        try:
-            f = float(s_num)
-            if f.is_integer():
-                return int(round(f))
-            return f
-        except:
-            pass
-    # fallback: preserva string original (não strip extra, já strip feito)
-    return s
+# -----------------------------
+# SYNC SEGURO: tempo_de_resolucao_em_dias (BRUTA -> TRATADA) COM ALLOWLIST/PATTERN
+# Colar imediatamente após: logging.debug(f"Colunas alvo da planilha tratada: {cols_alvo_tratada}")
+# -----------------------------
+import re, pandas as pd, numpy as np
 
-def sync_tempo_de_resolucao_bruta_para_tratada(df_bruta_local, df_tratada_local, sheet_obj, protocolo_col="protocolo", tempo_col="tempo_de_resolucao_em_dias", convert_na_tokens=True):
+# 1) CONFIGURE AQUI sua allowlist (protocolos que sempre são permitidos)
+ALLOWLIST_PROTOCOLS = {
+    "C768289061257407925",   # exemplo que você citou — mantenha/adicione outros se precisar
+    # "OUTRO_PROTOCOLO_PERMITIDO",
+}
+
+# 2) Regra de padrão permitida: protocolo que começa com 'C' seguido só de dígitos
+RE_ALLOWED_PATTERN = re.compile(r"^C\d+$", flags=re.IGNORECASE)
+
+def _is_protocol_allowed(prot: str) -> bool:
+    if prot is None: 
+        return False
+    p = str(prot).strip()
+    if not p:
+        return False
+    if p.upper() in ALLOWLIST_PROTOCOLS:
+        return True
+    return bool(RE_ALLOWED_PATTERN.match(p))
+
+# --- Função principal de sincronização segura ---
+def sync_tempo_secure(df_bruta_local: pd.DataFrame, df_tratada_local: pd.DataFrame, sheet_obj=None,
+                      protocolo_col="protocolo", tempo_col_bruta="Tempo de Resolução em Dias", tempo_col_tratada="tempo_de_resolucao_em_dias"):
     """
-    Sincroniza EXATAMENTE a coluna tempo_col da bruta para a tratada.
-    - df_bruta_local: DataFrame da base bruta (já normalizado)
-    - df_tratada_local: DataFrame carregado da planilha tratada (já normalizado)
-    - sheet_obj: objeto gspread worksheet (aba_tratada)
-    Retorna df_tratada_local atualizado (em memória) e faz update em massa no sheet_obj.
+    Sincroniza EXATAMENTE a coluna tempo_col_bruta (da bruta) para tempo_col_tratada (da tratada),
+    MAS apenas para protocolos permitidos (allowlist ou pattern). Para protocolos não permitidos
+    na planilha tratada, zera (deixa vazio) a célula tempo_col_tratada.
     """
-    # checagens mínimas
-    if df_bruta_local is None or df_bruta_local.empty:
-        logging.info("df_bruta vazio — nada a sincronizar para tempo_de_resolucao_em_dias.")
-        return df_tratada_local
-    if df_tratada_local is None or df_tratada_local.empty:
-        logging.info("df_tratada vazio — nada a sincronizar (sheet pode estar vazio).")
+    # segurança mínima
+    if df_bruta_local is None or df_tratada_local is None:
+        logging.warning("sync_tempo_secure: df_bruta_local ou df_tratada_local é None — abortando.")
         return df_tratada_local
 
-    # Garante colunas de protocolo normalizadas e em uppercase para matching robusto
-    df_b = df_bruta_local.copy()
-    df_t = df_tratada_local.copy()
-    if protocolo_col not in df_b.columns or protocolo_col not in df_t.columns:
-        logging.warning(f"Coluna '{protocolo_col}' ausente em bruta ou tratada — abortando sync.")
+    # normaliza chaves de protocolo nas duas bases para matching robusto
+    dfb = df_bruta_local.copy()
+    dft = df_tratada_local.copy()
+
+    if protocolo_col not in dfb.columns or protocolo_col not in dft.columns:
+        logging.warning(f"sync_tempo_secure: coluna '{protocolo_col}' ausente em bruta ou tratada — abortando.")
         return df_tratada_local
 
-    df_b[protocolo_col] = df_b[protocolo_col].astype(str).str.strip().str.upper()
-    df_t[protocolo_col] = df_t[protocolo_col].astype(str).str.strip().str.upper()
+    dfb['_prot_norm'] = dfb[protocolo_col].astype(str).str.strip()
+    dft['_prot_norm'] = dft[protocolo_col].astype(str).str.strip()
 
-    # Constroi mapa protocolo -> valor original bruto (mantendo ordem de leitura mais recente se houver duplicatas)
-    # Se desejar priorizar a última ocorrência na bruta, keep='last'
-    map_bruta = df_b.dropna(subset=[protocolo_col]).set_index(protocolo_col)[tempo_col].to_dict()
-
-    # Backup local da coluna antiga da tratada (CSV)
+    # Backup local (coluna atual da tratada)
     try:
-        backup_series = df_t.get(tempo_col, pd.Series([""] * len(df_t)))
-        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-        backup_fn = f"backup_tempo_de_resolucao_tratada_{timestamp}.csv"
-        backup_series.to_csv(backup_fn, index=False, header=[tempo_col], encoding="utf-8-sig")
-        logging.info(f"Backup da coluna '{tempo_col}' (tratada) salvo em: {backup_fn}")
+        backup_ts = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        backup_fn = f"backup_tempo_tratada_before_sync_{backup_ts}.csv"
+        dft[[tempo_col_tratada]].to_csv(backup_fn, index=False, encoding="utf-8-sig")
+        logging.info(f"Backup coluna '{tempo_col_tratada}' salvo: {backup_fn}")
     except Exception as e:
-        logging.warning(f"Falha ao salvar backup local da coluna '{tempo_col}': {e}")
+        logging.warning(f"Falha ao salvar backup local da coluna '{tempo_col_tratada}': {e}")
 
-    # Prepara nova coluna para escrita (preserva ordem das linhas da planilha tratada)
-    new_col_values = []
-    # Cria lista de protocolos da tratada conforme df_tratada_local (mesma ordem)
-    protocolos_tratada = df_t[protocolo_col].astype(str).tolist()
+    # Constrói mapa bruto: protocolo -> valor bruto exatamente como na bruta
+    # Se a coluna de tempo na bruta tiver nome diferente, ajuste tempo_col_bruta
+    if tempo_col_bruta not in dfb.columns:
+        logging.warning(f"Coluna de tempo '{tempo_col_bruta}' não encontrada na bruta. Abortando sync seguro.")
+        return df_tratada_local
+    map_br_raw = dfb.set_index('_prot_norm')[tempo_col_bruta].to_dict()
 
-    for prot in protocolos_tratada:
-        prot_key = (prot or "").strip().upper()
-        if prot_key in map_bruta:
-            raw_val = map_bruta[prot_key]
-            out_val = _convert_tempo_value_raw(raw_val, convert_na_tokens=convert_na_tokens)
+    # Para cada linha na tratada:
+    new_values = []
+    for prot in dft['_prot_norm'].tolist():
+        prot_key = (prot or "").strip()
+        allowed = _is_protocol_allowed(prot_key)
+        if allowed:
+            # se permitido, traga o valor da bruta se existe; senão zera (é coerente: sem dado na bruta => vazio)
+            if prot_key in map_br_raw:
+                val = map_br_raw[prot_key]
+                # preserva exatamente o conteúdo (não força tipo)
+                new_values.append(val if (val is not None and str(val).strip() != "nan") else "")
+            else:
+                # protocolo permitido porém não presente na bruta atual -> zera (evita manter números órfãos)
+                new_values.append("")
         else:
-            # se não existe na bruta, mantém o valor atual da tratada (para evitar sobrescrever)
-            cur_val = df_t.loc[df_t[protocolo_col] == prot_key, tempo_col] if tempo_col in df_t.columns else pd.Series([""])
-            if isinstance(cur_val, pd.Series) and not cur_val.empty:
-                out_val = _convert_tempo_value_raw(cur_val.iloc[0], convert_na_tokens=convert_na_tokens)
-            else:
-                out_val = ""
-        new_col_values.append(out_val)
+            # protocolo não permitido -> zera (protege contra valores por engano)
+            new_values.append("")
 
-    # Atualiza df_tratada_local em memória (mantendo tipos coerentes)
-    df_tratada_local[tempo_col] = new_col_values
+    # Atualiza DataFrame em memória
+    dft[tempo_col_tratada] = new_values
 
-    # --- ESCRITA EM BLOCO NO GOOGLE SHEETS (aplica apenas a coluna) ---
-    try:
-        # recupera todos os valores atuais para obter nº de linhas verdadeiras
-        all_vals = sheet_obj.get_all_values()
-        if not all_vals:
-            logging.warning("Aba tratada sem valores (get_all_values retornou vazio). Não será possível atualizar a coluna via API.")
-            return df_tratada_local
-
-        n_rows = len(all_vals)
-        header = all_vals[0]
-        # encontra índice da coluna no sheet
+    # Escrever de volta ao Google Sheets se sheet_obj fornecido (atualiza só a coluna em bloco)
+    if sheet_obj is not None:
         try:
-            col_idx = header.index(tempo_col) + 1  # 1-based
-        except ValueError:
-            # tenta localizar coluna por nome similar (sem acento e lower)
-            header_norm = [normalizar_nome_coluna(h) for h in header]
+            all_vals = sheet_obj.get_all_values()
+            if not all_vals:
+                logging.warning("sync_tempo_secure: sheet_obj.get_all_values() vazio — abortando update na sheet.")
+                return dft
+
+            header = all_vals[0]
+            # tenta localizar índice da coluna tratada no header (aceita variação de nome)
             try:
-                col_idx = header_norm.index(normalizar_nome_coluna(tempo_col)) + 1
+                col_idx = header.index(tempo_col_tratada) + 1
             except ValueError:
-                logging.warning(f"Coluna '{tempo_col}' não encontrada no header da sheet — abortando update em sheet.")
-                return df_tratada_local
+                # fallback: busca por coluna normalizada
+                header_norm = [normalizar_nome_coluna(h) for h in header]
+                try:
+                    col_idx = header_norm.index(normalizar_nome_coluna(tempo_col_tratada)) + 1
+                except ValueError:
+                    logging.warning(f"sync_tempo_secure: coluna '{tempo_col_tratada}' não encontrada no header do sheet — abortando update na sheet.")
+                    return dft
 
-        # monta lista de valores para update: inclui header + as linhas (deve ter tamanho n_rows)
-        # Se df_tratada_local tem menos linhas que a sheet (possível), preenche com "" para linhas extras.
-        # Lembrando: get_all_records ignorou header, portanto df_tratada_local rows == n_rows-1 normalmente.
-        # Construímos valores para a faixa desde linha 2 até n_rows (preservando header na linha 1)
-        values_for_rows = []
-        # se sheet tem header na linha 1, começamos em linha 2
-        for i in range(1, n_rows):  # i indexes sheet data rows (0 is header)
-            # df_tratada_local is expected to align by index with sheet data rows, but se não, tentamos mapear por protocolo
-            try:
-                prot_sheet = all_vals[i][0].strip().upper() if len(all_vals[i]) > 0 else ""
-            except:
-                prot_sheet = ""
-            # preferimos usar new_col_values na mesma ordem se os protocolos baterem; caso contrário fallback
-            if i-1 < len(new_col_values):
-                candidate = new_col_values[i-1]
-            else:
-                candidate = ""
-            # Candidate pode ser numeric (int/float) ou string. gspread aceita números.
-            values_for_rows.append([candidate])
+            n_rows = len(all_vals)
+            # monta values para update (linhas 2..n_rows)
+            values_for_rows = []
+            for i in range(1, n_rows):
+                # pega o valor já preparado (alinhado por ordem de dft)
+                if i-1 < len(new_values):
+                    candidate = new_values[i-1]
+                else:
+                    candidate = ""
+                values_for_rows.append([candidate])
 
-        # Determina range A1 notation para a coluna (da linha 2 até n_rows)
-        import gspread.utils
-        start_a1 = gspread.utils.rowcol_to_a1(2, col_idx)
-        end_a1 = gspread.utils.rowcol_to_a1(n_rows, col_idx)
-        range_a1 = f"{start_a1}:{end_a1}"
+            import gspread.utils
+            start_a1 = gspread.utils.rowcol_to_a1(2, col_idx)
+            end_a1 = gspread.utils.rowcol_to_a1(1 + len(values_for_rows), col_idx)
+            range_a1 = f"{start_a1}:{end_a1}"
+            sheet_obj.update(range_a1, values_for_rows)
+            logging.info(f"sync_tempo_secure: coluna '{tempo_col_tratada}' atualizada no sheet (range {range_a1}).")
+        except Exception as e:
+            logging.exception(f"sync_tempo_secure: erro ao atualizar sheet: {e}")
 
-        # Executa o update em massa
-        sheet_obj.update(range_a1, values_for_rows)
-        logging.info(f"Coluna '{tempo_col}' sincronizada da bruta para tratada — range atualizado: {range_a1} ({len(values_for_rows)} linhas).")
-    except Exception as e:
-        logging.exception(f"Erro ao atualizar a coluna '{tempo_col}' na planilha tratada: {e}")
+    return dft
 
-    return df_tratada_local
-
-# === Invocação imediata (colocar aqui no Item 8, após carregar df_tratada_existente e df_bruta) ===
+# === INVOCAÇÃO ===
 try:
-    # aba_tratada já existe no seu escopo (gspread worksheet)
-    df_tratada_existente = sync_tempo_de_resolucao_bruta_para_tratada(
-        df_bruta_local = df_bruta, 
-        df_tratada_local = df_tratada_existente, 
-        sheet_obj = aba_tratada,
+    # ajuste nomes se necessário: aqui assumimos os nomes detectados nos seus arquivos
+    df_tratada_existente = sync_tempo_secure(
+        df_bruta_local = df_bruta,
+        df_tratada_local = df_tratada_existente,
+        sheet_obj = aba_tratada,   # passa None se não quiser escrita automática no sheet
         protocolo_col = "protocolo",
-        tempo_col = "tempo_de_resolucao_em_dias",
-        convert_na_tokens = True  # True converte "Não há dados" (e variantes) para vazio; ajuste se quiser manter o texto
+        tempo_col_bruta = "Tempo de Resolução em Dias",
+        tempo_col_tratada = "tempo_de_resolucao_em_dias"
     )
 except Exception as e:
-    logging.error(f"Falha ao sincronizar coluna tempo_de_resolucao_em_dias: {e}", exc_info=True)
-
-# Após a execução acima, df_tratada_existente no escopo estará atualizada em memória e a planilha também.
-# Você pode prosseguir com o restante do pipeline (_tratar_full nos novos, montagem de df_send, etc.).
+    logging.error(f"Erro ao executar sync_tempo_secure: {e}", exc_info=True)
+# -----------------------------
+# FIM do bloco sync seguro
+# -----------------------------
 
 # ----------------------------------------------------------
 # IDENTIFICA E PREPARA NOVOS PROTOCOLOS PARA ENVIO
