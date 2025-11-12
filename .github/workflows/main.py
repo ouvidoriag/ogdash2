@@ -1188,6 +1188,136 @@ try:
 except Exception as e:
     logging.error(f"Falha ao sincronizar coluna tempo_de_resolucao_em_dias: {e}", exc_info=True)
 
+# -----------------------
+# Sincroniza status_demanda (BRUTA -> TRATADA) para protocolos padrão C...
+# -----------------------
+def sync_status_demanda_bruta_para_tratada(
+    df_bruta_local,
+    df_tratada_local,
+    sheet_obj,
+    protocolo_col="protocolo",
+    status_col="status_demanda",
+    pattern_regex=r"^C\d+"
+):
+    """
+    Sincroniza EXATAMENTE os valores de status_col da bruta para a tratada, para protocolos que
+    batem com pattern_regex (por default '^C\\d+').
+    - Preserva valores atuais da tratada quando o protocolo não existir na bruta.
+    - Retorna df_tratada_local atualizado (em memória) e atualiza a planilha via gspread.
+    """
+    if df_bruta_local is None or df_bruta_local.empty:
+        logging.info("df_bruta vazio — nada a sincronizar para status_demanda.")
+        return df_tratada_local
+    if df_tratada_local is None or df_tratada_local.empty:
+        logging.info("df_tratada vazio — nada a sincronizar (sheet pode estar vazio).")
+        return df_tratada_local
+
+    # Normaliza colunas de protocolo
+    df_b = df_bruta_local.copy()
+    df_t = df_tratada_local.copy()
+    if protocolo_col not in df_b.columns or protocolo_col not in df_t.columns:
+        logging.warning(f"Coluna '{protocolo_col}' ausente em bruta ou tratada — abortando sync status_demanda.")
+        return df_tratada_local
+
+    df_b[protocolo_col] = df_b[protocolo_col].astype(str).str.strip().str.upper()
+    df_t[protocolo_col] = df_t[protocolo_col].astype(str).str.strip().str.upper()
+
+    # Mapa protocolo -> valor bruto exato (preserva texto tal qual na bruta)
+    # Se houver duplicatas na bruta, priorizamos a última ocorrência (keep='last')
+    map_bruta = df_b.dropna(subset=[protocolo_col]).set_index(protocolo_col)[status_col].to_dict()
+
+    # Backup local (opcional)
+    try:
+        backup_series = df_t.get(status_col, pd.Series([""] * len(df_t)))
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        backup_fn = f"backup_status_demanda_tratada_{timestamp}.csv"
+        backup_series.to_csv(backup_fn, index=False, header=[status_col], encoding="utf-8-sig")
+        logging.info(f"Backup da coluna '{status_col}' (tratada) salvo em: {backup_fn}")
+    except Exception as e:
+        logging.warning(f"Falha ao salvar backup local da coluna '{status_col}': {e}")
+
+    # Prepara nova coluna respeitando a ordem da tratada
+    new_col_values = []
+    protocolos_tratada = df_t[protocolo_col].astype(str).tolist()
+
+    # Compila regex do padrão (case-insensitive sobre a forma normalizada já em uppercase)
+    import re as _re
+    pattern = _re.compile(pattern_regex, flags=_re.IGNORECASE)
+
+    for prot in protocolos_tratada:
+        prot_key = (prot or "").strip().upper()
+        if pattern.match(prot_key):
+            # se protocolo do tipo C...: tenta pegar na bruta; senão mantém o valor atual da tratada
+            if prot_key in map_bruta:
+                raw_val = map_bruta[prot_key]
+                out_val = raw_val if (raw_val is not None and str(raw_val).strip() != "") else ""
+            else:
+                # mantém valor atual da tratada
+                cur_val = df_t.loc[df_t[protocolo_col] == prot_key, status_col] if status_col in df_t.columns else pd.Series([""])
+                out_val = cur_val.iloc[0] if isinstance(cur_val, pd.Series) and not cur_val.empty else ""
+        else:
+            # protocolos que não batem com o padrão C...: manter o valor atual da tratada
+            cur_val = df_t.loc[df_t[protocolo_col] == prot_key, status_col] if status_col in df_t.columns else pd.Series([""])
+            out_val = cur_val.iloc[0] if isinstance(cur_val, pd.Series) and not cur_val.empty else ""
+        new_col_values.append(out_val)
+
+    # Atualiza df_tratada_local em memória
+    df_tratada_local[status_col] = new_col_values
+
+    # --- Escreve em bloco na sheet apenas a coluna ---
+    try:
+        all_vals = sheet_obj.get_all_values()
+        if not all_vals:
+            logging.warning("Aba tratada sem valores (get_all_values retornou vazio). Não será possível atualizar a coluna status_demanda via API.")
+            return df_tratada_local
+
+        n_rows = len(all_vals)
+        header = all_vals[0]
+        try:
+            col_idx = header.index(status_col) + 1
+        except ValueError:
+            # tenta localizar por nome normalizado
+            header_norm = [normalizar_nome_coluna(h) for h in header]
+            try:
+                col_idx = header_norm.index(normalizar_nome_coluna(status_col)) + 1
+            except ValueError:
+                logging.warning(f"Coluna '{status_col}' não encontrada no header da sheet — abortando update em sheet.")
+                return df_tratada_local
+
+        values_for_rows = []
+        for i in range(1, n_rows):
+            if i-1 < len(new_col_values):
+                candidate = new_col_values[i-1]
+            else:
+                candidate = ""
+            values_for_rows.append([candidate])
+
+        import gspread.utils
+        start_a1 = gspread.utils.rowcol_to_a1(2, col_idx)
+        end_a1 = gspread.utils.rowcol_to_a1(n_rows, col_idx)
+        range_a1 = f"{start_a1}:{end_a1}"
+
+        sheet_obj.update(range_a1, values_for_rows)
+        logging.info(f"Coluna '{status_col}' sincronizada da bruta para tratada — range atualizado: {range_a1} ({len(values_for_rows)} linhas).")
+    except Exception as e:
+        logging.exception(f"Erro ao atualizar a coluna '{status_col}' na planilha tratada: {e}")
+
+    return df_tratada_local
+
+
+# === Invocação imediata para sincronizar status_demanda (após sync do tempo_de_resolucao) ===
+try:
+    df_tratada_existente = sync_status_demanda_bruta_para_tratada(
+        df_bruta_local = df_bruta,
+        df_tratada_local = df_tratada_existente,
+        sheet_obj = aba_tratada,
+        protocolo_col = "protocolo",
+        status_col = "status_demanda",
+        pattern_regex = r"^C\d+"   # ajuste aqui se seu padrão for diferente (ex.: '^C\\d{18,}$')
+    )
+except Exception as e:
+    logging.error(f"Falha ao sincronizar coluna status_demanda: {e}", exc_info=True)
+
 # Após a execução acima, df_tratada_existente no escopo estará atualizada em memória e a planilha também.
 # Você pode prosseguir com o restante do pipeline (_tratar_full nos novos, montagem de df_send, etc.).
 # ----------------------------------------------------------
@@ -1460,14 +1590,6 @@ import time
 def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
-
-    # 1️⃣ Padroniza status_demanda
-    if "status_demanda" in df.columns:
-        df["status_demanda"] = df["status_demanda"].apply(
-            lambda v: "CONCLUÍDA" if _is_concluida(v)
-            else "EM ANDAMENTO" if (v and str(v).strip() != "")
-            else v
-        )
 
     # 2️⃣ Padroniza prazo_restante
     if "prazo_restante" in df.columns:
