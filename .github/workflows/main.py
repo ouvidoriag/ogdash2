@@ -1513,6 +1513,90 @@ print(f"   • STATUS: {len(delta_status)}")
 print(f"   • DATA_CONCLUSAO: {len(delta_conc)}")
 print(f"   • TEMPO_DE_RESOLUCAO: {len(delta_tempo)}")
 
+# =========================================================
+# PATCH TEMPORÁRIO: ZERAR tempo_de_resolucao_em_dias EM 29 PROTOCOLOS EXTRAS
+# =========================================================
+import pandas as pd
+import gspread
+import logging
+
+logging.info("=== PATCH TEMPORÁRIO: ZERAR 29 PROTOCOLOS EXTRAS ===")
+
+# IDs e setup
+PLANILHA_TRATADA_ID = "1aF0I8pxABXhqyO2DmzBV9aoWHQN2h7LpTN-qdkGLc_g"
+SHEET_TRATADA = "Página1"  # ou sheet1 se for o nome padrão
+
+# lista fixa dos 29 protocolos extras
+PROTOCOLOS_AZERAR = [
+    "NUP.00719.2025.000034-38","NUP.00719.2025.000036-08","NUP.00719.2025.000044-00","NUP.00719.2025.000090-45",
+    "NUP.00719.2025.000091-26","NUP.00719.2025.000092-15","NUP.00719.2025.000093-98","NUP.00719.2025.000095-50",
+    "NUP.00719.2025.000096-31","NUP.00719.2025.000097-11","NUP.00719.2025.000098-01","NUP.00719.2025.000099-83",
+    "NUP.00719.2025.000100-51","NUP.00719.2025.000101-32","NUP.00719.2025.000102-13","NUP.00719.2025.000103-02",
+    "NUP.00719.2025.000106-47","NUP.00719.2025.000107-28","NUP.00719.2025.000108-09","NUP.00719.2025.000109-90",
+    "NUP.00719.2025.000111-04","NUP.00719.2025.000112-95","NUP.00719.2025.000113-76","NUP.00719.2025.000114-57",
+    "NUP.00719.2025.000115-38","NUP.00719.2025.000116-19","NUP.00719.2025.000117-08","NUP.00719.2025.000118-80",
+    "NUP.00719.2025.000119-61"
+]
+
+# abre a planilha e aba
+try:
+    planilha = gc.open_by_key(PLANILHA_TRATADA_ID)
+    aba = planilha.worksheet(SHEET_TRATADA)
+    df_tratada = pd.DataFrame(aba.get_all_records())
+    df_tratada.columns = [c.strip().lower().replace(" ", "_") for c in df_tratada.columns]
+
+    logging.info(f"Planilha tratada carregada ({df_tratada.shape})")
+except Exception as e:
+    logging.error(f"Erro ao abrir planilha tratada: {e}")
+    raise
+
+# backup local
+try:
+    df_tratada.to_csv("backup_tratada_antes_patch.csv", index=False, encoding="utf-8-sig")
+    logging.info("Backup salvo: backup_tratada_antes_patch.csv")
+except Exception as e:
+    logging.warning(f"Falha ao salvar backup local: {e}")
+
+# normaliza protocolo
+df_tratada["protocolo"] = df_tratada["protocolo"].astype(str).str.strip().str.upper()
+
+# aplica o zero nos protocolos alvo
+mask = df_tratada["protocolo"].isin([p.upper() for p in PROTOCOLOS_AZERAR])
+df_tratada.loc[mask, "tempo_de_resolucao_em_dias"] = 0
+
+# mostra resumo
+print(f"✅ Protocolos zerados: {mask.sum()} (de {len(PROTOCOLOS_AZERAR)} esperados)")
+logging.info(f"Protocolos zerados: {mask.sum()}")
+
+# envia de volta ao sheet
+try:
+    import gspread.utils
+    colnames = aba.row_values(1)
+    col_norm = [c.strip().lower().replace(" ", "_") for c in colnames]
+    col_idx = col_norm.index("tempo_de_resolucao_em_dias") + 1
+    prot_idx = col_norm.index("protocolo") + 1
+
+    # obtém todos os protocolos da aba
+    prot_sheet = [str(x).strip().upper() for x in aba.col_values(prot_idx)]
+    # prepara valores novos
+    updates = []
+    for p in PROTOCOLOS_AZERAR:
+        if p.upper() in prot_sheet:
+            row_idx = prot_sheet.index(p.upper()) + 1
+            updates.append((row_idx, col_idx, 0))
+
+    # aplica no sheet (em batch)
+    for row_idx, col_idx, val in updates:
+        aba.update_cell(row_idx, col_idx, val)
+    print(f"✅ {len(updates)} células atualizadas com valor 0 na coluna tempo_de_resolucao_em_dias.")
+    logging.info(f"Patch: {len(updates)} linhas atualizadas com valor 0.")
+except Exception as e:
+    logging.error(f"Erro ao atualizar sheet: {e}")
+    raise
+
+print("🚀 PATCH TEMPORÁRIO CONCLUÍDO: tempo_de_resolucao_em_dias zerado para os 29 protocolos extras.")
+logging.info("🚀 PATCH TEMPORÁRIO CONCLUÍDO.")
+
 # ========================================================
 # 11) QA & SUMÁRIO FINAL
 # ========================================================
