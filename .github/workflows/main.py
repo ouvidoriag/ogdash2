@@ -849,6 +849,47 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
 
+     # --- NORMALIZAÇÃO PADRÃO DAS UACs (aplica-se aos registros que estão sendo tratados em _tratar_full) ---
+    try:
+        if "unidade_cadastro" in df_loc.columns:
+            # trim e normalização básica
+            df_loc["unidade_cadastro"] = df_loc["unidade_cadastro"].astype(str).str.strip()
+
+            # mapa explícito para casos especiais (treat lower-cased keys)
+            uac_mapa = {
+                "uac - cer iv": "UAC - CER IV",
+                "uac - uph pilar": "UAC - UPH Pilar",
+                "uac - uph saracuruna": "UAC - UPH Saracuruna",
+                "uac - uph xerém": "UAC - UPH Xerém",
+                "uac - uph xerem": "UAC - UPH Xerém",      # sem acento variante
+                # redundâncias comuns
+                "uac - uac cer iv": "UAC - CER IV",
+                "uac - uac uph pilar": "UAC - UPH Pilar",
+                "uac - uac uph saracuruna": "UAC - UPH Saracuruna",
+                "uac - uac uph xerem": "UAC - UPH Xerém",
+            }
+
+            # coluna auxiliar normalizada em lower para matching
+            tmp = df_loc["unidade_cadastro"].str.lower().fillna("")
+
+            # aplica mapeamento explícito (prioritário)
+            tmp = tmp.replace(uac_mapa)
+
+            # regra genérica: se começar com "uac - " garante prefixo "UAC - " e capitaliza o restante minimamente
+            mask_uac = tmp.str.match(r"^\s*uac\s*-\s*", na=False)
+            if mask_uac.any():
+                # remove prefixo e aplica capitalização leve (mantém palavras como 'UPH' / 'CER' intactas se já em mapa)
+                rest = tmp[mask_uac].str.replace(r"^\s*uac\s*-\s*", "", regex=True).str.strip()
+                # Se já mapeado (ex.: cer iv, uph pilar) preferimos o mapeamento final — caso contrário formatamos
+                rest_fmt = rest.str.replace(r"\s+", " ").str.strip().apply(lambda s: " ".join([w.upper() if len(w) <= 3 else w.capitalize() for w in s.split()]))
+                tmp.loc[mask_uac] = "UAC - " + rest_fmt
+
+            # escreve de volta com strip
+            df_loc["unidade_cadastro"] = tmp.str.strip()
+            logging.info("Normalização UAC aplicada em _tratar_full para 'unidade_cadastro'.")
+    except Exception as e:
+        logging.warning(f"Falha ao normalizar UACs dentro de _tratar_full: {e}")
+
     # finalização / retorno da função (GARANTE retorno mesmo sem exceção)
     logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
     return df_loc
@@ -951,8 +992,27 @@ except Exception as e:
 
 # ===========================
 # SYNC: sincronizar tempo_de_resolucao_em_dias (BRUTA -> TRATADA)
-# Inserir IMEDIATAMENTE após carregar df_tratada_existente e df_bruta (Item 8)
 # ===========================
+
+# --- PRÉ-TRATAMENTO SIMPLES: limpa "Não há dados" na bruta antes do sync ---
+try:
+    if "tempo_de_resolucao_em_dias" in df_bruta.columns:
+        df_bruta["tempo_de_resolucao_em_dias"] = (
+            df_bruta["tempo_de_resolucao_em_dias"]
+            .astype(str)
+            .replace(
+                to_replace=[r"(?i)^\s*(não\s*há\s*dados|nao\s*ha\s*dados|nan|none|n/a|na|n\.a\.)\s*$"],
+                value="",
+                regex=True
+            )
+            .replace("None", "")
+            .replace("NaN", "")
+        )
+        logging.info("Pré-tratamento: 'Não há dados' convertido para vazio na coluna tempo_de_resolucao_em_dias (bruta).")
+except Exception as e:
+    logging.warning(f"Falha ao normalizar 'Não há dados' antes do sync: {e}")
+    
+# Inserir IMEDIATAMENTE após carregar df_tratada_existente e df_bruta (Item 8)    
 def _convert_tempo_value_raw(v, convert_na_tokens=True):
     """
     Mantém o valor o mais 'bruto' possível:
@@ -1248,7 +1308,6 @@ for col in ["data_da_criacao"]:
         df_send[col] = df_send[col].astype(str)
         logging.debug(f"Re-aplicado tratamento FINAL de '{col}' para garantir formato DD/MM/AAAA (String).")
 
-
 # ----------------------------------------------------------
 # CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
 # ----------------------------------------------------------
@@ -1348,12 +1407,7 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
 
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
 
-    # 4️⃣ Limpeza de "Não há dados"
-    for col in ["tempo_de_resolucao_em_dias"]:
-        if col in df.columns:
-            df[col] = df[col].replace("Não há dados", "")
-
-    return df
+     return df
 
 
 # --------------------------------------------------------
