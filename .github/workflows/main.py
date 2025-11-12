@@ -950,93 +950,127 @@ except Exception as e:
     raise
 
 # -----------------------------
-# SYNC SEGURO: tempo_de_resolucao_em_dias (BRUTA -> TRATADA) COM ALLOWLIST/PATTERN
-# Colar imediatamente após: logging.debug(f"Colunas alvo da planilha tratada: {cols_alvo_tratada}")
+# SYNC SEGURO REESCRITO: tempo_de_resolucao_em_dias (BRUTA -> TRATADA)
+# Cole este bloco EXATAMENTE após a definição de cols_alvo_tratada (Item 8).
 # -----------------------------
-import re, pandas as pd, numpy as np
+import re, pandas as pd, numpy as np, logging, gspread
 
-# 1) CONFIGURE AQUI sua allowlist (protocolos que sempre são permitidos)
+# ===== CONFIGURÁVEIS =====
 ALLOWLIST_PROTOCOLS = {
-    "C768289061257407925",   # exemplo que você citou — mantenha/adicione outros se precisar
-    # "OUTRO_PROTOCOLO_PERMITIDO",
+    "C768289061257407925",   # mantenha/adicione protocolos explicitamente permitidos
 }
-
-# 2) Regra de padrão permitida: protocolo que começa com 'C' seguido só de dígitos
-RE_ALLOWED_PATTERN = re.compile(r"^C\d+$", flags=re.IGNORECASE)
+RE_ALLOWED_PATTERN = re.compile(r"^C\d+$", flags=re.IGNORECASE)  # padrão permitido (C + dígitos)
+BACKUP_PREFIX = "backup_tempo_tratada_before_sync_"
 
 def _is_protocol_allowed(prot: str) -> bool:
-    if prot is None: 
-        return False
-    p = str(prot).strip()
-    if not p:
-        return False
-    if p.upper() in ALLOWLIST_PROTOCOLS:
-        return True
+    if prot is None: return False
+    p = str(prot).strip().upper()
+    if p == "": return False
+    if p in ALLOWLIST_PROTOCOLS: return True
     return bool(RE_ALLOWED_PATTERN.match(p))
 
-# --- Função principal de sincronização segura ---
-def sync_tempo_secure(df_bruta_local: pd.DataFrame, df_tratada_local: pd.DataFrame, sheet_obj=None,
-                      protocolo_col="protocolo", tempo_col_bruta="Tempo de Resolução em Dias", tempo_col_tratada="tempo_de_resolucao_em_dias"):
+def _detect_tempo_col(df_candidate: pd.DataFrame, prefer_normalized=True):
     """
-    Sincroniza EXATAMENTE a coluna tempo_col_bruta (da bruta) para tempo_col_tratada (da tratada),
-    MAS apenas para protocolos permitidos (allowlist ou pattern). Para protocolos não permitidos
-    na planilha tratada, zera (deixa vazio) a célula tempo_col_tratada.
+    Detecta o nome da coluna de 'tempo de resolucao' no df fornecido.
+    Retorna None se não encontrar.
     """
-    # segurança mínima
+    if df_candidate is None or df_candidate.empty:
+        return None
+    cols = list(df_candidate.columns)
+    # 1) procura nome já normalizado
+    candidates = [c for c in cols if "tempo" in c.lower() and "resol" in c.lower()]
+    if candidates:
+        return candidates[0]
+    # 2) procura por variações mais genéricas
+    candidates2 = [c for c in cols if "tempo" in c.lower() or "resolu" in c.lower() or "resolucao" in c.lower()]
+    if candidates2:
+        return candidates2[0]
+    return None
+
+def sync_tempo_secure(df_bruta_local: pd.DataFrame,
+                      df_tratada_local: pd.DataFrame,
+                      sheet_obj=None,
+                      protocolo_col="protocolo",
+                      tempo_col_bruta=None,
+                      tempo_col_tratada=None,
+                      apply_to_sheet=False):
+    """
+    Sincroniza EXATAMENTE a coluna tempo_col_bruta (da bruta) para tempo_col_tratada (da tratada).
+    - tempo_col_bruta: se None, detecta automaticamente na df_bruta_local.
+    - tempo_col_tratada: se None, detecta automaticamente na df_tratada_local.
+    - apply_to_sheet: se True e sheet_obj fornecido, escreve no Google Sheets; caso contrário altera só em memória.
+    Retorna o DataFrame tratada atualizado em memória.
+    """
+    # checagens rápidas
     if df_bruta_local is None or df_tratada_local is None:
-        logging.warning("sync_tempo_secure: df_bruta_local ou df_tratada_local é None — abortando.")
+        logging.warning("sync_tempo_secure: df_bruta_local ou df_tratada_local é None — abortando e retornando df_tratada_local inalterado.")
         return df_tratada_local
 
-    # normaliza chaves de protocolo nas duas bases para matching robusto
+    # detecta automaticamente nomes das colunas se necessário
+    if tempo_col_bruta is None:
+        tempo_col_bruta = _detect_tempo_col(df_bruta_local)
+    if tempo_col_tratada is None:
+        tempo_col_tratada = _detect_tempo_col(df_tratada_local)
+
+    if tempo_col_bruta is None:
+        logging.warning("sync_tempo_secure: não foi possível detectar coluna de tempo na BRUTA. Abortando sync.")
+        return df_tratada_local
+    if tempo_col_tratada is None:
+        logging.warning("sync_tempo_secure: não foi possível detectar coluna de tempo na TRATADA. Abortando sync.")
+        return df_tratada_local
+
+    logging.info(f"sync_tempo_secure: usando coluna bruta='{tempo_col_bruta}' -> coluna tratada='{tempo_col_tratada}'")
+
+    # normaliza chaves de protocolo para matching robusto
     dfb = df_bruta_local.copy()
     dft = df_tratada_local.copy()
-
     if protocolo_col not in dfb.columns or protocolo_col not in dft.columns:
-        logging.warning(f"sync_tempo_secure: coluna '{protocolo_col}' ausente em bruta ou tratada — abortando.")
+        logging.warning(f"sync_tempo_secure: coluna '{protocolo_col}' ausente em uma das bases — abortando.")
         return df_tratada_local
 
-    dfb['_prot_norm'] = dfb[protocolo_col].astype(str).str.strip()
-    dft['_prot_norm'] = dft[protocolo_col].astype(str).str.strip()
+    dfb['_prot_norm'] = dfb[protocolo_col].astype(str).str.strip().str.upper()
+    dft['_prot_norm'] = dft[protocolo_col].astype(str).str.strip().str.upper()
 
-    # Backup local (coluna atual da tratada)
+    # backup local da coluna tratada (em CSV)
     try:
         backup_ts = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-        backup_fn = f"backup_tempo_tratada_before_sync_{backup_ts}.csv"
+        backup_fn = f"{BACKUP_PREFIX}{backup_ts}.csv"
         dft[[tempo_col_tratada]].to_csv(backup_fn, index=False, encoding="utf-8-sig")
-        logging.info(f"Backup coluna '{tempo_col_tratada}' salvo: {backup_fn}")
+        logging.info(f"sync_tempo_secure: backup salvo: {backup_fn}")
     except Exception as e:
-        logging.warning(f"Falha ao salvar backup local da coluna '{tempo_col_tratada}': {e}")
+        logging.warning(f"sync_tempo_secure: falhou ao salvar backup local: {e}")
 
-    # Constrói mapa bruto: protocolo -> valor bruto exatamente como na bruta
-    # Se a coluna de tempo na bruta tiver nome diferente, ajuste tempo_col_bruta
+    # constrói mapa bruto: protocolo -> valor bruto (EXATO)
     if tempo_col_bruta not in dfb.columns:
-        logging.warning(f"Coluna de tempo '{tempo_col_bruta}' não encontrada na bruta. Abortando sync seguro.")
+        logging.warning(f"sync_tempo_secure: coluna '{tempo_col_bruta}' não encontrada na bruta. Abortando.")
         return df_tratada_local
+
     map_br_raw = dfb.set_index('_prot_norm')[tempo_col_bruta].to_dict()
 
-    # Para cada linha na tratada:
+    # PREPARA nova coluna para a tratada, mantendo a mesma ordem de linhas de dft
     new_values = []
     for prot in dft['_prot_norm'].tolist():
-        prot_key = (prot or "").strip()
+        prot_key = (prot or "").strip().upper()
         allowed = _is_protocol_allowed(prot_key)
         if allowed:
-            # se permitido, traga o valor da bruta se existe; senão zera (é coerente: sem dado na bruta => vazio)
+            # trouxe valor bruto se existir no map; senão vazio (zera)
             if prot_key in map_br_raw:
                 val = map_br_raw[prot_key]
-                # preserva exatamente o conteúdo (não força tipo)
-                new_values.append(val if (val is not None and str(val).strip() != "nan") else "")
+                # preserva exatamente o que veio da bruta (não força tipo)
+                # trata tokens comuns de ausência
+                sval = "" if (pd.isna(val) or str(val).strip().lower() in ["nan", "none", "na", "não há dados", "n/a", ""]) else val
+                new_values.append(sval)
             else:
-                # protocolo permitido porém não presente na bruta atual -> zera (evita manter números órfãos)
-                new_values.append("")
+                new_values.append("")  # protocolo permitido mas sem dado na bruta
         else:
-            # protocolo não permitido -> zera (protege contra valores por engano)
+            # protocolo não permitido -> zera (proteção)
             new_values.append("")
 
-    # Atualiza DataFrame em memória
+    # aplica no DataFrame em memória
     dft[tempo_col_tratada] = new_values
 
-    # Escrever de volta ao Google Sheets se sheet_obj fornecido (atualiza só a coluna em bloco)
-    if sheet_obj is not None:
+    # se requisitado, aplica no sheet (atualiza coluna em bloco)
+    if apply_to_sheet and sheet_obj is not None:
         try:
             all_vals = sheet_obj.get_all_values()
             if not all_vals:
@@ -1044,23 +1078,23 @@ def sync_tempo_secure(df_bruta_local: pd.DataFrame, df_tratada_local: pd.DataFra
                 return dft
 
             header = all_vals[0]
-            # tenta localizar índice da coluna tratada no header (aceita variação de nome)
+            # localiza índice da coluna tratada no header (aceita variação de nome)
             try:
                 col_idx = header.index(tempo_col_tratada) + 1
             except ValueError:
-                # fallback: busca por coluna normalizada
-                header_norm = [normalizar_nome_coluna(h) for h in header]
+                # tenta buscar por header normalizado (segurança)
+                header_norm = [re.sub(r"[^a-z0-9]+", "_", str(h).lower()).strip("_") for h in header]
                 try:
-                    col_idx = header_norm.index(normalizar_nome_coluna(tempo_col_tratada)) + 1
+                    col_idx = header_norm.index(re.sub(r"[^a-z0-9]+", "_", tempo_col_tratada.lower()).strip("_")) + 1
                 except ValueError:
                     logging.warning(f"sync_tempo_secure: coluna '{tempo_col_tratada}' não encontrada no header do sheet — abortando update na sheet.")
                     return dft
 
+            # monta valores para as linhas 2..n (preserva comprimento)
             n_rows = len(all_vals)
-            # monta values para update (linhas 2..n_rows)
             values_for_rows = []
             for i in range(1, n_rows):
-                # pega o valor já preparado (alinhado por ordem de dft)
+                # pega valor alinhado por ordem de dft (se faltar, vazio)
                 if i-1 < len(new_values):
                     candidate = new_values[i-1]
                 else:
@@ -1078,21 +1112,31 @@ def sync_tempo_secure(df_bruta_local: pd.DataFrame, df_tratada_local: pd.DataFra
 
     return dft
 
-# === INVOCAÇÃO ===
-try:
-    # ajuste nomes se necessário: aqui assumimos os nomes detectados nos seus arquivos
-    df_tratada_existente = sync_tempo_secure(
-        df_bruta_local = df_bruta,
-        df_tratada_local = df_tratada_existente,
-        sheet_obj = aba_tratada,   # passa None se não quiser escrita automática no sheet
-        protocolo_col = "protocolo",
-        tempo_col_bruta = "Tempo de Resolução em Dias",
-        tempo_col_tratada = "tempo_de_resolucao_em_dias"
-    )
-except Exception as e:
-    logging.error(f"Erro ao executar sync_tempo_secure: {e}", exc_info=True)
+# ===== INVOCAÇÃO RECOMENDADA (DE TESTE) =====
+# DETECTA AUTOMATICAMENTE OS NOMES DAS COLUNAS (não passe strings literais antigas)
+tempo_bruta_detected = _detect_tempo_col(df_bruta) or "tempo_de_resolucao_em_dias"
+tempo_tratada_detected = _detect_tempo_col(df_tratada_existente) or "tempo_de_resolucao_em_dias"
+
+# Para TESTAR em memória — use apply_to_sheet=False e sheet_obj=None
+df_tratada_existente = sync_tempo_secure(
+    df_bruta_local = df_bruta,
+    df_tratada_local = df_tratada_existente,
+    sheet_obj = None,                      # None = NÃO escreve no Google Sheets (apenas em memória)
+    protocolo_col = "protocolo",
+    tempo_col_bruta = tempo_bruta_detected,    # detectado automaticamente
+    tempo_col_tratada = tempo_tratada_detected,
+    apply_to_sheet = False                 # False para validar em memória; True para efetivar no sheet
+)
+
+# Se tudo OK em memória, chame novamente com apply_to_sheet=True e sheet_obj=aba_tratada
+# Exemplo (apenas depois de validar):
+# df_tratada_existente = sync_tempo_secure(df_bruta, df_tratada_existente, sheet_obj=aba_tratada,
+#                                         protocolo_col="protocolo",
+#                                         tempo_col_bruta=tempo_bruta_detected,
+#                                         tempo_col_tratada=tempo_tratada_detected,
+#                                         apply_to_sheet=True)
 # -----------------------------
-# FIM do bloco sync seguro
+# FIM bloco sync seguro reescrito
 # -----------------------------
 
 # ----------------------------------------------------------
