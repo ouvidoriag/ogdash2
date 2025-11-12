@@ -1406,7 +1406,7 @@ def _prepare_status(df: pd.DataFrame) -> pd.DataFrame:
                 return "Não concluído"
 
         df["data_da_conclusao"] = df["data_da_conclusao"].apply(_tratar_data_conclusao)
-
+        return df
 # --------------------------------------------------------
 # Fallback de envio de lotes (log)
 # --------------------------------------------------------
