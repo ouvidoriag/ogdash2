@@ -368,7 +368,7 @@ def _div_temas(v, seps=(",", ";", "|", "/")):
 MAP_TEMA_PARA_ORGAO = {
     "Administração Pública":"Secretaria de Administração","Agricultura":"Secretaria de Obras e Agricultura",
     "Assistência Social e Direitos Humanos":"Secretaria de Assistência Social e Direitos Humanos",
-    "Assuntos Jurídicos":"Procuradoria Geral","Comunicação Social":"Secretaria de Comunicação Social e Relações Públicas",
+    "Assuntos Jurídicos":"Procuradoria Geral","Comunicação Social":"Secretaria de Comunicação Social, Relações Públicas, Trabalho, Emprego e Renda",
     "Controle Governamental":"Secretaria de Controle Interno","Criança, Adolescente e Idoso":"Secretaria de Assistência Social e Direitos Humanos",
     "Cultura e Turismo":"Secretaria de Cultura e Turismo","Defesa Civil":"Secretaria de Defesa Civil",
     "Direitos à Pessoa com Deficiência":"Secretaria de Assistência Social e Direitos Humanos",
@@ -379,7 +379,7 @@ MAP_TEMA_PARA_ORGAO = {
     "Habitação":"Secretaria de Urbanismo e Habitação","Inclusão e Acessibilidade":"Secretaria de Gestão, Inclusão e Mulher",
     "Meio Ambiente":"Secretaria de Meio Ambiente",
     "Meio Ambiente (Poluição Sonora, Árvores, Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
-    "Assédio":"Secretaria de Comunicação Social e Relações Públicas","Obras Públicas":"Secretaria de Obras e Agricultura",
+    "Assédio":"Secretaria de Comunicação Social, Relações Públicas, Trabalho, Emprego e Renda","Obras Públicas":"Secretaria de Obras e Agricultura",
     "Obras, Limpeza Urbana e Braço de Luz":"Secretaria de Obras e Agricultura","Proteção Animal":"Secretaria de Proteção Animal",
     "Saúde":"Secretaria de Saúde","Segurança Pública":"Secretaria de Segurança Pública",
     "Segurança, Sinalização e Multas":"Secretaria de Segurança Pública",
@@ -398,7 +398,7 @@ MAP_TEMA_PARA_ORGAO = {
     "Meio Ambiente (Poluição Sonora)":"Secretaria de Meio Ambiente","Licenças e Fiscalizações Ambientais e etc.":"Secretaria de Meio Ambiente",
     "Vetores e Zoonoses (Combate à Dengue)":"Secretaria de Saúde",
     "Criação Irregular de Animais e etc.)":"Secretaria de Saúde","Licenças e Fiscalizações Ambientais e etc.)":"Secretaria de Meio Ambiente",
-    "Meio Ambiente (Poluição Sonora":"Secretaria de Meio Ambiente","Não se aplica":"Secretaria de Comunicação Social e Relações Públicas",
+    "Meio Ambiente (Poluição Sonora":"Secretaria de Meio Ambiente","Não se aplica":"Secretaria de Comunicação Social, Relações Públicas, Trabalho, Emprego e Renda",
     "Sinalização e Multas":"Secretaria de Segurança Pública","Transportes":"Secretaria de Transportes e Serviços Públicos",
     "Vetores e Zoonoses (Combate à Dengue":"Secretaria de Saúde",
 }
@@ -679,7 +679,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
             df_loc["orgaos"] = None
         
         # Passo B: Aplica o fallback para valores nulos/vazios
-        fallback_value = "Secretaria Municipal de Comunicação e Relações Públicas"
+        fallback_value = "Secretaria de Comunicação, Relações Públicas, Trabalho, Emprego e Renda"
         df_loc["orgaos"].fillna(fallback_value, inplace=True)
         # Garante que strings que são apenas espaços em branco também recebam o fallback
         df_loc.loc[df_loc["orgaos"].str.strip() == '', "orgaos"] = fallback_value
@@ -713,7 +713,8 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 "Lucia Helena": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco": "Lúcia Helena Tinoco Pacheco Varella",
                 "Lucia Helena Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helen Tinoco Varella": "Lúcia Helena Tinoco Pacheco Varella",
                 "Lucia Helan Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena  Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
-                "Lucia Helena Tinoco Pachewco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Lucia Helena Tinoco Pachewco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lúcia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Talita Mrques Ferrari": "Talita Marques Ferrari", "Talita  Marques Ferrari": "Talita Marques Ferrari",
                 "Mery": "Cidadão", "Ouvidoria Geral (Adm)": "Cidadão", "Rafaella Marques": "Rafaella Marques Gomes Santos",
                 "Ronaldo de Oliveira Brandão": "Cidadão", "Séphanie Santos": "Stephanie dos Santos Silva",
                 "Shirley Santana": "Cidadão", "Stépanie Santos": "Stephanie dos Santos Silva",
