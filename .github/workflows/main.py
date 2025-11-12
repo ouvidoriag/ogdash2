@@ -1235,6 +1235,24 @@ try:
        
         df_send = df_send_final.copy() # Atribui o DataFrame final preparado para df_send
 
+        # =====================================================
+        # 🔧 Padronização das datas antes do envio (DD/MM/AAAA)
+        # =====================================================
+        colunas_de_data = ["data_da_criacao", "data_da_conclusao"]
+
+        for coluna in colunas_de_data:
+            if coluna in df_send.columns:
+                try:
+                    # Converte para datetime, ignora erros silenciosamente
+                    df_send[coluna] = pd.to_datetime(df_send[coluna], errors='coerce')
+                    # Formata como DD/MM/AAAA
+                    df_send[coluna] = df_send[coluna].dt.strftime('%d/%m/%Y')
+                    # Substitui 'NaT' e nulos por vazio
+                    df_send[coluna] = df_send[coluna].replace('NaT', '').fillna('')
+                    logging.info(f"✅ Coluna '{coluna}' formatada no padrão DD/MM/AAAA.")
+                except Exception as e:
+                    logging.warning(f"⚠️ Falha ao formatar coluna '{coluna}' para DD/MM/AAAA: {e}")
+
 except Exception as e:
     logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
     raise
