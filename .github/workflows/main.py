@@ -1338,7 +1338,6 @@ else:
 
     for i in range(0, len(df_send), lote):
         chunk = df_send.iloc[i:i+lote].copy()
-        rows = chunk.values.tolist()
         first_idx = i + 1
         last_idx = min(i + lote, len(df_send))
         protos_preview = list(chunk.get("protocolo", []))[:3]
@@ -1346,6 +1345,19 @@ else:
         print(f"   • Enviando {first_idx}-{last_idx} (prévia protocolos: {protos_preview})")
 
         try:
+            # --- SANITIZAÇÃO ROBUSTA: remove NaN/pd.NA/None/inf para evitar erro JSON ---
+            n_before = chunk.size
+            chunk = chunk.replace([np.nan, pd.NA, None], "")
+            chunk = chunk.replace([np.inf, -np.inf], "")
+            chunk = chunk.astype(object)  # evita tipos numpy problemáticos
+            # opcional log de quantos valores foram substituídos
+            # conta vazios após substituição para ter ideia
+            n_empty_after = (chunk == "").sum().sum()
+            if n_empty_after > 0:
+                logging.debug(f"Lote {first_idx}-{last_idx}: {n_empty_after} células vazias após sanitização.")
+            
+            rows = chunk.values.tolist()
+
             if sheet_is_empty:
                 header = chunk.columns.tolist()
                 aba_tratada.append_rows([header] + rows)
@@ -1360,7 +1372,6 @@ else:
             failed = chunk[["protocolo"]].copy()
             timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
             failed.to_csv(f"failed_append_{first_idx}_{last_idx}_{timestamp}.csv", index=False, encoding="utf-8-sig")
-            # Dependendo da severidade, você pode querer parar o pipeline aqui.
 
 print("✅ Atualização da planilha tratada concluída com sucesso.")
 logging.info("✅ Atualização da planilha tratada concluída com sucesso.")
