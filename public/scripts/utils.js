@@ -88,18 +88,11 @@ function gradient(ctx, from, to) {
 
 /**
  * Mostrar feedback visual ao clicar
+ * DESABILITADO: Notificações de clique removidas
  */
 function showClickFeedback(element, label, value) {
-  const feedback = document.createElement('div');
-  feedback.className = 'fixed top-4 right-4 glass rounded-lg p-4 z-50';
-  feedback.innerHTML = `
-    <div class="text-cyan-300 font-bold text-lg">${label}</div>
-    <div class="text-slate-300 text-sm">Valor: ${value.toLocaleString('pt-BR')}</div>
-  `;
-  document.body.appendChild(feedback);
-  setTimeout(() => {
-    setTimeout(() => feedback.remove(), 100);
-  }, 2000);
+  // DESABILITADO: Não mostrar notificações ao clicar
+  return;
 }
 
 /**

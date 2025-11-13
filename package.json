@@ -28,8 +28,11 @@
     "cache:clear": "node scripts/clearCache.js",
     "test": "node scripts/run-tests.js",
     "test:all": "node scripts/test-all-pages.js",
+    "test:completo": "node scripts/test-completo-real.js",
+    "test:real": "node scripts/test-completo-real.js",
     "test:browser": "echo 'Acesse http://localhost:3000/?test=true no navegador'",
-    "test:pages": "echo 'Acesse http://localhost:3000/?test=pages no navegador'"
+    "test:pages": "echo 'Acesse http://localhost:3000/?test=pages no navegador'",
+    "fix:prisma": "node scripts/fix-prisma.js"
   },
   "keywords": [
     "ouvidoria",

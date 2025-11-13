@@ -266,17 +266,14 @@ const FORMAT_CONFIG = {
 
 // ============================================
 // CONFIGURAÇÕES DE CACHE
+// DESABILITADO: Cache removido
 // ============================================
 const CACHE_CONFIG = {
-  // Horários de atualização do banco de dados
-  DB_UPDATE_TIMES: [12, 17], // 12:00 e 17:00
-  
-  // Duração padrão de cache (em minutos)
-  DEFAULT_TTL: 5,
-  
-  // Cache de endpoints específicos (em minutos)
+  // Cache desabilitado
+  DB_UPDATE_TIMES: [12, 17],
+  DEFAULT_TTL: 0,
   ENDPOINT_TTL: {
-    [API_ENDPOINTS.FILTER]: 5,
+    [API_ENDPOINTS.FILTER]: 0,
     [API_ENDPOINTS.SUMMARY]: 10,
     [API_ENDPOINTS.AGGREGATE_BY_MONTH]: 30,
     [API_ENDPOINTS.AGGREGATE_BY_DAY]: 30,

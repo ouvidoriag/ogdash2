@@ -5,40 +5,30 @@
 
 /**
  * Adicionar handler de clique em gráfico
+ * DESABILITADO: Filtros globais removidos - gráficos não aplicam mais filtros
  */
 function addChartClickHandler(chart, onClickCallback, chartId = null) {
   if (!chart || !chart.canvas) return;
   
-  chart.canvas.style.cursor = 'pointer';
-  chart.canvas.onclick = function(evt) {
-    const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
-    if (points.length) {
-      const firstPoint = points[0];
-      const label = chart.data.labels[firstPoint.index];
-      const value = chart.data.datasets[firstPoint.datasetIndex].data[firstPoint.index];
-      
-      // Aplicar filtro global se chartId for fornecido (com toggle)
-      const chartFieldMap = window.chartFieldMap || window.filters?.chartFieldMap;
-      if (chartId && chartFieldMap?.[chartId]) {
-        const fieldConfig = chartFieldMap[chartId];
-        if (fieldConfig.field) {
-          // Criar elemento virtual para realce visual
-          const virtualElement = { 
-            classList: { add: () => {}, remove: () => {} },
-            setAttribute: () => {},
-            removeAttribute: () => {}
-          };
-          if (window.filters?.applyGlobalFilter) {
-            window.filters.applyGlobalFilter(fieldConfig.field, label, chartId, virtualElement);
-          }
-        }
-      }
-      
-      if (onClickCallback) {
-        onClickCallback(label, value, firstPoint.index);
-      }
-    }
-  };
+  // DESABILITADO: Não adicionar cursor pointer nem handlers de clique
+  // Os gráficos mostram apenas seus próprios dados, sem aplicar filtros globais
+  // chart.canvas.style.cursor = 'pointer';
+  // chart.canvas.onclick = ... (removido)
+  
+  // Se houver callback customizado, ainda pode ser usado para outras funcionalidades
+  // mas não para aplicar filtros globais
+  if (onClickCallback && typeof onClickCallback === 'function') {
+    // Opcional: ainda permitir callback se necessário, mas sem aplicar filtros
+    // chart.canvas.onclick = function(evt) {
+    //   const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+    //   if (points.length) {
+    //     const firstPoint = points[0];
+    //     const label = chart.data.labels[firstPoint.index];
+    //     const value = chart.data.datasets[firstPoint.datasetIndex].data[firstPoint.index];
+    //     onClickCallback(label, value, firstPoint.index);
+    //   }
+    // };
+  }
 }
 
 /**

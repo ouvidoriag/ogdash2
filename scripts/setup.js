@@ -13,11 +13,17 @@ console.log('🔧 Configurando o sistema...\n');
 // 1. Gerar Prisma Client
 console.log('1️⃣ Gerando Prisma Client...');
 try {
-  execSync('npx prisma generate', { stdio: 'inherit', cwd: join(__dirname, '..') });
+  execSync('npx prisma generate', { 
+    stdio: 'inherit', 
+    cwd: join(__dirname, '..'),
+    env: { ...process.env, PRISMA_GENERATE_SKIP_AUTOINSTALL: 'true' }
+  });
   console.log('✅ Prisma Client gerado com sucesso!\n');
 } catch (error) {
-  console.error('❌ Erro ao gerar Prisma Client:', error.message);
-  process.exit(1);
+  console.warn('⚠️ Aviso: Erro ao gerar Prisma Client (pode ser ignorado se já existe)');
+  console.warn('   Mensagem:', error.message);
+  console.log('💡 Tentando continuar mesmo assim...\n');
+  // Não sair com erro - pode ser que o Prisma já esteja gerado
 }
 
 // 2. Verificar/criar banco de dados

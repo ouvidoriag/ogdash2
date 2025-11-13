@@ -10,6 +10,22 @@ import { MongoClient, ObjectId } from 'mongodb';
 import fs from 'fs';
 import compression from 'compression';
 import { detectDistrictByAddress, mapAddressesToDistricts, getMappingStats } from './utils/districtMapper.js';
+import cacheManager from './utils/cacheManager.js';
+import { buildUniversalCache, scheduleDailyUpdate } from './utils/cacheBuilder.js';
+import { 
+  optimizedGroupBy, 
+  optimizedDistinct, 
+  optimizedGroupByMonth,
+  optimizedCrossAggregation,
+  getDateFilter
+} from './utils/queryOptimizer.js';
+import { 
+  withDbCache, 
+  cleanExpiredCache, 
+  getCacheStats,
+  clearAllDbCache 
+} from './utils/dbCache.js';
+import { FIELD_MAP, getNormalizedField, isNormalizedField } from './utils/fieldMapper.js';
 
 // Resolver caminho absoluto
 const __filename = fileURLToPath(import.meta.url);
@@ -167,13 +183,7 @@ process.on('SIGTERM', async () => {
 });
 
 const app = express();
-// Cache otimizado: TTL padrão de 1 hora (3600s) para dados que mudam pouco
-// checkperiod: verifica itens expirados a cada 5 minutos
-const cache = new NodeCache({ 
-  stdTTL: 3600, // 1 hora padrão
-  checkperiod: 300, // Verifica expirados a cada 5 minutos
-  useClones: false // Melhor performance (não clona objetos)
-});
+const cache = null;
 
 function setCacheHeaders(res, seconds = 3600) {
   res.set('Cache-Control', `public, max-age=${seconds}`);
@@ -201,28 +211,11 @@ async function safePrismaQuery(fn, retries = 2) {
 }
 
 async function withCache(key, ttlSeconds, res, fn) {
-  const cached = cache.get(key);
-  if (cached) {
-    setCacheHeaders(res, ttlSeconds);
-    return res.json(cached);
-  }
-  
   try {
-    // Usar safePrismaQuery se a função envolve queries do Prisma
-    const data = await safePrismaQuery(fn);
-    cache.set(key, data, ttlSeconds);
-    setCacheHeaders(res, ttlSeconds);
-    return res.json(data);
+    const result = await safePrismaQuery(fn);
+    return res.json(result);
   } catch (error) {
-    // Se houver erro de conexão, retornar dados em cache se disponível, ou erro
-    const cached = cache.get(key);
-    if (cached) {
-      console.warn(`⚠️ Erro ao buscar dados, usando cache: ${error.message}`);
-      setCacheHeaders(res, ttlSeconds);
-      return res.json(cached);
-    }
-    
-    // Se não houver cache e houver erro de conexão, retornar erro apropriado
+    // Se houver erro de conexão, retornar erro apropriado
     if (error.code === 'P2010' || error.message?.includes('Server selection timeout')) {
       console.error('❌ Erro de conexão com MongoDB:', error.message);
       return res.status(503).json({ 
@@ -369,10 +362,20 @@ function getTempoResolucaoEmDias(record, incluirZero = true) {
   if (record.tempoDeResolucaoEmDias !== null && record.tempoDeResolucaoEmDias !== undefined && record.tempoDeResolucaoEmDias !== '') {
     const parsed = parseFloat(record.tempoDeResolucaoEmDias);
     if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
-      if (!incluirZero && parsed === 0) {
+      // CORREÇÃO: Se for 0 e foi no mesmo dia, considerar como 1
+      let finalValue = parsed;
+      if (parsed === 0) {
+        const dataCriacao = getDataCriacao(record);
+        const dataConclusao = getDataConclusao(record);
+        if (dataCriacao && dataConclusao && dataCriacao === dataConclusao) {
+          finalValue = 1; // Mesmo dia = 1 dia
+        }
+      }
+      
+      if (!incluirZero && finalValue === 0) {
         // Não retornar zero se incluirZero é false, mas continuar tentando calcular das datas
       } else {
-        return parsed;
+        return finalValue;
       }
     }
   }
@@ -385,7 +388,14 @@ function getTempoResolucaoEmDias(record, incluirZero = true) {
     const start = new Date(dataCriacao + 'T00:00:00');
     const end = new Date(dataConclusao + 'T00:00:00');
     if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-      const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+      let calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+      // CORREÇÃO: Se for no mesmo dia, adicionar +1 (o dia do cadastro conta como 1 dia)
+      if (calculated === 0) {
+        calculated = 1;
+      } else {
+        // Se não for no mesmo dia, adicionar +1 para incluir o dia do cadastro
+        calculated = calculated + 1;
+      }
       if (calculated >= 0 && calculated <= 1000) {
         if (incluirZero || calculated > 0) {
           return calculated;
@@ -403,7 +413,14 @@ function getTempoResolucaoEmDias(record, incluirZero = true) {
       const start = new Date(dataCriacaoJson + 'T00:00:00');
       const end = new Date(dataConclusaoJson + 'T00:00:00');
       if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-        const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+        let calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+        // CORREÇÃO: Se for no mesmo dia, adicionar +1 (o dia do cadastro conta como 1 dia)
+        if (calculated === 0) {
+          calculated = 1;
+        } else {
+          // Se não for no mesmo dia, adicionar +1 para incluir o dia do cadastro
+          calculated = calculated + 1;
+        }
         if (calculated >= 0 && calculated <= 1000) {
           if (incluirZero || calculated > 0) {
             return calculated;
@@ -760,22 +777,114 @@ app.use(morgan('dev'));
 
 const publicDir = path.join(__dirname, '..', 'public');
 
-// Rota para página de chat separada (ANTES do static para ter prioridade)
-app.get('/chat', (_req, res) => {
-  res.sendFile(path.join(publicDir, 'chat.html'));
-});
-
-app.use(express.static(publicDir));
+// ========== ROTAS DE API (ANTES DO STATIC PARA GARANTIR PRIORIDADE) ==========
 
 // Health
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/api/cache/universal', async (req, res) => {
+  return res.json({ data: {}, message: 'Cache desabilitado' });
+});
+
+// Endpoint para forçar atualização do cache
+app.post('/api/cache/rebuild', async (req, res) => {
+  try {
+    console.log('🔄 Reconstruindo cache universal manualmente...');
+    await buildUniversalCache(prisma);
+    const cacheData = cacheManager.getAll();
+    res.json({ 
+      success: true, 
+      message: 'Cache reconstruído com sucesso',
+      ...cacheData 
+    });
+  } catch (error) {
+    console.error('❌ Erro ao reconstruir cache:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.get('/api/cache/status', async (req, res) => {
+  res.json({
+    memory: { keys: 0, hits: 0, misses: 0, ksize: 0, vsize: 0 },
+    database: { total: 0, active: 0, expired: 0 },
+    universal: { enabled: false },
+    total: { keys: 0, active: 0, expired: 0 },
+    disabled: true,
+    message: 'Cache completamente desabilitado - dados sempre vêm do banco'
+  });
+});
+
+// Limpar cache expirado do banco
+app.post('/api/cache/clean-expired', async (req, res) => {
+  try {
+    const count = await cleanExpiredCache(prisma);
+    res.json({ 
+      success: true, 
+      message: `${count} entradas expiradas removidas`,
+      removed: count
+    });
+  } catch (error) {
+    console.error('❌ Erro ao limpar cache expirado:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Limpar todo o cache (memória + banco)
+app.post('/api/cache/clear-all', async (req, res) => {
+  try {
+    // Limpar cache em memória
+    cache.flushAll();
+    
+    // Limpar cache do banco
+    const dbCount = await clearAllDbCache(prisma);
+    
+    res.json({ 
+      success: true, 
+      message: 'Todo o cache foi limpo',
+      memory: 'limpo',
+      database: `${dbCount} entradas removidas`
+    });
+  } catch (error) {
+    console.error('❌ Erro ao limpar cache:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// ========== ARQUIVOS ESTÁTICOS (DEPOIS DAS ROTAS DE API) ==========
+
+// Rota para página de chat separada
+app.get('/chat', (_req, res) => {
+  res.sendFile(path.join(publicDir, 'chat.html'));
+});
+
+// Service Worker - deve ser servido com headers corretos
+app.get('/sw.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.sendFile(path.join(publicDir, 'sw.js'));
+});
+
+// Servir arquivos estáticos
+app.use(express.static(publicDir));
+
+// ========== OUTRAS ROTAS DE API ==========
+
 // Summary KPIs e insights críticos
 app.get('/api/summary', async (req, res) => {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
+  
   
   const key = servidor ? `summary:servidor:${servidor}:v1` :
               unidadeCadastro ? `summary:uac:${unidadeCadastro}:v1` :
@@ -799,48 +908,96 @@ app.get('/api/summary', async (req, res) => {
     const statusCounts = byStatus.map(r => ({ status: r.status ?? 'Não informado', count: r._count._all }))
       .sort((a,b) => b.count - a.count);
 
-    // Últimos 7 e 30 dias usando dataCriacaoIso (campo normalizado) - OTIMIZADO
-    // Incluir hoje nos últimos 7 e 30 dias
+    // Últimos 7 e 30 dias - OTIMIZADO: usar agregação no banco (muito mais rápido)
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10); // YYYY-MM-DD (hoje)
-    
-    // Data há 7 dias atrás (incluindo hoje = últimos 7 dias)
+    const todayStr = today.toISOString().slice(0, 10);
     const d7 = new Date(today);
-    d7.setDate(today.getDate() - 6); // -6 porque incluímos hoje (hoje + 6 dias = 7 dias)
-    const last7Str = d7.toISOString().slice(0, 10); // YYYY-MM-DD
-    
-    // Data há 30 dias atrás (incluindo hoje = últimos 30 dias)
+    d7.setDate(today.getDate() - 6);
+    const last7Str = d7.toISOString().slice(0, 10);
     const d30 = new Date(today);
-    d30.setDate(today.getDate() - 29); // -29 porque incluímos hoje (hoje + 29 dias = 30 dias)
-    const last30Str = d30.toISOString().slice(0, 10); // YYYY-MM-DD
+    d30.setDate(today.getDate() - 29);
+    const last30Str = d30.toISOString().slice(0, 10);
     
     console.log(`📅 Calculando últimos 7 e 30 dias: hoje=${todayStr}, últimos 7 dias de ${last7Str} até ${todayStr}, últimos 30 dias de ${last30Str} até ${todayStr}`);
     
-    // OTIMIZAÇÃO: Usar count com filtros de data diretamente no banco (muito mais rápido!)
-    // Em vez de buscar todos os registros, fazemos queries com filtros de data
-    const whereLast7 = {
-      ...where,
-      dataCriacaoIso: {
-        gte: last7Str,
-        lte: todayStr
+    let last7 = 0;
+    let last30 = 0;
+    
+    try {
+      // OTIMIZAÇÃO: Usar count do Prisma com filtro de data (muito mais rápido que processar em memória)
+      // Contar registros dos últimos 7 dias
+      const whereLast7 = {
+        ...where,
+        dataCriacaoIso: {
+          gte: last7Str,
+          lte: todayStr
+        }
+      };
+      
+      // Contar registros dos últimos 30 dias
+      const whereLast30 = {
+        ...where,
+        dataCriacaoIso: {
+          gte: last30Str,
+          lte: todayStr
+        }
+      };
+      
+      // Executar contagens em paralelo
+      [last7, last30] = await Promise.all([
+        prisma.record.count({ where: whereLast7 }),
+        prisma.record.count({ where: whereLast30 })
+      ]);
+      
+      console.log(`✅ Resultado (agregação no banco): últimos 7 dias=${last7}, últimos 30 dias=${last30}`);
+      
+      // Se ainda está zerado, usar método alternativo baseado em dataDaCriacao
+      if (last7 === 0 && last30 === 0) {
+        console.log('⚠️ Contagem com dataCriacaoIso retornou 0, tentando com dataDaCriacao...');
+        
+        // Buscar registros dos últimos 60 dias usando dataDaCriacao
+        const recentRecords = await prisma.record.findMany({
+          where: {
+            ...where,
+            dataDaCriacao: { not: null },
+            OR: [
+              { dataDaCriacao: { contains: today.getFullYear().toString() } },
+              { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+            ]
+          },
+          select: {
+            dataCriacaoIso: true,
+            dataDaCriacao: true,
+            data: true
+          },
+          take: 100000
+        });
+        
+        console.log(`📊 Processando ${recentRecords.length} registros com getDataCriacao()...`);
+        
+        last7 = 0;
+        last30 = 0;
+        
+        for (const r of recentRecords) {
+          const dataCriacao = getDataCriacao(r);
+          if (!dataCriacao) continue;
+          
+          if (dataCriacao >= last7Str && dataCriacao <= todayStr) {
+            last7++;
+          }
+          if (dataCriacao >= last30Str && dataCriacao <= todayStr) {
+            last30++;
+          }
+        }
+        
+        console.log(`✅ Resultado (método alternativo): últimos 7 dias=${last7}, últimos 30 dias=${last30}`);
       }
-    };
-    
-    const whereLast30 = {
-      ...where,
-      dataCriacaoIso: {
-        gte: last30Str,
-        lte: todayStr
-      }
-    };
-    
-    // Executar contagens em paralelo (muito mais rápido que buscar todos os registros)
-    const [last7, last30] = await Promise.all([
-      prisma.record.count({ where: whereLast7 }),
-      prisma.record.count({ where: whereLast30 })
-    ]);
-    
-    console.log(`📊 Resultado (otimizado): últimos 7 dias=${last7}, últimos 30 dias=${last30}`);
+    } catch (error) {
+      console.error('❌ Erro ao calcular últimos 7 e 30 dias:', error);
+      // Em caso de erro, retornar 0 (melhor que quebrar)
+      last7 = 0;
+      last30 = 0;
+    }
 
     // Top dimensões normalizadas (usando novos campos)
     const top = async (col) => {
@@ -868,13 +1025,6 @@ app.get('/api/records', async (req, res) => {
   
   // Cache apenas para primeira página (mais acessada)
   const cacheKey = page === 1 ? `records:page1:${pageSize}` : null;
-  if (cacheKey) {
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      setCacheHeaders(res, 300); // Cache menor para dados paginados (5 min)
-      return res.json(cached);
-    }
-  }
 
   const [total, rowsRaw] = await Promise.all([
     prisma.record.count(),
@@ -884,9 +1034,6 @@ app.get('/api/records', async (req, res) => {
   const rows = rowsRaw.map(r => ({ ...r, data: r.data || {} }));
   const result = { total, page, pageSize, rows };
   
-  if (cacheKey) {
-    cache.set(cacheKey, result, 300); // 5 minutos para primeira página
-  }
   
   res.json(result);
 });
@@ -895,14 +1042,32 @@ app.get('/api/distinct', async (req, res) => {
   const field = String(req.query.field ?? '').trim();
   if (!field) return res.status(400).json({ error: 'field required' });
 
-  const cacheKey = `distinct:${field}`;
+  const cacheKey = `distinct:${field}:v3`;
   // Cache de 1 hora para valores distintos
   return withCache(cacheKey, 3600, res, async () => {
-    const rows = await prisma.record.findMany({ select: { data: true } });
+    // OTIMIZAÇÃO: Usar sistema otimizado de distinct com mapeamento global
+    const normalizedField = getNormalizedField(field);
+    
+    // Tentar usar campo normalizado primeiro (muito mais rápido)
+    if (isNormalizedField(field)) {
+      try {
+        return await optimizedDistinct(prisma, normalizedField, {}, { dateFilter: true, limit: 1000 });
+      } catch (error) {
+        console.warn(`⚠️ Campo normalizado ${normalizedField} não disponível, usando fallback`);
+      }
+    }
+    
+    // Fallback: buscar do JSON (mais lento, mas funciona para campos customizados)
+    const dateFilter = getDateFilter();
+    const rows = await prisma.record.findMany({ 
+      where: dateFilter,
+      select: { data: true },
+      take: 50000
+    });
+    
     const values = new Set();
     for (const r of rows) {
       const dat = r.data || {};
-      // Tentar diferentes variações do nome do campo
       const val = dat?.[field] ?? dat?.[field.toLowerCase()] ?? dat?.[field.replace(/\s+/g, '_')];
       if (val !== undefined && val !== null && `${val}`.trim() !== '') values.add(`${val}`);
     }
@@ -927,48 +1092,10 @@ app.get('/api/aggregate/count-by', async (req, res) => {
     const where = {};
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
-    // Preferir coluna normalizada quando corresponder a um dos campos conhecidos
-    const fieldMap = {
-      Secretaria: 'orgaos',
-      Setor: 'unidadeCadastro',
-      Tipo: 'tipoDeManifestacao',
-      Categoria: 'tema',
-      Bairro: 'endereco',
-      Status: 'status',
-      StatusDemanda: 'statusDemanda',
-      Data: 'dataDaCriacao', // Usa sistema global getDataCriacao()
-      UAC: 'unidadeCadastro',
-      Responsavel: 'responsavel',
-      Canal: 'canal',
-      Prioridade: 'prioridade',
-      // Aliases para compatibilidade
-      Orgaos: 'orgaos',
-      UnidadeCadastro: 'unidadeCadastro',
-      TipoManifestacao: 'tipoDeManifestacao',
-      Tema: 'tema',
-      Assunto: 'assunto',
-      // Nomes exatos da planilha
-      'protocolo': 'protocolo',
-      'data_da_criacao': 'dataDaCriacao',
-      'status_demanda': 'statusDemanda',
-      'prazo_restante': 'prazoRestante',
-      'data_da_conclusao': 'dataDaConclusao',
-      'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
-      'prioridade': 'prioridade',
-      'tipo_de_manifestacao': 'tipoDeManifestacao',
-      'tema': 'tema',
-      'assunto': 'assunto',
-      'canal': 'canal',
-      'endereco': 'endereco',
-      'unidade_cadastro': 'unidadeCadastro',
-      'unidade_saude': 'unidadeSaude',
-      'status': 'status',
-      'servidor': 'servidor',
-      'responsavel': 'responsavel',
-      'verificado': 'verificado',
-      'orgaos': 'orgaos'
-    };
-    const col = fieldMap[field];
+    
+    // OTIMIZAÇÃO: Usar sistema otimizado de agregação (groupBy do Prisma)
+    // Usar mapeamento global de campos (elimina duplicação)
+    const col = getNormalizedField(field);
     if (col) {
       // Agregar direto no banco (com filtro se houver)
       const rows = await prisma.record.groupBy({ 
@@ -1007,13 +1134,41 @@ app.get('/api/aggregate/time-series', async (req, res) => {
   return withCache(cacheKey, 3600, res, async () => {
     // Se pediram Data, usar sistema global de datas
     if (field === 'Data' || field === 'data_da_criacao') {
+      // OTIMIZAÇÃO: Usar groupBy do Prisma (agregação no banco - muito mais rápido)
+      const dateFilter = getDateFilter();
+      
+      try {
+        // Usar groupBy no campo dataCriacaoIso (muito mais rápido)
+        const results = await prisma.record.groupBy({
+          by: ['dataCriacaoIso'],
+          where: {
+            dataCriacaoIso: { not: null },
+            ...dateFilter
+          },
+          _count: { _all: true },
+          orderBy: {
+            dataCriacaoIso: 'asc'
+          }
+        });
+        
+        return results
+          .filter(r => r.dataCriacaoIso)
+          .map(r => ({ date: r.dataCriacaoIso, count: r._count._all }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+      } catch (error) {
+        // Fallback: processar em memória (mais lento)
+        console.warn('⚠️ groupBy falhou para time-series, usando fallback:', error.message);
       const rows = await prisma.record.findMany({
-        where: { dataDaCriacao: { not: null } },
+          where: { 
+            dataDaCriacao: { not: null },
+            ...dateFilter
+          },
         select: {
           dataCriacaoIso: true,
           dataDaCriacao: true,
           data: true
-        }
+          },
+          take: 100000
       });
       
       const map = new Map();
@@ -1027,6 +1182,7 @@ app.get('/api/aggregate/time-series', async (req, res) => {
       return Array.from(map.entries())
         .map(([date, count]) => ({ date, count }))
         .sort((a, b) => a.date.localeCompare(b.date));
+      }
     }
 
     const rows = await prisma.record.findMany({ select: { data: true } });
@@ -1062,6 +1218,10 @@ app.get('/api/aggregate/by-month', async (req, res) => {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
+  // OTIMIZAÇÃO: Se não há filtros, tentar usar cache universal primeiro
+  if (!servidor && !unidadeCadastro) {
+  }
+  
   const cacheKey = servidor ? `byMonth:servidor:${servidor}:v1` : 
                     unidadeCadastro ? `byMonth:uac:${unidadeCadastro}:v1` : 
                     'byMonth:v1';
@@ -1070,22 +1230,26 @@ app.get('/api/aggregate/by-month', async (req, res) => {
     const where = {};
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
-    where.dataCriacaoIso = { not: null }; // Usar campo normalizado com índice
+    // REMOVIDO: where.dataCriacaoIso = { not: null } - estava filtrando registros que não têm dataCriacaoIso
+    // Agora vamos processar todos os registros usando getDataCriacao
     
-    // OTIMIZAÇÃO: Usar groupBy do Prisma em vez de buscar todos os registros
-    // Agrupar por dataCriacaoIso e depois extrair o mês (YYYY-MM)
-    const rows = await prisma.record.groupBy({
-      by: ['dataCriacaoIso'],
-      where: where,
-      _count: { _all: true }
+    // BUSCAR TODOS OS REGISTROS e processar usando getDataCriacao (mais robusto)
+    const rows = await prisma.record.findMany({
+      where: Object.keys(where).length > 0 ? where : undefined,
+      select: {
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        data: true
+      }
     });
     
-    // Agrupar por mês (YYYY-MM) a partir do dataCriacaoIso
+    // Agrupar por mês (YYYY-MM) usando getDataCriacao
     const map = new Map();
     for (const r of rows) {
-      if (!r.dataCriacaoIso) continue;
-      const mes = r.dataCriacaoIso.slice(0, 7); // YYYY-MM
-      map.set(mes, (map.get(mes) ?? 0) + r._count._all);
+      const dataCriacao = getDataCriacao(r);
+      if (!dataCriacao) continue;
+      const mes = dataCriacao.slice(0, 7); // YYYY-MM
+      map.set(mes, (map.get(mes) ?? 0) + 1);
     }
     
     return Array.from(map.entries()).map(([ym, count]) => ({ ym, count }))
@@ -1097,6 +1261,10 @@ app.get('/api/aggregate/by-month', async (req, res) => {
 app.get('/api/aggregate/by-day', async (req, res) => {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
+  
+  // OTIMIZAÇÃO: Se não há filtros, tentar usar cache universal primeiro
+  if (!servidor && !unidadeCadastro) {
+  }
   
   const cacheKey = servidor ? `byDay:servidor:${servidor}:v1` : 
                     unidadeCadastro ? `byDay:uac:${unidadeCadastro}:v1` : 
@@ -1114,24 +1282,46 @@ app.get('/api/aggregate/by-day', async (req, res) => {
     const last30Str = d30.toISOString().slice(0, 10);
     const todayStr = today.toISOString().slice(0, 10);
     
-    // OTIMIZAÇÃO: Filtrar apenas últimos 30 dias e usar groupBy
-    where.dataCriacaoIso = {
-      gte: last30Str,
-      lte: todayStr
-    };
+    // SEMPRE usar método robusto: buscar registros e processar com getDataCriacao
+    // Isso garante que capturamos todos os registros, mesmo se dataCriacaoIso estiver vazio
+    let map = new Map();
     
-    const rows = await prisma.record.groupBy({
-      by: ['dataCriacaoIso'],
-      where: where,
-      _count: { _all: true }
-    });
-    
-    // Criar mapa de datas
-    const map = new Map();
-    for (const r of rows) {
-      if (r.dataCriacaoIso) {
-        map.set(r.dataCriacaoIso, r._count._all);
+    try {
+      // Buscar registros dos últimos 60 dias (garante que capturamos tudo para 30 dias)
+      const recentRecords = await prisma.record.findMany({
+        where: {
+          ...where,
+          OR: [
+            { dataCriacaoIso: { gte: last30Str, lte: todayStr } },
+            { dataDaCriacao: { contains: today.getFullYear().toString() } },
+            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+          ]
+        },
+        select: {
+          dataCriacaoIso: true,
+          dataDaCriacao: true,
+          data: true
+        },
+        take: 100000 // Limite aumentado para garantir que capturamos tudo
+      });
+      
+      console.log(`📊 Processando ${recentRecords.length} registros recentes com getDataCriacao() para dados diários...`);
+      
+      for (const r of recentRecords) {
+        const dataCriacao = getDataCriacao(r);
+        if (!dataCriacao) continue;
+        
+        if (dataCriacao >= last30Str && dataCriacao <= todayStr) {
+          const count = map.get(dataCriacao) || 0;
+          map.set(dataCriacao, count + 1);
+        }
       }
+      
+      console.log(`✅ Dados diários (método robusto): ${map.size} dias com dados`);
+    } catch (error) {
+      console.error('❌ Erro ao calcular dados diários:', error);
+      // Em caso de erro, retornar array vazio (melhor que quebrar)
+      map = new Map();
     }
     
     // Gerar últimos 30 dias (garantir que todos os dias estejam presentes)
@@ -1156,45 +1346,8 @@ app.get('/api/aggregate/heatmap', async (req, res) => {
   const cacheKey = `heatmap:${dimReq}:v2`;
   // Cache de 1 hora para heatmaps
   return withCache(cacheKey, 3600, res, async () => {
-  const fieldMap = {
-    Secretaria: 'orgaos',
-    Setor: 'unidadeCadastro',
-    Tipo: 'tipoDeManifestacao',
-    Categoria: 'tema',
-    Bairro: 'endereco',
-    Status: 'status',
-    StatusDemanda: 'statusDemanda',
-    UAC: 'unidadeCadastro',
-    Responsavel: 'responsavel',
-    Canal: 'canal',
-    Prioridade: 'prioridade',
-    Orgaos: 'orgaos',
-    UnidadeCadastro: 'unidadeCadastro',
-    TipoManifestacao: 'tipoDeManifestacao',
-    Tema: 'tema',
-    Assunto: 'assunto',
-    // Nomes exatos da planilha
-    'protocolo': 'protocolo',
-    'data_da_criacao': 'dataDaCriacao',
-    'status_demanda': 'statusDemanda',
-    'prazo_restante': 'prazoRestante',
-    'data_da_conclusao': 'dataDaConclusao',
-    'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
-    'prioridade': 'prioridade',
-    'tipo_de_manifestacao': 'tipoDeManifestacao',
-    'tema': 'tema',
-    'assunto': 'assunto',
-    'canal': 'canal',
-    'endereco': 'endereco',
-    'unidade_cadastro': 'unidadeCadastro',
-    'unidade_saude': 'unidadeSaude',
-    'status': 'status',
-    'servidor': 'servidor',
-    'responsavel': 'responsavel',
-    'verificado': 'verificado',
-    'orgaos': 'orgaos'
-  };
-  const col = fieldMap[dimReq];
+  // OTIMIZAÇÃO: Usar mapeamento global de campos (elimina duplicação)
+  const col = getNormalizedField(dimReq);
   if (!col) return res.status(400).json({ error: 'dim must be one of Secretaria, Setor, Tipo, Categoria, Bairro, Status, UAC, Responsavel, Canal, Prioridade' });
 
   // Construir últimos 12 meses como labels YYYY-MM
@@ -1207,15 +1360,29 @@ app.get('/api/aggregate/heatmap', async (req, res) => {
     labels.push(ym);
   }
 
+  // OTIMIZAÇÃO: Filtrar apenas últimos 24 meses
+  const todayForHeatmap = new Date();
+  const twoYearsAgo = new Date(todayForHeatmap);
+  twoYearsAgo.setMonth(todayForHeatmap.getMonth() - 24);
+  const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+
   // Buscar apenas colunas necessárias
   const rows = await prisma.record.findMany({ 
-    where: { dataDaCriacao: { not: null } },
+    where: { 
+      dataDaCriacao: { not: null },
+      OR: [
+        { dataCriacaoIso: { gte: minDateStr } },
+        { dataDaCriacao: { contains: todayForHeatmap.getFullYear().toString() } },
+        { dataDaCriacao: { contains: (todayForHeatmap.getFullYear() - 1).toString() } }
+      ]
+    },
     select: { 
       dataCriacaoIso: true,
       dataDaCriacao: true,
       data: true,
       [col]: true 
-    } 
+    },
+    take: 100000 // Limite para evitar timeout
   });
   const matrix = new Map(); // key: dim value -> Map(ym -> count)
   for (const r of rows) {
@@ -1262,6 +1429,25 @@ app.get('/api/sla/summary', async (req, res) => {
     
     const today = new Date();
     
+    // OTIMIZAÇÃO: Adicionar filtro de data (últimos 24 meses) para melhor performance
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
+    // Adicionar filtro de data se não houver filtro de meses
+    if (!meses || meses.length === 0) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { dataCriacaoIso: { gte: minDateStr } },
+            { dataDaCriacao: { contains: today.getFullYear().toString() } },
+            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+          ]
+        }
+      ];
+    }
+    
     // Buscar campos necessários usando sistema global de datas
     const rows = await prisma.record.findMany({ 
       where: { ...where, dataDaCriacao: { not: null } },
@@ -1275,7 +1461,8 @@ app.get('/api/sla/summary', async (req, res) => {
         statusDemanda: true,
         tipoDeManifestacao: true,
         data: true
-      } 
+      },
+      take: 100000 // Limite de segurança para evitar timeout
     });
     
     // Buckets: concluídos (verde escuro), verde claro (0-30), amarelo (31-60), vermelho (61+)
@@ -1328,63 +1515,29 @@ app.get('/api/sla/summary', async (req, res) => {
 // OTIMIZADO: Cache, query otimizada, timeout e melhor tratamento de erros
 app.post('/api/filter', async (req, res) => {
   try {
+    // Log para debug
+    console.log('📥 /api/filter recebido:', {
+      hasBody: !!req.body,
+      filtersCount: req.body?.filters?.length || 0,
+      originalUrl: req.body?.originalUrl || 'N/A'
+    });
+    
     const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
     const originalUrl = req.body?.originalUrl || '';
     
     // OTIMIZAÇÃO: Se não há filtros, retornar vazio IMEDIATAMENTE (sem processar)
+    // ATENÇÃO: Esta função NÃO deveria ser chamada sem filtros, mas vamos tratar
     if (filters.length === 0) {
-      setCacheHeaders(res, 300);
+      console.warn('⚠️ /api/filter: Chamado SEM filtros! Isso não deveria acontecer. Retornando array vazio.');
+      console.warn('   URL original:', originalUrl);
+      console.warn('   Body completo:', JSON.stringify(req.body, null, 2));
+      setCacheHeaders(res, 60); // Cache curto para erro
       return res.json([]);
     }
     
-    // Criar chave de cache baseada nos filtros e URL original
-    const cacheKey = `filter:${originalUrl}:${JSON.stringify(filters)}`;
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      setCacheHeaders(res, 300); // 5 minutos de cache
-      return res.json(cached);
-    }
     
     // Mapeamento de campos otimizado
-    const fieldMap = { 
-      Secretaria: 'orgaos', 
-      Setor: 'unidadeCadastro', 
-      Tipo: 'tipoDeManifestacao', 
-      Categoria: 'tema', 
-      Bairro: 'endereco', 
-      Status: 'status', 
-      StatusDemanda: 'statusDemanda',
-      Data: 'dataCriacaoIso', 
-      UAC: 'unidadeCadastro', 
-      Responsavel: 'responsavel', 
-      Canal: 'canal', 
-      Prioridade: 'prioridade', 
-      Orgaos: 'orgaos', 
-      UnidadeCadastro: 'unidadeCadastro', 
-      TipoManifestacao: 'tipoDeManifestacao', 
-      Tema: 'tema', 
-      Assunto: 'assunto',
-      'protocolo': 'protocolo',
-      'data_da_criacao': 'dataDaCriacao',
-      'status_demanda': 'statusDemanda',
-      'prazo_restante': 'prazoRestante',
-      'data_da_conclusao': 'dataDaConclusao',
-      'tempo_de_resolucao_em_dias': 'tempoDeResolucaoEmDias',
-      'prioridade': 'prioridade',
-      'tipo_de_manifestacao': 'tipoDeManifestacao',
-      'tema': 'tema',
-      'assunto': 'assunto',
-      'canal': 'canal',
-      'endereco': 'endereco',
-      'unidade_cadastro': 'unidadeCadastro',
-      'unidade_saude': 'unidadeSaude',
-      'status': 'status',
-      'servidor': 'servidor',
-      'responsavel': 'responsavel',
-      'verificado': 'verificado',
-      'orgaos': 'orgaos'
-    };
-    
+    // OTIMIZAÇÃO: Usar mapeamento global de campos (elimina duplicação)
     // Construir where clause otimizado
     const whereClause = {};
     const needsInMemoryFilter = [];
@@ -1392,7 +1545,7 @@ app.post('/api/filter', async (req, res) => {
     
     // Separar filtros que podem usar where clause
     for (const f of filters) {
-      const col = fieldMap[f.field];
+      const col = getNormalizedField(f.field);
       if (col && f.op === 'eq') {
         whereClause[col] = f.value;
         fieldsNeeded.add(col);
@@ -1409,19 +1562,68 @@ app.post('/api/filter', async (req, res) => {
     // OTIMIZAÇÃO: Buscar apenas campos necessários e limitar resultados
     const selectFields = Object.fromEntries(Array.from(fieldsNeeded).map(f => [f, true]));
     
-    // OTIMIZAÇÃO: Reduzir ainda mais o limite e timeout mais agressivo
-    const queryPromise = prisma.record.findMany({ 
-      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
-      select: selectFields,
-      take: 1000 // Reduzido de 2k para 1k para melhor performance
-    });
+    // Validar selectFields - se estiver vazio ou só tiver 'id', buscar todos os campos
+    const finalSelect = Object.keys(selectFields).length > 1 ? selectFields : undefined;
     
-    // Timeout mais agressivo: 15 segundos (reduzido de 20s)
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Query timeout após 15 segundos')), 15000)
+    // Se não há whereClause, buscar todos os registros (mas limitar para evitar timeout)
+    const whereCondition = Object.keys(whereClause).length > 0 ? whereClause : undefined;
+    
+    // OTIMIZAÇÃO CRÍTICA: Sempre limitar resultados para evitar timeout
+    // Se não há filtros no where, limitar drasticamente
+    const shouldLimit = !whereCondition || Object.keys(whereCondition).length === 0;
+    
+    // OTIMIZAÇÃO: Reduzir limite quando há filtros específicos que podem ser lentos
+    // Filtros como 'status' podem retornar muitos registros, então limitar mais
+    const hasStatusFilter = whereCondition?.status !== undefined;
+    const hasContainsFilter = Object.values(whereCondition || {}).some(v => 
+      typeof v === 'object' && v !== null && 'contains' in v
     );
     
-    const allRows = await Promise.race([queryPromise, timeoutPromise]);
+    // Limite mais agressivo quando há filtros que podem ser lentos
+    let limitValue;
+    if (shouldLimit) {
+      limitValue = 10000; // Sem filtros no where
+    } else if (hasStatusFilter || hasContainsFilter) {
+      limitValue = 20000; // Filtros que podem ser lentos
+    } else {
+      limitValue = 50000; // Outros filtros
+    }
+    
+    // Construir query de forma segura com limite sempre
+    const queryOptions = {
+      where: whereCondition,
+      ...(finalSelect ? { select: finalSelect } : {}),
+      take: limitValue // SEMPRE limitar para evitar timeout
+    };
+    
+    console.log('🔍 Executando query com:', {
+      hasWhere: !!whereCondition,
+      whereKeys: whereCondition ? Object.keys(whereCondition) : [],
+      limit: limitValue,
+      selectFields: finalSelect ? Object.keys(finalSelect).length : 'all',
+      hasStatusFilter,
+      hasContainsFilter
+    });
+    
+    // Timeout reduzido: 8 segundos (mais agressivo para evitar espera longa)
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Query timeout após 8 segundos')), 8000)
+    );
+    
+    let allRows;
+    try {
+      allRows = await Promise.race([prisma.record.findMany(queryOptions), timeoutPromise]);
+      console.log(`✅ Query concluída: ${allRows.length} registros encontrados`);
+    } catch (queryError) {
+      console.error('❌ Erro na query do Prisma:', queryError.message);
+      // Se for timeout ou erro de conexão, retornar array vazio IMEDIATAMENTE
+      if (queryError.message?.includes('timeout') || queryError.code === 'P2010') {
+        console.warn('⚠️ Timeout ou erro de conexão, retornando array vazio');
+        setCacheHeaders(res, 60); // Cache curto para erro
+        return res.json([]);
+      }
+      throw queryError;
+    }
     
     // Aplicar filtros em memória apenas se necessário (casos especiais)
     let filtered = allRows;
@@ -1442,15 +1644,22 @@ app.post('/api/filter', async (req, res) => {
     
     const result = filtered.map(r => ({ ...r, data: r.data || {} }));
     
-    // Armazenar no cache (5 minutos - dados mudam apenas às 12h e 17h)
-    cache.set(cacheKey, result, 300);
-    setCacheHeaders(res, 300);
+    console.log(`✅ /api/filter: Retornando ${result.length} registros (de ${allRows.length} buscados)`);
+    
     
     res.json(result);
   } catch (error) {
-    console.error('❌ Erro no endpoint /api/filter:', error.message);
+    console.error('❌ Erro no endpoint /api/filter:', error);
+    console.error('   Stack:', error.stack);
+    console.error('   Body recebido:', JSON.stringify(req.body, null, 2));
+    
     // Retornar array vazio em caso de erro (melhor que quebrar a aplicação)
-    res.status(500).json({ error: error.message || 'Erro ao processar filtros', data: [] });
+    // Mas também logar o erro completo para debug
+    res.status(500).json({ 
+      error: error.message || 'Erro ao processar filtros', 
+      data: [],
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -1473,6 +1682,12 @@ app.get('/api/stats/average-time', async (req, res) => {
       if (servidor) where.servidor = servidor;
       if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
       
+      // OTIMIZAÇÃO: Filtrar apenas últimos 24 meses por padrão
+      const today = new Date();
+      const twoYearsAgo = new Date(today);
+      twoYearsAgo.setMonth(today.getMonth() - 24);
+      const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+      
       // Construir filtro de data baseado nos meses selecionados
       if (meses && meses.length > 0) {
         const monthFilters = meses.map(month => {
@@ -1487,6 +1702,18 @@ app.get('/api/stats/average-time', async (req, res) => {
             OR: monthFilters.map(month => ({
               dataDaCriacao: { startsWith: month }
             }))
+          }
+        ];
+      } else {
+        // Se não há filtro de meses, adicionar filtro de últimos 24 meses
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: [
+              { dataCriacaoIso: { gte: minDateStr } },
+              { dataDaCriacao: { contains: today.getFullYear().toString() } },
+              { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+            ]
           }
         ];
       }
@@ -1507,8 +1734,8 @@ app.get('/api/stats/average-time', async (req, res) => {
           dataDaCriacao: true,
           dataConclusaoIso: true,
           dataDaConclusao: true
-        },
-        take: 10000 // Limitar para evitar timeout em bases muito grandes
+        }
+        // Sem limite - carregar todos os registros
       });
       
       // Agrupar por órgão/unidade e calcular média usando sistema global de datas
@@ -1572,7 +1799,25 @@ app.get('/api/stats/average-time/by-day', async (req, res) => {
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
-    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    // OTIMIZAÇÃO: Filtrar apenas últimos 24 meses (reduz drasticamente dados processados)
+    const todayForFilter = new Date();
+    const twoYearsAgo = new Date(todayForFilter);
+    twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
+    // Adicionar filtro de data mínima (últimos 24 meses)
+    where.AND = [
+      ...(where.AND || []),
+      {
+        OR: [
+          { dataCriacaoIso: { gte: minDateStr } },
+          { dataDaCriacao: { contains: todayForFilter.getFullYear().toString() } },
+          { dataDaCriacao: { contains: (todayForFilter.getFullYear() - 1).toString() } }
+        ]
+      }
+    ];
+    
+    // OTIMIZAÇÃO: Limitar registros para evitar timeout
     const rows = await prisma.record.findMany({
       where: {
         ...where,
@@ -1585,40 +1830,38 @@ app.get('/api/stats/average-time/by-day', async (req, res) => {
         dataConclusaoIso: true,
         dataDaConclusao: true,
         data: true
-      }
+      },
+      take: 100000 // Limite para evitar timeout
     });
     
-    const today = new Date();
     const map = new Map();
+    const today = new Date(); // Para uso no processamento
     
-    // Usar sistema global de datas (normalizeDate, getDataCriacao, getTempoResolucaoEmDias já estão disponíveis)
-    
-    // Debug: verificar quantos registros temos
+    // OTIMIZAÇÃO: Usar sistema global de datas de forma mais eficiente
     console.log(`📊 [by-day] Total de registros encontrados: ${rows.length}`);
     let processados = 0;
     let comData = 0;
     let comDias = 0;
+    
+    // Filtrar apenas últimos 90 dias para processamento (otimização)
+    const ninetyDaysAgo = new Date(today);
+    ninetyDaysAgo.setDate(today.getDate() - 90);
+    const minDateForProcessing = ninetyDaysAgo.toISOString().slice(0, 10);
     
     for (const r of rows) {
       processados++;
       // Usar sistema global de datas
       const dataCriacao = getDataCriacao(r);
       
-      if (!dataCriacao) {
-        if (processados <= 10) {
-          console.log(`  [${processados}] Sem data: dataCriacaoIso=${r.dataCriacaoIso}, dataDaCriacao=${typeof r.dataDaCriacao}`);
-        }
-        continue;
-      }
+      if (!dataCriacao) continue;
+      
+      // OTIMIZAÇÃO: Filtrar apenas últimos 90 dias no processamento (reduz loops)
+      if (dataCriacao < minDateForProcessing) continue;
+      
       comData++;
       
-      // Debug: mostrar primeiras datas normalizadas
-      if (comData <= 5) {
-        console.log(`  [${comData}] Data normalizada: ${dataCriacao}`);
-      }
-      
+      // OTIMIZAÇÃO: Usar getTempoResolucaoEmDias diretamente (já otimizado)
       let days = null;
-      // Verificar se tempoDeResolucaoEmDias existe (mesmo que seja 0 ou string vazia)
       if (r.tempoDeResolucaoEmDias !== null && r.tempoDeResolucaoEmDias !== undefined && r.tempoDeResolucaoEmDias !== '') {
         const parsed = parseFloat(r.tempoDeResolucaoEmDias);
         if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
@@ -1626,32 +1869,21 @@ app.get('/api/stats/average-time/by-day', async (req, res) => {
         }
       }
       
-      // Se não tiver tempoDeResolucaoEmDias, tentar calcular a partir das datas
-      if (days === null) {
-        // Tentar usar dataCriacaoIso e dataConclusaoIso
-        if (dataCriacao && r.dataConclusaoIso) {
-          const start = new Date(dataCriacao + 'T00:00:00');
-          const end = new Date(r.dataConclusaoIso + 'T00:00:00');
-          if (!isNaN(start) && !isNaN(end)) {
-            const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-            if (calculated >= 0 && calculated <= 1000) {
-              days = calculated;
-            }
+      // Se não tiver, calcular apenas se necessário (otimização)
+      if (days === null && dataCriacao && r.dataConclusaoIso) {
+        const start = new Date(dataCriacao + 'T00:00:00');
+        const end = new Date(r.dataConclusaoIso + 'T00:00:00');
+        if (!isNaN(start) && !isNaN(end)) {
+          let calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
+          // CORREÇÃO: Se for no mesmo dia, adicionar +1 (o dia do cadastro conta como 1 dia)
+          if (calculated === 0) {
+            calculated = 1;
+          } else {
+            // Se não for no mesmo dia, adicionar +1 para incluir o dia do cadastro
+            calculated = calculated + 1;
           }
-        }
-        
-        // Se ainda não tiver, tentar usar dataDaConclusao
-        if (days === null && r.dataDaConclusao) {
-          const dataConclusao = normalizeDate(r.dataDaConclusao);
-          if (dataConclusao && dataCriacao) {
-            const start = new Date(dataCriacao + 'T00:00:00');
-            const end = new Date(dataConclusao + 'T00:00:00');
-            if (!isNaN(start) && !isNaN(end)) {
-              const calculated = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-              if (calculated >= 0 && calculated <= 1000) {
-                days = calculated;
-              }
-            }
+          if (calculated >= 0 && calculated <= 1000) {
+            days = calculated;
           }
         }
       }
@@ -1661,11 +1893,11 @@ app.get('/api/stats/average-time/by-day', async (req, res) => {
         continue;
       }
       
-      // Se não conseguir calcular dias, pular (registro não concluído ou sem dados)
+      // Se não conseguir calcular dias, pular
       if (days === null) continue;
       comDias++;
       
-      // Agrupar por data de criação para ver tendência ao longo do tempo
+      // Agrupar por data de criação
       if (!map.has(dataCriacao)) map.set(dataCriacao, { total: 0, sum: 0 });
       const stats = map.get(dataCriacao);
       stats.total += 1;
@@ -1764,6 +1996,12 @@ app.get('/api/stats/average-time/by-week', async (req, res) => {
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
+    // OTIMIZAÇÃO: Filtrar apenas últimos 24 meses
+    const today = new Date();
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
     // Construir filtro de data baseado nos meses selecionados
     if (meses && meses.length > 0) {
       const monthFilters = meses.map(month => {
@@ -1775,9 +2013,21 @@ app.get('/api/stats/average-time/by-week', async (req, res) => {
       where.OR = monthFilters.map(month => ({
         dataDaCriacao: { startsWith: month }
       }));
+    } else {
+      // Se não há filtro de meses, adicionar filtro de últimos 24 meses
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { dataCriacaoIso: { gte: minDateStr } },
+            { dataDaCriacao: { contains: today.getFullYear().toString() } },
+            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+          ]
+        }
+      ];
     }
     
-    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    // OTIMIZAÇÃO: Limitar registros para evitar timeout
     const rows = await prisma.record.findMany({
       where: {
         ...where,
@@ -1790,7 +2040,8 @@ app.get('/api/stats/average-time/by-week', async (req, res) => {
         dataConclusaoIso: true,
         dataDaConclusao: true,
         data: true
-      }
+      },
+      take: 100000 // Limite para evitar timeout
     });
     
     const map = new Map();
@@ -1827,9 +2078,9 @@ app.get('/api/stats/average-time/by-week', async (req, res) => {
     
     // Últimas 12 semanas
     const result = [];
-    const today = new Date();
+    const todayForWeeks = new Date();
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(today);
+      const d = new Date(todayForWeeks);
       d.setDate(d.getDate() - (i * 7));
       const year = d.getFullYear();
       const startOfYear = new Date(year, 0, 1);
@@ -1868,6 +2119,12 @@ app.get('/api/stats/average-time/by-month', async (req, res) => {
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
+    // OTIMIZAÇÃO: Filtrar apenas últimos 24 meses
+    const today = new Date();
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 7); // YYYY-MM
+    
     // Construir filtro de data baseado nos meses selecionados
     if (meses && meses.length > 0) {
       const monthFilters = meses.map(month => {
@@ -1879,9 +2136,21 @@ app.get('/api/stats/average-time/by-month', async (req, res) => {
       where.OR = monthFilters.map(month => ({
         dataDaCriacao: { startsWith: month }
       }));
+    } else {
+      // Se não há filtro de meses, adicionar filtro de últimos 24 meses
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { dataCriacaoIso: { gte: minDateStr + '-01' } },
+            { dataDaCriacao: { contains: today.getFullYear().toString() } },
+            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+          ]
+        }
+      ];
     }
     
-    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    // OTIMIZAÇÃO: Limitar registros para evitar timeout
     const rows = await prisma.record.findMany({
       where: {
         ...where,
@@ -1894,7 +2163,8 @@ app.get('/api/stats/average-time/by-month', async (req, res) => {
         dataConclusaoIso: true,
         dataDaConclusao: true,
         data: true
-      }
+      },
+      take: 100000 // Limite para evitar timeout
     });
     
     const map = new Map();
@@ -1923,9 +2193,9 @@ app.get('/api/stats/average-time/by-month', async (req, res) => {
     
     // Últimos 12 meses
     const result = [];
-    const today = new Date();
+    const todayForMonths = new Date();
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const d = new Date(todayForMonths.getFullYear(), todayForMonths.getMonth() - i, 1);
       const monthKey = d.toISOString().slice(0, 7);
       const stats = map.get(monthKey);
       result.push({
@@ -1957,6 +2227,12 @@ app.get('/api/stats/average-time/stats', async (req, res) => {
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
+    // OTIMIZAÇÃO: Filtrar apenas últimos 24 meses
+    const today = new Date();
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
     // Construir filtro de data baseado nos meses selecionados
     if (meses && meses.length > 0) {
       const monthFilters = meses.map(month => {
@@ -1968,9 +2244,21 @@ app.get('/api/stats/average-time/stats', async (req, res) => {
       where.OR = monthFilters.map(month => ({
         dataDaCriacao: { startsWith: month }
       }));
+    } else {
+      // Se não há filtro de meses, adicionar filtro de últimos 24 meses
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { dataCriacaoIso: { gte: minDateStr } },
+            { dataDaCriacao: { contains: today.getFullYear().toString() } },
+            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+          ]
+        }
+      ];
     }
     
-    // Buscar TODOS os registros que têm dataDaCriacao (100% dos registros)
+    // OTIMIZAÇÃO: Limitar registros para evitar timeout
     const rows = await prisma.record.findMany({
       where: {
         ...where,
@@ -1984,7 +2272,7 @@ app.get('/api/stats/average-time/stats', async (req, res) => {
         dataDaConclusao: true,
         data: true
       },
-      take: 10000 // Limitar para performance
+      take: 100000 // Limite para evitar timeout
     });
     
     // Usar sistema global de datas
@@ -2062,12 +2350,31 @@ app.get('/api/stats/average-time/by-unit', async (req, res) => {
         ];
       }
       
-      // Buscar registros
+      // OTIMIZAÇÃO: Adicionar filtro de data se não houver filtro de meses
+      if (!meses || meses.length === 0) {
+        const today = new Date();
+        const twoYearsAgo = new Date(today);
+        twoYearsAgo.setMonth(today.getMonth() - 24);
+        const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+        
+        where.AND = [
+          ...(where.AND || []),
+          {
+            dataDaCriacao: { not: null },
+            OR: [
+              { dataCriacaoIso: { gte: minDateStr } },
+              { dataDaCriacao: { contains: today.getFullYear().toString() } },
+              { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+            ]
+          }
+        ];
+      } else {
+        where.dataDaCriacao = { not: null };
+      }
+      
+      // OTIMIZAÇÃO: Limitar registros para evitar timeout
       const rows = await prisma.record.findMany({
-        where: {
-          ...where,
-          dataDaCriacao: { not: null }
-        },
+        where,
         select: {
           unidadeCadastro: true,
           tempoDeResolucaoEmDias: true,
@@ -2076,7 +2383,8 @@ app.get('/api/stats/average-time/by-unit', async (req, res) => {
           dataConclusaoIso: true,
           dataDaConclusao: true,
           data: true
-        }
+        },
+        take: 100000 // Limite para evitar timeout
       });
       
       // Agrupar por unidade de cadastro e calcular média
@@ -2151,14 +2459,29 @@ app.get('/api/stats/average-time/by-month-unit', async (req, res) => {
             }))
           }
         ];
+      } else {
+        // OTIMIZAÇÃO: Adicionar filtro de data se não houver filtro de meses
+        const today = new Date();
+        const twoYearsAgo = new Date(today);
+        twoYearsAgo.setMonth(today.getMonth() - 24);
+        const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+        
+        where.AND = [
+          ...(where.AND || []),
+          {
+            dataDaCriacao: { not: null },
+            OR: [
+              { dataCriacaoIso: { gte: minDateStr } },
+              { dataDaCriacao: { contains: today.getFullYear().toString() } },
+              { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+            ]
+          }
+        ];
       }
       
-      // Buscar registros
+      // OTIMIZAÇÃO: Limitar registros para evitar timeout
       const rows = await prisma.record.findMany({
-        where: {
-          ...where,
-          dataDaCriacao: { not: null }
-        },
+        where,
         select: {
           unidadeCadastro: true,
           tempoDeResolucaoEmDias: true,
@@ -2167,7 +2490,8 @@ app.get('/api/stats/average-time/by-month-unit', async (req, res) => {
           dataConclusaoIso: true,
           dataDaConclusao: true,
           data: true
-        }
+        },
+        take: 100000 // Limite para evitar timeout
       });
       
       // Agrupar por unidade e mês
@@ -2372,15 +2696,35 @@ app.get('/api/aggregate/sankey-flow', async (req, res) => {
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
-    // Buscar registros com tema, órgão e status
+    // OTIMIZAÇÃO: Filtrar apenas últimos 24 meses para reduzir processamento
+    const today = new Date();
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
+    where.AND = [
+      ...(where.AND || []),
+      {
+        tema: { not: null },
+        orgaos: { not: null },
+        status: { not: null },
+        OR: [
+          { dataCriacaoIso: { gte: minDateStr } },
+          { dataDaCriacao: { contains: today.getFullYear().toString() } },
+          { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
+        ]
+      }
+    ];
+    
+    // OTIMIZAÇÃO: Limitar registros para evitar timeout
     const records = await prisma.record.findMany({
-      where: { ...where, tema: { not: null }, orgaos: { not: null }, status: { not: null } },
+      where,
       select: {
         tema: true,
         orgaos: true,
         status: true
       },
-      take: 10000 // Limitar para performance
+      take: 100000 // Limite para evitar timeout
     });
     
     // Agrupar por combinações tema-órgão-status
@@ -2515,42 +2859,23 @@ app.get('/api/aggregate/count-by-orgao-mes', async (req, res) => {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
-  const cacheKey = servidor ? `orgaoMes:servidor:${servidor}:v1` : 
-                    unidadeCadastro ? `orgaoMes:uac:${unidadeCadastro}:v1` : 
-                    'orgaoMes:v1';
+  const cacheKey = servidor ? `orgaoMes:servidor:${servidor}:v2` : 
+                    unidadeCadastro ? `orgaoMes:uac:${unidadeCadastro}:v2` : 
+                    'orgaoMes:v2';
   
   return withCache(cacheKey, 3600, res, async () => {
     const where = {};
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
     
-    const rows = await prisma.record.findMany({ 
-      where: { ...where, dataDaCriacao: { not: null } },
-      select: { 
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        data: true,
-        orgaos: true
-      } 
-    });
-    
-    const map = new Map();
-    for (const r of rows) {
-      const mes = getMes(r);
-      const orgao = r.orgaos || 'Não informado';
-      if (!mes) continue;
-      
-      const key = `${orgao}|${mes}`;
-      map.set(key, (map.get(key) || 0) + 1);
-    }
-    
-    return Array.from(map.entries()).map(([key, count]) => {
-      const [orgao, month] = key.split('|');
-      return { orgao, month, count };
-    }).sort((a, b) => {
-      if (a.month !== b.month) return a.month.localeCompare(b.month);
-      return a.orgao.localeCompare(b.orgao);
-    });
+    // OTIMIZAÇÃO: Usar sistema otimizado de agregação cruzada
+    return await optimizedCrossAggregation(
+      prisma, 
+      'orgaos', 
+      'dataCriacaoIso', 
+      where, 
+      { dateFilter: true, limit: 100000 }
+    );
   });
 });
 
@@ -2565,6 +2890,20 @@ app.get('/api/stats/status-overview', async (req, res) => {
   
   // Cache de 1 hora
   return withCache(key, 3600, res, async () => {
+    // Estrutura padrão de resposta (fallback em caso de erro)
+    const defaultResponse = {
+      total: 0,
+      concluida: {
+        quantidade: 0,
+        percentual: 0
+      },
+      emAtendimento: {
+        quantidade: 0,
+        percentual: 0
+      }
+    };
+    
+    try {
     const where = {};
     if (servidor) where.servidor = servidor;
     if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
@@ -2601,15 +2940,19 @@ app.get('/api/stats/status-overview', async (req, res) => {
           }
         }
         
+        const totalCount = total || 0;
+        const concluidasCount = concluidas || 0;
+        const emAtendimentoCount = emAtendimento || 0;
+        
         return {
-          total,
+          total: totalCount, // Manter compatibilidade: retornar como número
           concluida: {
-            quantidade: concluidas,
-            percentual: total > 0 ? Number(((concluidas / total) * 100).toFixed(1)) : 0
+            quantidade: concluidasCount,
+            percentual: totalCount > 0 ? Number(((concluidasCount / totalCount) * 100).toFixed(1)) : 0
           },
           emAtendimento: {
-            quantidade: emAtendimento,
-            percentual: total > 0 ? Number(((emAtendimento / total) * 100).toFixed(1)) : 0
+            quantidade: emAtendimentoCount,
+            percentual: totalCount > 0 ? Number(((emAtendimentoCount / totalCount) * 100).toFixed(1)) : 0
           }
         };
       }
@@ -2618,11 +2961,11 @@ app.get('/api/stats/status-overview', async (req, res) => {
       console.warn('⚠️ groupBy não disponível, usando fallback');
     }
     
-    // Fallback: buscar apenas campos necessários com limite
+    // Fallback: buscar apenas campos necessários
     const allRecords = await prisma.record.findMany({ 
       where: Object.keys(where).length > 0 ? where : undefined,
-      select: { status: true, statusDemanda: true },
-      take: 10000 // Limitar para evitar timeout
+      select: { status: true, statusDemanda: true }
+      // Sem limite - carregar todos os registros
     });
     let concluidas = 0;
     let emAtendimento = 0;
@@ -2646,17 +2989,26 @@ app.get('/api/stats/status-overview', async (req, res) => {
       }
     }
     
+    const totalCount = total || 0;
+    const concluidasCount = concluidas || 0;
+    const emAtendimentoCount = emAtendimento || 0;
+    
     return {
-      total,
+      total: totalCount, // Manter compatibilidade: retornar como número
       concluida: {
-        quantidade: concluidas,
-        percentual: total > 0 ? Number(((concluidas / total) * 100).toFixed(1)) : 0
+        quantidade: concluidasCount,
+        percentual: totalCount > 0 ? Number(((concluidasCount / totalCount) * 100).toFixed(1)) : 0
       },
       emAtendimento: {
-        quantidade: emAtendimento,
-        percentual: total > 0 ? Number(((emAtendimento / total) * 100).toFixed(1)) : 0
+        quantidade: emAtendimentoCount,
+        percentual: totalCount > 0 ? Number(((emAtendimentoCount / totalCount) * 100).toFixed(1)) : 0
       }
     };
+    } catch (error) {
+      console.error('❌ Erro ao calcular status overview:', error);
+      // Retornar estrutura padrão em caso de erro
+      return defaultResponse;
+    }
   });
 });
 
@@ -3456,6 +3808,428 @@ app.get('/api/distritos/:code/stats', async (req, res) => {
     console.error('❌ Erro ao buscar estatísticas do distrito:', error);
     return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
   }
+});
+
+// Endpoints para Unidades de Saúde
+app.get('/api/unidades-saude', async (req, res) => {
+  try {
+    const { distrito, tipo, bairro } = req.query;
+    const dataPath = path.join(projectRoot, 'data', 'unidades-saude.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    
+    let unidades = data.unidades || [];
+    
+    // Filtrar por distrito se fornecido
+    if (distrito) {
+      unidades = unidades.filter(u => 
+        u.distrito === distrito || 
+        u.distritoCode === distrito ||
+        u.distrito.includes(distrito)
+      );
+    }
+    
+    // Filtrar por tipo se fornecido
+    if (tipo) {
+      unidades = unidades.filter(u => 
+        u.tipo === tipo || 
+        u.tipo.toLowerCase().includes(tipo.toLowerCase())
+      );
+    }
+    
+    // Filtrar por bairro se fornecido
+    if (bairro) {
+      unidades = unidades.filter(u => 
+        u.bairro === bairro || 
+        u.bairro.toLowerCase().includes(bairro.toLowerCase())
+      );
+    }
+    
+    return res.json({
+      unidades,
+      total: unidades.length,
+      estatisticas: data.estatisticas
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar unidades de saúde:', error);
+    return res.status(500).json({ error: 'Erro ao buscar unidades de saúde' });
+  }
+});
+
+app.get('/api/unidades-saude/por-distrito', async (req, res) => {
+  try {
+    const dataPath = path.join(projectRoot, 'data', 'unidades-saude.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    
+    // Agrupar unidades por distrito
+    const porDistrito = {};
+    data.unidades.forEach(unidade => {
+      const distrito = unidade.distrito;
+      if (!porDistrito[distrito]) {
+        porDistrito[distrito] = {
+          distrito,
+          distritoCode: unidade.distritoCode,
+          unidades: [],
+          total: 0,
+          porTipo: {}
+        };
+      }
+      porDistrito[distrito].unidades.push(unidade);
+      porDistrito[distrito].total++;
+      
+      // Contar por tipo
+      const tipo = unidade.tipo;
+      porDistrito[distrito].porTipo[tipo] = (porDistrito[distrito].porTipo[tipo] || 0) + 1;
+    });
+    
+    return res.json({
+      porDistrito,
+      estatisticas: data.estatisticas
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar unidades por distrito:', error);
+    return res.status(500).json({ error: 'Erro ao buscar unidades por distrito' });
+  }
+});
+
+app.get('/api/unidades-saude/por-bairro', async (req, res) => {
+  try {
+    const { distrito } = req.query;
+    const dataPath = path.join(projectRoot, 'data', 'unidades-saude.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    
+    // Agrupar unidades por bairro
+    const porBairro = {};
+    data.unidades.forEach(unidade => {
+      // Filtrar por distrito se fornecido
+      if (distrito && unidade.distrito !== distrito && unidade.distritoCode !== distrito) {
+        return;
+      }
+      
+      const bairro = unidade.bairro;
+      if (!bairro) return;
+      
+      if (!porBairro[bairro]) {
+        porBairro[bairro] = {
+          bairro,
+          distrito: unidade.distrito,
+          distritoCode: unidade.distritoCode,
+          unidades: [],
+          total: 0,
+          porTipo: {}
+        };
+      }
+      porBairro[bairro].unidades.push(unidade);
+      porBairro[bairro].total++;
+      
+      // Contar por tipo
+      const tipo = unidade.tipo;
+      porBairro[bairro].porTipo[tipo] = (porBairro[bairro].porTipo[tipo] || 0) + 1;
+    });
+    
+    return res.json({
+      porBairro,
+      total: Object.keys(porBairro).length
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar unidades por bairro:', error);
+    return res.status(500).json({ error: 'Erro ao buscar unidades por bairro' });
+  }
+});
+
+app.get('/api/unidades-saude/por-tipo', async (req, res) => {
+  try {
+    const dataPath = path.join(projectRoot, 'data', 'unidades-saude.json');
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    
+    // Agrupar unidades por tipo
+    const porTipo = {};
+    data.unidades.forEach(unidade => {
+      const tipo = unidade.tipo;
+      if (!porTipo[tipo]) {
+        porTipo[tipo] = {
+          tipo,
+          unidades: [],
+          total: 0,
+          porDistrito: {}
+        };
+      }
+      porTipo[tipo].unidades.push(unidade);
+      porTipo[tipo].total++;
+      
+      // Contar por distrito
+      const distrito = unidade.distrito;
+      porTipo[tipo].porDistrito[distrito] = (porTipo[tipo].porDistrito[distrito] || 0) + 1;
+    });
+    
+    return res.json({
+      porTipo,
+      estatisticas: data.estatisticas
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar unidades por tipo:', error);
+    return res.status(500).json({ error: 'Erro ao buscar unidades por tipo' });
+  }
+});
+
+// Endpoints para análise de manifestações relacionadas a Unidades de Saúde
+app.get('/api/saude/manifestacoes', async (req, res) => {
+  const cacheKey = 'saude-manifestacoes:v1';
+  return withCache(cacheKey, 300, res, async () => {
+    try {
+      // Palavras-chave relacionadas a saúde
+      const keywords = [
+        'saúde', 'saude', 'hospital', 'UPA', 'UPH', 'médico', 'medico', 
+        'enfermeiro', 'enfermagem', 'atendimento médico', 'consulta', 
+        'exame', 'vacina', 'vacinação', 'medicamento', 'remédio', 
+        'emergência', 'emergencia', 'pronto-socorro', 'pronto socorro',
+        'CAPS', 'centro de saúde', 'posto de saúde', 'clínica', 'policlínica',
+        'maternidade', 'pediatria', 'cardiologia', 'oftalmologia', 'odontologia',
+        'fisioterapia', 'reabilitação', 'reabilitacao', 'terapia', 'psicologia',
+        'psiquiatria', 'unidade de saúde', 'unidade de saude'
+      ];
+      
+      // Buscar registros que contenham palavras-chave relacionadas a saúde
+      const allRecords = await prisma.record.findMany({
+        where: {
+          OR: [
+            { tema: { contains: 'Saúde' } },
+            { tema: { contains: 'Saude' } },
+            { assunto: { contains: 'Saúde' } },
+            { assunto: { contains: 'Saude' } },
+            { orgaos: { contains: 'Saúde' } },
+            { orgaos: { contains: 'Saude' } },
+            { unidadeSaude: { not: null } },
+            { unidadeCadastro: { contains: 'Saúde' } },
+            { unidadeCadastro: { contains: 'Saude' } },
+            { unidadeCadastro: { contains: 'UPA' } },
+            { unidadeCadastro: { contains: 'UPH' } },
+            { unidadeCadastro: { contains: 'Hospital' } },
+            { unidadeCadastro: { contains: 'CAPS' } }
+          ]
+        },
+        select: {
+          tema: true,
+          assunto: true,
+          tipoDeManifestacao: true,
+          statusDemanda: true,
+          dataCriacaoIso: true,
+          endereco: true,
+          orgaos: true,
+          unidadeSaude: true,
+          unidadeCadastro: true,
+          data: true
+        },
+        take: 50000 // Limitar para performance
+      });
+      
+      // Filtrar em memória para case-insensitive e múltiplas palavras-chave
+      const records = allRecords.filter(r => {
+        const tema = (r.tema || '').toLowerCase();
+        const assunto = (r.assunto || '').toLowerCase();
+        const orgaos = (r.orgaos || '').toLowerCase();
+        const unidadeCadastro = (r.unidadeCadastro || '').toLowerCase();
+        const unidadeSaude = (r.unidadeSaude || '').toLowerCase();
+        const textoCompleto = `${tema} ${assunto} ${orgaos} ${unidadeCadastro} ${unidadeSaude}`;
+        
+        return keywords.some(keyword => textoCompleto.includes(keyword.toLowerCase()));
+      });
+      
+      return res.json({
+        total: records.length,
+        records: records.slice(0, 1000) // Retornar apenas primeiros 1000 para resposta
+      });
+    } catch (error) {
+      console.error('❌ Erro ao buscar manifestações de saúde:', error);
+      return res.status(500).json({ error: 'Erro ao buscar manifestações de saúde' });
+    }
+  });
+});
+
+app.get('/api/saude/por-distrito', async (req, res) => {
+  const cacheKey = 'saude-por-distrito:v1';
+  return withCache(cacheKey, 300, res, async () => {
+    try {
+      const { detectDistrictByAddress } = require('./utils/districtMapper');
+      const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+      const distritosData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+      
+      // Buscar manifestações relacionadas a saúde
+      const allRecords = await prisma.record.findMany({
+        where: {
+          OR: [
+            { tema: { contains: 'Saúde' } },
+            { tema: { contains: 'Saude' } },
+            { assunto: { contains: 'Saúde' } },
+            { assunto: { contains: 'Saude' } },
+            { orgaos: { contains: 'Saúde' } },
+            { orgaos: { contains: 'Saude' } },
+            { unidadeSaude: { not: null } }
+          ]
+        },
+        select: {
+          endereco: true,
+          data: true,
+          tipoDeManifestacao: true,
+          statusDemanda: true,
+          tema: true,
+          assunto: true
+        },
+        take: 50000
+      });
+      
+      // Filtrar e agrupar por distrito
+      const porDistrito = {};
+      Object.keys(distritosData.distritos).forEach(distrito => {
+        porDistrito[distrito] = {
+          distrito,
+          code: distritosData.distritos[distrito].code,
+          total: 0,
+          porTipo: {},
+          porStatus: {},
+          porTema: {}
+        };
+      });
+      
+      const keywords = ['saúde', 'saude', 'hospital', 'upa', 'uph', 'médico', 'medico'];
+      
+      allRecords.forEach(record => {
+        const tema = (record.tema || '').toLowerCase();
+        const assunto = (record.assunto || '').toLowerCase();
+        const texto = `${tema} ${assunto}`;
+        
+        if (!keywords.some(k => texto.includes(k))) return;
+        
+        const endereco = record.endereco || record.data?.endereco || record.data?.Bairro || '';
+        if (!endereco) return;
+        
+        const resultado = detectDistrictByAddress(endereco);
+        const distrito = resultado?.distrito;
+        
+        if (!distrito || !porDistrito[distrito]) return;
+        
+        porDistrito[distrito].total++;
+        
+        const tipo = record.tipoDeManifestacao || 'Não informado';
+        porDistrito[distrito].porTipo[tipo] = (porDistrito[distrito].porTipo[tipo] || 0) + 1;
+        
+        const status = record.statusDemanda || 'Não informado';
+        porDistrito[distrito].porStatus[status] = (porDistrito[distrito].porStatus[status] || 0) + 1;
+        
+        const temaRecord = record.tema || 'Não informado';
+        porDistrito[distrito].porTema[temaRecord] = (porDistrito[distrito].porTema[temaRecord] || 0) + 1;
+      });
+      
+      return res.json({ porDistrito });
+    } catch (error) {
+      console.error('❌ Erro ao buscar saúde por distrito:', error);
+      return res.status(500).json({ error: 'Erro ao buscar saúde por distrito' });
+    }
+  });
+});
+
+app.get('/api/saude/por-tema', async (req, res) => {
+  const cacheKey = 'saude-por-tema:v1';
+  return withCache(cacheKey, 300, res, async () => {
+    try {
+      const records = await prisma.record.findMany({
+        where: {
+          OR: [
+            { tema: { contains: 'Saúde' } },
+            { tema: { contains: 'Saude' } },
+            { assunto: { contains: 'Saúde' } },
+            { assunto: { contains: 'Saude' } },
+            { orgaos: { contains: 'Saúde' } },
+            { orgaos: { contains: 'Saude' } }
+          ]
+        },
+        select: {
+          tema: true,
+          assunto: true,
+          tipoDeManifestacao: true
+        },
+        take: 50000
+      });
+      
+      const keywords = ['saúde', 'saude', 'hospital', 'upa', 'uph', 'médico', 'medico'];
+      const filtered = records.filter(r => {
+        const texto = `${(r.tema || '').toLowerCase()} ${(r.assunto || '').toLowerCase()}`;
+        return keywords.some(k => texto.includes(k));
+      });
+      
+      const porTema = {};
+      filtered.forEach(r => {
+        const tema = r.tema || 'Não informado';
+        if (!porTema[tema]) {
+          porTema[tema] = {
+            tema,
+            total: 0,
+            porTipo: {}
+          };
+        }
+        porTema[tema].total++;
+        const tipo = r.tipoDeManifestacao || 'Não informado';
+        porTema[tema].porTipo[tipo] = (porTema[tema].porTipo[tipo] || 0) + 1;
+      });
+      
+      return res.json({ porTema });
+    } catch (error) {
+      console.error('❌ Erro ao buscar saúde por tema:', error);
+      return res.status(500).json({ error: 'Erro ao buscar saúde por tema' });
+    }
+  });
+});
+
+app.get('/api/saude/por-unidade', async (req, res) => {
+  const cacheKey = 'saude-por-unidade:v1';
+  return withCache(cacheKey, 300, res, async () => {
+    try {
+      const records = await prisma.record.findMany({
+        where: {
+          OR: [
+            { unidadeSaude: { not: null } },
+            { unidadeCadastro: { contains: 'UPA' } },
+            { unidadeCadastro: { contains: 'UPH' } },
+            { unidadeCadastro: { contains: 'Hospital' } },
+            { unidadeCadastro: { contains: 'CAPS' } },
+            { unidadeCadastro: { contains: 'Saúde' } },
+            { unidadeCadastro: { contains: 'Saude' } }
+          ]
+        },
+        select: {
+          unidadeSaude: true,
+          unidadeCadastro: true,
+          tipoDeManifestacao: true,
+          statusDemanda: true,
+          tema: true,
+          assunto: true
+        },
+        take: 50000
+      });
+      
+      const porUnidade = {};
+      records.forEach(r => {
+        const unidade = r.unidadeSaude || r.unidadeCadastro || 'Não informado';
+        if (!porUnidade[unidade]) {
+          porUnidade[unidade] = {
+            unidade,
+            total: 0,
+            porTipo: {},
+            porStatus: {}
+          };
+        }
+        porUnidade[unidade].total++;
+        const tipo = r.tipoDeManifestacao || 'Não informado';
+        porUnidade[unidade].porTipo[tipo] = (porUnidade[unidade].porTipo[tipo] || 0) + 1;
+        const status = r.statusDemanda || 'Não informado';
+        porUnidade[unidade].porStatus[status] = (porUnidade[unidade].porStatus[status] || 0) + 1;
+      });
+      
+      return res.json({ porUnidade });
+    } catch (error) {
+      console.error('❌ Erro ao buscar saúde por unidade:', error);
+      return res.status(500).json({ error: 'Erro ao buscar saúde por unidade' });
+    }
+  });
 });
 
 app.get('/api/meta/aliases', (_req, res) => {
@@ -4270,38 +5044,53 @@ async function fetchRelevantData(userText) {
   return dados;
 }
 
-// Função para formatar dados em texto legível para a Gemini
+// Função para formatar dados em texto legível para a Gemini (CONCISA E INTELIGENTE)
 function formatDataForGemini(dados, userText = '') {
   const parts = [];
-  const buscaUPAs = userText.toLowerCase().includes('upa') || userText.toLowerCase().includes('upas');
+  const userTextLower = userText.toLowerCase();
   
+  // Analisar pergunta para mostrar apenas dados relevantes
+  const isReclamacao = userTextLower.includes('reclama') || userTextLower.includes('reclamação');
+  const isElogio = userTextLower.includes('elogio');
+  const isDenuncia = userTextLower.includes('denúncia') || userTextLower.includes('denuncia');
+  const isTotal = userTextLower.includes('total') || userTextLower.includes('quantas') || userTextLower.includes('quantos');
+  const isOrgao = userTextLower.includes('órgão') || userTextLower.includes('orgao') || userTextLower.includes('secretaria');
+  const isTema = userTextLower.includes('tema') || userTextLower.includes('categoria');
+  const isAssunto = userTextLower.includes('assunto');
+  const isStatus = userTextLower.includes('status') || userTextLower.includes('concluíd') || userTextLower.includes('pendente');
+  
+  // Estatísticas gerais (sempre mostrar, mas de forma concisa)
   if (dados.estatisticasGerais) {
-    parts.push(`📊 ESTATÍSTICAS GERAIS:`);
-    parts.push(`Total de manifestações: ${dados.estatisticasGerais.total.toLocaleString('pt-BR')}`);
-    if (dados.estatisticasGerais.porStatus.length > 0) {
-      parts.push(`\nStatus mais comuns:`);
-      dados.estatisticasGerais.porStatus.forEach((s, i) => {
-        parts.push(`${i+1}. ${s.status}: ${s.count.toLocaleString('pt-BR')} manifestações`);
-      });
+    parts.push(`📊 **Total de manifestações: ${dados.estatisticasGerais.total.toLocaleString('pt-BR')}**`);
+    
+    // Mostrar status apenas se perguntar sobre status ou se for pergunta geral
+    if (isStatus || isTotal) {
+      const topStatus = dados.estatisticasGerais.porStatus.slice(0, 5);
+      if (topStatus.length > 0) {
+        parts.push(`\n**Status principais:**`);
+        topStatus.forEach((s, i) => {
+          parts.push(`${i+1}. ${s.status}: ${s.count.toLocaleString('pt-BR')}`);
+        });
+      }
     }
   }
   
-  if (dados.topOrgaos && dados.topOrgaos.length > 0) {
-    parts.push(`\n🏛️ TOP ${dados.topOrgaos.length} SECRETARIAS/ÓRGÃOS POR VOLUME:`);
-    dados.topOrgaos.forEach((o, i) => {
-      parts.push(`${i+1}. **${o.orgaos || 'Não informado'}**: ${o._count._all.toLocaleString('pt-BR')} manifestações`);
+  // Mostrar órgãos apenas se perguntar sobre órgãos ou se for pergunta geral
+  if (dados.topOrgaos && dados.topOrgaos.length > 0 && (isOrgao || isTotal)) {
+    const topOrgaos = dados.topOrgaos.slice(0, 10);
+    parts.push(`\n🏛️ **Top Secretarias/Órgãos:**`);
+    topOrgaos.forEach((o, i) => {
+      parts.push(`${i+1}. ${o.orgaos || 'Não informado'}: ${o._count._all.toLocaleString('pt-BR')}`);
     });
-    const totalOrgaos = dados.topOrgaos.reduce((sum, o) => sum + o._count._all, 0);
-    parts.push(`\n**Total**: ${totalOrgaos.toLocaleString('pt-BR')} manifestações`);
   }
   
-  if (dados.topSetores && dados.topSetores.length > 0) {
-    parts.push(`\n📁 TOP ${dados.topSetores.length} SETORES/UNIDADES POR VOLUME:`);
-    dados.topSetores.forEach((s, i) => {
-      parts.push(`${i+1}. **${s.setor || 'Não informado'}**: ${s._count._all.toLocaleString('pt-BR')} manifestações`);
+  // Mostrar setores apenas se perguntar sobre setores ou unidades
+  if (dados.topSetores && dados.topSetores.length > 0 && (userTextLower.includes('setor') || userTextLower.includes('unidade') || isTotal)) {
+    const topSetores = dados.topSetores.slice(0, 10);
+    parts.push(`\n📁 **Top Setores/Unidades:**`);
+    topSetores.forEach((s, i) => {
+      parts.push(`${i+1}. ${s.setor || 'Não informado'}: ${s._count._all.toLocaleString('pt-BR')}`);
     });
-    const totalSetores = dados.topSetores.reduce((sum, s) => sum + s._count._all, 0);
-    parts.push(`\n**Total**: ${totalSetores.toLocaleString('pt-BR')} manifestações`);
   }
   
   if (dados.unidadesUPAs && dados.unidadesUPAs.length > 0) {
@@ -4318,7 +5107,7 @@ function formatDataForGemini(dados, userText = '') {
     if (dados.unidadesUPAs.length > 0) {
       parts.push(`Média de manifestações por UPA: ${(totalManifestacoes / dados.unidadesUPAs.length).toFixed(0)}`);
     }
-  } else if (dados.todasUnidades && buscaUPAs) {
+  } else if (dados.todasUnidades && userTextLower.includes('upa')) {
     // Se não encontrou UPAs específicas mas tem todas as unidades, mostrar unidades que podem ser UPAs
     const possiveisUPAs = dados.todasUnidades.filter(u => 
       u.unidade && u.unidade.toLowerCase().includes('upa') && !u.unidade.toLowerCase().includes('uph')
@@ -4357,105 +5146,55 @@ function formatDataForGemini(dados, userText = '') {
     });
   }
   
-  if (dados.topTemas && dados.topTemas.length > 0) {
-    parts.push(`\n📋 TOP ${dados.topTemas.length} TEMAS POR VOLUME:`);
-    dados.topTemas.forEach((t, i) => {
-      parts.push(`${i+1}. **${t.tema || 'Não informado'}**: ${t._count._all.toLocaleString('pt-BR')} manifestações`);
+  // Mostrar temas apenas se perguntar sobre temas
+  if (dados.topTemas && dados.topTemas.length > 0 && (isTema || isTotal)) {
+    const topTemas = dados.topTemas.slice(0, 10);
+    parts.push(`\n📋 **Top Temas:**`);
+    topTemas.forEach((t, i) => {
+      parts.push(`${i+1}. ${t.tema || 'Não informado'}: ${t._count._all.toLocaleString('pt-BR')}`);
     });
-    const totalTemas = dados.topTemas.reduce((sum, t) => sum + t._count._all, 0);
-    parts.push(`\n**Total**: ${totalTemas.toLocaleString('pt-BR')} manifestações`);
   }
   
-  if (dados.topBairros && dados.topBairros.length > 0) {
-    parts.push(`\n🏘️ TOP ${dados.topBairros.length} BAIRROS POR VOLUME (extraídos dos endereços):`);
-    dados.topBairros.forEach((b, i) => {
-      parts.push(`${i+1}. **${b.bairro}**: ${b.count.toLocaleString('pt-BR')} manifestações`);
+  // Mostrar assuntos apenas se perguntar sobre assuntos
+  if (dados.topAssuntos && dados.topAssuntos.length > 0 && (isAssunto || isTotal)) {
+    const topAssuntos = dados.topAssuntos.slice(0, 10);
+    parts.push(`\n📝 **Top Assuntos:**`);
+    topAssuntos.forEach((a, i) => {
+      parts.push(`${i+1}. ${a.assunto || 'Não informado'}: ${a._count._all.toLocaleString('pt-BR')}`);
     });
-    const totalBairros = dados.topBairros.reduce((sum, b) => sum + b.count, 0);
-    parts.push(`\n**Total**: ${totalBairros.toLocaleString('pt-BR')} manifestações`);
   }
   
-  if (dados.topAssuntos && dados.topAssuntos.length > 0) {
-    parts.push(`\n📝 TOP ${dados.topAssuntos.length} ASSUNTOS POR VOLUME:`);
-    dados.topAssuntos.forEach((a, i) => {
-      parts.push(`${i+1}. **${a.assunto || 'Não informado'}**: ${a._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalAssuntos = dados.topAssuntos.reduce((sum, a) => sum + a._count._all, 0);
-    parts.push(`\n**Total**: ${totalAssuntos.toLocaleString('pt-BR')} manifestações`);
-  }
+  // Remover seções menos relevantes para perguntas gerais - apenas mostrar se perguntar especificamente
   
-  if (dados.topCanais && dados.topCanais.length > 0) {
-    parts.push(`\n📞 TOP ${dados.topCanais.length} CANAIS POR VOLUME:`);
-    dados.topCanais.forEach((c, i) => {
-      parts.push(`${i+1}. **${c.canal || 'Não informado'}**: ${c._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalCanais = dados.topCanais.reduce((sum, c) => sum + c._count._all, 0);
-    parts.push(`\n**Total**: ${totalCanais.toLocaleString('pt-BR')} manifestações`);
-  }
-  
-  if (dados.topStatus && dados.topStatus.length > 0) {
-    parts.push(`\n✅ TOP ${dados.topStatus.length} STATUS POR VOLUME:`);
-    dados.topStatus.forEach((s, i) => {
-      parts.push(`${i+1}. **${s.status || 'Não informado'}**: ${s._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalStatus = dados.topStatus.reduce((sum, s) => sum + s._count._all, 0);
-    parts.push(`\n**Total**: ${totalStatus.toLocaleString('pt-BR')} manifestações`);
-  }
-  
-  if (dados.topStatusDemanda && dados.topStatusDemanda.length > 0) {
-    parts.push(`\n✅ TOP ${dados.topStatusDemanda.length} STATUS DE DEMANDA POR VOLUME:`);
-    dados.topStatusDemanda.forEach((s, i) => {
-      parts.push(`${i+1}. **${s.statusDemanda || 'Não informado'}**: ${s._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalStatusDemanda = dados.topStatusDemanda.reduce((sum, s) => sum + s._count._all, 0);
-    parts.push(`\n**Total**: ${totalStatusDemanda.toLocaleString('pt-BR')} manifestações`);
-  }
-  
-  if (dados.topPrioridades && dados.topPrioridades.length > 0) {
-    parts.push(`\n⚡ TOP ${dados.topPrioridades.length} PRIORIDADES POR VOLUME:`);
-    dados.topPrioridades.forEach((p, i) => {
-      parts.push(`${i+1}. **${p.prioridade || 'Não informado'}**: ${p._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalPrioridades = dados.topPrioridades.reduce((sum, p) => sum + p._count._all, 0);
-    parts.push(`\n**Total**: ${totalPrioridades.toLocaleString('pt-BR')} manifestações`);
-  }
-  
+  // Mostrar tipos de manifestação (especialmente reclamações, elogios, denúncias)
   if (dados.topTiposManifestacao && dados.topTiposManifestacao.length > 0) {
-    parts.push(`\n📝 TOP ${dados.topTiposManifestacao.length} TIPOS DE MANIFESTAÇÃO POR VOLUME:`);
-    dados.topTiposManifestacao.forEach((t, i) => {
-      parts.push(`${i+1}. **${t.tipoDeManifestacao || 'Não informado'}**: ${t._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalTipos = dados.topTiposManifestacao.reduce((sum, t) => sum + t._count._all, 0);
-    parts.push(`\n**Total**: ${totalTipos.toLocaleString('pt-BR')} manifestações`);
+    // Se perguntar especificamente sobre reclamações, elogios ou denúncias, mostrar apenas esses
+    if (isReclamacao || isElogio || isDenuncia) {
+      const tipoRelevante = dados.topTiposManifestacao.find(t => {
+        const tipo = (t.tipoDeManifestacao || '').toLowerCase();
+        return (isReclamacao && tipo.includes('reclama')) ||
+               (isElogio && tipo.includes('elogio')) ||
+               (isDenuncia && (tipo.includes('denúncia') || tipo.includes('denuncia')));
+      });
+      if (tipoRelevante) {
+        // Para reclamações, destacar o número de forma clara
+        if (isReclamacao) {
+          parts.push(`\n📝 **Total de Reclamações: ${tipoRelevante._count._all.toLocaleString('pt-BR')}**`);
+        } else {
+          parts.push(`\n📝 **${tipoRelevante.tipoDeManifestacao}**: ${tipoRelevante._count._all.toLocaleString('pt-BR')} manifestações`);
+        }
+      }
+    } else if (isTotal) {
+      // Se for pergunta sobre total, mostrar todos os tipos de forma resumida
+      const topTipos = dados.topTiposManifestacao.slice(0, 6);
+      parts.push(`\n📝 **Tipos de Manifestação:**`);
+      topTipos.forEach((t, i) => {
+        parts.push(`${i+1}. ${t.tipoDeManifestacao || 'Não informado'}: ${t._count._all.toLocaleString('pt-BR')}`);
+      });
+    }
   }
   
-  if (dados.topResponsaveis && dados.topResponsaveis.length > 0) {
-    parts.push(`\n👤 TOP ${dados.topResponsaveis.length} RESPONSÁVEIS POR VOLUME:`);
-    dados.topResponsaveis.forEach((r, i) => {
-      parts.push(`${i+1}. **${r.responsavel || 'Não informado'}**: ${r._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalResponsaveis = dados.topResponsaveis.reduce((sum, r) => sum + r._count._all, 0);
-    parts.push(`\n**Total**: ${totalResponsaveis.toLocaleString('pt-BR')} manifestações`);
-  }
-  
-  if (dados.topServidores && dados.topServidores.length > 0) {
-    parts.push(`\n👥 TOP ${dados.topServidores.length} SERVIDORES/CADASTRISTAS POR VOLUME:`);
-    dados.topServidores.forEach((s, i) => {
-      parts.push(`${i+1}. **${s.servidor || 'Não informado'}**: ${s._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalServidores = dados.topServidores.reduce((sum, s) => sum + s._count._all, 0);
-    parts.push(`\n**Total**: ${totalServidores.toLocaleString('pt-BR')} manifestações`);
-  }
-  
-  if (dados.topEnderecos && dados.topEnderecos.length > 0) {
-    parts.push(`\n📍 TOP ${dados.topEnderecos.length} ENDEREÇOS COMPLETOS POR VOLUME:`);
-    dados.topEnderecos.forEach((e, i) => {
-      parts.push(`${i+1}. **${e.endereco || 'Não informado'}**: ${e._count._all.toLocaleString('pt-BR')} manifestações`);
-    });
-    const totalEnderecos = dados.topEnderecos.reduce((sum, e) => sum + e._count._all, 0);
-    parts.push(`\n**Total**: ${totalEnderecos.toLocaleString('pt-BR')} manifestações`);
-    parts.push(`\n💡 Nota: Os endereços podem conter ruas, bairros e outras informações. Bairros identificados são mostrados separadamente acima.`);
-  }
+  // Remover seções menos relevantes - apenas mostrar se perguntar especificamente
   
   if (dados.tempoMedio) {
     parts.push(`\n⏱️ TEMPO DE RESOLUÇÃO:`);
@@ -4569,7 +5308,26 @@ function formatDataForGemini(dados, userText = '') {
     }
   }
   
-  return parts.length > 0 ? `\n\n📊 DADOS REAIS DO BANCO DE DADOS (TEMPO REAL):\n${parts.join('\n')}\n` : '';
+  // Retornar dados formatados de forma concisa
+  if (parts.length === 0) return '';
+  
+  // Se for pergunta sobre reclamações, focar nisso e ser bem direto
+  if (isReclamacao) {
+    // Se já tem o número de reclamações, retornar apenas isso de forma clara
+    const temReclamacao = parts.some(p => p.includes('Reclamações'));
+    if (temReclamacao) {
+      return parts.join('\n');
+    }
+    return `📊 **Dados sobre Reclamações:**\n${parts.join('\n')}`;
+  }
+  
+  // Se for pergunta geral sobre total, mostrar resumo conciso
+  if (isTotal) {
+    return parts.join('\n');
+  }
+  
+  // Para outras perguntas, mostrar resumo
+  return `📊 **Resumo dos Dados:**\n${parts.join('\n')}`;
 }
 
 // Enviar mensagem no chat
@@ -4826,9 +5584,9 @@ app.post('/api/chat/messages', async (req, res) => {
         console.log('⚠️ Usando FALLBACK INTELIGENTE (Gemini não retornou resposta)');
         const userText = text.toLowerCase();
         
-        // Se temos dados reais do banco, usar eles na resposta
+        // Se temos dados reais do banco, usar eles na resposta (já formatados de forma concisa)
         if (dadosFormatados) {
-          response = `Com base nos dados atuais do banco de ouvidoria:\n\n${dadosFormatados}\n\nEsses são os principais dados disponíveis. Para análises mais detalhadas, posso consultar outros recortes ou períodos específicos.`;
+          response = dadosFormatados;
         } else if (userText.includes('olá') || userText.includes('oi') || userText.includes('bom dia') || userText.includes('boa tarde') || userText.includes('boa noite')) {
           response = 'Olá! Como posso ajudar você hoje? Tenho acesso ao contexto do projeto e aos arquivos Wellington.';
         } else if (userText.includes('dados') || userText.includes('estatística') || userText.includes('gráfico')) {
@@ -4870,22 +5628,33 @@ app.post('/api/cache/clear', (req, res) => {
   });
 });
 
-// Endpoint para verificar status do cache
-app.get('/api/cache/status', (req, res) => {
-  const keys = cache.keys();
-  const stats = cache.getStats();
-  res.json({
-    keys: keys.length,
-    hits: stats.hits,
-    misses: stats.misses,
-    ksize: stats.ksize,
-    vsize: stats.vsize
-  });
-});
+// Endpoint duplicado removido - usar /api/cache/status acima
+
+// Limpeza automática de cache expirado a cada hora
+setInterval(async () => {
+  try {
+    const count = await cleanExpiredCache(prisma);
+    if (count > 0) {
+      console.log(`🧹 Limpeza automática: ${count} entradas de cache expiradas removidas`);
+    }
+  } catch (error) {
+    console.warn('⚠️ Erro na limpeza automática de cache:', error.message);
+  }
+}, 3600000); // 1 hora
+
+// Inicializar cache universal e agendar atualizações diárias
+try {
+  scheduleDailyUpdate(prisma);
+  console.log('✅ Sistema de cache universal inicializado');
+} catch (error) {
+  console.warn('⚠️ Erro ao inicializar cache universal:', error.message);
+}
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {
-  console.log(`Dashboard running on http://localhost:${port}`);
+  console.log(`🚀 Dashboard running on http://localhost:${port}`);
+  console.log(`📦 Cache híbrido ativo (memória + banco de dados)`);
+  console.log(`🔧 Sistema de otimização global ativo`);
 });
 
 

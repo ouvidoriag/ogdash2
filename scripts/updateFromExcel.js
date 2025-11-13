@@ -30,54 +30,103 @@ async function main() {
   let updated = 0;
   let inserted = 0;
   let skipped = 0; // Registros sem protocolo
-  const batchSize = 100; // Processar em lotes menores para updates
+  const batchSize = 1000; // Aumentado para processar mais rápido
   
-  for (let i = 0; i < json.length; i += batchSize) {
-    const slice = json.slice(i, i + batchSize);
+  // OTIMIZAÇÃO: Buscar todos os protocolos existentes de uma vez
+  console.log('🔍 Buscando protocolos existentes no banco...');
+  const existingProtocols = await prisma.record.findMany({
+    select: { protocolo: true, id: true },
+    where: { protocolo: { not: null } }
+  });
+  const protocolMap = new Map(existingProtocols.map(r => [r.protocolo, r.id]));
+  console.log(`✅ ${protocolMap.size} protocolos encontrados no banco`);
+  
+  // Preparar dados para inserção e atualização
+  const toInsert = [];
+  const toUpdate = [];
+  
+  for (const row of json) {
+    // Extrair protocolo do JSON (pode estar em diferentes formatos)
+    const protocolo = row.protocolo || row.Protocolo || row.PROTOCOLO || null;
     
-    for (const row of slice) {
-      // Extrair protocolo do JSON (pode estar em diferentes formatos)
-      const protocolo = row.protocolo || row.Protocolo || row.PROTOCOLO || null;
-      
-      if (!protocolo) {
-        skipped++;
-        continue;
-      }
+    if (!protocolo) {
+      skipped++;
+      continue;
+    }
 
-      try {
-        // Verificar se já existe pelo protocolo
-        const existing = await prisma.record.findFirst({
-          where: { protocolo: String(protocolo) }
-        });
-
-        if (existing) {
-          // Atualizar registro existente
-          await prisma.record.update({
-            where: { id: existing.id },
-            data: {
-              data: row, // Atualizar JSON completo
-              // Campos normalizados serão atualizados pelo backfill
-              protocolo: String(protocolo)
-            }
-          });
-          updated++;
-        } else {
-          // Inserir novo registro
-          await prisma.record.create({
-            data: {
-              data: row,
-              protocolo: String(protocolo)
-            }
-          });
-          inserted++;
+    const protocoloStr = String(protocolo);
+    const existingId = protocolMap.get(protocoloStr);
+    
+    if (existingId) {
+      // Preparar para atualização
+      toUpdate.push({
+        id: existingId,
+        data: row,
+        protocolo: protocoloStr
+      });
+    } else {
+      // Preparar para inserção
+      toInsert.push({
+        data: row,
+        protocolo: protocoloStr
+      });
+    }
+  }
+  
+  console.log(`📊 Preparados: ${toUpdate.length} para atualizar, ${toInsert.length} para inserir, ${skipped} sem protocolo`);
+  
+  // OTIMIZAÇÃO: Processar atualizações em lotes maiores
+  console.log('🔄 Atualizando registros existentes...');
+  for (let i = 0; i < toUpdate.length; i += batchSize) {
+    const slice = toUpdate.slice(i, i + batchSize);
+    
+    // Processar atualizações em paralelo (mas limitado para não sobrecarregar)
+    const updatePromises = slice.map(item => 
+      prisma.record.update({
+        where: { id: item.id },
+        data: {
+          data: item.data,
+          protocolo: item.protocolo
         }
-      } catch (error) {
-        console.error(`❌ Erro ao processar protocolo ${protocolo}:`, error.message);
+      }).catch(error => {
+        console.error(`❌ Erro ao atualizar protocolo ${item.protocolo}:`, error.message);
+        return null;
+      })
+    );
+    
+    const results = await Promise.all(updatePromises);
+    updated += results.filter(r => r !== null).length;
+    
+    const processed = Math.min(i + batchSize, toUpdate.length);
+    console.log(`📦 Atualizados: ${processed}/${toUpdate.length} (${Math.round(processed/toUpdate.length*100)}%)`);
+  }
+  
+  // OTIMIZAÇÃO: Processar inserções em lotes usando createMany
+  console.log('➕ Inserindo novos registros...');
+  for (let i = 0; i < toInsert.length; i += batchSize) {
+    const slice = toInsert.slice(i, i + batchSize);
+    
+    try {
+      await prisma.record.createMany({
+        data: slice,
+        skipDuplicates: true // Ignorar duplicatas se houver
+      });
+      inserted += slice.length;
+    } catch (error) {
+      // Se createMany falhar (pode ser por duplicatas), inserir um por um
+      console.warn(`⚠️ createMany falhou, inserindo individualmente...`);
+      for (const item of slice) {
+        try {
+          await prisma.record.create({ data: item });
+          inserted++;
+        } catch (e) {
+          console.error(`❌ Erro ao inserir protocolo ${item.protocolo}:`, e.message);
+        }
       }
     }
     
-    const processed = Math.min(i + batchSize, json.length);
-    console.log(`📦 Processados: ${processed}/${json.length} (${Math.round(processed/json.length*100)}%) - Atualizados: ${updated}, Inseridos: ${inserted}, Sem protocolo: ${skipped}`);
+    const processed = Math.min(i + batchSize, toInsert.length);
+    console.log(`📦 Inseridos: ${processed}/${toInsert.length} (${Math.round(processed/toInsert.length*100)}%)`);
   }
 
   const countAfter = await prisma.record.count();

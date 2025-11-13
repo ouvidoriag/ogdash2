@@ -3,14 +3,103 @@
  * Centraliza todas as funções load*() que buscam e renderizam dados
  */
 
-// Variáveis globais para estado
-let currentTableData = [];
-let currentTableHeaders = [];
+// DEBUG: Log para verificar se data.js está sendo executado
+if (typeof window !== 'undefined') {
+  if (window.Logger) {
+    window.Logger.debug('🔍 data.js: Iniciando execução do script...');
+  } else {
+    console.log('🔍 data.js: Iniciando execução do script...');
+  }
+}
+
+// NOTA: currentTableData e currentTableHeaders foram movidos para data-tables.js
+// Usar window.data.currentTableData e window.data.currentTableHeaders
 
 /**
- * Recarregar todos os dados com filtros aplicados
+ * Sistema de Cache Genérico para funções load*
+ * NOTA: Cache principal foi movido para data-utils.js
+ * Estas funções são mantidas apenas para compatibilidade retroativa
+ * Usar window.data.getCachedData, window.data.setCachedData, etc.
+ */
+// CORREÇÃO CRÍTICA: functionCache foi completamente removido de data.js
+// Agora está apenas em data-utils.js para evitar declaração duplicada
+
+function getCachedData(functionName, ttl = 5000) {
+  // Delegar para data-utils se disponível
+  if (window.data && typeof window.data.getCachedData === 'function') {
+    return window.data.getCachedData(functionName, ttl);
+  }
+  return null;
+}
+
+function setCachedData(functionName, data) {
+  // Delegar para data-utils se disponível
+  if (window.data && typeof window.data.setCachedData === 'function') {
+    return window.data.setCachedData(functionName, data);
+  }
+}
+
+function clearCache(functionName = null) {
+  // Delegar para data-utils se disponível
+  if (window.data && typeof window.data.clearCache === 'function') {
+    return window.data.clearCache(functionName);
+  }
+}
+
+/**
+ * Sistema de Proteção contra Execuções Simultâneas
+ * NOTA: runningPromises foi movido para data-utils.js para evitar duplicação
+ * Esta função delega para data-utils se disponível
+ */
+function getOrCreatePromise(functionName, promiseFactory) {
+  // Delegar para data-utils se disponível
+  if (window.data && typeof window.data.getOrCreatePromise === 'function') {
+    return window.data.getOrCreatePromise(functionName, promiseFactory);
+  }
+  
+  // Fallback: implementação simples sem cache compartilhado
+  return promiseFactory();
+}
+
+/**
+ * Helper genérico para otimizar funções load*
+ * Aplica cache e Promise compartilhada automaticamente
+ */
+function createOptimizedLoader(functionName, loaderFn, defaultTtl = 5000) {
+  return async function(forceRefresh = false, ...args) {
+    // Verificar cache
+    if (!forceRefresh) {
+      const cached = getCachedData(functionName, defaultTtl);
+      if (cached !== null) {
+        return cached;
+      }
+    }
+    
+    // Usar Promise compartilhada
+    return getOrCreatePromise(functionName, async () => {
+      try {
+        const result = await loaderFn(...args);
+        setCachedData(functionName, result);
+        return result;
+      } catch (e) {
+        // FASE 2.1: Usar Logger
+        if (window.Logger) {
+          window.Logger.error(`Erro em ${functionName}:`, e);
+        } else {
+          console.error(`❌ Erro em ${functionName}:`, e);
+        }
+        throw e;
+      }
+    });
+  };
+}
+
+/**
+ * Recarregar todos os dados
  */
 async function reloadAllData() {
+  // CORREÇÃO FASE 1.3: Adicionar try/catch para tratamento de erros
+  try {
   const currentPage = document.querySelector('[data-page].active')?.getAttribute('data-page') || 'main';
   
   // Recarregar dados da página principal
@@ -44,11 +133,28 @@ async function reloadAllData() {
   }
   
   // Atualizar realces visuais após recarregar dados
-  setTimeout(() => {
-    if (window.filters?.updateAllFilterHighlights) {
-      window.filters.updateAllFilterHighlights();
+  // FASE 2.2: Usar timerManager
+  const highlightTimerId = window.timerManager 
+    ? window.timerManager.setTimeout(() => {
+        if (window.filters?.updateAllFilterHighlights) {
+          window.filters.updateAllFilterHighlights();
+        }
+      }, 100, 'data-reload-highlights')
+    : setTimeout(() => {
+        if (window.filters?.updateAllFilterHighlights) {
+          window.filters.updateAllFilterHighlights();
+        }
+      }, 100);
+  } catch (error) {
+    // CORREÇÃO FASE 1.3: Tratamento de erro
+    // FASE 2.1: Usar Logger
+    if (window.Logger) {
+      window.Logger.error('Erro ao recarregar dados:', error);
+    } else {
+      console.error('❌ Erro ao recarregar dados:', error);
     }
-  }, 100);
+    // Não quebrar a aplicação - apenas logar o erro
+  }
 }
 
 /**
@@ -56,27 +162,39 @@ async function reloadAllData() {
  */
 async function loadAIInsights() {
   try {
-    // Usar fetch direto (sem filtros) para insights
-    const fetchFn = window.api?.fetchJSON || fetchJSON;
-    const data = await fetchFn('/api/ai/insights').catch((error) => {
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/ai/insights', { 
+      fallback: null,
+      timeout: 60000 // Timeout maior para IA
+    }).catch((error) => {
       // Se erro 429 (quota excedida), usar fallback silenciosamente
       if (error?.message?.includes('429') || error?.message?.includes('quota')) {
-        console.warn('⚠️ Quota do Gemini excedida, usando insights básicos');
+        // FASE 2.1: Usar Logger
+        if (window.Logger) {
+          window.Logger.warn('Quota do Gemini excedida, usando insights básicos');
+        } else {
+          console.warn('⚠️ Quota do Gemini excedida, usando insights básicos');
+        }
         return { insights: [], geradoPorIA: false, erro: 'quota_excedida' };
       }
-      console.warn('⚠️ Erro ao carregar insights:', error);
+      // FASE 2.1: Usar Logger
+      if (window.Logger) {
+        window.Logger.warn('Erro ao carregar insights:', error);
+      } else {
+        console.warn('⚠️ Erro ao carregar insights:', error);
+      }
       return { insights: [], geradoPorIA: false };
     });
     
     const insightsAIBox = document.getElementById('insightsAIBox');
     if (!insightsAIBox) return;
     
-    if (!data.insights || data.insights.length === 0) {
+    if (!data || !data.insights || data.insights.length === 0) {
       // Mensagem mais informativa se quota excedida
-      if (data.erro === 'quota_excedida') {
+      if (data && data.erro === 'quota_excedida') {
         insightsAIBox.innerHTML = '<div class="text-center text-slate-400 py-4">Insights básicos disponíveis. Quota da IA temporariamente indisponível.</div>';
       } else {
-      insightsAIBox.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum insight disponível no momento.</div>';
+        insightsAIBox.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum insight disponível no momento.</div>';
       }
       return;
     }
@@ -110,7 +228,12 @@ async function loadAIInsights() {
       </div>
     `).join('');
   } catch (error) {
-    console.error('❌ Erro ao carregar insights com IA:', error);
+    // FASE 2.1: Usar Logger
+    if (window.Logger) {
+      window.Logger.error('Erro ao carregar insights com IA:', error);
+    } else {
+      console.error('❌ Erro ao carregar insights com IA:', error);
+    }
     const insightsAIBox = document.getElementById('insightsAIBox');
     if (insightsAIBox) {
       insightsAIBox.innerHTML = '<div class="text-center text-red-400 py-4">Erro ao carregar insights. Tente novamente.</div>';
@@ -121,45 +244,49 @@ async function loadAIInsights() {
 /**
  * Carregar Status Overview
  */
-async function loadStatusOverview() {
+async function loadStatusOverview(summaryData = null) {
   try {
-    // OTIMIZAÇÃO: Usar fetch direto (sem filtros) para melhor performance
-    // Verificar se há filtros ativos - se não houver, usar fetch direto
-    const hasFilters = window.globalFilters?.filters?.length > 0;
-    let statusData;
+    // OTIMIZADO: Tentar usar dados do summary se disponível (evita requisição duplicada)
+    let statusData = null;
     
-    if (hasFilters) {
-      // Se há filtros, usar fetchJSONWithFilter
-      const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-      statusData = await fetchFn('/api/stats/status-overview').catch(() => null);
+    if (summaryData && summaryData.statusCounts) {
+      // Construir statusData a partir do summary para evitar requisição extra
+      const total = summaryData.total || 0;
+      const statusCounts = summaryData.statusCounts || [];
+      
+      // Mapear statusCounts para formato esperado
+      const concluida = statusCounts.find(s => (s.status || s.key || '').toLowerCase().includes('conclu'));
+      const emAtendimento = statusCounts.find(s => (s.status || s.key || '').toLowerCase().includes('atendimento') || (s.status || s.key || '').toLowerCase().includes('andamento'));
+      const pendente = statusCounts.find(s => (s.status || s.key || '').toLowerCase().includes('pendente'));
+      
+      statusData = {
+        total: total,
+        concluida: concluida ? { quantidade: concluida.count || concluida.quantidade || 0, percentual: total > 0 ? ((concluida.count || concluida.quantidade || 0) / total * 100).toFixed(1) : 0 } : { quantidade: 0, percentual: 0 },
+        emAtendimento: emAtendimento ? { quantidade: emAtendimento.count || emAtendimento.quantidade || 0, percentual: total > 0 ? ((emAtendimento.count || emAtendimento.quantidade || 0) / total * 100).toFixed(1) : 0 } : { quantidade: 0, percentual: 0 },
+        pendente: pendente ? { quantidade: pendente.count || pendente.quantidade || 0, percentual: total > 0 ? ((pendente.count || pendente.quantidade || 0) / total * 100).toFixed(1) : 0 } : { quantidade: 0, percentual: 0 }
+      };
     } else {
-      // Se não há filtros, usar fetch direto (mais rápido)
-      try {
-        const res = await fetch('/api/stats/status-overview', {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        if (res.ok) {
-          statusData = await res.json();
-        } else {
-          statusData = null;
-        }
-      } catch (e) {
-        statusData = null;
-      }
+      // Fallback: usar sistema global de carregamento apenas se summary não disponível
+      statusData = await window.dataLoader?.load('/api/stats/status-overview', { fallback: null }) || null;
     }
+    
     const statusCards = document.getElementById('statusOverviewCards');
     if (!statusCards) return;
     
-    if (!statusData || !statusData.total) {
+    if (!statusData || (!statusData.total && !statusData.total?.quantidade)) {
       statusCards.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum dado disponível</div>';
       return;
     }
     
+    // Compatibilidade: aceitar tanto total como número quanto como objeto
+    const totalQuantidade = typeof statusData.total === 'number' 
+      ? statusData.total 
+      : (statusData.total?.quantidade || 0);
+    
     const cards = [
       {
         label: 'Total',
-        value: statusData.total?.quantidade || 0,
+        value: totalQuantidade,
         color: 'cyan',
         icon: '📊'
       },
@@ -208,24 +335,25 @@ async function loadStatusOverview() {
       const cardId = `status-card-${card.label.replace(/\s+/g, '-').toLowerCase()}`;
       
       return `
-        <div id="${cardId}" class="glass rounded-xl p-4 border ${colors.border} ${colors.borderHover} transition-all ${canFilter ? 'cursor-pointer hover:scale-105 active:scale-95' : ''} ${isActive ? 'filter-active border-cyan-500/60 bg-cyan-500/10' : ''}" 
-             ${canFilter ? `onclick="const el = document.getElementById('${cardId}'); if(window.filters?.applyGlobalFilter) window.filters.applyGlobalFilter('${filterField}', '${card.label}', null, el);"` : ''}
-             title="${canFilter ? (isActive ? 'Clique novamente para remover o filtro' : 'Clique para filtrar por ' + card.label) : ''}">
+        <div id="${cardId}" class="glass rounded-xl p-4 border ${colors.border} ${colors.borderHover} transition-all">
           <div class="flex items-center justify-between mb-2">
             <div class="text-xs text-slate-400 font-medium">${card.label}</div>
             <div class="flex items-center gap-2">
-              ${isActive ? '<span class="text-cyan-400 text-sm">✓</span>' : ''}
               <div class="text-xl">${card.icon}</div>
             </div>
           </div>
           <div class="text-2xl font-bold ${colors.text}">${(card.value || 0).toLocaleString('pt-BR')}</div>
-          ${card.percent !== undefined ? `<div class="text-xs text-slate-400 mt-1">${card.percent.toFixed(1)}%</div>` : ''}
-          ${canFilter ? `<div class="text-xs ${isActive ? 'text-cyan-400' : 'text-cyan-400 opacity-0 group-hover:opacity-100'} mt-2 transition-opacity">${isActive ? '✓ Filtro ativo - Clique para remover' : '🔍 Clique para filtrar'}</div>` : ''}
+          ${card.percent !== undefined && card.percent !== null ? `<div class="text-xs text-slate-400 mt-1">${Number(card.percent).toFixed(1)}%</div>` : ''}
         </div>
       `;
     }).join('');
   } catch (error) {
-    console.error('❌ Erro ao carregar Status Overview:', error);
+    // FASE 2.1: Usar Logger
+    if (window.Logger) {
+      window.Logger.error('Erro ao carregar Status Overview:', error);
+    } else {
+      console.error('❌ Erro ao carregar Status Overview:', error);
+    }
     const statusCards = document.getElementById('statusOverviewCards');
     if (statusCards) {
       statusCards.innerHTML = '<div class="text-center text-red-400 py-4">Erro ao carregar dados</div>';
@@ -239,17 +367,25 @@ async function loadStatusOverview() {
 async function loadTable(limit = 50) {
   try {
     const pageSize = limit === 'all' ? 10000 : parseInt(limit) || 50;
-    const fetchFn = window.api?.fetchJSON || fetchJSON;
-    const data = await fetchFn(`/api/records?page=1&pageSize=${pageSize}`);
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load(`/api/records?page=1&pageSize=${pageSize}`, { fallback: { rows: [], total: 0 } }) || { rows: [], total: 0 };
     const rows = data.rows || [];
-    currentTableData = rows;
+    // Atualizar via window.data (gerenciado por data-tables.js)
+    if (window.data && typeof window.data.currentTableData !== 'undefined') {
+      window.data.currentTableData = rows;
+    }
     
     const tbody = document.getElementById('tbody');
     const thead = document.getElementById('thead');
     const tableInfo = document.getElementById('tableInfo');
     
     if (!tbody || !thead) {
-      console.warn('Elementos da tabela não encontrados (pode não estar na página atual)');
+      // FASE 2.1: Usar Logger
+      if (window.Logger) {
+        window.Logger.warn('Elementos da tabela não encontrados (pode não estar na página atual)');
+      } else {
+        console.warn('Elementos da tabela não encontrados (pode não estar na página atual)');
+      }
       return;
     }
     
@@ -263,7 +399,10 @@ async function loadTable(limit = 50) {
       
     const first = rows[0].data || {};
     const keys = Object.keys(first);
-    currentTableHeaders = keys;
+    // Atualizar via window.data (gerenciado por data-tables.js)
+    if (window.data && typeof window.data.currentTableHeaders !== 'undefined') {
+      window.data.currentTableHeaders = keys;
+    }
       
     // Ordenar colunas por importância
     const priorityOrder = ['protocolo', 'data_da_criacao', 'status_demanda', 'tipo_de_manifestacao', 
@@ -294,7 +433,12 @@ async function loadTable(limit = 50) {
       tableInfo.textContent = `Mostrando ${rows.length} de ${data.total || rows.length} registros`;
     }
   } catch (error) {
-    console.error('Erro ao carregar tabela:', error);
+    // FASE 2.1: Usar Logger
+    if (window.Logger) {
+      window.Logger.error('Erro ao carregar tabela:', error);
+    } else {
+      console.error('Erro ao carregar tabela:', error);
+    }
     const tableInfo = document.getElementById('tableInfo');
     if (tableInfo) {
       tableInfo.textContent = 'Erro ao carregar dados';
@@ -306,25 +450,149 @@ async function loadTable(limit = 50) {
  * Carregar KPIs com dados já obtidos (evita requisições duplicadas)
  */
 async function loadKpisWithData(sum, dailyData, byMonth = null) {
+  // CORREÇÃO FASE 1.3: Adicionar try/catch para tratamento de erros
+  try {
   // Se byMonth não foi fornecido, buscar (para compatibilidade)
   if (!byMonth) {
-    const fetchFn = window.api?.fetchJSONWithFilter;
-    if (fetchFn) {
-      byMonth = await fetchFn('/api/aggregate/by-month');
+    byMonth = await window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [];
+  }
+  
+  // CORREÇÃO: Renderizar IMEDIATAMENTE quando dados chegarem
+  // Não esperar pela função - renderizar diretamente primeiro
+    const kpiTotalEl = document.getElementById('kpiTotal');
+    const kpi7El = document.getElementById('kpi7');
+    const kpi30El = document.getElementById('kpi30');
+    
+  // DEBUG: Verificar se elementos existem
+  if (!kpiTotalEl || !kpi7El || !kpi30El) {
+    // FASE 2.1: Usar Logger
+    if (window.Logger) {
+      window.Logger.warn('loadKpisWithData: Elementos KPI não encontrados:', { 
+        kpiTotal: !!kpiTotalEl, 
+        kpi7: !!kpi7El, 
+        kpi30: !!kpi30El,
+        sum: !!sum,
+        sumTotal: sum?.total
+      });
     } else {
-      console.warn('API module não disponível para buscar byMonth');
-      return;
+      console.warn('⚠️ loadKpisWithData: Elementos KPI não encontrados:', {
+        kpiTotal: !!kpiTotalEl,
+        kpi7: !!kpi7El,
+        kpi30: !!kpi30El,
+        sum: !!sum,
+        sumTotal: sum?.total
+      });
     }
   }
-  // Chamar implementação diretamente para evitar loops
-  // Preferir window.renderKpisImplementation se disponível
-  if (typeof window.renderKpisImplementation === 'function') {
-    await window.renderKpisImplementation(sum, dailyData, byMonth);
-  } else if (window.data?.renderKpis) {
-    // Usar wrapper do módulo (que também chama a implementação)
-    await window.data.renderKpis(sum, dailyData, byMonth);
-  } else {
-    console.warn('Função renderKpis não disponível');
+  
+  // CORREÇÃO: Verificar se página está visível antes de renderizar
+  const pageMain = document.getElementById('page-main');
+  const isPageVisible = pageMain && pageMain.style.display !== 'none';
+  
+  if (!isPageVisible) {
+    // FASE 2.1: Usar Logger
+    if (window.Logger) {
+      window.Logger.warn('loadKpisWithData: Página main não está visível');
+    } else {
+      console.warn('⚠️ loadKpisWithData: Página main não está visível');
+    }
+    return;
+  }
+  
+  // Renderizar imediatamente (sem esperar)
+  // CORREÇÃO: Forçar atualização visual e verificar se valores são válidos
+  if (kpiTotalEl && sum && (sum.total !== undefined && sum.total !== null)) {
+    const totalValue = (sum.total ?? 0).toLocaleString('pt-BR');
+    kpiTotalEl.textContent = totalValue;
+    // Forçar atualização visual
+    kpiTotalEl.style.display = '';
+    kpiTotalEl.offsetHeight; // Trigger reflow
+    // FASE 2.1: Usar Logger (apenas em debug)
+    if (window.Logger) {
+      window.Logger.debug('loadKpisWithData: KPI Total renderizado:', totalValue);
+    } else {
+      console.log('✅ loadKpisWithData: KPI Total renderizado:', totalValue, 'Elemento:', kpiTotalEl);
+    }
+  }
+  if (kpi7El && sum && (sum.last7 !== undefined && sum.last7 !== null)) {
+    const last7Value = (sum.last7 ?? 0).toLocaleString('pt-BR');
+    kpi7El.textContent = last7Value;
+    kpi7El.style.display = '';
+    kpi7El.offsetHeight; // Trigger reflow
+    // FASE 2.1: Usar Logger (apenas em debug)
+    if (window.Logger) {
+      window.Logger.debug('loadKpisWithData: KPI 7 dias renderizado:', last7Value);
+    } else {
+      console.log('✅ loadKpisWithData: KPI 7 dias renderizado:', last7Value, 'Elemento:', kpi7El);
+    }
+  }
+  if (kpi30El && sum && (sum.last30 !== undefined && sum.last30 !== null)) {
+    const last30Value = (sum.last30 ?? 0).toLocaleString('pt-BR');
+    kpi30El.textContent = last30Value;
+    kpi30El.style.display = '';
+    kpi30El.offsetHeight; // Trigger reflow
+    // FASE 2.1: Usar Logger (apenas em debug)
+    if (window.Logger) {
+      window.Logger.debug('loadKpisWithData: KPI 30 dias renderizado:', last30Value);
+    } else {
+      console.log('✅ loadKpisWithData: KPI 30 dias renderizado:', last30Value, 'Elemento:', kpi30El);
+    }
+  }
+  
+  // Se a função completa estiver disponível, chamar ela para renderização completa (gráficos, etc)
+  // Mas não esperar - já renderizamos os números básicos acima
+  // CORREÇÃO: Adicionar pequeno delay para garantir que renderização básica foi aplicada
+  // FASE 2.2: Usar timerManager
+  const renderTimerId = window.timerManager 
+    ? window.timerManager.setTimeout(() => {
+        if (typeof window.renderKpisImplementation === 'function') {
+          // Chamar em background - não bloquear
+          window.renderKpisImplementation(sum, dailyData, byMonth).catch((e) => {
+            // FASE 2.1: Usar Logger
+            if (window.Logger) {
+              window.Logger.warn('Erro ao renderizar KPIs completos via loadKpisWithData (não crítico):', e);
+            } else {
+              console.warn('⚠️ Erro ao renderizar KPIs completos via loadKpisWithData (não crítico):', e);
+            }
+          });
+        } else if (window.data?.renderKpis) {
+          // Usar wrapper do módulo (que também chama a implementação)
+                window.data.renderKpis(sum, dailyData, byMonth).catch((e) => {
+              // FASE 2.1: Usar Logger
+              if (window.Logger) {
+                window.Logger.warn('Erro ao renderizar KPIs via wrapper loadKpisWithData (não crítico):', e);
+              } else {
+                console.warn('⚠️ Erro ao renderizar KPIs via wrapper loadKpisWithData (não crítico):', e);
+              }
+            });
+          }
+        }, 100, 'loadKpisWithData-render')
+      : setTimeout(() => {
+          if (typeof window.renderKpisImplementation === 'function') {
+            window.renderKpisImplementation(sum, dailyData, byMonth).catch((e) => {
+              console.warn('⚠️ Erro ao renderizar KPIs completos via loadKpisWithData (não crítico):', e);
+            });
+          } else if (window.data?.renderKpis) {
+            window.data.renderKpis(sum, dailyData, byMonth).catch((e) => {
+              // FASE 2.1: Usar Logger
+              if (window.Logger) {
+                window.Logger.warn('Erro ao renderizar KPIs via wrapper loadKpisWithData (não crítico):', e);
+              } else {
+                console.warn('⚠️ Erro ao renderizar KPIs via wrapper loadKpisWithData (não crítico):', e);
+              }
+            });
+          }
+        }, 100);
+  } catch (error) {
+    // CORREÇÃO FASE 1.3: Tratamento de erro com fallback
+    console.error('❌ Erro ao carregar KPIs com dados:', error);
+    // Renderizar valores padrão mesmo em caso de erro
+  const kpiTotalEl = document.getElementById('kpiTotal');
+  const kpi7El = document.getElementById('kpi7');
+  const kpi30El = document.getElementById('kpi30');
+    if (kpiTotalEl && sum) kpiTotalEl.textContent = (sum.total ?? 0).toLocaleString('pt-BR');
+    if (kpi7El && sum) kpi7El.textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
+    if (kpi30El && sum) kpi30El.textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
   }
 }
 
@@ -333,45 +601,191 @@ async function loadKpisWithData(sum, dailyData, byMonth = null) {
  * IMPORTANTE: Evitar loop infinito - chamar diretamente a implementação
  */
 async function renderKpis(sum, dailyData, byMonth) {
-  // Chamar implementação real diretamente (evita loop)
-  // NUNCA chamar window.renderKpis aqui para evitar loop infinito
+  // CORREÇÃO: Renderizar IMEDIATAMENTE quando dados chegarem
+  // Não esperar pela função - renderizar diretamente primeiro
+    const kpiTotalEl = document.getElementById('kpiTotal');
+    const kpi7El = document.getElementById('kpi7');
+    const kpi30El = document.getElementById('kpi30');
+    
+  // Renderizar imediatamente (sem esperar)
+    if (kpiTotalEl && sum) {
+      kpiTotalEl.textContent = (sum.total ?? 0).toLocaleString('pt-BR');
+    }
+    if (kpi7El && sum) {
+      kpi7El.textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
+    }
+    if (kpi30El && sum) {
+      kpi30El.textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
+    }
+  
+  // Se a função completa estiver disponível, chamar ela para renderização completa (gráficos, etc)
+  // Mas não esperar - já renderizamos os números básicos acima
   if (typeof window.renderKpisImplementation === 'function') {
-    return await window.renderKpisImplementation(sum, dailyData, byMonth);
+    // Chamar em background - não bloquear
+    return window.renderKpisImplementation(sum, dailyData, byMonth).catch(() => {});
   }
   
-  // Se implementação não estiver disponível, apenas avisar
-  // NÃO chamar window.renderKpis para evitar loop infinito
-  console.warn('⚠️ Loop infinito detectado em renderKpis, usando implementação direta');
-  console.warn('Função renderKpisImplementation não disponível no window');
+  // Se não estiver disponível, já renderizamos acima, então retornar
+  return Promise.resolve();
 }
 
 /**
  * Carregar KPIs (busca dados)
  */
 async function loadKpis(defaultCountField, defaultDateField) {
-  const fetchFn = window.api?.fetchJSONWithFilters;
-  const fetchFn2 = window.api?.fetchJSONWithFilter;
+  // CORREÇÃO FASE 1.3: Adicionar try/catch para tratamento de erros
+  try {
+  // CORREÇÃO: Sempre usar sistema global (window.dataLoader)
+  // O dataLoader já otimiza automaticamente
+  console.log('📊 loadKpis: Usando sistema global (dataLoader)');
   
-  if (!fetchFn || !fetchFn2) {
-    console.warn('API module não disponível');
+  const [sum, dailyData, byMonth] = await Promise.all([
+    window.dataLoader?.load('/api/summary', { fallback: {} }) || {},
+    window.dataLoader?.load('/api/aggregate/by-day', { fallback: [] }) || [],
+    window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || []
+  ]);
+  
+  // CORREÇÃO: Renderizar IMEDIATAMENTE quando dados chegarem
+  // Não esperar pela função - renderizar diretamente primeiro, depois atualizar se função estiver disponível
+    const kpiTotalEl = document.getElementById('kpiTotal');
+    const kpi7El = document.getElementById('kpi7');
+    const kpi30El = document.getElementById('kpi30');
+    
+  // DEBUG: Verificar se elementos existem
+  if (!kpiTotalEl || !kpi7El || !kpi30El) {
+    console.warn('⚠️ Elementos KPI não encontrados:', { 
+      kpiTotal: !!kpiTotalEl, 
+      kpi7: !!kpi7El, 
+      kpi30: !!kpi30El,
+      pageMain: !!document.getElementById('page-main'),
+      pageMainVisible: document.getElementById('page-main')?.style.display !== 'none'
+    });
+  }
+  
+  // CORREÇÃO: Verificar se página está visível antes de renderizar
+  const pageMain = document.getElementById('page-main');
+  const isPageVisible = pageMain && pageMain.style.display !== 'none';
+  
+  console.log('🔍 loadKpis: Verificando visibilidade da página:', {
+    pageMainExists: !!pageMain,
+    isPageVisible,
+    display: pageMain?.style.display,
+    sumExists: !!sum,
+    sumTotal: sum?.total,
+    sumLast7: sum?.last7,
+    sumLast30: sum?.last30
+  });
+  
+  if (!isPageVisible) {
+    console.warn('⚠️ Página main não está visível, aguardando...');
+    // Aguardar um pouco e tentar novamente
+    // FASE 2.2: Usar timerManager
+    const retryTimerId = window.timerManager 
+      ? window.timerManager.setTimeout(() => {
+          const retryPageMain = document.getElementById('page-main');
+          if (retryPageMain && retryPageMain.style.display !== 'none') {
+            // FASE 2.1: Usar Logger
+            if (window.Logger) {
+              window.Logger.debug('Tentando renderizar novamente após página ficar visível');
+            } else {
+              console.log('🔄 Tentando renderizar novamente após página ficar visível');
+            }
+            loadKpis(defaultCountField, defaultDateField);
+          }
+        }, 500, 'loadKpis-retry')
+      : setTimeout(() => {
+          const retryPageMain = document.getElementById('page-main');
+          if (retryPageMain && retryPageMain.style.display !== 'none') {
+            loadKpis(defaultCountField, defaultDateField);
+          }
+        }, 500);
     return;
   }
   
-  const [sum, dailyData, byMonth] = await Promise.all([
-    fetchFn('/api/summary'),
-    fetchFn('/api/aggregate/by-day').catch(() => []),
-    fetchFn2('/api/aggregate/by-month')
-  ]);
+  // Renderizar imediatamente (sem esperar)
+  // CORREÇÃO: Forçar atualização visual e verificar se valores são válidos
+  if (kpiTotalEl && sum && (sum.total !== undefined && sum.total !== null)) {
+    const totalValue = (sum.total ?? 0).toLocaleString('pt-BR');
+    kpiTotalEl.textContent = totalValue;
+    // Forçar atualização visual
+    kpiTotalEl.style.display = '';
+    kpiTotalEl.offsetHeight; // Trigger reflow
+    console.log('✅ KPI Total renderizado:', totalValue, 'Elemento:', kpiTotalEl);
+  }
+  if (kpi7El && sum && (sum.last7 !== undefined && sum.last7 !== null)) {
+    const last7Value = (sum.last7 ?? 0).toLocaleString('pt-BR');
+    kpi7El.textContent = last7Value;
+    kpi7El.style.display = '';
+    kpi7El.offsetHeight; // Trigger reflow
+    console.log('✅ KPI 7 dias renderizado:', last7Value, 'Elemento:', kpi7El);
+  }
+  if (kpi30El && sum && (sum.last30 !== undefined && sum.last30 !== null)) {
+    const last30Value = (sum.last30 ?? 0).toLocaleString('pt-BR');
+    kpi30El.textContent = last30Value;
+    kpi30El.style.display = '';
+    kpi30El.offsetHeight; // Trigger reflow
+    console.log('✅ KPI 30 dias renderizado:', last30Value, 'Elemento:', kpi30El);
+  }
   
-  // Chamar implementação diretamente para evitar loops
-  // Preferir window.renderKpisImplementation se disponível
-  if (typeof window.renderKpisImplementation === 'function') {
-    await window.renderKpisImplementation(sum, dailyData, byMonth);
-  } else if (window.data?.renderKpis) {
-    // Usar wrapper do módulo (que também chama a implementação)
-    await window.data.renderKpis(sum, dailyData, byMonth);
-  } else {
-    console.warn('Função renderKpis não disponível');
+  // Se a função completa estiver disponível, chamar ela para renderização completa (gráficos, etc)
+  // Mas não esperar - já renderizamos os números básicos acima
+  // CORREÇÃO: Adicionar pequeno delay para garantir que renderização básica foi aplicada
+  // FASE 2.2: Usar timerManager
+  const renderTimerId2 = window.timerManager 
+    ? window.timerManager.setTimeout(() => {
+        if (typeof window.renderKpisImplementation === 'function') {
+          // Chamar em background - não bloquear
+          window.renderKpisImplementation(sum, dailyData, byMonth).catch((e) => {
+            // FASE 2.1: Usar Logger
+            if (window.Logger) {
+              window.Logger.warn('Erro ao renderizar KPIs completos (não crítico):', e);
+            } else {
+              console.warn('⚠️ Erro ao renderizar KPIs completos (não crítico):', e);
+            }
+          });
+        } else if (window.data?.renderKpis) {
+          // Usar wrapper do módulo (que também chama a implementação)
+                window.data.renderKpis(sum, dailyData, byMonth).catch((e) => {
+              // FASE 2.1: Usar Logger
+              if (window.Logger) {
+                window.Logger.warn('Erro ao renderizar KPIs via wrapper (não crítico):', e);
+              } else {
+                console.warn('⚠️ Erro ao renderizar KPIs via wrapper (não crítico):', e);
+              }
+            });
+          }
+        }, 100, 'loadKpis-render')
+      : setTimeout(() => {
+          if (typeof window.renderKpisImplementation === 'function') {
+            window.renderKpisImplementation(sum, dailyData, byMonth).catch((e) => {
+              // FASE 2.1: Usar Logger
+            if (window.Logger) {
+              window.Logger.warn('Erro ao renderizar KPIs completos (não crítico):', e);
+            } else {
+              console.warn('⚠️ Erro ao renderizar KPIs completos (não crítico):', e);
+            }
+            });
+          } else if (window.data?.renderKpis) {
+            window.data.renderKpis(sum, dailyData, byMonth).catch((e) => {
+              // FASE 2.1: Usar Logger
+              if (window.Logger) {
+                window.Logger.warn('Erro ao renderizar KPIs via wrapper (não crítico):', e);
+              } else {
+                console.warn('⚠️ Erro ao renderizar KPIs via wrapper (não crítico):', e);
+              }
+            });
+          }
+        }, 100);
+  } catch (error) {
+    // CORREÇÃO FASE 1.3: Tratamento de erro com fallback
+    console.error('❌ Erro ao carregar KPIs:', error);
+    // Renderizar valores padrão mesmo em caso de erro
+    const kpiTotalEl = document.getElementById('kpiTotal');
+    const kpi7El = document.getElementById('kpi7');
+    const kpi30El = document.getElementById('kpi30');
+    if (kpiTotalEl) kpiTotalEl.textContent = '0';
+    if (kpi7El) kpi7El.textContent = '0';
+    if (kpi30El) kpi30El.textContent = '0';
   }
 }
 
@@ -423,114 +837,109 @@ function drawSparkDaily(canvasId, data, color) {
   ctx.stroke();
 }
 
+// Proteção contra múltiplas execuções simultâneas - OTIMIZADO: Usa Promise compartilhada
+let loadOverviewPromise = null;
+
+// Cache simples de resultados (TTL de 5 segundos)
+const overviewCache = {
+  data: null,
+  timestamp: 0,
+  ttl: 5000 // 5 segundos
+};
+
 /**
  * Carregar Visão Geral completa (Overview)
- * Função principal que carrega todos os dados e gráficos da página principal
+ * OTIMIZADO: Promise compartilhada, cache, consolidação de requisições
  */
-async function loadOverview() {
-  try {
-    // Verificar se a página está visível
-    const overviewPage = document.getElementById('page-main') || document.querySelector('[data-page="main"]');
-    if (!overviewPage || overviewPage.style.display === 'none') {
-      console.warn('⚠️ Página de visão geral não está visível, aguardando...');
-      // Aguardar um pouco e tentar novamente
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const retryPage = document.getElementById('page-main') || document.querySelector('[data-page="main"]');
-      if (!retryPage || retryPage.style.display === 'none') {
-        console.warn('⚠️ Página ainda não está visível, pulando carregamento');
+async function loadOverview(forceRefresh = false) {
+  // Proteção contra múltiplas execuções simultâneas - reutilizar Promise existente
+  if (loadOverviewPromise && !forceRefresh) {
+    return loadOverviewPromise;
+  }
+  
+  // Verificar cache antes de fazer requisições
+  if (!forceRefresh && overviewCache.data && (Date.now() - overviewCache.timestamp) < overviewCache.ttl) {
+    const { summary, byMonth, orgaos, temas, dailyData } = overviewCache.data;
+    // Renderizar com dados em cache (sem fazer requisições)
+    await renderOverviewData(summary, byMonth, orgaos, temas, dailyData);
+    return;
+  }
+  
+  // Criar nova Promise compartilhada
+  loadOverviewPromise = (async () => {
+    try {
+      // Verificar se a página está visível
+      const overviewPage = document.getElementById('page-main') || document.querySelector('[data-page="main"]');
+      if (!overviewPage || overviewPage.style.display === 'none') {
+        // Não logar warning em produção - apenas retornar silenciosamente
         return;
       }
+      
+      // OTIMIZADO: Carregar todos os dados essenciais em paralelo
+      // O dataLoader já faz deduplicação, então múltiplas chamadas são seguras
+      const results = await Promise.allSettled([
+        window.dataLoader?.load('/api/summary', { 
+          fallback: { total: 0, last7: 0, last30: 0, statusCounts: [] },
+          timeout: 30000 // Reduzido de 60s para 30s
+        }) || Promise.resolve({ total: 0, last7: 0, last30: 0, statusCounts: [] }),
+        window.dataLoader?.load('/api/aggregate/by-month', { 
+          fallback: [],
+          timeout: 30000
+        }) || Promise.resolve([]),
+        window.dataLoader?.load('/api/aggregate/count-by?field=Orgaos', { 
+          fallback: [],
+          timeout: 30000
+        }) || Promise.resolve([]),
+        window.dataLoader?.load('/api/aggregate/by-theme', { 
+          fallback: [],
+          timeout: 30000
+        }) || Promise.resolve([]),
+        window.dataLoader?.load('/api/aggregate/by-day', { 
+          fallback: [],
+          timeout: 30000
+        }) || Promise.resolve([])
+      ]);
+    
+      // Extrair dados dos resultados (usar fallback se falhou)
+      const summary = results[0].status === 'fulfilled' ? results[0].value : { total: 0, last7: 0, last30: 0, statusCounts: [] };
+      const byMonth = results[1].status === 'fulfilled' ? results[1].value : [];
+      const orgaos = results[2].status === 'fulfilled' ? results[2].value : [];
+      const temas = results[3].status === 'fulfilled' ? results[3].value : [];
+      const dailyData = results[4].status === 'fulfilled' ? results[4].value : [];
+      
+      // Salvar no cache
+      overviewCache.data = { summary, byMonth, orgaos, temas, dailyData };
+      overviewCache.timestamp = Date.now();
+      
+      // Renderizar dados
+      await renderOverviewData(summary, byMonth, orgaos, temas, dailyData);
+    } catch (e) {
+      console.error('❌ Erro ao carregar Visão Geral:', e);
+      throw e;
+    } finally {
+      // Limpar Promise compartilhada após conclusão
+      loadOverviewPromise = null;
     }
-    
-    // CORREÇÃO CRÍTICA: Desabilitar TODOS os filtros e limpar cache
-    // Limpar filtros completamente
-    if (window.globalFilters) {
-      console.log('🧹 Limpando filtros e cache...');
-      window.globalFilters.filters = [];
-      window.globalFilters.activeField = null;
-      window.globalFilters.activeValue = null;
-    }
-    
-    // Limpar cache da API
-    if (window.api?.clearApiCache) {
-      window.api.clearApiCache();
-      console.log('🧹 Cache da API limpo');
-    }
-    
-    // Função auxiliar para buscar dados (SEMPRE usar fetch direto, SEM cache, SEM filtros)
-    const fetchData = async (url, fallback = []) => {
-      try {
-        // Usar fetch nativo DIRETO, sem passar por nenhuma camada de cache ou filtro
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
-        
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        
-        const data = await res.json();
-        const count = Array.isArray(data) ? data.length : (data?.total || Object.keys(data || {}).length || 0);
-        console.log(`✅ ${url}: ${count} itens recebidos (fetch direto)`);
-        return data;
-      } catch (e) {
-        console.error(`❌ Erro ao buscar ${url}:`, e.message || e);
-          return fallback;
-      }
-    };
-    
-    // OTIMIZAÇÃO: Usar Promise.allSettled para não parar se uma requisição falhar
-    const results = await Promise.allSettled([
-      fetchData('/api/summary', { total: 0, last7: 0, last30: 0, statusCounts: [] }),
-      fetchData('/api/aggregate/by-month', []),
-      fetchData('/api/aggregate/count-by?field=Orgaos', []),
-      fetchData('/api/aggregate/by-theme', []),
-      fetchData('/api/aggregate/by-day', [])
-    ]);
-    
-    // Extrair dados dos resultados (usar fallback se falhou)
-    const summary = results[0].status === 'fulfilled' ? results[0].value : { total: 0, last7: 0, last30: 0, statusCounts: [] };
-    const byMonth = results[1].status === 'fulfilled' ? results[1].value : [];
-    const orgaos = results[2].status === 'fulfilled' ? results[2].value : [];
-    const temas = results[3].status === 'fulfilled' ? results[3].value : [];
-    const dailyData = results[4].status === 'fulfilled' ? results[4].value : [];
-    
-    // DEBUG: Log detalhado dos dados recebidos
-    console.log('📊 Dados recebidos em loadOverview:', {
-      summary: summary?.total || 0,
-      summaryKeys: Object.keys(summary || {}),
-      byMonth: byMonth?.length || 0,
-      orgaos: orgaos?.length || 0,
-      temas: temas?.length || 0,
-      dailyData: dailyData?.length || 0,
-      hasFilters: window.globalFilters?.filters?.length || 0,
-      filters: window.globalFilters?.filters || []
-    });
-    
-    // Verificar se há erros nas requisições
-    results.forEach((result, index) => {
-      const urls = ['/api/summary', '/api/aggregate/by-month', '/api/aggregate/count-by?field=Orgaos', '/api/aggregate/by-theme', '/api/aggregate/by-day'];
-      if (result.status === 'rejected') {
-        console.error(`❌ Requisição ${index} (${urls[index]}) falhou:`, result.reason);
-      } else if (result.status === 'fulfilled') {
-        const data = result.value;
-        const count = Array.isArray(data) ? data.length : (data?.total || Object.keys(data || {}).length);
-        console.log(`✅ Requisição ${index} (${urls[index]}) sucesso: ${count} itens`);
-      }
-    });
-    
+  })();
+  
+  return loadOverviewPromise;
+}
+
+/**
+ * Renderizar dados da visão geral (extraído para reutilização com cache)
+ */
+async function renderOverviewData(summary, byMonth, orgaos, temas, dailyData) {
+  try {
     // Carregar KPIs com dados já obtidos (evita requisição duplicada)
     await loadKpisWithData(summary, dailyData, byMonth);
     
-    // Guardar summary para reutilizar
+    // Guardar summary para reutilizar (garantir estrutura correta)
     let summaryData = summary;
+    
+    // CORREÇÃO: Garantir que summaryData tem statusCounts
+    if (!summaryData.statusCounts && summary.statusCounts) {
+      summaryData.statusCounts = summary.statusCounts;
+    }
 
     // Processar dados de tendência mensal
     const labels = byMonth && byMonth.length > 0 ? byMonth.map(x => {
@@ -540,13 +949,7 @@ async function loadOverview() {
     }) : [];
     const values = byMonth && byMonth.length > 0 ? byMonth.map(x => x.count || 0) : [];
     
-    // DEBUG: Log dos dados processados
-    console.log('📈 Dados de tendência processados:', {
-      labelsCount: labels.length,
-      valuesCount: values.length,
-      firstLabel: labels[0],
-      firstValue: values[0]
-    });
+    // Dados processados (sem log em produção)
     
     // Gráfico de tendência (otimizado)
     if (window.chartTrend instanceof Chart) window.chartTrend.destroy();
@@ -555,7 +958,18 @@ async function loadOverview() {
       const ctxTrend = chartTrendEl.getContext('2d');
     if (ctxTrend) {
         if (labels.length === 0 || values.length === 0) {
-          console.warn('⚠️ Elemento chartTrend encontrado mas sem dados (labels ou values vazios)');
+          // CORREÇÃO: Não mostrar aviso se dados ainda estão sendo carregados
+          // Apenas criar gráfico vazio silenciosamente
+          if (byMonth && Array.isArray(byMonth) && byMonth.length === 0) {
+            // Dados foram carregados mas estão vazios - criar gráfico vazio
+          window.chartTrend = new Chart(ctxTrend, {
+            type: 'line',
+            data: { labels: ['Sem dados'], datasets: [{ label: 'Manifestações', data: [0], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.1)' }] },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, beginAtZero: true } } }
+          });
+          }
+          // Se byMonth é null/undefined, dados ainda estão carregando - não criar gráfico ainda
+          return;
         } else {
       const gradientFn = window.utils?.gradient || (() => 'rgba(34,211,238,0.35)');
       const tooltipFn = window.utils?.createEnhancedTooltip || (() => ({}));
@@ -588,7 +1002,6 @@ async function loadOverview() {
         }
       });
       addClickFn(window.chartTrend, (label, value) => showFeedbackFn(null, label, value), 'chartTrend');
-              console.log('✅ Gráfico de tendência criado');
             } catch (error) {
               console.error('❌ Erro ao criar gráfico de tendência:', error);
             }
@@ -630,14 +1043,17 @@ async function loadOverview() {
               }
       });
       addClickFn(window.chartTopOrgaos, (label, value) => showFeedbackFn(null, label, value), 'chartTopOrgaos');
-            console.log('✅ Gráfico Top Órgãos criado');
           } catch (error) {
             console.error('❌ Erro ao criar gráfico Top Órgãos:', error);
           }
         });
       }
     } else {
-      console.warn('⚠️ Elemento chartTopOrgaos não encontrado ou sem dados');
+      if (!orgaos || orgaos.length === 0) {
+        console.warn('⚠️ Elemento chartTopOrgaos não encontrado ou sem dados - banco pode estar vazio');
+      } else {
+        console.warn('⚠️ Elemento chartTopOrgaos não encontrado no DOM');
+      }
     }
 
     // Top Temas (otimizado)
@@ -669,20 +1085,24 @@ async function loadOverview() {
               }
       });
       addClickFn(window.chartTopTemas, (label, value) => showFeedbackFn(null, label, value), 'chartTopTemas');
-            console.log('✅ Gráfico Top Temas criado');
           } catch (error) {
             console.error('❌ Erro ao criar gráfico Top Temas:', error);
           }
         });
       }
     } else {
-      console.warn('⚠️ Elemento chartTopTemas não encontrado ou sem dados');
+      if (!temas || temas.length === 0) {
+        console.warn('⚠️ Elemento chartTopTemas não encontrado ou sem dados - banco pode estar vazio');
+      } else {
+        console.warn('⚠️ Elemento chartTopTemas não encontrado no DOM');
+      }
     }
 
     // Funil por status (reutiliza summary já carregado)
-    const statusCounts = (summaryData.statusCounts || []).slice(0, 6);
-    const funilLabels = statusCounts.map(s => s.status);
-    const funilValues = statusCounts.map(s => s.count);
+    // CORREÇÃO: Garantir que statusCounts existe e tem estrutura correta
+    const statusCounts = (summaryData?.statusCounts || summary?.statusCounts || []).slice(0, 6);
+    const funilLabels = statusCounts.map(s => s.status || s.key || 'Não informado');
+    const funilValues = statusCounts.map(s => s.count || s.quantidade || 0);
     if (window.chartFunnelStatus instanceof Chart) window.chartFunnelStatus.destroy();
     const chartFunnelStatusEl = document.getElementById('chartFunnelStatus');
     if (chartFunnelStatusEl && funilLabels.length > 0 && funilValues.length > 0) {
@@ -708,14 +1128,17 @@ async function loadOverview() {
               }
       });
       addClickFn(window.chartFunnelStatus, (label, value) => showFeedbackFn(null, label, value), 'chartFunnelStatus');
-            console.log('✅ Gráfico Funil Status criado');
           } catch (error) {
             console.error('❌ Erro ao criar gráfico Funil Status:', error);
           }
         });
       }
     } else {
-      console.warn('⚠️ Elemento chartFunnelStatus não encontrado ou sem dados');
+      if (!statusCounts || statusCounts.length === 0) {
+        console.warn('⚠️ Elemento chartFunnelStatus não encontrado ou sem dados - banco pode estar vazio');
+      } else {
+        console.warn('⚠️ Elemento chartFunnelStatus não encontrado no DOM');
+      }
     }
 
     // Sparks e deltas rápidos usando byMonth
@@ -729,9 +1152,10 @@ async function loadOverview() {
     drawSpark('sparkTotal', values.slice(-12), '#22d3ee');
 
     // Carregar insights com IA e Status Overview em PARALELO (não bloquear se falhar)
+    // OTIMIZADO: Passar summary para loadStatusOverview evitar requisição duplicada
     Promise.allSettled([
       loadAIInsights().catch(e => console.warn('Erro ao carregar insights:', e)),
-      loadStatusOverview().catch(e => console.warn('Erro ao carregar status overview:', e))
+      loadStatusOverview(summaryData).catch(e => console.warn('Erro ao carregar status overview:', e))
     ]).catch(() => {}); // Ignorar erros, já tratados individualmente
     
     // Insights básicos (fallback)
@@ -741,11 +1165,11 @@ async function loadOverview() {
     if (upIdx>0) insights.push(`Crescimento de ${upIdx.toLocaleString('pt-BR')} em relação ao mês anterior.`);
     
     // Buscar dados adicionais para insights básicos (em background, não bloquear)
-    // OTIMIZAÇÃO: Usar fetch direto (sem filtros) para melhor performance
+    // CORREÇÃO: Usar sistema global de carregamento (window.dataLoader)
     Promise.allSettled([
-      fetchData('/api/aggregate/by-subject', []),
-      fetchData('/api/aggregate/count-by?field=UAC', []),
-      fetchData('/api/stats/average-time/stats', null)
+      window.dataLoader?.load('/api/aggregate/by-subject', { fallback: [] }) || Promise.resolve([]),
+      window.dataLoader?.load('/api/aggregate/count-by?field=UAC', { fallback: [] }) || Promise.resolve([]),
+      window.dataLoader?.load('/api/stats/average-time/stats', { fallback: null }) || Promise.resolve(null)
     ]).then((results) => {
       const assuntos = results[0].status === 'fulfilled' ? results[0].value : [];
       const unidades = results[1].status === 'fulfilled' ? results[1].value : [];
@@ -772,15 +1196,45 @@ async function loadOverview() {
       insightsBox.innerHTML = insights.length ? insights.map(t=>`<div>• ${t}</div>`).join('') : '<div class="text-slate-500">Carregando insights...</div>';
     }
 
-    // Heatmap dinâmico já conectado ao seletor (reuso existente)
+    // Heatmap dinâmico - configurar listener se não existir
     const dimSel = document.getElementById('heatmapDim');
-    if (dimSel) dimSel.dispatchEvent(new Event('change'));
+    if (dimSel) {
+      // Remover listeners antigos para evitar duplicação
+      const newDimSel = dimSel.cloneNode(true);
+      dimSel.parentNode.replaceChild(newDimSel, dimSel);
+      
+      // Adicionar listener para carregar heatmap quando dimensão mudar
+      newDimSel.addEventListener('change', async function() {
+        const dim = this.value || 'Categoria';
+        const heatmapContainer = document.getElementById('heatmap');
+        if (!heatmapContainer) return;
+        
+        try {
+          heatmapContainer.innerHTML = '<div class="p-4 text-center text-slate-400">Carregando heatmap...</div>';
+          const hm = await window.dataLoader?.load(`/api/aggregate/heatmap?dim=${dim}`, { 
+            fallback: { labels: [], rows: [] },
+            timeout: 30000
+          }) || { labels: [], rows: [] };
+          
+          buildHeatmap('heatmap', hm.labels || [], hm.rows || []);
+        } catch (error) {
+          console.error('❌ Erro ao carregar heatmap:', error);
+          heatmapContainer.innerHTML = '<div class="p-4 text-center text-red-400">Erro ao carregar heatmap</div>';
+        }
+      });
+      
+      // Disparar evento inicial para carregar com dimensão padrão
+      newDimSel.dispatchEvent(new Event('change'));
+    }
     
     // Carregar novos gráficos avançados (reutilizar temas e orgaos já carregados)
     await loadAdvancedCharts(temas, orgaos);
   } catch (e) {
-    console.error('Erro ao carregar Visão Geral', e);
+    console.error('❌ Erro ao renderizar dados da visão geral:', e);
   }
+}
+
+async function fetchDataFromServer() {
 }
 
 /**
@@ -788,39 +1242,14 @@ async function loadOverview() {
  */
 async function loadAdvancedCharts(temas = null, orgaos = null) {
   try {
-    // OTIMIZAÇÃO: Usar fetch direto (sem filtros) quando não há filtros ativos
-    // Função auxiliar para buscar dados (SEM filtros para melhor performance)
-    const fetchDataDirect = async (url, fallback = []) => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-        
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        
-        return await res.json();
-      } catch (e) {
-        console.warn(`⚠️ ${url}: ${e.message || e}`);
-        return fallback;
-      }
-    };
-    
+    // CORREÇÃO: Usar sistema global de carregamento (window.dataLoader)
+    // O dataLoader já otimiza automaticamente
     // Se temas e orgaos já foram carregados, reutilizar (evita requisições duplicadas)
-    // OTIMIZAÇÃO: Usar Promise.allSettled para não parar se uma requisição falhar
     const results = await Promise.allSettled([
-      temas ? Promise.resolve(temas) : fetchDataDirect('/api/aggregate/by-theme', []),
-      orgaos ? Promise.resolve(orgaos) : fetchDataDirect('/api/aggregate/count-by?field=Orgaos', []),
-      fetchDataDirect('/api/aggregate/count-by?field=status', []),
-      fetchDataDirect('/api/aggregate/count-by?field=Bairro', [])
+      temas ? Promise.resolve(temas) : (window.dataLoader?.load('/api/aggregate/by-theme', { fallback: [] }) || Promise.resolve([])),
+      orgaos ? Promise.resolve(orgaos) : (window.dataLoader?.load('/api/aggregate/count-by?field=Orgaos', { fallback: [] }) || Promise.resolve([])),
+      window.dataLoader?.load('/api/aggregate/count-by?field=status', { fallback: [] }) || Promise.resolve([]),
+      window.dataLoader?.load('/api/aggregate/count-by?field=Bairro', { fallback: [] }) || Promise.resolve([])
     ]);
     
     const temasData = results[0].status === 'fulfilled' ? results[0].value : (temas || []);
@@ -849,23 +1278,28 @@ async function loadAdvancedCharts(temas = null, orgaos = null) {
  */
 async function loadSankeyChart(temas, orgaos, status) {
   try {
-    if (typeof Plotly === 'undefined') {
-      console.warn('Plotly.js não carregado');
+    const container = document.getElementById('sankeyChart');
+    if (!container) {
+      console.warn('⚠️ Elemento sankeyChart não encontrado');
       return;
     }
     
-    // OTIMIZAÇÃO: Usar fetch direto (sem filtros) para melhor performance
+    if (typeof Plotly === 'undefined') {
+      console.warn('⚠️ Plotly.js não carregado');
+      container.innerHTML = '<div class="p-4 text-center text-slate-400">Plotly.js não está disponível</div>';
+      return;
+    }
+    
+    // CORREÇÃO: Usar sistema global de carregamento
     let flowData = null;
     try {
-      const res = await fetch('/api/aggregate/sankey-flow', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      if (res.ok) {
-        flowData = await res.json();
-      }
+      flowData = await window.dataLoader?.load('/api/aggregate/sankey-flow', {
+        fallback: null,
+        timeout: 30000
+      }) || null;
     } catch (e) {
       // Ignorar erro silenciosamente
+      console.warn('⚠️ Erro ao carregar dados Sankey:', e);
     }
     
     if (!flowData || !flowData.nodes || !flowData.links) {
@@ -932,7 +1366,11 @@ async function loadSankeyChart(temas, orgaos, status) {
         plot_bgcolor: 'transparent'
       };
       
-      Plotly.newPlot('sankeyChart', data, layout, { responsive: true, displayModeBar: false });
+      const containerEl = document.getElementById('sankeyChart');
+      if (containerEl) {
+        Plotly.newPlot(containerEl, data, layout, { responsive: true, displayModeBar: false });
+        console.log('✅ Gráfico Sankey criado (fallback)');
+      }
       return;
     }
     
@@ -992,7 +1430,11 @@ async function loadSankeyChart(temas, orgaos, status) {
       plot_bgcolor: 'transparent'
     };
     
-    Plotly.newPlot('sankeyChart', data, layout, { responsive: true, displayModeBar: false });
+    const containerEl = document.getElementById('sankeyChart');
+    if (containerEl) {
+      Plotly.newPlot(containerEl, data, layout, { responsive: true, displayModeBar: false });
+      console.log('✅ Gráfico Sankey criado (dados reais)');
+    }
   } catch (error) {
     console.error('❌ Erro ao criar Sankey:', error);
     const container = document.getElementById('sankeyChart');
@@ -1007,8 +1449,21 @@ async function loadSankeyChart(temas, orgaos, status) {
  */
 async function loadTreeMapChart(temas) {
   try {
+    const container = document.getElementById('treemapChart');
+    if (!container) {
+      console.warn('⚠️ Elemento treemapChart não encontrado');
+      return;
+    }
+    
     if (typeof Plotly === 'undefined') {
-      console.warn('Plotly.js não carregado');
+      console.warn('⚠️ Plotly.js não carregado');
+      container.innerHTML = '<div class="p-4 text-center text-slate-400">Plotly.js não está disponível</div>';
+      return;
+    }
+    
+    if (!temas || temas.length === 0) {
+      console.warn('⚠️ Sem dados de temas para TreeMap');
+      container.innerHTML = '<div class="p-4 text-center text-slate-400">Sem dados disponíveis</div>';
       return;
     }
     
@@ -1039,7 +1494,11 @@ async function loadTreeMapChart(temas) {
       margin: { l: 0, r: 0, t: 0, b: 0 }
     };
     
-    Plotly.newPlot('treemapChart', data, layout, { responsive: true, displayModeBar: false });
+    const containerEl = document.getElementById('treemapChart');
+    if (containerEl) {
+      Plotly.newPlot(containerEl, data, layout, { responsive: true, displayModeBar: false });
+      console.log('✅ Gráfico TreeMap criado');
+    }
   } catch (error) {
     console.error('❌ Erro ao criar TreeMap:', error);
     const container = document.getElementById('treemapChart');
@@ -1111,6 +1570,7 @@ async function loadGeographicMap(bairros) {
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: 'y',
+        animation: false, // Desabilitar animação para melhor performance
         plugins: {
           legend: { display: false },
           tooltip: tooltipFn(),
@@ -1133,6 +1593,7 @@ async function loadGeographicMap(bairros) {
         }
       }
     });
+    console.log('✅ Gráfico Mapa Geográfico criado');
   } catch (error) {
     console.error('❌ Erro ao criar mapa geográfico:', error);
     // Fallback: mostrar lista simples
@@ -1205,50 +1666,343 @@ function buildHeatmap(containerId, labels, rows) {
 
 /**
  * Carregar Órgão por Mês
+ * OTIMIZADO: Cache e Promise compartilhada
  */
-async function loadOrgaoMes() {
-  try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    
-    // Carregar dados de secretarias/órgãos (com filtro se houver)
-    const dataOrgaos = await fetchFn('/api/aggregate/count-by?field=Secretaria');
-    const totalOrgaos = dataOrgaos.length;
-    const totalOrgaosEl = document.getElementById('totalOrgaos');
-    if (totalOrgaosEl) totalOrgaosEl.textContent = totalOrgaos;
-    
-    // Criar lista visual de órgãos (estilo Looker Studio)
-    const listaOrgaos = document.getElementById('listaOrgaos');
-    if (listaOrgaos) {
-      const maxValue = Math.max(...dataOrgaos.map(d => d.count), 1);
-      listaOrgaos.innerHTML = dataOrgaos.map(item => {
-        const width = (item.count / maxValue) * 100;
-        return `
-          <div class="flex items-center gap-3 py-2 border-b border-white/5">
-            <div class="flex-1 min-w-0">
-              <div class="text-sm text-slate-300 truncate">${item.key}</div>
-              <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
-              </div>
-            </div>
-            <div class="text-lg font-bold text-cyan-300 min-w-[60px] text-right">${item.count.toLocaleString('pt-BR')}</div>
-          </div>
-        `;
-      }).join('');
+async function loadOrgaoMes(forceRefresh = false) {
+  const functionName = 'loadOrgaoMes';
+  
+  // Verificar cache
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached !== null) {
+      await renderOrgaoMesData(cached);
+      return;
     }
-    
-    // Carregar dados mensais (com filtro se houver)
-    const dataMensal = await fetchFn('/api/aggregate/by-month');
+  }
+  
+  // Usar Promise compartilhada
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      // Verificar se a página está visível
+      const page = document.getElementById('page-orgao-mes');
+      if (!page) {
+        // FASE 2.1: Usar Logger
+        if (window.Logger) {
+          window.Logger.debug('Página orgao-mes não encontrada no DOM');
+        }
+        return;
+      }
+      
+      if (page.style.display === 'none') {
+        // FASE 2.1: Usar Logger
+        if (window.Logger) {
+          window.Logger.debug('Página orgao-mes está oculta, aguardando...');
+        }
+        // Aguardar um pouco e tentar novamente se a página ficar visível
+        return new Promise((resolve) => {
+          const checkVisibility = () => {
+            if (page.style.display !== 'none') {
+              // Página ficou visível, continuar carregamento
+              loadOrgaoMes(forceRefresh).then(resolve).catch(resolve);
+            } else {
+              // Ainda oculta, verificar novamente em 100ms
+              setTimeout(checkVisibility, 100);
+            }
+          };
+          checkVisibility();
+        });
+      }
+      
+      // Usar sistema global de carregamento
+      // Carregar dados de secretarias/órgãos
+      // FASE 2.1: Usar Logger
+      if (window.Logger) {
+        window.Logger.debug('Carregando dados de órgãos...');
+      }
+      
+      const dataOrgaos = await window.dataLoader?.load('/api/aggregate/count-by?field=Secretaria', { fallback: [] }) || [];
+      
+      if (window.Logger) {
+        window.Logger.debug(`Dados de órgãos carregados: ${dataOrgaos.length} itens`);
+      }
+      
+      const totalOrgaos = dataOrgaos.length;
+      const totalOrgaosEl = document.getElementById('totalOrgaos');
+      if (totalOrgaosEl) {
+        totalOrgaosEl.textContent = totalOrgaos;
+        if (window.Logger) {
+          window.Logger.debug(`Total de órgãos atualizado: ${totalOrgaos}`);
+        }
+      }
+      
+      // Criar lista visual de órgãos (estilo Looker Studio)
+      const listaOrgaos = document.getElementById('listaOrgaos');
+      if (listaOrgaos) {
+        if (window.Logger) {
+          window.Logger.debug('Renderizando lista de órgãos...');
+        }
+        
+        if (dataOrgaos && dataOrgaos.length > 0) {
+          const maxValue = Math.max(...dataOrgaos.map(d => d.count || 0), 1);
+          listaOrgaos.innerHTML = dataOrgaos.map(item => {
+            const width = ((item.count || 0) / maxValue) * 100;
+            return `
+              <div class="flex items-center gap-3 py-2 border-b border-white/5">
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm text-slate-300 truncate">${item.key || 'Não informado'}</div>
+                  <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
+                  </div>
+                </div>
+                <div class="text-lg font-bold text-cyan-300 min-w-[60px] text-right">${(item.count || 0).toLocaleString('pt-BR')}</div>
+              </div>
+            `;
+          }).join('');
+          
+          if (window.Logger) {
+            window.Logger.debug(`Lista de órgãos renderizada: ${dataOrgaos.length} itens`);
+          }
+        } else {
+          listaOrgaos.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum órgão encontrado</div>';
+        }
+      }
+      
+      // Carregar dados mensais
+      if (window.Logger) {
+        window.Logger.debug('Carregando dados mensais...');
+      }
+      
+      const dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [];
+      
+      if (window.Logger) {
+        window.Logger.debug(`Dados mensais carregados: ${dataMensal.length} itens`);
+      }
+      
+      const labels = dataMensal.map(x => {
+        const ym = x.ym || x.month || '';
+        if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
+        // OTIMIZADO: Usar dateUtils centralizado
+        return window.dateUtils?.formatMonthYear?.(ym) || ym;
+      });
+      const values = dataMensal.map(x => x.count || 0);
+      
+      // Criar gráfico de barras mensal
+      const chartEl = document.getElementById('chartOrgaoMes');
+      if (chartEl) {
+        if (window.Logger) {
+          window.Logger.debug('Criando gráfico de barras mensal...');
+        }
+        
+        if (typeof Chart === 'undefined') {
+          if (window.Logger) {
+            window.Logger.warn('Chart.js não está disponível para criar gráfico');
+          }
+          chartEl.innerHTML = '<div class="p-4 text-center text-slate-400">Chart.js não está disponível</div>';
+        } else {
+          if (window.chartOrgaoMes instanceof Chart) {
+            window.chartOrgaoMes.destroy();
+          }
+          const ctx = chartEl.getContext('2d');
+          
+          const tooltipFn = window.utils?.createEnhancedTooltip || (() => ({}));
+          const dataLabelsFn = window.utils?.createDataLabelsConfig || (() => ({}));
+          const addClickFn = window.charts?.addChartClickHandler || (() => {});
+          const showFeedbackFn = window.showClickFeedback || (() => {});
+          
+          window.chartOrgaoMes = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Manifestações',
+                data: values,
+                backgroundColor: 'rgba(167,139,250,0.7)',
+                borderColor: 'rgba(167,139,250,1)',
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              indexAxis: 'y',
+              plugins: {
+                legend: { display: false },
+                tooltip: tooltipFn(),
+                datalabels: {
+                  ...dataLabelsFn(),
+                  anchor: 'start',
+                  align: 'end'
+                }
+              },
+              scales: {
+                x: {
+                  beginAtZero: true,
+                  ticks: { color: '#94a3b8' },
+                  grid: { color: 'rgba(255,255,255,0.05)' }
+                },
+                y: {
+                  ticks: { color: '#94a3b8' },
+                  grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+              }
+            }
+          });
+          addClickFn(window.chartOrgaoMes, (label, value) => showFeedbackFn(null, label, value), 'chartOrgaoMes');
+          
+          if (window.Logger) {
+            window.Logger.debug('Gráfico de barras mensal criado com sucesso');
+          }
+        }
+      } else {
+        if (window.Logger) {
+          window.Logger.debug('Elemento chartOrgaoMes não encontrado');
+        }
+      }
+      
+      // Atualizar KPI total
+      const total = dataOrgaos.reduce((sum, item) => sum + (item.count || 0), 0);
+      const totalEl = document.getElementById('totalOrgaoMes');
+      if (totalEl) {
+        totalEl.textContent = total.toLocaleString('pt-BR');
+        if (window.Logger) {
+          window.Logger.debug(`KPI total atualizado: ${total.toLocaleString('pt-BR')}`);
+        }
+      }
+      
+      // Carregar e exibir tabela Por Órgão e Mês
+      if (window.Logger) {
+        window.Logger.debug('Carregando tabela Por Órgão e Mês...');
+      }
+      
+      const dataOrgaoMes = await window.dataLoader?.load('/api/aggregate/count-by-orgao-mes', { fallback: [] }) || [];
+      
+      if (window.Logger) {
+        window.Logger.debug(`Dados da tabela carregados: ${dataOrgaoMes.length} itens`);
+      }
+      const tabelaEl = document.getElementById('tabelaOrgaoMes');
+      if (tabelaEl && dataOrgaoMes && dataOrgaoMes.length > 0) {
+        if (window.Logger) {
+          window.Logger.debug('Renderizando tabela Por Órgão e Mês...');
+        }
+        
+        const orgaosUnicos = [...new Set(dataOrgaoMes.map(d => d.orgao))].sort();
+        const mesesUnicos = [...new Set(dataOrgaoMes.map(d => d.month))].sort();
+        
+        let html = '<table class="w-full text-sm border-collapse">';
+        html += '<thead><tr class="border-b border-white/10">';
+        html += '<th class="px-4 py-3 text-left text-slate-300 font-semibold">Órgão</th>';
+        mesesUnicos.forEach(mes => {
+          const formatted = window.dateUtils?.formatMonthYearShort?.(mes) || mes || 'N/A';
+          html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${formatted}</th>`;
+        });
+        html += '<th class="px-4 py-3 text-center text-slate-300 font-semibold">Total</th>';
+        html += '</tr></thead><tbody>';
+        
+        orgaosUnicos.forEach(orgao => {
+          let totalOrgao = 0;
+          html += '<tr class="border-b border-white/5 hover:bg-white/5">';
+          html += `<td class="px-4 py-2 text-slate-200 font-medium">${orgao || 'Não informado'}</td>`;
+          mesesUnicos.forEach(mes => {
+            const item = dataOrgaoMes.find(d => d.orgao === orgao && d.month === mes);
+            const count = item ? (item.count || 0) : 0;
+            totalOrgao += count;
+            html += `<td class="px-4 py-2 text-center text-slate-300">${count.toLocaleString('pt-BR')}</td>`;
+          });
+          html += `<td class="px-4 py-2 text-center text-cyan-300 font-bold">${totalOrgao.toLocaleString('pt-BR')}</td>`;
+          html += '</tr>';
+        });
+        
+        // Linha de totais
+        html += '<tr class="border-t-2 border-cyan-500/50 bg-cyan-500/10 font-bold">';
+        html += '<td class="px-4 py-3 text-cyan-300">TOTAL</td>';
+        mesesUnicos.forEach(mes => {
+          const totalMes = dataOrgaoMes.filter(d => d.month === mes).reduce((sum, d) => sum + (d.count || 0), 0);
+          html += `<td class="px-4 py-3 text-center text-cyan-300">${totalMes.toLocaleString('pt-BR')}</td>`;
+        });
+        html += `<td class="px-4 py-3 text-center text-cyan-300">${total.toLocaleString('pt-BR')}</td>`;
+        html += '</tr>';
+        
+        html += '</tbody></table>';
+        tabelaEl.innerHTML = html;
+        
+        if (window.Logger) {
+          window.Logger.debug(`Tabela renderizada: ${orgaosUnicos.length} órgãos, ${mesesUnicos.length} meses`);
+        }
+      } else if (tabelaEl) {
+        tabelaEl.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum dado disponível para a tabela</div>';
+        if (window.Logger) {
+          window.Logger.debug('Tabela não renderizada: sem dados ou elemento não encontrado');
+        }
+      }
+      
+      // Salvar no cache
+      const cacheData = { dataOrgaos, dataMensal, dataOrgaoMes, total };
+      setCachedData(functionName, cacheData);
+      
+      // FASE 2.1: Usar Logger
+      if (window.Logger) {
+        window.Logger.debug('Dados de Órgão por Mês carregados com sucesso');
+      }
+      
+      return cacheData;
+    } catch (error) {
+      // FASE 2.1: Usar Logger
+      if (window.Logger) {
+        window.Logger.error('Erro ao carregar Órgão por Mês:', error);
+      } else {
+        console.error('❌ Erro ao carregar Órgão por Mês:', error);
+      }
+      throw error;
+    }
+  });
+}
+
+// NOTA: loadOrgaoMes foi movido para data-pages.js
+// Esta função permanece aqui apenas como fallback temporário
+// A exportação principal está em data-pages.js
+
+/**
+ * Renderizar dados de Órgão por Mês (para uso com cache)
+ */
+async function renderOrgaoMesData(cached) {
+  // CORREÇÃO: Implementar renderização com dados do cache
+  if (!cached) return;
+  
+  const { dataOrgaos, dataMensal, dataOrgaoMes, total } = cached;
+  
+  // Renderizar lista de órgãos
+  const totalOrgaos = dataOrgaos?.length || 0;
+  const totalOrgaosEl = document.getElementById('totalOrgaos');
+  if (totalOrgaosEl) totalOrgaosEl.textContent = totalOrgaos;
+  
+  const listaOrgaos = document.getElementById('listaOrgaos');
+  if (listaOrgaos && dataOrgaos && dataOrgaos.length > 0) {
+    const maxValue = Math.max(...dataOrgaos.map(d => d.count), 1);
+    listaOrgaos.innerHTML = dataOrgaos.map(item => {
+      const width = (item.count / maxValue) * 100;
+      return `
+        <div class="flex items-center gap-3 py-2 border-b border-white/5">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm text-slate-300 truncate">${item.key}</div>
+            <div class="mt-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-cyan-500 to-violet-500" style="width: ${width}%"></div>
+            </div>
+          </div>
+          <div class="text-lg font-bold text-cyan-300 min-w-[60px] text-right">${item.count.toLocaleString('pt-BR')}</div>
+        </div>
+      `;
+    }).join('');
+  }
+  
+  // Renderizar gráfico mensal
+  if (dataMensal && dataMensal.length > 0) {
     const labels = dataMensal.map(x => {
       const ym = x.ym || x.month || '';
-      if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
-      // OTIMIZADO: Usar dateUtils centralizado
-      return window.dateUtils?.formatMonthYear?.(ym) || ym;
+      return window.dateUtils?.formatMonthYear?.(ym) || ym || 'Data inválida';
     });
-    const values = dataMensal.map(x => x.count);
+    const values = dataMensal.map(x => x.count || 0);
     
-    // Criar gráfico de barras mensal
     const chartEl = document.getElementById('chartOrgaoMes');
-    if (chartEl) {
+    if (chartEl && typeof Chart !== 'undefined') {
       if (window.chartOrgaoMes instanceof Chart) window.chartOrgaoMes.destroy();
       const ctx = chartEl.getContext('2d');
       
@@ -1296,73 +2050,108 @@ async function loadOrgaoMes() {
       });
       addClickFn(window.chartOrgaoMes, (label, value) => showFeedbackFn(null, label, value), 'chartOrgaoMes');
     }
+  }
+  
+  // Renderizar KPI total
+  const totalEl = document.getElementById('totalOrgaoMes');
+  if (totalEl && total !== undefined) {
+    totalEl.textContent = total.toLocaleString('pt-BR');
+  }
+  
+  // Renderizar tabela
+  const tabelaEl = document.getElementById('tabelaOrgaoMes');
+  if (tabelaEl && dataOrgaoMes && dataOrgaoMes.length > 0) {
+    const orgaosUnicos = [...new Set(dataOrgaoMes.map(d => d.orgao))].sort();
+    const mesesUnicos = [...new Set(dataOrgaoMes.map(d => d.month))].sort();
     
-    // Atualizar KPI total
-    const total = dataOrgaos.reduce((sum, item) => sum + item.count, 0);
-    const totalEl = document.getElementById('totalOrgaoMes');
-    if (totalEl) totalEl.textContent = total.toLocaleString('pt-BR');
+    let html = '<table class="w-full text-sm border-collapse">';
+    html += '<thead><tr class="border-b border-white/10">';
+    html += '<th class="px-4 py-3 text-left text-slate-300 font-semibold">Órgão</th>';
+    mesesUnicos.forEach(mes => {
+      const formatted = window.dateUtils?.formatMonthYearShort?.(mes) || mes || 'N/A';
+      html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${formatted}</th>`;
+    });
+    html += '<th class="px-4 py-3 text-center text-slate-300 font-semibold">Total</th>';
+    html += '</tr></thead><tbody>';
     
-    // Carregar e exibir tabela Por Órgão e Mês
-    const dataOrgaoMes = await fetchFn('/api/aggregate/count-by-orgao-mes').catch(() => []);
-    const tabelaEl = document.getElementById('tabelaOrgaoMes');
-    if (tabelaEl && dataOrgaoMes && dataOrgaoMes.length > 0) {
-      const orgaosUnicos = [...new Set(dataOrgaoMes.map(d => d.orgao))].sort();
-      const mesesUnicos = [...new Set(dataOrgaoMes.map(d => d.month))].sort();
-      
-      let html = '<table class="w-full text-sm border-collapse">';
-      html += '<thead><tr class="border-b border-white/10">';
-      html += '<th class="px-4 py-3 text-left text-slate-300 font-semibold">Órgão</th>';
+    const totalGeral = dataOrgaos?.reduce((sum, item) => sum + (item.count || 0), 0) || 0;
+    
+    orgaosUnicos.forEach(orgao => {
+      let totalOrgao = 0;
+      html += '<tr class="border-b border-white/5 hover:bg-white/5">';
+      html += `<td class="px-4 py-2 text-slate-200 font-medium">${orgao || 'Não informado'}</td>`;
       mesesUnicos.forEach(mes => {
-        if (!mes || typeof mes !== 'string') {
-          html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${mes || 'N/A'}</th>`;
-        } else {
-          const parts = mes.split('-');
-          // OTIMIZADO: Usar dateUtils centralizado
-          if (window.dateUtils?.isValidMonthFormat?.(mes)) {
-            const formatted = window.dateUtils.formatMonthYearShort(mes);
-            html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${formatted}</th>`;
-          } else {
-            html += `<th class="px-4 py-3 text-center text-slate-300 font-semibold">${mes}</th>`;
-          }
-        }
+        const item = dataOrgaoMes.find(d => d.orgao === orgao && d.month === mes);
+        const count = item ? (item.count || 0) : 0;
+        totalOrgao += count;
+        html += `<td class="px-4 py-2 text-center text-slate-300">${count.toLocaleString('pt-BR')}</td>`;
       });
-      html += '<th class="px-4 py-3 text-center text-slate-300 font-semibold">Total</th>';
-      html += '</tr></thead><tbody>';
-      
-      orgaosUnicos.forEach(orgao => {
-        let totalOrgao = 0;
-        html += '<tr class="border-b border-white/5 hover:bg-white/5">';
-        html += `<td class="px-4 py-2 text-slate-200 font-medium">${orgao || 'Não informado'}</td>`;
-        mesesUnicos.forEach(mes => {
-          const item = dataOrgaoMes.find(d => d.orgao === orgao && d.month === mes);
-          const count = item ? (item.count || 0) : 0;
-          totalOrgao += count;
-          html += `<td class="px-4 py-2 text-center text-slate-300">${count.toLocaleString('pt-BR')}</td>`;
-        });
-        html += `<td class="px-4 py-2 text-center text-cyan-300 font-bold">${totalOrgao.toLocaleString('pt-BR')}</td>`;
-        html += '</tr>';
-      });
-      
-      // Linha de totais
-      html += '<tr class="border-t-2 border-cyan-500/50 bg-cyan-500/10 font-bold">';
-      html += '<td class="px-4 py-3 text-cyan-300">TOTAL</td>';
-      mesesUnicos.forEach(mes => {
-        const totalMes = dataOrgaoMes.filter(d => d.month === mes).reduce((sum, d) => sum + (d.count || 0), 0);
-        html += `<td class="px-4 py-3 text-center text-cyan-300">${totalMes.toLocaleString('pt-BR')}</td>`;
-      });
-      html += `<td class="px-4 py-3 text-center text-cyan-300">${total.toLocaleString('pt-BR')}</td>`;
+      html += `<td class="px-4 py-2 text-center text-cyan-300 font-bold">${totalOrgao.toLocaleString('pt-BR')}</td>`;
       html += '</tr>';
-      
-      html += '</tbody></table>';
-      tabelaEl.innerHTML = html;
-    }
-  } catch (error) {
-    console.error('❌ Erro ao carregar Órgão por Mês:', error);
+    });
+    
+    // Linha de totais
+    html += '<tr class="border-t-2 border-cyan-500/50 bg-cyan-500/10 font-bold">';
+    html += '<td class="px-4 py-3 text-cyan-300">TOTAL</td>';
+    mesesUnicos.forEach(mes => {
+      const totalMes = dataOrgaoMes.filter(d => d.month === mes).reduce((sum, d) => sum + (d.count || 0), 0);
+      html += `<td class="px-4 py-3 text-center text-cyan-300">${totalMes.toLocaleString('pt-BR')}</td>`;
+    });
+    html += `<td class="px-4 py-3 text-center text-cyan-300">${totalGeral.toLocaleString('pt-BR')}</td>`;
+    html += '</tr>';
+    
+    html += '</tbody></table>';
+    tabelaEl.innerHTML = html;
+  }
+}
+
+// DEBUG CRÍTICO: Log ANTES do bloco try para verificar se chegou até aqui
+if (typeof window !== 'undefined') {
+  if (window.Logger) {
+    window.Logger.debug('🔍 data.js: Chegou até a exportação (antes do try)');
+  } else {
+    console.log('🔍 data.js: Chegou até a exportação (antes do try)');
   }
 }
 
 // Exportar funções para uso global
-window.data = {
+// CORREÇÃO: Mesclar com window.data existente em vez de sobrescrever
+// Isso preserva funções adicionadas pelos módulos (data-kpis.js, data-pages.js, etc.)
+try {
+  // DEBUG CRÍTICO: Log DENTRO do bloco try
+  if (typeof window !== 'undefined') {
+    if (window.Logger) {
+      window.Logger.debug('🔍 data.js: Dentro do bloco try de exportação');
+    } else {
+      console.log('🔍 data.js: Dentro do bloco try de exportação');
+    }
+  }
+  if (!window.data) window.data = {};
+
+  // DEBUG: Log para verificar se loadOrgaoMes está sendo exportado
+  if (window.Logger) {
+    window.Logger.debug('Exportando loadOrgaoMes para window.data');
+  } else {
+    console.log('🔍 Exportando loadOrgaoMes para window.data');
+  }
+
+  // DEBUG: Verificar se loadOrgaoMes está definido antes de exportar
+  if (typeof loadOrgaoMes === 'undefined') {
+    if (window.Logger) {
+      window.Logger.error('❌ loadOrgaoMes não está definido antes da exportação!');
+    } else {
+      console.error('❌ loadOrgaoMes não está definido antes da exportação!');
+    }
+  } else {
+    if (window.Logger) {
+      window.Logger.debug(`✅ loadOrgaoMes está definido: ${typeof loadOrgaoMes}`);
+    } else {
+      console.log(`✅ loadOrgaoMes está definido: ${typeof loadOrgaoMes}`);
+    }
+  }
+
+  // Mesclar funções do data.js com window.data existente
+  Object.assign(window.data, {
   reloadAllData,
   loadAIInsights,
   loadStatusOverview,
@@ -1370,8 +2159,7 @@ window.data = {
   loadKpisWithData,
   loadKpis,
   renderKpis, // Função wrapper que chama window.renderKpis
-  currentTableData, // Exportar variável global
-  currentTableHeaders, // Exportar variável global
+  // currentTableData e currentTableHeaders agora estão em data-tables.js
   loadOverview,
   loadAdvancedCharts,
   loadSankeyChart,
@@ -1380,7 +2168,7 @@ window.data = {
   buildHeatmap,
   drawSpark,
   drawSparkDaily,
-  loadOrgaoMes,
+  // loadOrgaoMes movido para data-pages.js
   loadCategoria,
   loadStatusPage,
   loadBairro,
@@ -1390,7 +2178,7 @@ window.data = {
   loadPrioridade,
   loadTema,
   loadAssunto,
-  loadTempoMedio,
+  // loadTempoMedio movido para data-pages.js
   loadCadastrante,
   loadReclamacoes,
   loadProjecao2026,
@@ -1402,10 +2190,41 @@ window.data = {
   loadUnit,
   loadCountChart,
   loadTimeChart,
-  // Variáveis de estado
-  getCurrentTableData: () => currentTableData,
-  getCurrentTableHeaders: () => currentTableHeaders
-};
+  // Chat functions
+  loadCoraChat,
+  loadChatMessages,
+  sendChatMessage,
+  renderChatMessages,
+  formatChatTime,
+  initChatWidget,
+  initChatPage,
+  // Variáveis de estado (agora em data-tables.js)
+  getCurrentTableData: () => window.data?.getCurrentTableData?.() || [],
+  getCurrentTableHeaders: () => window.data?.getCurrentTableHeaders?.() || []
+  });
+
+  // DEBUG: Verificar se loadOrgaoMes foi exportado corretamente
+  if (window.Logger) {
+    window.Logger.debug(`loadOrgaoMes exportado: ${typeof window.data.loadOrgaoMes === 'function' ? '✅ SIM' : '❌ NÃO'}`);
+  } else {
+    console.log(`🔍 loadOrgaoMes exportado: ${typeof window.data.loadOrgaoMes === 'function' ? '✅ SIM' : '❌ NÃO'}`);
+  }
+
+  // DEBUG: loadTempoMedio foi movido para data-pages.js
+  // Verificar se foi exportado corretamente por data-pages.js
+  if (window.Logger) {
+    window.Logger.debug(`loadTempoMedio exportado (data-pages.js): ${typeof window.data.loadTempoMedio === 'function' ? '✅ SIM' : '❌ NÃO'}`);
+  } else {
+    console.log(`🔍 loadTempoMedio exportado (data-pages.js): ${typeof window.data.loadTempoMedio === 'function' ? '✅ SIM' : '❌ NÃO'}`);
+  }
+} catch (error) {
+  // CORREÇÃO: Capturar erros na exportação
+  if (window.Logger) {
+    window.Logger.error('❌ Erro ao exportar funções de data.js:', error);
+  } else {
+    console.error('❌ Erro ao exportar funções de data.js:', error);
+  }
+}
 
 /**
  * Carregar Unidade
@@ -1434,9 +2253,9 @@ async function loadUnit(unitName) {
       'uph imbarie': 'UPH Imbariê'
     };
     
-    const fetchFn = window.api?.fetchJSON || fetchJSON;
+    // Usar sistema global de carregamento
     const searchName = unitMap[unitName.toLowerCase()] || unitName;
-    const data = await fetchFn(`/api/unit/${encodeURIComponent(searchName)}`);
+    const data = await window.dataLoader?.load(`/api/unit/${encodeURIComponent(searchName)}`, { fallback: null }) || null;
     
     // Encontrar a seção da unidade
     const pageId = `page-unit-${unitName.replace(/\s+/g, '-').toLowerCase()}`;
@@ -1513,9 +2332,9 @@ async function loadUnit(unitName) {
 async function loadCountChart(field) {
   try {
     console.log('Carregando gráfico de contagem para campo:', field);
-    const fetchFn = window.api?.fetchJSON || fetchJSON;
+    // CORREÇÃO: Usar sistema global de carregamento (window.dataLoader)
     const endpoint = window.config?.buildEndpoint?.(window.config?.API_ENDPOINTS?.AGGREGATE_COUNT_BY || '/api/aggregate/count-by', { field }) || `/api/aggregate/count-by?field=${encodeURIComponent(field)}`;
-    const data = await fetchFn(endpoint);
+    const data = await window.dataLoader?.load(endpoint, { fallback: [] }) || [];
     console.log('Dados recebidos:', data.length, 'itens');
     
     const labels = data.slice(0, 20).map(x => x.key);
@@ -1587,15 +2406,32 @@ async function loadCountChart(field) {
   }
 }
 
+// CORREÇÃO CRÍTICA: Exportar loadCountChart IMEDIATAMENTE após definição
+(function() {
+  try {
+    if (typeof window !== 'undefined') {
+      if (!window.data) window.data = {};
+      window.data.loadCountChart = loadCountChart;
+      if (window.Logger) {
+        window.Logger.debug('✅ loadCountChart exportado imediatamente após definição');
+      } else {
+        console.log('✅ loadCountChart exportado imediatamente após definição');
+      }
+    }
+  } catch (e) {
+    console.error('❌ Erro ao exportar loadCountChart:', e);
+  }
+})();
+
 /**
  * Carregar Gráfico de Série Temporal
  */
 async function loadTimeChart(field) {
   try {
     console.log('Carregando gráfico de série temporal para campo:', field);
-    const fetchFn = window.api?.fetchJSON || fetchJSON;
+    // CORREÇÃO: Usar sistema global de carregamento (window.dataLoader)
     const endpoint = window.config?.buildEndpoint?.(window.config?.API_ENDPOINTS?.AGGREGATE_TIME_SERIES || '/api/aggregate/time-series', { field }) || `/api/aggregate/time-series?field=${encodeURIComponent(field)}`;
-    const data = await fetchFn(endpoint);
+    const data = await window.dataLoader?.load(endpoint, { fallback: [] }) || [];
     console.log('Dados recebidos:', data.length, 'itens');
     
     const labels = data.map(x => x.date);
@@ -1680,13 +2516,30 @@ async function loadTimeChart(field) {
   }
 }
 
+// CORREÇÃO CRÍTICA: Exportar loadTimeChart IMEDIATAMENTE após definição
+(function() {
+  try {
+    if (typeof window !== 'undefined') {
+      if (!window.data) window.data = {};
+      window.data.loadTimeChart = loadTimeChart;
+      if (window.Logger) {
+        window.Logger.debug('✅ loadTimeChart exportado imediatamente após definição');
+      } else {
+        console.log('✅ loadTimeChart exportado imediatamente após definição');
+      }
+    }
+  } catch (e) {
+    console.error('❌ Erro ao exportar loadTimeChart:', e);
+  }
+})();
+
 /**
  * Carregar Secretaria
  */
 async function loadSecretaria() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Secretaria');
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Secretaria', { fallback: [] }) || [];
     const labels = data.slice(0, 10).map(x => x.key);
     const values = data.slice(0, 10).map(x => x.count);
     
@@ -1733,8 +2586,8 @@ async function loadSecretaria() {
       rankEl.innerHTML = data.slice(0, 10).map(e => `<li><span class='text-cyan-300 font-mono'>${e.key}</span> <span class='float-right font-bold'>${e.count}</span></li>`).join('');
     }
     
-    // Gráfico mensal
-    const dataMensal = await fetchFn('/api/aggregate/by-month').catch(() => []);
+    // Gráfico mensal - CORREÇÃO: Usar sistema global de carregamento
+    const dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [];
     if (dataMensal && dataMensal.length > 0) {
       // OTIMIZADO: Usar dateUtils centralizado
       const labelsMes = dataMensal.map(x => {
@@ -1787,10 +2640,9 @@ async function loadSecretaria() {
  */
 async function loadSecretariasDistritos() {
   try {
-    const fetchFn = window.api?.fetchJSON || fetchJSON;
-    
+    // Usar sistema global de carregamento
     // Carregar dados de distritos e secretarias
-    const distritosData = await fetchFn('/api/distritos').catch(() => null);
+    const distritosData = await window.dataLoader?.load('/api/distritos', { fallback: null }) || null;
     
     if (!distritosData || !distritosData.distritos) {
       const listaEl = document.getElementById('listaDistritos');
@@ -1931,9 +2783,12 @@ async function loadSecretariasDistritos() {
  */
 async function loadSecretariasPorDistrito(distritoNome, distritoCode) {
   try {
-    // Buscar secretarias do distrito
-    const response = await fetch(`/api/secretarias/${encodeURIComponent(distritoCode || distritoNome)}`);
-    const data = await response.json().catch(() => ({ secretarias: [] }));
+    // CORREÇÃO: Usar sistema global de carregamento
+    const endpoint = `/api/secretarias/${encodeURIComponent(distritoCode || distritoNome)}`;
+    const data = await window.dataLoader?.load(endpoint, {
+      fallback: { secretarias: [] },
+      timeout: 30000
+    }) || { secretarias: [] };
     
     const secretarias = data.secretarias || [];
     const listaSecretarias = document.getElementById('listaSecretarias');
@@ -1980,8 +2835,8 @@ async function loadSecretariasPorDistrito(distritoNome, distritoCode) {
  */
 async function loadTipo() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Tipo');
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Tipo', { fallback: [] }) || [];
     const labels = data.slice(0, 10).map(x => x.key);
     const values = data.slice(0, 10).map(x => x.count);
     
@@ -2030,8 +2885,8 @@ async function loadTipo() {
  */
 async function loadSetor() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Setor');
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Setor', { fallback: [] }) || [];
     const labels = data.slice(0, 10).map(x => x.key);
     const values = data.slice(0, 10).map(x => x.count);
     
@@ -2092,10 +2947,9 @@ async function loadSetor() {
  */
 async function loadCadastrante() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    
+    // Usar sistema global de carregamento
     // Servidores
-    const servidores = await fetchFn('/api/aggregate/by-server');
+    const servidores = await window.dataLoader?.load('/api/aggregate/by-server', { fallback: [] }) || [];
     const listaServidores = document.getElementById('listaServidores');
     if (listaServidores) {
       listaServidores.innerHTML = servidores.map((item, idx) => {
@@ -2128,7 +2982,7 @@ async function loadCadastrante() {
     }
     
     // Unidades de Cadastro (UAC)
-    const uacs = await fetchFn('/api/aggregate/count-by?field=UAC');
+    const uacs = await window.dataLoader?.load('/api/aggregate/count-by?field=UAC', { fallback: [] }) || [];
     const listaUnidades = document.getElementById('listaUnidadesCadastro');
     if (listaUnidades) {
       listaUnidades.innerHTML = uacs.map((item, idx) => {
@@ -2160,8 +3014,8 @@ async function loadCadastrante() {
       });
     }
     
-    // Gráfico mensal (com filtro se houver)
-    const dataMensal = await fetchFn('/api/aggregate/by-month');
+    // Gráfico mensal - Usar sistema global
+    const dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [];
     const labelsMes = dataMensal.map(x => {
       const ym = x.ym || x.month || '';
       if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
@@ -2204,19 +3058,17 @@ async function loadCadastrante() {
       });
     }
     
-    // Total (com filtro se houver)
-    const summary = await fetchFn('/api/summary');
+    // Total - Usar sistema global
+    const summary = await window.dataLoader?.load('/api/summary', { fallback: { total: 0 } }) || { total: 0 };
     const totalEl = document.getElementById('totalCadastrante');
     if (totalEl) {
       totalEl.textContent = (summary.total || 0).toLocaleString('pt-BR');
     }
     
-    // Atualizar exibição de filtros
     if (window.updateCadastranteFiltersDisplay) {
       window.updateCadastranteFiltersDisplay();
     }
     
-    // Se já houver filtro ativo, atualizar gráficos adicionais
     if (window.globalFilters?.cadastranteFilter && window.updateCadastranteCharts) {
       await window.updateCadastranteCharts(window.globalFilters.cadastranteFilter);
     }
@@ -2230,11 +3082,10 @@ async function loadCadastrante() {
  */
 async function loadReclamacoes() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    
+    // Usar sistema global de carregamento
     const [data, dataMensal] = await Promise.all([
-      fetchFn('/api/complaints-denunciations'),
-      fetchFn('/api/aggregate/by-month').catch(() => [])
+      window.dataLoader?.load('/api/complaints-denunciations', { fallback: { assuntos: [], tipos: [] } }) || { assuntos: [], tipos: [] },
+      window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || []
     ]);
     
     const assuntos = data.assuntos || [];
@@ -2357,13 +3208,12 @@ async function loadReclamacoes() {
  */
 async function loadProjecao2026() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    
+    // Usar sistema global de carregamento
     // Carregar dados históricos
     const [byMonth, temas, status] = await Promise.all([
-      fetchFn('/api/aggregate/by-month'),
-      fetchFn('/api/aggregate/by-theme'),
-      fetchFn('/api/stats/status-overview')
+      window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [],
+      window.dataLoader?.load('/api/aggregate/by-theme', { fallback: [] }) || [],
+      window.dataLoader?.load('/api/stats/status-overview', { fallback: null }) || null
     ]);
     
     // Processar dados mensais históricos
@@ -2500,8 +3350,8 @@ async function loadProjecao2026() {
  */
 async function loadTema() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/by-theme').catch(() => []);
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/aggregate/by-theme', { fallback: [] }) || [];
     
     // Validar dados
     if (!Array.isArray(data) || data.length === 0) {
@@ -2556,8 +3406,8 @@ async function loadTema() {
       addClickFn(window.chartTema, (label, value) => showFeedbackFn(null, label, value), 'chartTema');
     }
     
-    // Status geral (com validação)
-    const status = await fetchFn('/api/stats/status-overview').catch(() => null);
+    // Status geral (com validação) - CORREÇÃO: Usar sistema global
+    const status = await window.dataLoader?.load('/api/stats/status-overview', { fallback: null }) || null;
     const chartStatusEl = document.getElementById('chartStatusTema');
     if (chartStatusEl && status && status.concluida && status.emAtendimento) {
       if (window.chartStatusTema instanceof Chart) window.chartStatusTema.destroy();
@@ -2604,8 +3454,8 @@ async function loadTema() {
       statusInfoEl.innerHTML = '<div class="text-slate-400">Dados de status não disponíveis</div>';
     }
     
-    // Gráfico mensal (com validação)
-    const dataMensal = await fetchFn('/api/aggregate/by-month').catch(() => []);
+    // Gráfico mensal (com validação) - CORREÇÃO: Usar sistema global
+    const dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [];
     const labelsMes = (Array.isArray(dataMensal) ? dataMensal : []).map(x => {
       const ym = x.ym || x.month || '';
       if (!ym || typeof ym !== 'string') return ym || 'Data inválida';
@@ -2663,7 +3513,6 @@ async function loadTema() {
       }).join('');
     }
     
-    // Exibir filtros aplicados
     const filtrosTemaInfo = document.getElementById('filtrosTemaInfo');
     if (filtrosTemaInfo) {
       const filtros = [];
@@ -2705,8 +3554,8 @@ async function loadTema() {
  */
 async function loadAssunto() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/by-subject');
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/aggregate/by-subject', { fallback: [] }) || [];
     
     // Limitar gráfico "Top Assuntos" para Top 15 para melhor legibilidade
     const topAssuntos = data.slice(0, 15);
@@ -2733,7 +3582,15 @@ async function loadAssunto() {
       window.chartAssunto = null;
     }
     
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // FASE 2.2: Usar timerManager
+    // FASE 2.2: Usar timerManager
+    await new Promise(resolve => {
+      if (window.timerManager) {
+        window.timerManager.setTimeout(resolve, 50, 'chart-render-delay');
+      } else {
+        setTimeout(resolve, 50);
+      }
+    });
     
     const ctx = canvasAssunto.getContext('2d');
     const tooltipFn = window.utils?.createEnhancedTooltip || (() => ({}));
@@ -2808,11 +3665,29 @@ async function loadAssunto() {
     });
     addClickFn(window.chartAssunto, (label, value) => showFeedbackFn(null, label, value), 'chartAssunto');
     
-    // Status geral
-    const status = await fetchFn('/api/stats/status-overview');
+    // Status geral - usar sistema global de carregamento
+    const status = await window.dataLoader?.load('/api/stats/status-overview', { fallback: null }) || null;
     const chartStatusEl = document.getElementById('chartStatusAssunto');
-    if (chartStatusEl) {
-      if (window.chartStatusAssunto instanceof Chart) window.chartStatusAssunto.destroy();
+    if (chartStatusEl && status && status.concluida && status.emAtendimento) {
+      if (window.chartStatusAssunto instanceof Chart) {
+        try {
+          window.chartStatusAssunto.destroy();
+        } catch (e) {
+          console.warn('Erro ao destruir gráfico de status anterior:', e);
+        }
+        window.chartStatusAssunto = null;
+      }
+      
+      // FASE 2.2: Usar timerManager
+    // FASE 2.2: Usar timerManager
+    await new Promise(resolve => {
+      if (window.timerManager) {
+        window.timerManager.setTimeout(resolve, 50, 'chart-render-delay');
+      } else {
+        setTimeout(resolve, 50);
+      }
+    });
+      
       const ctxStatus = chartStatusEl.getContext('2d');
       
       window.chartStatusAssunto = new Chart(ctxStatus, {
@@ -2820,7 +3695,10 @@ async function loadAssunto() {
         data: {
           labels: ['Concluída', 'Em atendimento'],
           datasets: [{
-            data: [status.concluida.percentual, status.emAtendimento.percentual],
+            data: [
+              status?.concluida?.percentual ?? 0, 
+              status?.emAtendimento?.percentual ?? 0
+            ],
             backgroundColor: ['#38bdf8', '#fbbf24']
           }]
         },
@@ -2855,127 +3733,110 @@ async function loadAssunto() {
 
 /**
  * Carregar Tempo Médio
+ * OTIMIZADO: Promise compartilhada e cache
  */
-async function loadTempoMedio() {
-  try {
-    console.log('📊 Carregando dados de tempo médio...');
-    
-    // OTIMIZAÇÃO: Usar fetch direto (sem filtros) para melhor performance
-    const fetchData = async (url, fallback = []) => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
-        
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        
-        const data = await res.json();
-        const count = Array.isArray(data) ? data.length : (data?.total || Object.keys(data || {}).length || 0);
-        console.log(`✅ ${url}: ${count} itens`);
-        return data;
-      } catch (e) {
-        console.warn(`⚠️ ${url}: ${e.message || e}`);
-        return fallback;
-      }
-    };
-    
-    // OTIMIZAÇÃO: Carregar dados críticos primeiro, secundários depois
-    // Dados críticos (necessários para renderizar a página)
-    const criticalData = await Promise.allSettled([
-      fetchData('/api/stats/average-time/stats', null),
-      fetchData('/api/stats/average-time/by-month', [])
-    ]);
-    
-    const stats = criticalData[0].status === 'fulfilled' ? criticalData[0].value : null;
-    const dataMes = criticalData[1].status === 'fulfilled' ? criticalData[1].value : [];
-    
-    // OTIMIZAÇÃO: Renderizar dados críticos IMEDIATAMENTE (não bloqueia)
-    // Atualizar estatísticas gerais primeiro
-    if (stats) {
-      const statMedia = document.getElementById('statMedia');
-      const statMediana = document.getElementById('statMediana');
-      const statMinimo = document.getElementById('statMinimo');
-      const statMaximo = document.getElementById('statMaximo');
-      
-      if (statMedia) statMedia.textContent = stats.media || '0';
-      if (statMediana) statMediana.textContent = stats.mediana || '0';
-      if (statMinimo) statMinimo.textContent = stats.minimo || '0';
-      if (statMaximo) statMaximo.textContent = stats.maximo || '0';
+async function loadTempoMedio(forceRefresh = false) {
+  const functionName = 'loadTempoMedio';
+  
+  // Verificar cache
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached) {
+      await renderTempoMedioData(cached.stats, cached.dataMes);
+      return;
     }
-    
-    // Renderizar gráfico por mês (dados críticos)
-    if (dataMes && Array.isArray(dataMes) && dataMes.length > 0) {
-      const labelsMes = dataMes.map(x => {
-        if (!x.month) return 'Mês inválido';
-        try {
-          const [year, month] = x.month.split('-');
-          return `${month}/${year}`;
-        } catch (e) {
-          return x.month;
-        }
-      });
-      const valuesMes = dataMes.map(x => x.dias || 0);
+  }
+  
+  // Usar Promise compartilhada
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      // Verificar se a página está visível
+      const page = document.getElementById('page-tempo-medio');
+      if (!page || page.style.display === 'none') {
+        return;
+      }
       
-      const chartMesEl = document.getElementById('chartTempoMedioMes');
-      if (chartMesEl) {
-        if (window.chartTempoMedioMes instanceof Chart) window.chartTempoMedioMes.destroy();
-        const ctxMes = chartMesEl.getContext('2d');
-        const tooltipFn = window.utils?.createEnhancedTooltip || (() => ({}));
-        const dataLabelsFn = window.utils?.createDataLabelsConfig || (() => ({}));
-        const addClickFn = window.charts?.addChartClickHandler || (() => {});
-        const showFeedbackFn = window.showClickFeedback || (() => {});
-        
-        window.chartTempoMedioMes = new Chart(ctxMes, {
-          type: 'bar',
-          data: {
-            labels: labelsMes,
-            datasets: [{
-              label: 'Tempo Médio (dias)',
-              data: valuesMes,
-              backgroundColor: 'rgba(34,211,238,0.7)',
-              borderColor: 'rgba(34,211,238,1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            animation: false, // OTIMIZAÇÃO: Desabilitar animação
-            plugins: {
-              legend: { display: false },
-              tooltip: tooltipFn(),
-              datalabels: {
-                ...dataLabelsFn(),
-                anchor: 'end',
-                align: 'top'
-              }
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      // OTIMIZADO: Carregar dados críticos em paralelo
+      const criticalData = await Promise.allSettled([
+        window.dataLoader?.load('/api/stats/average-time/stats', { 
+          fallback: null,
+          timeout: 30000 
+        }) || Promise.resolve(null),
+        window.dataLoader?.load('/api/stats/average-time/by-month', { 
+          fallback: [],
+          timeout: 30000 
+        }) || Promise.resolve([])
+      ]);
+    
+      const stats = criticalData[0].status === 'fulfilled' ? criticalData[0].value : null;
+      const dataMes = criticalData[1].status === 'fulfilled' ? criticalData[1].value : [];
+      
+      // Salvar no cache
+      setCachedData(functionName, { stats, dataMes });
+      
+      // Renderizar dados críticos
+      await renderTempoMedioData(stats, dataMes);
+      
+      // Carregar dados secundários em background (não bloqueia)
+      loadSecondaryTempoMedioData();
+    } catch (e) {
+      console.error('❌ Erro ao carregar Tempo Médio:', e);
+      throw e;
+    }
+  });
+}
+
+/**
+ * Carregar dados secundários de Tempo Médio (em background)
+ */
+function loadSecondaryTempoMedioData() {
+  // OTIMIZAÇÃO: Carregar dados secundários sequencialmente com delays (reduz carga no servidor)
+  const loadSecondaryData = async () => {
+          const results = [];
+          
+          // Carregar em sequência com pequenos delays para não sobrecarregar o servidor
+          const endpoints = [
+            '/api/stats/average-time',
+            '/api/stats/average-time/by-day',
+            '/api/stats/average-time/by-week',
+            '/api/stats/average-time/by-unit',
+            '/api/stats/average-time/by-month-unit'
+          ];
+          
+          for (let i = 0; i < endpoints.length; i++) {
+            try {
+              // CORREÇÃO: Usar sistema global de carregamento
+              const result = await Promise.allSettled([
+                window.dataLoader?.load(endpoints[i], {
+                  fallback: [],
+                  timeout: 45000, // 45s timeout
+                  retries: 1
+                }) || Promise.resolve([])
+              ]);
+              
+              results.push(result[0]);
+            } catch (e) {
+              console.warn(`⚠️ Erro ao carregar ${endpoints[i]}:`, e);
+              results.push({ status: 'rejected', reason: e });
+            }
+            
+            // Pequeno delay entre requisições (exceto na última)
+            if (i < endpoints.length - 1) {
+              // FASE 2.2: Usar timerManager
+              await new Promise(resolve => {
+                if (window.timerManager) {
+                  window.timerManager.setTimeout(resolve, 300, 'request-delay');
+                } else {
+                  setTimeout(resolve, 300);
+                }
+              }); // 300ms delay
             }
           }
-        });
-        addClickFn(window.chartTempoMedioMes, (label, value) => showFeedbackFn(null, label, value), 'chartTempoMedioMes');
-      }
-    }
+          
+          return results;
+        };
     
-    // Dados secundários (carregar em background - não bloqueia)
-    Promise.allSettled([
-      fetchData('/api/stats/average-time', []),
-      fetchData('/api/stats/average-time/by-day', []),
-      fetchData('/api/stats/average-time/by-week', []),
-      fetchData('/api/stats/average-time/by-unit', []),
-      fetchData('/api/stats/average-time/by-month-unit', [])
-    ]).then((results) => {
+  loadSecondaryData().then((results) => {
       const data = results[0].status === 'fulfilled' ? results[0].value : [];
       const dataDia = results[1].status === 'fulfilled' ? results[1].value : [];
       const dataSemana = results[2].status === 'fulfilled' ? results[2].value : [];
@@ -3253,14 +4114,86 @@ async function loadTempoMedio() {
           });
         }
       }
+    }).catch(error => {
+      console.error('❌ Erro ao carregar dados secundários de Tempo Médio:', error);
     });
-  } catch (error) {
-    console.error('❌ Erro ao carregar tempo médio:', error);
-    const errorMsg = error.message || 'Erro desconhecido ao carregar dados';
-    const listaEl = document.getElementById('listaTempoMedio');
-    if (listaEl) {
-      listaEl.innerHTML = `<div class="text-red-400 text-center py-8">Erro ao carregar dados: ${errorMsg}</div>`;
+}
+
+/**
+ * Renderizar dados de Tempo Médio (extraído para reutilização com cache)
+ */
+async function renderTempoMedioData(stats, dataMes) {
+  try {
+    // Atualizar estatísticas gerais
+    if (stats) {
+      const statMedia = document.getElementById('statMedia');
+      const statMediana = document.getElementById('statMediana');
+      const statMinimo = document.getElementById('statMinimo');
+      const statMaximo = document.getElementById('statMaximo');
+      
+      if (statMedia) statMedia.textContent = stats.media || '0';
+      if (statMediana) statMediana.textContent = stats.mediana || '0';
+      if (statMinimo) statMinimo.textContent = stats.minimo || '0';
+      if (statMaximo) statMaximo.textContent = stats.maximo || '0';
     }
+    
+    // Renderizar gráfico por mês (dados críticos)
+    if (dataMes && Array.isArray(dataMes) && dataMes.length > 0) {
+      const labelsMes = dataMes.map(x => {
+        if (!x.month) return 'Mês inválido';
+        try {
+          const [year, month] = x.month.split('-');
+          return `${month}/${year}`;
+        } catch (e) {
+          return x.month;
+        }
+      });
+      const valuesMes = dataMes.map(x => x.dias || 0);
+      
+      const chartMesEl = document.getElementById('chartTempoMedioMes');
+      if (chartMesEl) {
+        if (window.chartTempoMedioMes instanceof Chart) window.chartTempoMedioMes.destroy();
+        const ctxMes = chartMesEl.getContext('2d');
+        const tooltipFn = window.utils?.createEnhancedTooltip || (() => ({}));
+        const dataLabelsFn = window.utils?.createDataLabelsConfig || (() => ({}));
+        const addClickFn = window.charts?.addChartClickHandler || (() => {});
+        const showFeedbackFn = window.showClickFeedback || (() => {});
+        
+        window.chartTempoMedioMes = new Chart(ctxMes, {
+          type: 'bar',
+          data: {
+            labels: labelsMes,
+            datasets: [{
+              label: 'Tempo Médio (dias)',
+              data: valuesMes,
+              backgroundColor: 'rgba(34,211,238,0.7)',
+              borderColor: 'rgba(34,211,238,1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            animation: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: tooltipFn(),
+              datalabels: {
+                ...dataLabelsFn(),
+                anchor: 'end',
+                align: 'top'
+              }
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+          }
+        });
+        addClickFn(window.chartTempoMedioMes, (label, value) => showFeedbackFn(null, label, value), 'chartTempoMedioMes');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Erro ao renderizar dados de Tempo Médio:', error);
   }
 }
 
@@ -3327,10 +4260,21 @@ function createHorizontalBarChart(chartId, labels, values, color, options = {}) 
 /**
  * Carregar Categoria
  */
-async function loadCategoria() {
-  try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Categoria');
+async function loadCategoria(forceRefresh = false) {
+  const functionName = 'loadCategoria';
+  
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached !== null) return;
+  }
+  
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      const page = document.getElementById('page-categoria');
+      if (!page || page.style.display === 'none') return;
+      
+      // Usar sistema global de carregamento
+      const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Categoria', { fallback: [] }) || [];
     const labels = data.slice(0, 15).map(x => x.key);
     const values = data.slice(0, 15).map(x => x.count);
     
@@ -3341,11 +4285,11 @@ async function loadCategoria() {
     });
     
     // Heatmap
-    const hm = await fetchFn('/api/aggregate/heatmap?dim=Categoria').catch(() => ({ labels: [], rows: [] }));
+    const hm = await window.dataLoader?.load('/api/aggregate/heatmap?dim=Categoria', { fallback: { labels: [], rows: [] } }) || { labels: [], rows: [] };
     buildHeatmap('heatmapCategoria', hm.labels || [], hm.rows || []);
     
     // Gráfico mensal
-    const dataMensal = await fetchFn('/api/aggregate/by-month').catch(() => []);
+    const dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [];
     if (dataMensal && dataMensal.length > 0) {
       // OTIMIZADO: Usar dateUtils centralizado
       const labelsMes = dataMensal.map(x => {
@@ -3388,18 +4332,33 @@ async function loadCategoria() {
         });
       }
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar Categoria:', error);
-  }
+    
+    setCachedData(functionName, { data });
+    } catch (error) {
+      console.error('❌ Erro ao carregar Categoria:', error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Carregar Status Page
  */
-async function loadStatusPage() {
-  try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=status');
+async function loadStatusPage(forceRefresh = false) {
+  const functionName = 'loadStatusPage';
+  
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached !== null) return;
+  }
+  
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      const page = document.getElementById('page-status');
+      if (!page || page.style.display === 'none') return;
+      
+      // Usar sistema global de carregamento
+      const data = await window.dataLoader?.load('/api/aggregate/count-by?field=status', { fallback: [] }) || [];
     
     if (!data || data.length === 0) {
       console.warn('⚠️ Nenhum dado de status disponível');
@@ -3446,18 +4405,33 @@ async function loadStatusPage() {
     });
     
     addClickFn(window.chartStatusPage, (label, value) => showFeedbackFn(null, label, value), 'chartStatusPage');
-  } catch (error) {
-    console.error('❌ Erro ao carregar Status Page:', error);
-  }
+    
+    setCachedData(functionName, { data });
+    } catch (error) {
+      console.error('❌ Erro ao carregar Status Page:', error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Carregar Bairro
  */
-async function loadBairro() {
-  try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Bairro');
+async function loadBairro(forceRefresh = false) {
+  const functionName = 'loadBairro';
+  
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached !== null) return;
+  }
+  
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      const page = document.getElementById('page-bairro');
+      if (!page || page.style.display === 'none') return;
+      
+      // Usar sistema global de carregamento
+      const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Bairro', { fallback: [] }) || [];
     const labels = data.slice(0, 15).map(x => x.key);
     const values = data.slice(0, 15).map(x => x.count);
     
@@ -3467,11 +4441,11 @@ async function loadBairro() {
     });
     
     // Heatmap
-    const hm = await fetchFn('/api/aggregate/heatmap?dim=Bairro').catch(() => ({ labels: [], rows: [] }));
+    const hm = await window.dataLoader?.load('/api/aggregate/heatmap?dim=Bairro', { fallback: { labels: [], rows: [] } }) || { labels: [], rows: [] };
     buildHeatmap('heatmapBairro', hm.labels || [], hm.rows || []);
     
     // Gráfico mensal
-    const dataMensal = await fetchFn('/api/aggregate/by-month').catch(() => []);
+    const dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', { fallback: [] }) || [];
     if (dataMensal && dataMensal.length > 0) {
       // OTIMIZADO: Usar dateUtils centralizado
       const labelsMes = dataMensal.map(x => {
@@ -3514,18 +4488,33 @@ async function loadBairro() {
         });
       }
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar Bairro:', error);
-  }
+    
+    setCachedData(functionName, { data });
+    } catch (error) {
+      console.error('❌ Erro ao carregar Bairro:', error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Carregar UAC
  */
-async function loadUAC() {
-  try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=UAC');
+async function loadUAC(forceRefresh = false) {
+  const functionName = 'loadUAC';
+  
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached !== null) return;
+  }
+  
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      const page = document.getElementById('page-uac');
+      if (!page || page.style.display === 'none') return;
+      
+      // Usar sistema global de carregamento
+      const data = await window.dataLoader?.load('/api/aggregate/count-by?field=UAC', { fallback: [] }) || [];
     const labels = data.slice(0, 15).map(x => x.key);
     const values = data.slice(0, 15).map(x => x.count);
     
@@ -3535,11 +4524,15 @@ async function loadUAC() {
     });
     
     // Heatmap
-    const hm = await fetchFn('/api/aggregate/heatmap?dim=UAC').catch(() => ({ labels: [], rows: [] }));
+    const hm = await window.dataLoader?.load('/api/aggregate/heatmap?dim=UAC', { fallback: { labels: [], rows: [] } }) || { labels: [], rows: [] };
     buildHeatmap('heatmapUAC', hm.labels || [], hm.rows || []);
-  } catch (error) {
-    console.error('❌ Erro ao carregar UAC:', error);
-  }
+    
+    setCachedData(functionName, { data });
+    } catch (error) {
+      console.error('❌ Erro ao carregar UAC:', error);
+      throw error;
+    }
+  });
 }
 
 /**
@@ -3547,8 +4540,8 @@ async function loadUAC() {
  */
 async function loadResponsavel() {
   try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Responsavel');
+    // Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Responsavel', { fallback: [] }) || [];
     const labels = data.slice(0, 15).map(x => x.key);
     const values = data.slice(0, 15).map(x => x.count);
     
@@ -3558,7 +4551,7 @@ async function loadResponsavel() {
     });
     
     // Heatmap
-    const hm = await fetchFn('/api/aggregate/heatmap?dim=Responsavel').catch(() => ({ labels: [], rows: [] }));
+    const hm = await window.dataLoader?.load('/api/aggregate/heatmap?dim=Responsavel', { fallback: { labels: [], rows: [] } }) || { labels: [], rows: [] };
     buildHeatmap('heatmapResponsavel', hm.labels || [], hm.rows || []);
   } catch (error) {
     console.error('❌ Erro ao carregar Responsável:', error);
@@ -3568,10 +4561,21 @@ async function loadResponsavel() {
 /**
  * Carregar Canal
  */
-async function loadCanal() {
-  try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Canal');
+async function loadCanal(forceRefresh = false) {
+  const functionName = 'loadCanal';
+  
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached !== null) return;
+  }
+  
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      const page = document.getElementById('page-canal');
+      if (!page || page.style.display === 'none') return;
+      
+      // Usar sistema global de carregamento
+      const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Canal', { fallback: [] }) || [];
     const labels = data.map(x => x.key);
     const values = data.map(x => x.count);
     
@@ -3607,18 +4611,33 @@ async function loadCanal() {
     });
     
     addClickFn(window.chartCanal, (label, value) => showFeedbackFn(null, label, value), 'chartCanal');
-  } catch (error) {
-    console.error('❌ Erro ao carregar Canal:', error);
-  }
+    
+    setCachedData(functionName, { data });
+    } catch (error) {
+      console.error('❌ Erro ao carregar Canal:', error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Carregar Prioridade
  */
-async function loadPrioridade() {
-  try {
-    const fetchFn = window.api?.fetchJSONWithFilter || fetchJSONWithFilter;
-    const data = await fetchFn('/api/aggregate/count-by?field=Prioridade');
+async function loadPrioridade(forceRefresh = false) {
+  const functionName = 'loadPrioridade';
+  
+  if (!forceRefresh) {
+    const cached = getCachedData(functionName);
+    if (cached !== null) return;
+  }
+  
+  return getOrCreatePromise(functionName, async () => {
+    try {
+      const page = document.getElementById('page-prioridade');
+      if (!page || page.style.display === 'none') return;
+      
+      // Usar sistema global de carregamento
+      const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Prioridade', { fallback: [] }) || [];
     const labels = data.map(x => x.key);
     const values = data.map(x => x.count);
     
@@ -3660,13 +4679,330 @@ async function loadPrioridade() {
     });
     
     addClickFn(window.chartPrioridade, (label, value) => showFeedbackFn(null, label, value), 'chartPrioridade');
+    
+    setCachedData(functionName, { data });
+    } catch (error) {
+      console.error('❌ Erro ao carregar Prioridade:', error);
+      throw error;
+    }
+  });
+}
+
+// ============================================
+// CORA CHAT - Sistema de Chat
+// ============================================
+
+// Variável global para mensagens do chat (compartilhada)
+window.chatMessages = window.chatMessages || [];
+let chatMessages = window.chatMessages;
+
+/**
+ * Formatar data/hora para chat
+ */
+function formatChatTime(date) {
+  const now = new Date();
+  const msgDate = new Date(date);
+  const diffMs = now - msgDate;
+  const diffMins = Math.floor(diffMs / 60000);
+  
+  if (diffMins < 1) return 'Agora';
+  if (diffMins < 60) return `${diffMins}min atrás`;
+  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h atrás`;
+  return msgDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Renderizar mensagens do chat
+ */
+function renderChatMessages(containerId, messages) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  container.innerHTML = messages.map(msg => {
+    const isUser = msg.sender === 'user';
+    return `
+      <div class="flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}">
+        ${!isUser ? `
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+            <span class="text-white text-sm font-bold">C</span>
+          </div>
+        ` : `
+          <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+            <span class="text-white text-xs">Você</span>
+          </div>
+        `}
+        <div class="flex-1 ${isUser ? 'text-right' : ''}">
+          <div class="bg-slate-800/60 rounded-lg p-3 text-sm text-slate-200 inline-block ${isUser ? 'bg-cyan-500/20' : ''}">
+            ${!isUser ? `<div class="font-semibold text-purple-300 mb-1">Cora</div>` : ''}
+            <div>${msg.text}</div>
+          </div>
+          <div class="text-xs text-slate-500 mt-1 ${isUser ? 'text-right' : 'ml-1'}">${formatChatTime(msg.createdAt)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Scroll para o final
+  container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Carregar mensagens do chat (CORREÇÃO: usa sistema global)
+ */
+async function loadChatMessages() {
+  try {
+    // CORREÇÃO: Usar sistema global de carregamento
+    const data = await window.dataLoader?.load('/api/chat/messages', {
+      fallback: { messages: [] },
+      timeout: 30000
+    }) || { messages: [] };
+    
+    window.chatMessages = data.messages || [];
+    chatMessages = window.chatMessages;
+    if (chatMessages.length === 0) {
+      // Mensagem inicial
+      chatMessages.push({
+        text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
+        sender: 'cora',
+        createdAt: new Date().toISOString()
+      });
+      window.chatMessages = chatMessages;
+    }
   } catch (error) {
-    console.error('❌ Erro ao carregar Prioridade:', error);
+    console.error('Erro ao carregar mensagens:', error);
+    window.chatMessages = [{
+      text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
+      sender: 'cora',
+      createdAt: new Date().toISOString()
+    }];
+    chatMessages = window.chatMessages;
   }
+}
+
+/**
+ * Enviar mensagem do chat (CORREÇÃO: usa sistema global)
+ */
+async function sendChatMessage(text, isWidget = false) {
+  console.log('🚀 sendChatMessage chamada', { text, isWidget });
+  if (!text.trim()) {
+    console.warn('⚠️ Texto vazio, ignorando');
+    return;
+  }
+  
+  const message = {
+    text: text.trim(),
+    sender: 'user',
+    createdAt: new Date().toISOString()
+  };
+  
+  console.log('💬 Adicionando mensagem do usuário', message);
+  
+  // Adicionar mensagem do usuário
+  chatMessages.push(message);
+  window.chatMessages = chatMessages; // Sincronizar
+  renderChatMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
+  
+  // Limpar input
+  const inputId = isWidget ? 'chatWidgetInput' : 'chatInput';
+  const inputEl = document.getElementById(inputId);
+  if (inputEl) {
+    inputEl.value = '';
+  }
+  
+  try {
+    console.log('📡 Enviando para backend...');
+    // CORREÇÃO: Usar sistema global para POST
+    const data = await window.api?.fetchJSON('/api/chat/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text.trim() })
+    }) || { response: 'Obrigada pela sua mensagem! Como posso ajudar?' };
+    
+    console.log('✅ Resposta recebida do backend', data);
+    
+    // Adicionar resposta da Cora
+    const coraMessage = {
+      text: data.response || 'Obrigada pela sua mensagem! Como posso ajudar?',
+      sender: 'cora',
+      createdAt: new Date().toISOString()
+    };
+    
+    console.log('🤖 Adicionando resposta da Cora', coraMessage);
+    chatMessages.push(coraMessage);
+    window.chatMessages = chatMessages; // Sincronizar
+    renderChatMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
+    
+    // Salvar resposta também (CORREÇÃO: usar sistema global)
+    try {
+      await window.api?.fetchJSON('/api/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: coraMessage.text, sender: 'cora' })
+      });
+    } catch (e) {
+      console.warn('⚠️ Erro ao salvar resposta da Cora:', e);
+    }
+  } catch (error) {
+    console.error('❌ Erro ao enviar mensagem:', error);
+    const errorMsg = {
+      text: 'Desculpe, ocorreu um erro. Tente novamente.',
+      sender: 'cora',
+      createdAt: new Date().toISOString()
+    };
+    chatMessages.push(errorMsg);
+    window.chatMessages = chatMessages; // Sincronizar
+    renderChatMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
+  }
+}
+
+/**
+ * Carregar página do chat
+ */
+async function loadCoraChat() {
+  await loadChatMessages();
+  chatMessages = window.chatMessages; // Sincronizar
+  renderChatMessages('chatMessages', chatMessages);
+}
+
+/**
+ * Inicializar widget flutuante do chat
+ */
+function initChatWidget() {
+  const toggle = document.getElementById('chatWidgetToggle');
+  const chatWindow = document.getElementById('chatWidgetWindow'); // CORREÇÃO: renomeado para evitar conflito com window global
+  const close = document.getElementById('chatWidgetClose');
+  const form = document.getElementById('chatWidgetForm');
+  const input = document.getElementById('chatWidgetInput');
+  const submitBtn = document.getElementById('chatWidgetSubmitBtn');
+  
+  if (!form || !input) {
+    console.warn('Elementos do widget de chat não encontrados');
+    return;
+  }
+  
+  console.log('✅ Widget de chat inicializado', { form: !!form, input: !!input, submitBtn: !!submitBtn });
+  
+  if (toggle) {
+    toggle.addEventListener('click', async () => {
+      if (chatWindow && chatWindow.classList.contains('hidden')) {
+        await loadChatMessages();
+        chatMessages = window.chatMessages; // Sincronizar
+        renderChatMessages('chatWidgetMessages', chatMessages);
+      }
+      if (chatWindow) chatWindow.classList.toggle('hidden');
+    });
+  }
+  
+  if (close) {
+    close.addEventListener('click', () => {
+      if (chatWindow) chatWindow.classList.add('hidden');
+    });
+  }
+  
+  const sendWidgetMessage = (e) => {
+    console.log('📤 Tentando enviar mensagem do widget', input.value);
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const text = input.value.trim();
+    if (text) {
+      sendChatMessage(text, true);
+      input.value = '';
+    }
+    return false;
+  };
+  
+  // Adicionar listeners
+  form.onsubmit = sendWidgetMessage;
+  
+  if (submitBtn) {
+    submitBtn.onclick = sendWidgetMessage;
+  }
+  
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      console.log('⌨️ Enter pressionado no widget');
+      e.preventDefault();
+      e.stopPropagation();
+      sendWidgetMessage(e);
+    }
+  };
+  
+  // Carregar mensagens iniciais
+  loadChatMessages().then(() => {
+    chatMessages = window.chatMessages; // Sincronizar
+  });
+}
+
+/**
+ * Inicializar formulário da página do chat
+ */
+function initChatPage() {
+  const form = document.getElementById('chatForm');
+  const input = document.getElementById('chatInput');
+  const submitBtn = document.getElementById('chatSubmitBtn');
+  
+  if (!form || !input) {
+    console.warn('Elementos da página de chat não encontrados');
+    return;
+  }
+  
+  console.log('✅ Página de chat inicializada', { form: !!form, input: !!input, submitBtn: !!submitBtn });
+  
+  const sendPageMessage = (e) => {
+    console.log('📤 Tentando enviar mensagem da página', input.value);
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const text = input.value.trim();
+    console.log('📝 Texto capturado:', text);
+    if (text) {
+      console.log('✅ Chamando sendChatMessage...');
+      sendChatMessage(text, false);
+    } else {
+      // FASE 2.1: Usar Logger
+      if (window.Logger) {
+        window.Logger.warn('Texto vazio, não enviando');
+      } else {
+        console.warn('⚠️ Texto vazio, não enviando');
+      }
+    }
+    return false;
+  };
+  
+  // Adicionar listeners
+  console.log('🔗 Anexando listeners ao formulário da página');
+  form.onsubmit = sendPageMessage;
+  
+  if (submitBtn) {
+    submitBtn.onclick = (e) => {
+      console.log('🖱️ Botão Enviar clicado');
+      sendPageMessage(e);
+    };
+  }
+  
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      console.log('⌨️ Enter pressionado na página');
+      e.preventDefault();
+      e.stopPropagation();
+      sendPageMessage(e);
+    }
+  };
 }
 
 // Exportar funções globalmente para compatibilidade
 window.reloadAllData = reloadAllData;
 window.loadKpisWithData = loadKpisWithData;
 window.loadKpis = loadKpis;
+// Chat functions globais
+window.loadCoraChat = loadCoraChat;
+window.loadChatMessages = loadChatMessages;
+window.sendMessage = sendChatMessage; // Alias para compatibilidade
+window.renderMessages = renderChatMessages; // Alias para compatibilidade
+window.formatChatTime = formatChatTime;
+window.initChatWidget = initChatWidget;
+window.initChatPage = initChatPage;
 

@@ -138,6 +138,30 @@
         scrollbar-color: #000000 transparent;
       }
     </style>
+    <!-- Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+              // FASE 2.1: Usar Logger
+              if (window.Logger) {
+                window.Logger.success('Service Worker registrado:', reg.scope);
+              } else {
+                console.log('✅ Service Worker registrado:', reg.scope);
+              }
+            })
+            .catch(err => {
+              // FASE 2.1: Usar Logger
+              if (window.Logger) {
+                window.Logger.warn('Service Worker não registrado:', err);
+              } else {
+                console.warn('⚠️ Service Worker não registrado:', err);
+              }
+            });
+        });
+      }
+    </script>
   </head>
   <body class="text-slate-100">
     <div class="min-h-screen grid grid-cols-12 gap-6 p-6">
@@ -1136,6 +1160,10 @@
               <canvas id="chartTemaMes"></canvas>
             </div>
             <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-violet-400">Heatmap Mês × Tema</h3>
+              <div id="heatmapTema" class="overflow-auto rounded-xl border border-white/10 bg-slate-900/20"></div>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold text-violet-400">Lista Completa de Temas</h3>
                 <div id="filtrosTemaInfo" class="text-xs text-slate-400"></div>
@@ -1171,6 +1199,10 @@
             <div class="col-span-12 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-4 text-emerald-400">Assuntos por Mês</h3>
               <canvas id="chartAssuntoMes"></canvas>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-4 text-emerald-400">Heatmap Mês × Assunto</h3>
+              <div id="heatmapAssunto" class="overflow-auto rounded-xl border border-white/10 bg-slate-900/20"></div>
             </div>
           </div>
         </section>
@@ -1571,19 +1603,58 @@
     <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
     
     <!-- Módulos JavaScript modulares -->
+    <!-- Scripts principais -->
+    <!-- FASE 2.1: Sistema de logging centralizado (deve carregar primeiro) -->
+    <script src="/scripts/utils/logger.js"></script>
+    <!-- FASE 2.2: Gerenciador de timers (deve carregar cedo) -->
+    <script src="/scripts/utils/timerManager.js"></script>
+    <script src="/scripts/cache.js"></script>
     <script src="/scripts/config.js"></script>
     <script src="/scripts/dateUtils.js"></script>
+    <!-- CORREÇÃO FASE 1.1: dataLoader deve carregar ANTES de api.js para evitar erros de dependência -->
+    <script src="/scripts/dataLoader.js"></script>
     <script src="/scripts/api.js"></script>
     <script src="/scripts/utils.js"></script>
     <script src="/scripts/filters.js"></script>
     <script src="/scripts/charts.js"></script>
+    <!-- FASE 1.4: Módulos extraídos de data.js (ordem de dependência) -->
+    <script src="/scripts/modules/data-utils.js"></script>
+    <script src="/scripts/modules/data-kpis.js"></script>
+    <script src="/scripts/modules/data-overview.js"></script>
+    <!-- FASE 2.4: Módulos de gráficos avançados podem ser lazy loaded -->
+    <script src="/scripts/modules/data-charts.js"></script>
+    <script src="/scripts/modules/data-tables.js"></script>
+    <!-- FASE 2.4: Módulos de páginas específicas podem ser lazy loaded -->
+    <script src="/scripts/modules/data-pages.js"></script>
+    <!-- data.js principal (ainda contém funções não migradas) -->
     <script src="/scripts/data.js"></script>
     <script src="/scripts/main.js"></script>
-    <!-- Script de testes (carregar apenas se ?test=true na URL) -->
-    <script src="/scripts/test.js"></script>
-    <script src="/scripts/test-pages.js"></script>
+    <!-- FASE 2.3: renderKpisImplementation extraído para arquivo separado -->
+    <script src="/scripts/renderKpis.js"></script>
+    <!-- FASE 2.4: Sistema de Lazy Loading (carregar após scripts principais) -->
+    <script src="/scripts/lazyLoader.js"></script>
+    <!-- Script inline com renderKpisImplementation - deve ser executado após data.js -->
     
     <script>
+      // CORREÇÃO: Definir renderKpisImplementation IMEDIATAMENTE para evitar race condition
+      // Placeholder que será substituído pela implementação completa mais abaixo
+      window.renderKpisImplementation = async function(sum, dailyData, byMonth) {
+        // Placeholder temporário - será substituído pela implementação completa abaixo
+        const kpiTotalEl = document.getElementById('kpiTotal');
+        const kpi7El = document.getElementById('kpi7');
+        const kpi30El = document.getElementById('kpi30');
+        
+        if (kpiTotalEl && sum) {
+          kpiTotalEl.textContent = (sum.total ?? 0).toLocaleString('pt-BR');
+        }
+        if (kpi7El && sum) {
+          kpi7El.textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
+        }
+        if (kpi30El && sum) {
+          kpi30El.textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
+        }
+      };
+      
       // Registrar plugin de datalabels
       if (typeof ChartDataLabels !== 'undefined') {
         Chart.register(ChartDataLabels);
@@ -1709,22 +1780,10 @@
       
       // Função movida para scripts/utils.js
       // Alias para compatibilidade
+      // DESABILITADO: Notificações de clique removidas
       function showClickFeedback(element, label, value) {
-        if (window.utils?.showClickFeedback) {
-          return window.utils.showClickFeedback(element, label, value);
-        }
-        // Fallback
-        const feedback = document.createElement('div');
-        feedback.className = 'fixed top-4 right-4 glass rounded-lg p-4 z-50';
-        feedback.innerHTML = `
-          <div class="text-cyan-300 font-bold text-lg">${label}</div>
-          <div class="text-slate-300 text-sm">Valor: ${value.toLocaleString('pt-BR')}</div>
-        `;
-        document.body.appendChild(feedback);
-        setTimeout(() => {
-          // Animação removida para melhor performance
-          setTimeout(() => feedback.remove(), 100);
-        }, 2000);
+        // DESABILITADO: Não mostrar notificações
+        return;
       }
       
       // Função movida para scripts/utils.js
@@ -1741,21 +1800,142 @@
       }
 
       // Funções de API movidas para scripts/api.js
-      // Aliases otimizados - delegam diretamente para window.api
+      // CORREÇÃO: Usar dataLoader ou api.fetchData em vez de api.fetchJSON (que não existe)
       async function fetchJSON(url, opts) {
-        return window.api?.fetchJSON(url, opts) || (async () => {
-          const res = await fetch(url, opts);
-          if (!res.ok) throw new Error('Request failed');
-          return res.json();
-        })();
+        // Tentar usar dataLoader primeiro (sistema global otimizado)
+        if (window.dataLoader?.load) {
+          return await window.dataLoader.load(url, { fallback: null, ...opts });
+        }
+        // Fallback para api.fetchData
+        if (window.api?.fetchData) {
+          return await window.api.fetchData(url, opts);
+        }
+        // Fallback final: fetch direto
+        const res = await fetch(url, opts);
+        if (!res.ok) throw new Error('Request failed');
+        return res.json();
       }
       
       async function fetchJSONWithFilters(url, opts = {}) {
-        return window.api?.fetchJSONWithFilters(url, opts) || window.api?.fetchJSONWithFilter(url, opts) || fetchJSON(url, opts);
+        // CORREÇÃO: Usar dataLoader ou api.fetchWithFilters
+        if (window.dataLoader?.load) {
+          return await window.dataLoader.load(url, { fallback: null, ...opts });
+        }
+        if (window.api?.fetchWithFilters) {
+          return await window.api.fetchWithFilters(url, opts);
+        }
+        return await fetchJSON(url, opts);
       }
       
       async function fetchJSONWithFilter(url, opts = {}) {
-        return window.api?.fetchJSONWithFilter(url, opts) || fetchJSONWithFilters(url, opts);
+        // CORREÇÃO: Usar dataLoader ou api.fetchWithFilters
+        if (window.dataLoader?.load) {
+          return await window.dataLoader.load(url, { fallback: null, ...opts });
+        }
+        if (window.api?.fetchWithFilters) {
+          return await window.api.fetchWithFilters(url, opts);
+        }
+        return await fetchJSON(url, opts);
+      }
+
+      // ========== HELPER GLOBAL PARA FUNÇÕES LOAD* ==========
+      /**
+       * Helper centralizado para aguardar módulos estarem disponíveis
+       * VERSÃO OTIMIZADA: Cacheia funções encontradas e limita tentativas
+       */
+      // CORREÇÃO: Verificar se functionCache já existe para evitar redeclaração
+      // Usar window.functionCache diretamente para evitar erro de redeclaração
+      if (typeof window.functionCache === 'undefined') {
+        window.functionCache = new Map(); // Cache de funções já encontradas
+      }
+      
+      async function waitForModuleFunction(functionName, maxAttempts = 10, delay = 100) {
+        // Verificar cache primeiro (usar window.functionCache diretamente)
+        if (window.functionCache.has(functionName)) {
+          return window.functionCache.get(functionName);
+        }
+        
+        // Tentar usar window.data[functionName] primeiro
+        if (window.data && typeof window.data[functionName] === 'function') {
+          window.functionCache.set(functionName, window.data[functionName]);
+          return window.data[functionName];
+        }
+        
+        // Tentar função global
+        if (typeof window[functionName] === 'function') {
+          window.functionCache.set(functionName, window[functionName]);
+          return window[functionName];
+        }
+        
+        // Se não encontrou, aguardar um pouco (máximo 1 segundo para não travar)
+        return new Promise((resolve) => {
+          let attempts = 0;
+          
+          const checkAndReturn = () => {
+            attempts++;
+            
+            // Tentar window.data primeiro
+            if (window.data && typeof window.data[functionName] === 'function') {
+              window.functionCache.set(functionName, window.data[functionName]);
+              resolve(window.data[functionName]);
+              return;
+            }
+            
+            // Tentar função global
+            if (typeof window[functionName] === 'function') {
+              window.functionCache.set(functionName, window[functionName]);
+              resolve(window[functionName]);
+              return;
+            }
+            
+            // Timeout - função não encontrada (reduzido para não travar)
+            if (attempts >= maxAttempts) {
+              // Cache null para não tentar novamente
+              window.functionCache.set(functionName, null);
+              resolve(null);
+              return;
+            }
+            
+            // Tentar novamente após delay
+            setTimeout(checkAndReturn, delay);
+          };
+          
+          checkAndReturn();
+        });
+      }
+      
+      /**
+       * Wrapper para funções load* que aguarda módulo estar disponível
+       */
+      function createLoadFunctionWrapper(functionName) {
+        return async function(...args) {
+          const func = await (window.waitForModuleFunction || waitForModuleFunction)(functionName);
+          if (func) {
+            try {
+              const result = func(...args);
+              // Se retornou Promise, aguardar
+              return result && typeof result.then === 'function' ? await result : result;
+            } catch (error) {
+              if (window.Logger) {
+                window.Logger.error(`Erro ao executar ${functionName}:`, error);
+              } else {
+                console.error(`❌ Erro ao executar ${functionName}:`, error);
+              }
+              throw error;
+            }
+          }
+          // Se função não encontrada, retornar Promise resolvida (não quebrar o fluxo)
+          return Promise.resolve();
+        };
+      }
+      
+      // Exportar waitForModuleFunction globalmente para acesso em outros escopos
+      // CORREÇÃO: Exportar IMEDIATAMENTE para evitar erros de "not defined"
+      window.waitForModuleFunction = waitForModuleFunction;
+      
+      // Garantir que está disponível mesmo se script for executado múltiplas vezes
+      if (typeof window.waitForModuleFunction === 'undefined') {
+        window.waitForModuleFunction = waitForModuleFunction;
       }
 
       // ========== SISTEMA DE FILTROS GLOBAL ==========
@@ -1772,7 +1952,12 @@
         if (window.filters?.applyGlobalFilter) {
           return window.filters.applyGlobalFilter(field, value, chartId, element);
         }
-        console.warn('Módulo de filtros não carregado');
+        // FASE 2.1: Usar Logger
+        if (window.Logger) {
+          window.Logger.warn('Módulo de filtros não carregado');
+        } else {
+          console.warn('Módulo de filtros não carregado');
+        }
       }
       
       // Funções auxiliares de filtros movidas para scripts/filters.js
@@ -1854,7 +2039,12 @@
         try {
           localStorage.removeItem('dashboardFilters');
         } catch (e) {
-          console.warn('Erro ao limpar filtros do localStorage:', e);
+          // FASE 2.1: Usar Logger
+          if (window.Logger) {
+            window.Logger.warn('Erro ao limpar filtros do localStorage:', e);
+          } else {
+            console.warn('Erro ao limpar filtros do localStorage:', e);
+          }
         }
         
         updateFilterIndicator();
@@ -1874,11 +2064,21 @@
           </div>
         `;
         document.body.appendChild(feedback);
-        setTimeout(() => {
-          feedback.style.opacity = '0';
-          feedback.style.transition = 'opacity 0.3s';
-          setTimeout(() => feedback.remove(), 300);
-        }, 2000);
+        // FASE 2.2: Usar timerManager
+        const feedbackTimerId = window.timerManager 
+          ? window.timerManager.setTimeout(() => {
+              feedback.style.opacity = '0';
+              feedback.style.transition = 'opacity 0.3s';
+              // FASE 2.2: Usar timerManager para remoção
+              const removeTimerId = window.timerManager 
+                ? window.timerManager.setTimeout(() => feedback.remove(), 300, 'feedback-remove')
+                : setTimeout(() => feedback.remove(), 300);
+            }, 2000, 'feedback-fade')
+          : setTimeout(() => {
+              feedback.style.opacity = '0';
+              feedback.style.transition = 'opacity 0.3s';
+              setTimeout(() => feedback.remove(), 300);
+            }, 2000);
       }
 
       // Função movida para scripts/filters.js
@@ -1931,7 +2131,12 @@
           return await window.data.reloadAllData();
         }
         // Fallback se módulo não carregou
-        console.warn('Módulo data não carregado');
+        // FASE 2.1: Usar Logger
+        if (window.Logger) {
+          window.Logger.warn('Módulo data não carregado');
+        } else {
+          console.warn('Módulo data não carregado');
+        }
       }
 
       // Funções removidas - já implementadas em scripts/api.js
@@ -1985,7 +2190,12 @@
             </div>
           `).join('');
         } catch (error) {
-          console.error('❌ Erro ao carregar insights com IA:', error);
+          // FASE 2.1: Usar Logger
+          if (window.Logger) {
+            window.Logger.error('Erro ao carregar insights com IA:', error);
+          } else {
+            console.error('❌ Erro ao carregar insights com IA:', error);
+          }
           const insightsAIBox = document.getElementById('insightsAIBox');
           if (insightsAIBox) {
             insightsAIBox.innerHTML = '<div class="text-center text-red-400 py-4">Erro ao carregar insights. Tente novamente.</div>';
@@ -2080,7 +2290,12 @@
           `;
           }).join('');
         } catch (error) {
-          console.error('❌ Erro ao carregar Status Overview:', error);
+          // FASE 2.1: Usar Logger
+          if (window.Logger) {
+            window.Logger.error('Erro ao carregar Status Overview:', error);
+          } else {
+            console.error('❌ Erro ao carregar Status Overview:', error);
+          }
           const statusCards = document.getElementById('statusOverviewCards');
           if (statusCards) {
             statusCards.innerHTML = '<div class="text-center text-red-400 py-4">Erro ao carregar dados</div>';
@@ -2177,321 +2392,58 @@
         await renderKpis(sum, dailyData, byMonth);
       }
 
-      // Implementação real de renderKpis (extraída para evitar loop)
-      async function renderKpisImplementation(sum, dailyData, byMonth) {
-        // Atualizar KPIs e adicionar handlers de clique
+      // FASE 2.3: renderKpisImplementationFull foi extraído para /scripts/renderKpis.js
+      // A função está disponível via window.renderKpisImplementationFull (definida em renderKpis.js)
+      // Esta função local é apenas um fallback se renderKpis.js não carregar
+      async function renderKpisImplementationFullLocal(sum, dailyData, byMonth) {
+        // CORREÇÃO CRÍTICA: NUNCA chamar window.renderKpisImplementationFull aqui
+        // porque pode causar loop infinito se for esta mesma função
+        // Apenas renderizar valores básicos como fallback
         const kpiTotalEl = document.getElementById('kpiTotal');
         const kpi7El = document.getElementById('kpi7');
         const kpi30El = document.getElementById('kpi30');
-        
-        if (kpiTotalEl) {
-          kpiTotalEl.textContent = (sum.total ?? 0).toLocaleString('pt-BR');
-          // KPI Total não filtra, mas pode ser clicável para limpar filtros
-          const kpiTotalCard = kpiTotalEl.closest('.glass');
-          if (kpiTotalCard && window.globalFilters.filters.length > 0) {
-            kpiTotalCard.classList.add('cursor-pointer', 'hover:scale-105', 'transition-transform');
-            kpiTotalCard.onclick = () => {
-              if (window.globalFilters.filters.length > 0) {
-                clearGlobalFilters();
-              }
-            };
-            kpiTotalCard.title = 'Clique para limpar filtros';
-          }
-        }
-        
-        if (kpi7El) {
-          kpi7El.textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
-        }
-        
-        if (kpi30El) {
-          kpi30El.textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
-        }
-        
-        // Calcular deltas e sparklines para últimos 7 e 30 dias
-        if (dailyData && dailyData.length > 0) {
-          // Últimos 7 dias: comparar últimos 7 dias com os 7 dias anteriores
-          const last7Days = dailyData.slice(-7);
-          const prev7Days = dailyData.slice(-14, -7);
-          const last7Sum = last7Days.reduce((s, d) => s + (d.count || 0), 0);
-          const prev7Sum = prev7Days.reduce((s, d) => s + (d.count || 0), 0);
-          const delta7 = prev7Sum > 0 ? (((last7Sum - prev7Sum) / prev7Sum) * 100).toFixed(1) : 0;
-          const delta7El = document.getElementById('kpi7Delta');
-          if (delta7El) delta7El.textContent = `${delta7 >= 0 ? '+' : ''}${delta7}% vs período anterior`;
-          
-          // Últimos 30 dias: comparar últimos 30 dias com os 30 dias anteriores
-          const last30Days = dailyData.slice(-30);
-          const prev30Days = dailyData.length >= 60 ? dailyData.slice(-60, -30) : [];
-          const last30Sum = last30Days.reduce((s, d) => s + (d.count || 0), 0);
-          const prev30Sum = prev30Days.length > 0 ? prev30Days.reduce((s, d) => s + (d.count || 0), 0) : 0;
-          const delta30 = prev30Sum > 0 ? (((last30Sum - prev30Sum) / prev30Sum) * 100).toFixed(1) : 0;
-          const delta30El = document.getElementById('kpi30Delta');
-          if (delta30El) delta30El.textContent = `${delta30 >= 0 ? '+' : ''}${delta30}% vs período anterior`;
-          
-          // Desenhar sparklines
-          const drawSpark = (canvasId, data, color) => {
-            const c = document.getElementById(canvasId);
-            if (!c) return;
-            const ctx = c.getContext('2d');
-            ctx.clearRect(0, 0, c.width, c.height);
-            const w = c.width || c.offsetWidth; 
-            const h = c.height || 32;
-            const max = Math.max(...data.map(d => d.count || 0), 1);
-            const step = w / (data.length - 1 || 1);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            data.forEach((d, i) => {
-              const x = i * step;
-              const y = h - ((d.count || 0) / max) * h;
-              if (i === 0) ctx.moveTo(x, y);
-              else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-          };
-          
-          drawSpark('spark7', last7Days, '#a78bfa');
-          drawSpark('spark30', last30Days, '#34d399');
-        }
-        if (sum.statusCounts && sum.statusCounts.length) {
-          // Cores para o gráfico (expandido para mais status)
-          const colors = [
-            '#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#f472b6',
-            '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1',
-            '#14b8a6', '#eab308', '#ef4444', '#84cc16', '#3b82f6', '#a855f7'
-          ];
-          
-          // Inicializar visibilidade dos status (todos visíveis por padrão)
-          if (!window.statusVisibility) {
-          window.statusVisibility = {};
-            sum.statusCounts.forEach(status => {
-              window.statusVisibility[status.status] = true;
-          });
-          }
-          
-          // Função para atualizar o gráfico baseado na visibilidade
-          const updateStatusChart = () => {
-            const visibleStatuses = sum.statusCounts.filter(s => window.statusVisibility[s.status]);
-            const visibleLabels = visibleStatuses.map(s => s.status);
-            const visibleData = visibleStatuses.map(s => s.count);
-            const visibleColors = visibleStatuses.map((s, idx) => {
-              const originalIdx = sum.statusCounts.findIndex(orig => orig.status === s.status);
-              return colors[originalIdx % colors.length];
-            });
-            
-            if (window.chartStatus instanceof Chart) {
-              window.chartStatus.data.labels = visibleLabels;
-              window.chartStatus.data.datasets[0].data = visibleData;
-              window.chartStatus.data.datasets[0].backgroundColor = visibleColors;
-              window.chartStatus.update('active');
-            }
-          };
-          
-          // Monta gráfico de status inicialmente com todos os status
-          const chartStatusEl = document.getElementById('chartStatus');
-          if (!chartStatusEl) return;
-          const ctx = chartStatusEl.getContext('2d');
-          if (window.chartStatus instanceof Chart) window.chartStatus.destroy();
-          window.chartStatus = new Chart(ctx, { 
-            type: 'doughnut', 
-            data: {
-              labels: sum.statusCounts.map(s=>s.status),
-              datasets: [{ 
-                data: sum.statusCounts.map(s=>s.count), 
-                backgroundColor: sum.statusCounts.map((s, idx) => colors[idx % colors.length])
-              }]
-            }, 
-            options: { 
-              responsive: true,
-              maintainAspectRatio: true,
-              plugins: {
-                legend: {
-                  display: false // Desabilitar legenda padrão do Chart.js
-                },
-                tooltip: createEnhancedTooltip(),
-                datalabels: createDataLabelsConfig(true, 'doughnut')
-              },
-              onClick: (evt, elements) => {
-                if (elements.length > 0) {
-                  const idx = elements[0].index;
-                  const label = window.chartStatus.data.labels[idx];
-                  const value = window.chartStatus.data.datasets[0].data[idx];
-                  // Aplicar filtro inteligente ao clicar (com toggle)
-                  const virtualElement = { 
-                    classList: { add: () => {}, remove: () => {} },
-                    setAttribute: () => {},
-                    removeAttribute: () => {}
-                  };
-                  applyGlobalFilter('Status', label, 'chartStatus', virtualElement);
-                }
-              }
-            } 
-          });
-          addChartClickHandler(window.chartStatus, (label, value) => showClickFeedback(null, label, value), 'chartStatus');
-          
-          // Criar legenda customizada organizada com checkboxes
-          const legendContainer = document.getElementById('statusLegend');
-          if (legendContainer) {
-            const total = sum.statusCounts.reduce((acc, s) => acc + s.count, 0);
-            
-            const renderLegend = () => {
-              legendContainer.innerHTML = sum.statusCounts.map((status, idx) => {
-                const percent = ((status.count / total) * 100).toFixed(1);
-                const color = colors[idx % colors.length];
-                const isVisible = window.statusVisibility[status.status];
-                
-                // Determinar se é encerrada ou ativa (baseado em palavras-chave comuns)
-                const statusLower = status.status.toLowerCase();
-                const isEncerrada = statusLower.includes('concluída') || statusLower.includes('encerrada') || 
-                                   statusLower.includes('finalizada') || statusLower.includes('resolvida');
-                const isAtiva = statusLower.includes('em atendimento') || statusLower.includes('ativa') || 
-                               statusLower.includes('pendente') || statusLower.includes('em andamento');
-                
-                return `
-                  <div 
-                    class="status-legend-item flex items-center gap-2 p-2 rounded hover:bg-white/5 transition-all cursor-pointer border ${isVisible ? 'border-transparent opacity-100' : 'border-white/20 opacity-40'}"
-                    data-status="${status.status.replace(/"/g, '&quot;')}"
-                  >
-                    <div 
-                      class="w-4 h-4 rounded flex-shrink-0 border-2 transition-all relative ${isVisible ? 'border-white/30' : 'border-white/50'}" 
-                      style="background-color: ${isVisible ? color : 'transparent'}; ${!isVisible ? `border-color: ${color}; border-style: dashed;` : ''}"
-                    >
-                      ${isVisible ? '' : '<div class="w-full h-0.5 bg-white/50 absolute top-1/2 left-0 transform rotate-45"></div>'}
-                    </div>
-                    <div class="flex-1 min-w-0 ${!isVisible ? 'line-through' : ''}">
-                      <div class="text-slate-300 truncate" title="${status.status}">${status.status}</div>
-                      <div class="text-slate-500 text-[10px]">${status.count.toLocaleString('pt-BR')} (${percent}%)</div>
-                    </div>
-                  </div>
-                `;
-              }).join('');
-              
-              // Adicionar event listeners após renderizar
-              legendContainer.querySelectorAll('.status-legend-item').forEach((item) => {
-                item.addEventListener('click', () => {
-                  const statusName = item.getAttribute('data-status');
-                  window.statusVisibility[statusName] = !window.statusVisibility[statusName];
-                  updateStatusChart();
-                  renderLegend();
-                });
-              });
-            };
-            
-            renderLegend();
-            
-            // Event listeners para os botões
-            const btnMarcarTodos = document.getElementById('btnMarcarTodosStatus');
-            const btnDesmarcarTodos = document.getElementById('btnDesmarcarTodosStatus');
-            
-            if (btnMarcarTodos) {
-              btnMarcarTodos.addEventListener('click', () => {
-                sum.statusCounts.forEach(status => {
-                  window.statusVisibility[status.status] = true;
-                });
-                updateStatusChart();
-                renderLegend();
-              });
-            }
-            
-            if (btnDesmarcarTodos) {
-              btnDesmarcarTodos.addEventListener('click', () => {
-                sum.statusCounts.forEach(status => {
-                  window.statusVisibility[status.status] = false;
-                });
-                updateStatusChart();
-                renderLegend();
-              });
-            }
-          }
-          
-          // Remover skeleton após carregar
-          document.getElementById('chartStatus').classList.remove('skeleton');
-        }
-        // Série temporal mensal 12M (usar byMonth já obtido)
-        const monthCanvas = document.getElementById('chartMonth');
-        if (monthCanvas) {
-        const ctxM = monthCanvas.getContext('2d');
-        if (window.chartMonth instanceof Chart) window.chartMonth.destroy();
-        
-        // Formatar labels do mês corretamente
-        const monthLabels = byMonth.map(x => {
-          const ym = x.ym || x.month || '';
-          if (!ym || typeof ym !== 'string') return '';
-          const parts = ym.split('-');
-          if (parts.length < 2) return ym;
-          const [year, month] = parts;
-          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-          return month ? (monthNames[parseInt(month) - 1] + '/' + year.slice(2)) : ym;
-        });
-        
-        window.chartMonth = new Chart(ctxM, { 
-          type:'bar', 
-          data:{ 
-            labels: monthLabels.filter(l => l), 
-            datasets:[{ 
-              data: byMonth.filter(x => x.ym).map(x=>x.count), 
-              backgroundColor: 'rgba(167,139,250,0.6)',
-              borderColor: 'rgba(167,139,250,1)',
-              borderWidth: 1
-            }] 
-          }, 
-          options:{ 
-            responsive:true,
-            plugins: {
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', false)
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-          } 
-        });
-        addChartClickHandler(window.chartMonth, (label, value) => showClickFeedback(null, label, value), 'chartMonth');
-        // Remover skeleton após carregar
-        monthCanvas.classList.remove('skeleton');
+        if (kpiTotalEl && sum) kpiTotalEl.textContent = (sum.total ?? 0).toLocaleString('pt-BR');
+        if (kpi7El && sum) kpi7El.textContent = (sum.last7 ?? 0).toLocaleString('pt-BR');
+        if (kpi30El && sum) kpi30El.textContent = (sum.last30 ?? 0).toLocaleString('pt-BR');
       }
       
-      // SLA chart
-      const sla = await fetchJSON('/api/sla/summary');
-      const chartSlaEl = document.getElementById('chartSla');
-      if (chartSlaEl) {
-        const ctxS = chartSlaEl.getContext('2d');
-        if (window.chartSla instanceof Chart) window.chartSla.destroy();
-        window.chartSla = new Chart(ctxS, {
-          type: 'bar',
-          data: {
-            labels: ['Concluídos', 'Verde Claro (0-30d)', 'Amarelo (31-60d)', 'Vermelho (61+d)'],
-            datasets: [{
-              data: [sla.concluidos||0, sla.verdeClaro||0, sla.amarelo||0, sla.vermelho||0],
-              backgroundColor: ['#059669','#86efac','#fbbf24','#fb7185'],
-              borderColor: ['#059669','#86efac','#fbbf24','#fb7185'],
-              borderWidth: 1
-            }]
-          },
-          options: { 
-            responsive: true, 
-            plugins: { 
-              legend: { display: false },
-              tooltip: createEnhancedTooltip(),
-              datalabels: createDataLabelsConfig(false, 'bar', false)
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      // CORREÇÃO CRÍTICA: Prevenir loop infinito
+      // renderKpis.js já define window.renderKpisImplementationFull quando carrega (linha 450)
+      // Esta função local NUNCA deve chamar window.renderKpisImplementationFull
+      // Aguardar um pouco para garantir que renderKpis.js carregou primeiro
+      (function() {
+        // Verificar se renderKpis.js já carregou
+        if (typeof window.renderKpisImplementationFull === 'undefined') {
+          // Se renderKpis.js não carregou após um tempo, usar função local como fallback
+          const checkFallback = () => {
+            if (typeof window.renderKpisImplementationFull === 'undefined') {
+              window.renderKpisImplementationFull = renderKpisImplementationFullLocal;
             }
+          };
+          
+          if (window.timerManager) {
+            window.timerManager.setTimeout(checkFallback, 100, 'renderKpis-fallback-check');
+          } else {
+            setTimeout(checkFallback, 100);
           }
-        });
-        addChartClickHandler(window.chartSla, (label, value) => showClickFeedback(null, label, value));
-        // Remover skeleton após carregar
-        chartSlaEl.classList.remove('skeleton');
-      }
-      } // Fim da função renderKpisImplementation
+        }
+      })();
+      
+      // FASE 2.3: Usar função extraída de renderKpis.js
+      // CORREÇÃO: Usar função do renderKpis.js se disponível, senão usar local
+      window.renderKpisImplementation = window.renderKpisImplementationFull || renderKpisImplementationFullLocal;
       
       // Função wrapper renderKpis (evita loop infinito)
       async function renderKpis(sum, dailyData, byMonth) {
         // Se já estamos em uma chamada do módulo, executar implementação direta
         if (window._renderKpisCalling) {
-          return await renderKpisImplementation(sum, dailyData, byMonth);
+          // Usar função extraída se disponível, senão usar local
+          if (window.renderKpisImplementationFull && 
+              typeof window.renderKpisImplementationFull === 'function' &&
+              window.renderKpisImplementationFull !== renderKpisImplementationFullLocal) {
+            return await window.renderKpisImplementationFull(sum, dailyData, byMonth);
+          }
+          return await renderKpisImplementationFullLocal(sum, dailyData, byMonth);
         }
         
         // Se módulo data.js está disponível, chamar ele (que vai chamar a implementação)
@@ -2499,12 +2451,14 @@
           return await window.data.renderKpis(sum, dailyData, byMonth);
         }
         
-        // Fallback: executar implementação direta
-        return await renderKpisImplementation(sum, dailyData, byMonth);
+        // Fallback: executar implementação direta (extraída se disponível)
+        if (window.renderKpisImplementationFull && 
+            typeof window.renderKpisImplementationFull === 'function' &&
+            window.renderKpisImplementationFull !== renderKpisImplementationFullLocal) {
+          return await window.renderKpisImplementationFull(sum, dailyData, byMonth);
+        }
+        return await renderKpisImplementationFullLocal(sum, dailyData, byMonth);
       }
-      
-      // Exportar implementação para uso direto
-      window.renderKpisImplementation = renderKpisImplementation;
 
       // Variáveis movidas para scripts/data.js - usar as globais do módulo
 
@@ -2725,10 +2679,11 @@
           
           // Heatmap
           const heatmapDim = document.getElementById('heatmapDim')?.value || 'Categoria';
-          const heatmapData = await fetchJSON(`/api/aggregate/heatmap?dim=${encodeURIComponent(heatmapDim)}`);
+          // OTIMIZADO: Usar sistema global dataLoader
+          const heatmapData = await window.dataLoader?.load(`/api/aggregate/heatmap?dim=${encodeURIComponent(heatmapDim)}`, { fallback: { labels: [], rows: [] } }) || { labels: [], rows: [] };
           const heatmapRows = [
-            [heatmapDim, ...heatmapData.labels],
-            ...heatmapData.rows.map(r => [r.key, ...r.values])
+            [heatmapDim, ...(heatmapData.labels || [])],
+            ...(heatmapData.rows || []).map(r => [r.key, ...(r.values || [])])
           ];
           const heatmapSheet = XLSX.utils.aoa_to_sheet(heatmapRows);
           XLSX.utils.book_append_sheet(wb, heatmapSheet, `Heatmap_${heatmapDim}`);
@@ -2819,22 +2774,42 @@
 
       // Função movida para scripts/data.js
       // Alias para compatibilidade
+      // CORREÇÃO: Usar helper centralizado
       async function loadCountChart(field) {
-        if (window.data?.loadCountChart) {
-          return await window.data.loadCountChart(field);
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadCountChart', 10, 100); // 1 segundo (10 * 100ms)
+        if (func) {
+          try {
+            const result = func(field);
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadCountChart:', error);
+            } else {
+              console.error('❌ Erro ao executar loadCountChart:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadCountChart não disponível');
       }
       
       // Função _loadCountChart_OLD removida - código migrado para scripts/data.js
 
       // Função movida para scripts/data.js
       // Alias para compatibilidade
+      // CORREÇÃO: Usar helper centralizado
       async function loadTimeChart(field) {
-        if (window.data?.loadTimeChart) {
-          return await window.data.loadTimeChart(field);
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadTimeChart', 10, 100); // 1 segundo (10 * 100ms)
+        if (func) {
+          try {
+            const result = func(field);
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadTimeChart:', error);
+            } else {
+              console.error('❌ Erro ao executar loadTimeChart:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadTimeChart não disponível');
       }
       
       // Função _loadTimeChart_OLD removida - código migrado para scripts/data.js
@@ -2846,7 +2821,8 @@
         heatmapDimSelect.addEventListener('change', async (e) => {
           try {
             const dim = e.target.value;
-            const hm = await fetchJSON(`/api/aggregate/heatmap?dim=${encodeURIComponent(dim)}`);
+            // OTIMIZADO: Usar sistema global dataLoader
+            const hm = await window.dataLoader?.load(`/api/aggregate/heatmap?dim=${encodeURIComponent(dim)}`, { fallback: { labels: [], rows: [] } }) || { labels: [], rows: [] };
             if (hm && hm.labels && hm.rows) {
               buildHeatmap('heatmap', hm.labels, hm.rows);
             } else {
@@ -2937,7 +2913,8 @@
           loadCountChart('Categoria').catch(e => console.error('Erro ao carregar gráfico de contagem:', e)),
           loadTimeChart('Data').catch(e => console.error('Erro ao carregar gráfico temporal:', e)),
           loadTable(50).catch(e => console.error('Erro ao carregar tabela:', e)),
-            fetchJSON('/api/aggregate/heatmap?dim=Categoria')
+            // OTIMIZADO: Usar sistema global dataLoader em vez de fetchJSON
+            (window.dataLoader?.load('/api/aggregate/heatmap?dim=Categoria', { fallback: { labels: [], rows: [] } }) || Promise.resolve({ labels: [], rows: [] }))
               .then(hm => {
                 if (hm && hm.labels && hm.rows) {
                   buildHeatmap('heatmap', hm.labels, hm.rows);
@@ -3010,288 +2987,30 @@
       })();
       
       // ========== CORA CHAT - Sistema de Chat ==========
-      let chatMessages = [];
+      // CORREÇÃO: Funções movidas para public/scripts/data.js
+      // Usar funções globais do módulo window.data
       
-      // Função para formatar data/hora
-      function formatChatTime(date) {
-        const now = new Date();
-        const msgDate = new Date(date);
-        const diffMs = now - msgDate;
-        const diffMins = Math.floor(diffMs / 60000);
-        
-        if (diffMins < 1) return 'Agora';
-        if (diffMins < 60) return `${diffMins}min atrás`;
-        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h atrás`;
-        return msgDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-      }
+      // Alias para compatibilidade (as funções já estão em window.data e window.*)
+      // NOTA: Não declarar const/let aqui para evitar conflito - usar diretamente window.*
+      // REMOVIDO: Todas as declarações const/let - usar window.data.* diretamente
+      // const sendMessage = window.data?.sendChatMessage || window.sendMessage;
+      // const renderMessages = window.data?.renderChatMessages || window.renderMessages;
+      // const formatChatTime = window.data?.formatChatTime || window.formatChatTime;
+      // const initChatWidget = window.data?.initChatWidget || window.initChatWidget;
+      // const initChatPage = window.data?.initChatPage || window.initChatPage;
       
-      // Função para renderizar mensagens
-      function renderMessages(containerId, messages) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
-        
-        container.innerHTML = messages.map(msg => {
-          const isUser = msg.sender === 'user';
-          return `
-            <div class="flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}">
-              ${!isUser ? `
-                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-                  <span class="text-white text-sm font-bold">C</span>
-                </div>
-              ` : `
-                <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
-                  <span class="text-white text-xs">Você</span>
-                </div>
-              `}
-              <div class="flex-1 ${isUser ? 'text-right' : ''}">
-                <div class="bg-slate-800/60 rounded-lg p-3 text-sm text-slate-200 inline-block ${isUser ? 'bg-cyan-500/20' : ''}">
-                  ${!isUser ? `<div class="font-semibold text-purple-300 mb-1">Cora</div>` : ''}
-                  <div>${msg.text}</div>
-                </div>
-                <div class="text-xs text-slate-500 mt-1 ${isUser ? 'text-right' : 'ml-1'}">${formatChatTime(msg.createdAt)}</div>
-              </div>
-            </div>
-          `;
-        }).join('');
-        
-        // Scroll para o final
-        container.scrollTop = container.scrollHeight;
-      }
-      
-      // Função para enviar mensagem
-      async function sendMessage(text, isWidget = false) {
-        console.log('🚀 sendMessage chamada', { text, isWidget });
-        if (!text.trim()) {
-          console.warn('⚠️ Texto vazio, ignorando');
-          return;
-        }
-        
-        const message = {
-          text: text.trim(),
-          sender: 'user',
-          createdAt: new Date().toISOString()
-        };
-        
-        console.log('💬 Adicionando mensagem do usuário', message);
-        
-        // Adicionar mensagem do usuário
-        chatMessages.push(message);
-        renderMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
-        
-        // Limpar input
-        const inputId = isWidget ? 'chatWidgetInput' : 'chatInput';
-        const inputEl = document.getElementById(inputId);
-        if (inputEl) {
-          inputEl.value = '';
-        }
-        
-        try {
-          console.log('📡 Enviando para backend...');
-          // Salvar no backend
-          const response = await fetch('/api/chat/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: text.trim() })
-          });
-          
-          if (!response.ok) {
-            console.error('❌ Erro na resposta do backend', response.status);
-            throw new Error('Erro ao enviar mensagem');
-          }
-          
-          const data = await response.json();
-          console.log('✅ Resposta recebida do backend', data);
-          
-          // Adicionar resposta da Cora
-          const coraMessage = {
-            text: data.response || 'Obrigada pela sua mensagem! Como posso ajudar?',
-            sender: 'cora',
-            createdAt: new Date().toISOString()
-          };
-          
-          console.log('🤖 Adicionando resposta da Cora', coraMessage);
-          chatMessages.push(coraMessage);
-          renderMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
-          
-          // Salvar resposta também
-          await fetch('/api/chat/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: coraMessage.text, sender: 'cora' })
-          });
-        } catch (error) {
-          console.error('❌ Erro ao enviar mensagem:', error);
-          const errorMsg = {
-            text: 'Desculpe, ocorreu um erro. Tente novamente.',
-            sender: 'cora',
-            createdAt: new Date().toISOString()
-          };
-          chatMessages.push(errorMsg);
-          renderMessages(isWidget ? 'chatWidgetMessages' : 'chatMessages', chatMessages);
-        }
-      }
-      
-      // Função para carregar mensagens do banco
-      async function loadChatMessages() {
-        try {
-          const response = await fetch('/api/chat/messages');
-          if (response.ok) {
-            const data = await response.json();
-            chatMessages = data.messages || [];
-            if (chatMessages.length === 0) {
-              // Mensagem inicial
-              chatMessages.push({
-                text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
-                sender: 'cora',
-                createdAt: new Date().toISOString()
-              });
-            }
-          } else {
-            chatMessages = [{
-              text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
-              sender: 'cora',
-              createdAt: new Date().toISOString()
-            }];
-          }
-        } catch (error) {
-          console.error('Erro ao carregar mensagens:', error);
-          chatMessages = [{
-            text: 'Olá! Sou a Cora, sua assistente virtual. Como posso ajudar você hoje?',
-            sender: 'cora',
-            createdAt: new Date().toISOString()
-          }];
-        }
-      }
-      
-      // Função para carregar página do chat
-      async function loadCoraChat() {
-        await loadChatMessages();
-        renderMessages('chatMessages', chatMessages);
-      }
-      
-      // Inicializar widget flutuante
-      function initChatWidget() {
-        const toggle = document.getElementById('chatWidgetToggle');
-        const window = document.getElementById('chatWidgetWindow');
-        const close = document.getElementById('chatWidgetClose');
-        const form = document.getElementById('chatWidgetForm');
-        const input = document.getElementById('chatWidgetInput');
-        const submitBtn = document.getElementById('chatWidgetSubmitBtn');
-        
-        if (!form || !input) {
-          console.warn('Elementos do widget de chat não encontrados');
-          return;
-        }
-        
-        console.log('✅ Widget de chat inicializado', { form: !!form, input: !!input, submitBtn: !!submitBtn });
-        
-        if (toggle) {
-          toggle.addEventListener('click', async () => {
-            if (window.classList.contains('hidden')) {
-              await loadChatMessages();
-              renderMessages('chatWidgetMessages', chatMessages);
-            }
-            window.classList.toggle('hidden');
-          });
-        }
-        
-        if (close) {
-          close.addEventListener('click', () => {
-            window.classList.add('hidden');
-          });
-        }
-        
-        const sendWidgetMessage = (e) => {
-          console.log('📤 Tentando enviar mensagem do widget', input.value);
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          const text = input.value.trim();
-          if (text) {
-            sendMessage(text, true);
-            input.value = '';
-          }
-          return false;
-        };
-        
-        // Adicionar listeners
-        form.onsubmit = sendWidgetMessage;
-        
-        if (submitBtn) {
-          submitBtn.onclick = sendWidgetMessage;
-        }
-        
-        input.onkeydown = (e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            console.log('⌨️ Enter pressionado no widget');
-            e.preventDefault();
-            e.stopPropagation();
-            sendWidgetMessage(e);
-          }
-        };
-        
-        // Carregar mensagens iniciais
-        loadChatMessages();
-      }
-      
-      // Inicializar formulário da página do chat
-      function initChatPage() {
-        const form = document.getElementById('chatForm');
-        const input = document.getElementById('chatInput');
-        const submitBtn = document.getElementById('chatSubmitBtn');
-        
-        if (!form || !input) {
-          console.warn('Elementos da página de chat não encontrados');
-          return;
-        }
-        
-        console.log('✅ Página de chat inicializada', { form: !!form, input: !!input, submitBtn: !!submitBtn });
-        
-        const sendPageMessage = (e) => {
-          console.log('📤 Tentando enviar mensagem da página', input.value);
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          const text = input.value.trim();
-          console.log('📝 Texto capturado:', text);
-          if (text) {
-            console.log('✅ Chamando sendMessage...');
-            sendMessage(text, false);
-          } else {
-            console.warn('⚠️ Texto vazio, não enviando');
-          }
-          return false;
-        };
-        
-        // Adicionar listeners
-        console.log('🔗 Anexando listeners ao formulário da página');
-        form.onsubmit = sendPageMessage;
-        
-        if (submitBtn) {
-          submitBtn.onclick = (e) => {
-            console.log('🖱️ Botão Enviar clicado');
-            sendPageMessage(e);
-          };
-        }
-        
-        input.onkeydown = (e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            console.log('⌨️ Enter pressionado na página');
-            e.preventDefault();
-            e.stopPropagation();
-            sendPageMessage(e);
-          }
-        };
-      }
+      // Usar diretamente window.data.* ou window.* sem redeclarar
       
       // Inicializar quando o DOM estiver pronto e re-inicializar quando a página do chat for carregada
       function initChat() {
-        initChatWidget();
+        if (window.data?.initChatWidget || window.initChatWidget) {
+          (window.data?.initChatWidget || window.initChatWidget)();
+        }
         // Só inicializar página se estiver visível
         if (document.getElementById('page-cora-chat') && document.getElementById('page-cora-chat').style.display !== 'none') {
-          initChatPage();
+          if (window.data?.initChatPage || window.initChatPage) {
+            (window.data?.initChatPage || window.initChatPage)();
+          }
         }
       }
       
@@ -3302,15 +3021,20 @@
       }
       
       // Re-inicializar quando a página do chat for carregada
-      const originalLoadCoraChat = loadCoraChat;
-      loadCoraChat = async function() {
-        await originalLoadCoraChat();
-        // Aguardar um pouco para garantir que o DOM foi atualizado
-        setTimeout(() => {
-          console.log('🔄 Re-inicializando página do chat após loadCoraChat');
-          initChatPage();
-        }, 200);
-      };
+      // NOTA: window.loadCoraChat já é definido em data.js
+      // Usar wrapper apenas se necessário, sem redeclarar
+      if (window.loadCoraChat && typeof window.loadCoraChat === 'function') {
+        const originalLoadCoraChat = window.loadCoraChat;
+        window.loadCoraChat = async function() {
+          await originalLoadCoraChat();
+          // Aguardar um pouco para garantir que o DOM foi atualizado
+          setTimeout(() => {
+            if (window.data?.initChatPage || window.initChatPage) {
+            (window.data?.initChatPage || window.initChatPage)();
+          }
+          }, 200);
+        };
+      }
       
     </script>
     <script>
@@ -3360,7 +3084,7 @@
             btnRefreshInsights.disabled = true;
             btnRefreshInsights.textContent = '⏳ Atualizando...';
             try {
-              // Forçar atualização limpando cache e recarregando
+              // Forçar atualização recarregando
               await loadAIInsights();
             } catch (error) {
               console.error('❌ Erro ao atualizar insights:', error);
@@ -3416,8 +3140,9 @@
           if (pageName === 'cora-chat') {
             setTimeout(() => {
               console.log('🔄 Re-inicializando página do chat após navegação');
-              if (typeof initChatPage === 'function') {
-                initChatPage();
+              const initChatPageFn = window.data?.initChatPage || window.initChatPage;
+              if (typeof initChatPageFn === 'function') {
+                initChatPageFn();
               }
             }, 300);
           }
@@ -3504,11 +3229,62 @@
       
       // Função movida para scripts/data.js
       // Alias para compatibilidade
+      // CORREÇÃO: Aguardar window.data estar disponível
       async function loadOrgaoMes() {
-        if (window.data?.loadOrgaoMes) {
+        // DEBUG: Log inicial
+        if (window.Logger) {
+          window.Logger.debug('loadOrgaoMes inline chamado - verificando window.data...');
+        }
+        
+        // Tentar imediatamente
+        if (window.data && typeof window.data.loadOrgaoMes === 'function') {
+          if (window.Logger) {
+            window.Logger.debug('loadOrgaoMes encontrado imediatamente - executando...');
+          }
           return await window.data.loadOrgaoMes();
         }
-        console.warn('Módulo data não carregado - loadOrgaoMes não disponível');
+        
+        // DEBUG: Log se não encontrou
+        if (window.Logger) {
+          window.Logger.debug(`loadOrgaoMes não encontrado - window.data existe: ${!!window.data}, tipo: ${typeof window.data?.loadOrgaoMes}`);
+        }
+        
+        // Se não estiver disponível, aguardar até 5 segundos (aumentado para dar mais tempo)
+        return new Promise((resolve) => {
+          let attempts = 0;
+          const maxAttempts = 50; // 5 segundos (aumentado de 20 para 50)
+          
+          const checkAndExecute = () => {
+            attempts++;
+            
+            // CORREÇÃO: Verificar explicitamente se é uma função
+            if (window.data && typeof window.data.loadOrgaoMes === 'function') {
+              // Função encontrada, executar
+              if (window.Logger) {
+                window.Logger.debug(`loadOrgaoMes encontrado após ${attempts} tentativas - executando...`);
+              }
+              window.data.loadOrgaoMes().then(resolve).catch(resolve);
+            } else if (attempts >= maxAttempts) {
+              // Timeout - função não encontrada
+              if (window.Logger) {
+                window.Logger.warn(`Módulo data não carregado - loadOrgaoMes não disponível após aguardar 5s (${attempts} tentativas). window.data existe: ${!!window.data}, tipo: ${typeof window.data?.loadOrgaoMes}`);
+              } else {
+                console.warn(`Módulo data não carregado - loadOrgaoMes não disponível após aguardar 5s. window.data existe: ${!!window.data}, tipo: ${typeof window.data?.loadOrgaoMes}`);
+              }
+              resolve();
+            } else {
+              // Tentar novamente em 100ms
+              // FASE 2.2: Usar timerManager se disponível
+              if (window.timerManager) {
+                window.timerManager.setTimeout(checkAndExecute, 100, 'loadOrgaoMes-retry');
+              } else {
+                setTimeout(checkAndExecute, 100);
+              }
+            }
+          };
+          
+          checkAndExecute();
+        });
       }
       
       // Função _loadOrgaoMes_OLD removida - código migrado para scripts/data.js
@@ -3572,10 +3348,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadCategoria() {
-        if (window.data?.loadCategoria) {
-          return await window.data.loadCategoria();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadCategoria');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadCategoria:', error);
+            } else {
+              console.error('❌ Erro ao executar loadCategoria:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadCategoria não disponível');
       }
       
       // Função _loadCategoria_OLD removida - código migrado para scripts/data.js
@@ -3583,10 +3368,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadStatusPage() {
-        if (window.data?.loadStatusPage) {
-          return await window.data.loadStatusPage();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadStatusPage');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadStatusPage:', error);
+            } else {
+              console.error('❌ Erro ao executar loadStatusPage:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadStatusPage não disponível');
       }
       
       // Função _loadStatusPage_OLD removida - código migrado para scripts/data.js
@@ -3628,10 +3422,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadBairro() {
-        if (window.data?.loadBairro) {
-          return await window.data.loadBairro();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadBairro');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadBairro:', error);
+            } else {
+              console.error('❌ Erro ao executar loadBairro:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadBairro não disponível');
       }
       
       // Função _loadBairro_OLD removida - código migrado para scripts/data.js
@@ -3639,10 +3442,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadUAC() {
-        if (window.data?.loadUAC) {
-          return await window.data.loadUAC();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadUAC');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadUAC:', error);
+            } else {
+              console.error('❌ Erro ao executar loadUAC:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadUAC não disponível');
       }
       
       // Função _loadUAC_OLD removida - código migrado para scripts/data.js
@@ -3650,10 +3462,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadResponsavel() {
-        if (window.data?.loadResponsavel) {
-          return await window.data.loadResponsavel();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadResponsavel');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadResponsavel:', error);
+            } else {
+              console.error('❌ Erro ao executar loadResponsavel:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadResponsavel não disponível');
       }
       
       // Função _loadResponsavel_OLD removida - código migrado para scripts/data.js
@@ -3661,10 +3482,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadCanal() {
-        if (window.data?.loadCanal) {
-          return await window.data.loadCanal();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadCanal');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadCanal:', error);
+            } else {
+              console.error('❌ Erro ao executar loadCanal:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadCanal não disponível');
       }
       
       // Função _loadCanal_OLD removida - código migrado para scripts/data.js
@@ -3672,10 +3502,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadPrioridade() {
-        if (window.data?.loadPrioridade) {
-          return await window.data.loadPrioridade();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadPrioridade');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadPrioridade:', error);
+            } else {
+              console.error('❌ Erro ao executar loadPrioridade:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadPrioridade não disponível');
       }
       
       // Função _loadPrioridade_OLD removida - código migrado para scripts/data.js
@@ -3683,10 +3522,57 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadTempoMedio() {
+        // Tentar usar window.data.loadTempoMedio primeiro
         if (window.data?.loadTempoMedio) {
           return await window.data.loadTempoMedio();
         }
-        console.warn('Módulo data não carregado - loadTempoMedio não disponível');
+        
+        // Se não encontrou, aguardar um pouco (pode ser problema de timing)
+        if (window.Logger) {
+          window.Logger.debug('loadTempoMedio inline chamado - verificando window.data...');
+        }
+        
+        // Aguardar até 2 segundos para window.data estar disponível
+        return new Promise((resolve) => {
+          let attempts = 0;
+          const maxAttempts = 20; // 2 segundos (20 * 100ms)
+          
+          const checkAndExecute = () => {
+            attempts++;
+            
+            if (window.data?.loadTempoMedio) {
+              // Função encontrada, executar
+              if (window.Logger) {
+                window.Logger.debug(`loadTempoMedio encontrado após ${attempts} tentativas - executando...`);
+              }
+              try {
+                const result = window.data.loadTempoMedio();
+                const promise = result && typeof result.then === 'function' ? result : Promise.resolve(result);
+                promise.then(resolve).catch(resolve);
+              } catch (error) {
+                if (window.Logger) {
+                  window.Logger.error('Erro ao executar loadTempoMedio:', error);
+                } else {
+                  console.error('❌ Erro ao executar loadTempoMedio:', error);
+                }
+                resolve();
+              }
+            } else if (attempts >= maxAttempts) {
+              // Timeout - função não encontrada
+              if (window.Logger) {
+                window.Logger.warn(`Módulo data não carregado - loadTempoMedio não disponível após aguardar ${maxAttempts * 100}ms. window.data existe: ${!!window.data}, tipo: ${typeof window.data?.loadTempoMedio}`);
+              } else {
+                console.warn(`Módulo data não carregado - loadTempoMedio não disponível após aguardar ${maxAttempts * 100}ms. window.data existe: ${!!window.data}, tipo: ${typeof window.data?.loadTempoMedio}`);
+              }
+              resolve();
+            } else {
+              // Tentar novamente em 100ms
+              setTimeout(checkAndExecute, 100);
+            }
+          };
+          
+          checkAndExecute();
+        });
       }
       
       // Função _loadTempoMedio_OLD removida - código migrado para scripts/data.js
@@ -3694,10 +3580,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadTema() {
-        if (window.data?.loadTema) {
-          return await window.data.loadTema();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadTema');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadTema:', error);
+            } else {
+              console.error('❌ Erro ao executar loadTema:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadTema não disponível');
       }
       
       // Função _loadTema_OLD removida - código migrado para scripts/data.js
@@ -3705,10 +3600,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadAssunto() {
-        if (window.data?.loadAssunto) {
-          return await window.data.loadAssunto();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadAssunto');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadAssunto:', error);
+            } else {
+              console.error('❌ Erro ao executar loadAssunto:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadAssunto não disponível');
       }
       
       // Função _loadAssunto_OLD removida - código migrado para scripts/data.js
@@ -4050,10 +3954,57 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadCadastrante() {
+        // Tentar usar window.data.loadCadastrante primeiro
         if (window.data?.loadCadastrante) {
           return await window.data.loadCadastrante();
         }
-        console.warn('Módulo data não carregado - loadCadastrante não disponível');
+        
+        // Se não encontrou, aguardar um pouco (pode ser problema de timing)
+        if (window.Logger) {
+          window.Logger.debug('loadCadastrante inline chamado - verificando window.data...');
+        }
+        
+        // Aguardar até 2 segundos para window.data estar disponível
+        return new Promise((resolve) => {
+          let attempts = 0;
+          const maxAttempts = 20; // 2 segundos (20 * 100ms)
+          
+          const checkAndExecute = () => {
+            attempts++;
+            
+            if (window.data?.loadCadastrante) {
+              // Função encontrada, executar
+              if (window.Logger) {
+                window.Logger.debug(`loadCadastrante encontrado após ${attempts} tentativas - executando...`);
+              }
+              try {
+                const result = window.data.loadCadastrante();
+                const promise = result && typeof result.then === 'function' ? result : Promise.resolve(result);
+                promise.then(resolve).catch(resolve);
+              } catch (error) {
+                if (window.Logger) {
+                  window.Logger.error('Erro ao executar loadCadastrante:', error);
+                } else {
+                  console.error('❌ Erro ao executar loadCadastrante:', error);
+                }
+                resolve();
+              }
+            } else if (attempts >= maxAttempts) {
+              // Timeout - função não encontrada
+              if (window.Logger) {
+                window.Logger.warn(`Módulo data não carregado - loadCadastrante não disponível após aguardar ${maxAttempts * 100}ms. window.data existe: ${!!window.data}, tipo: ${typeof window.data?.loadCadastrante}`);
+              } else {
+                console.warn(`Módulo data não carregado - loadCadastrante não disponível após aguardar ${maxAttempts * 100}ms. window.data existe: ${!!window.data}, tipo: ${typeof window.data?.loadCadastrante}`);
+              }
+              resolve();
+            } else {
+              // Tentar novamente em 100ms
+              setTimeout(checkAndExecute, 100);
+            }
+          };
+          
+          checkAndExecute();
+        });
       }
       
       // Função _loadCadastrante_OLD removida - código migrado para scripts/data.js
@@ -4061,10 +4012,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadReclamacoes() {
-        if (window.data?.loadReclamacoes) {
-          return await window.data.loadReclamacoes();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadReclamacoes');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadReclamacoes:', error);
+            } else {
+              console.error('❌ Erro ao executar loadReclamacoes:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadReclamacoes não disponível');
       }
       
       // Função _loadReclamacoes_OLD removida - código migrado para scripts/data.js
@@ -4072,10 +4032,19 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadProjecao2026() {
-        if (window.data?.loadProjecao2026) {
-          return await window.data.loadProjecao2026();
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadProjecao2026');
+        if (func) {
+          try {
+            const result = func();
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadProjecao2026:', error);
+            } else {
+              console.error('❌ Erro ao executar loadProjecao2026:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadProjecao2026 não disponível');
       }
       
       // Função _loadProjecao2026_OLD removida - código migrado para scripts/data.js
@@ -4083,14 +4052,24 @@
       // Função movida para scripts/data.js
       // Alias para compatibilidade
       async function loadUnit(unitName) {
-        if (window.data?.loadUnit) {
-          return await window.data.loadUnit(unitName);
+        const func = await (window.waitForModuleFunction || waitForModuleFunction)('loadUnit');
+        if (func) {
+          try {
+            const result = func(unitName);
+            return result && typeof result.then === 'function' ? await result : result;
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error('Erro ao executar loadUnit:', error);
+            } else {
+              console.error('❌ Erro ao executar loadUnit:', error);
+            }
+          }
         }
-        console.warn('Módulo data não carregado - loadUnit não disponível');
       }
       
       // Função _loadUnit_OLD removida - código migrado para scripts/data.js
     </script>
+    
   </body>
   </html>
 
