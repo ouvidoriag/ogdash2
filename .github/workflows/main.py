@@ -1416,13 +1416,12 @@ try:
                 df_send.loc[mask_novos, "data_da_criacao"].apply(fix_data_criacao)
             )
 
-        # Garante string e remove NaN
+        # Garante dtype datetime64[ns] para data_da_criacao (dayfirst=True) — mantém NaT para inválidos
         if "data_da_criacao" in df_send.columns:
-            df_send["data_da_criacao"] = pd.to_datetime(
-                df_send["data_da_criacao"],
-                format="%d/%m/%Y",
-                errors="coerce"
-            )
+            # normaliza strings vazias para None antes do parse
+            series = df_send["data_da_criacao"].astype(object).where(lambda s: s.astype(str).str.strip() != "", None)
+            df_send["data_da_criacao"] = pd.to_datetime(series, dayfirst=True, errors="coerce")
+            # agora df_send["data_da_criacao"] é datetime64[ns] ou NaT; manter assim até o envio
 
         # ----------------------------------------------------------
         # PADRONIZAÇÃO FINAL SEGURA — NÃO REPARSAR O QUE JÁ ESTÁ OK
@@ -1550,18 +1549,47 @@ else:
         print(f"   • Enviando {first_idx}-{last_idx} (prévia protocolos: {protos_preview})")
 
         try:
-            # --- SANITIZAÇÃO ROBUSTA: remove NaN/pd.NA/None/inf para evitar erro JSON ---
-            n_before = chunk.size
-            chunk = chunk.replace([np.nan, pd.NA, None], "")
-            chunk = chunk.replace([np.inf, -np.inf], "")
-            chunk = chunk.astype(object)  # evita tipos numpy problemáticos
-            # opcional log de quantos valores foram substituídos
-            # conta vazios após substituição para ter ideia
-            n_empty_after = (chunk == "").sum().sum()
-            if n_empty_after > 0:
-                logging.debug(f"Lote {first_idx}-{last_idx}: {n_empty_after} células vazias após sanitização.")
+            # --- SANITIZAÇÃO ROBUSTA (preservando datetimes e tipos primitivos) ---
+            # converte infinities / nulos para None, preserva datetimes como python datetime
+            def _cell_for_sheets(v):
+                # nulos
+                if pd.isna(v):
+                    return None
+                # numpy datetime64 ou pandas Timestamp -> python datetime
+                if isinstance(v, (pd.Timestamp, np.datetime64)):
+                    try:
+                        return pd.Timestamp(v).to_pydatetime()
+                    except Exception:
+                        return pd.to_datetime(v, errors="coerce").to_pydatetime() if pd.notna(pd.to_datetime(v, errors="coerce")) else None
+                # numéricos finitos -> python primitives
+                if isinstance(v, (np.integer, int)):
+                    return int(v)
+                if isinstance(v, (np.floating, float)):
+                    if not np.isfinite(v):
+                        return None
+                    # se for inteiro em float, transforma em int
+                    if float(v).is_integer():
+                        return int(round(v))
+                    return float(v)
+                # booleans
+                if isinstance(v, (bool, np.bool_)):
+                    return bool(v)
+                # strings vazias -> None
+                s = str(v).strip()
+                if s == "":
+                    return None
+                return s
             
-            rows = chunk.values.tolist()
+            # aplica conversor linha a linha (preserva ordem/colunas)
+            rows = []
+            # Não forcamos astype(object) — iterrows mantém tipos pandas/numpy
+            for _, r in chunk.iterrows():
+                rows.append([_cell_for_sheets(val) for val in r.tolist()])
+            
+            # opcional: log do nº de células vazias após a conversão
+            n_empty_after = sum(1 for row in rows for cell in row if cell is None)
+            if n_empty_after > 0:
+                logging.debug(f"Lote {first_idx}-{last_idx}: {n_empty_after} células None após sanitização.")
 
             if sheet_is_empty:
                 header = chunk.columns.tolist()
