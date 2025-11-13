@@ -1365,7 +1365,50 @@ try:
                     # Considerar um raise SystemExit aqui se a qualidade do dado for crítica
        
         df_send = df_send_final.copy()  # Atribui o DataFrame final preparado para df_send
+# ----------------------------------------------------------
+# CORREÇÃO SIMPLES E DEFINITIVA — data_da_criacao (NOVOS)
+# ----------------------------------------------------------
+def fix_data_criacao(val):
+    if pd.isna(val) or str(val).strip() == "":
+        return ""
 
+    s = str(val).strip()
+
+    # 1) Se já estiver no formato DD/MM/AAAA
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
+        return s
+
+    # 2) Formato ISO (YYYY-MM-DD)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        try:
+            dt = pd.to_datetime(s, format="%Y-%m-%d", dayfirst=False)
+            return dt.strftime("%d/%m/%Y")
+        except:
+            pass
+
+    # 3) DD/MM/YY → converter para DD/MM/YYYY
+    if re.fullmatch(r"\d{2}/\d{2}/\d{2}", s):
+        try:
+            dt = pd.to_datetime(s, format="%d/%m/%y", dayfirst=True)
+            return dt.strftime("%d/%m/%Y")
+        except:
+            pass
+
+    # 4) Tenta dayfirst sempre (garante que não inverta)
+    try:
+        dt = pd.to_datetime(s, dayfirst=True, errors="coerce")
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+    except:
+        pass
+
+    # Se nada funcionou, retorna string limpa
+    return s
+
+# aplica **somente aos novos**
+if "data_da_criacao" in df_send.columns:
+    df_send["data_da_criacao"] = df_send["data_da_criacao"].apply(fix_data_criacao)
+    logging.info("✔ data_da_criacao formatada corretamente para DD/MM/AAAA (sem inversão).")
         # --- Formatar data_da_criacao só nos NOVOS -> DD/MM/AAAA (simples e robusto) ---
         EXCEL_BASE = pd.Timestamp("1899-12-30")
 
