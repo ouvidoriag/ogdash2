@@ -1418,7 +1418,11 @@ try:
 
         # Garante string e remove NaN
         if "data_da_criacao" in df_send.columns:
-            df_send["data_da_criacao"] = df_send["data_da_criacao"].fillna("").astype(str)
+            df_send["data_da_criacao"] = pd.to_datetime(
+                df_send["data_da_criacao"],
+                format="%d/%m/%Y",
+                errors="coerce"
+            )
 
         # ----------------------------------------------------------
         # PADRONIZAÇÃO FINAL SEGURA — NÃO REPARSAR O QUE JÁ ESTÁ OK
@@ -1441,7 +1445,12 @@ try:
                     .fillna(df_send.loc[mask_needs, "data_da_criacao"].astype(str).str.strip())
                 )
 
-            df_send["data_da_criacao"] = df_send["data_da_criacao"].fillna("").astype(str)
+            # manter como datetime (Timestamp) — envia DATA ao Sheets
+            df_send["data_da_criacao"] = pd.to_datetime(
+                df_send["data_da_criacao"],
+                dayfirst=True,
+                errors="coerce"
+            )
 
         # ----------------------------------------------------------
         # TRATAMENTO SEPARADO E SEGURO: data_da_conclusao
@@ -1471,11 +1480,7 @@ except Exception as e:
 
 # ----------------------------------------------------------
 # TRATAMENTO CRÍTICO — DATA DA CONCLUSÃO (APÓS _tratar_full)
-# e PADRONIZA OUTRAS DATAS
-#
-# Com a aplicação de _tratar_full acima, estas funções devem ser menos necessárias.
-# Elas são mantidas como um último ajuste de formato para DD/MM/YYYY se _tratar_full
-# retornar DD/MM/YY e o GSheet esperar o ano com 4 dígitos.
+# e PADRONIZA OUTRAS DATAS (AJUSTADO: data_da_criacao como DATETIME)
 # ----------------------------------------------------------
 def tratar_data_conclusao_item8(x):
     if pd.isna(x) or str(x).strip().lower() in ["", "nan", "na", "n/a", "none", "não concluído"]:
@@ -1489,54 +1494,24 @@ def tratar_data_conclusao_item8(x):
     except Exception:
         return "Não concluído"
 
+# Reaplica somente o tratamento de apresentação para data_da_conclusao (string "DD/MM/YYYY" ou "Não concluído")
 if not df_send.empty and "data_da_conclusao" in df_send.columns:
     df_send["data_da_conclusao"] = df_send["data_da_conclusao"].apply(tratar_data_conclusao_item8)
     logging.debug("Re-aplicado tratamento de 'data_da_conclusao' para garantir formato DD/MM/YYYY.")
 
-def tratar_data_generica_item8_final(x):
-    """
-    Tratamento final robusto para garantir o formato DD/MM/AAAA para o Sheets,
-    lidando com valores que já são strings ou formatos de 2 dígitos.
-    """
-    s = str(x).strip()
-    if s.lower() in ["", "nan", "na", "n/a", "none"]:
-        return ""
+# ----------------------------------------------------------
+# Ajuste crítico: data_da_criacao deve permanecer como TIMESTAMP
+# (para que o Google Sheets/Looker receba DATA, NÃO string)
+# ----------------------------------------------------------
+if not df_send.empty and "data_da_criacao" in df_send.columns:
+    # 1) Primeiro, tenta preservar Timestamps já válidos; coerciona strings inválidas para NaT
+    df_send["data_da_criacao"] = pd.to_datetime(df_send["data_da_criacao"], dayfirst=True, errors="coerce")
 
-    # Verifica se já está no formato DD/MM/AAAA. Se sim, mantém como string.
-    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
-        return s
-    
-    # 1. Tenta o parsing flexível (mais comum)
-    try:
-        dt = pd.to_datetime(s, errors="coerce", dayfirst=True)
-        if pd.notna(dt):
-            return dt.strftime("%d/%m/%Y")
-        
-        # 2. Se falhou, tenta explicitamente formatos de 2 dígitos que podem ter escapado (DD/MM/AA)
-        if re.fullmatch(r"\d{2}/\d{2}/\d{2}", s):
-            dt_y = pd.to_datetime(s, format="%d/%m/%y", errors="coerce")
-            if pd.notna(dt_y):
-                return dt_y.strftime("%d/%m/%Y")
-        
-        # 3. Tenta formatos ISO (YYYY-MM-DD)
-        if re.match(r"^\d{4}-\d{2}-\d{2}", s):
-            dt_iso = pd.to_datetime(s, errors="coerce", dayfirst=False)
-            if pd.notna(dt_iso):
-                return dt_iso.strftime("%d/%m/%Y")
-            
-        return "" # Se tudo falhou
-            
-    except Exception:
-        return "" # Em caso de erro de parsing
-
-for col in ["data_da_criacao"]:
-    if not df_send.empty and col in df_send.columns:
-        # Aplica a função de tratamento final (com ano de 4 dígitos)
-        df_send[col] = df_send[col].apply(tratar_data_generica_item8_final)
-        
-        # GARANTE que a coluna FINAL é string (DD/MM/AAAA) para envio sem erro de tipo.
-        df_send[col] = df_send[col].astype(str)
-        logging.debug(f"Re-aplicado tratamento FINAL de '{col}' para garantir formato DD/MM/AAAA (String).")
+    # 2) Se desejar garantir que células vazias fiquem como empty string ao enviar,
+    #    faça isso *apenas no momento de preparar o chunk para envio* (não aqui).
+    #    Aqui mantemos a coluna como datetime (dtype datetime64[ns]) para que o driver do Sheets
+    #    receba um valor de data reconhecível.
+    logging.debug("Data 'data_da_criacao' convertida para dtype datetime64[ns] (NaT em valores inválidos).")
 
 # ----------------------------------------------------------
 # CHECAGEM DE SANIDADE — UNIDADE_CADASTRO (em df_send já tratado)
