@@ -1365,6 +1365,58 @@ try:
                     # Considerar um raise SystemExit aqui se a qualidade do dado for crítica
        
         df_send = df_send_final.copy()  # Atribui o DataFrame final preparado para df_send
+
+        # ---------------------------
+        # Correção definitiva: data_da_criacao apenas para NOVOS (DD/MM/AAAA)
+        # ---------------------------
+        EXCEL_BASE = pd.Timestamp("1899-12-30")
+
+        def fix_data_criacao(val):
+            if pd.isna(val) or str(val).strip() == "":
+                return ""
+            s = str(val).strip()
+
+            # Excel serial (5–6 dígitos)
+            if re.fullmatch(r"\d{5,6}(\.0+)?", s):
+                try:
+                    dt = EXCEL_BASE + pd.to_timedelta(float(s), "D")
+                    return dt.strftime("%d/%m/%Y")
+                except:
+                    pass
+
+            # Prioriza DD/MM/YYYY
+            try:
+                dt = pd.to_datetime(s, dayfirst=True, errors="coerce")
+                if pd.notna(dt):
+                    return dt.strftime("%d/%m/%Y")
+            except:
+                pass
+
+            # Fallback: tenta ISO ou parse genérico (YYYY-MM-DD etc.)
+            try:
+                dt = pd.to_datetime(s, dayfirst=False, errors="coerce")
+                if pd.notna(dt):
+                    return dt.strftime("%d/%m/%Y")
+            except:
+                pass
+
+            # último recurso: devolve string limpa (evita NaN)
+            return s
+
+        # calcula máscara: só aplicar a correção nas linhas que serão enviadas como NOVAS
+        if 'novos_protocolos_a_enviar' in globals():
+            set_novos = {p.strip().upper() for p in novos_protocolos_a_enviar}
+            mask_novos = df_send['protocolo'].astype(str).str.strip().str.upper().isin(set_novos)
+        else:
+            mask_novos = pd.Series(True, index=df_send.index)
+
+        if "data_da_criacao" in df_send.columns and mask_novos.any():
+            df_send.loc[mask_novos, "data_da_criacao"] = (
+                df_send.loc[mask_novos, "data_da_criacao"].apply(fix_data_criacao)
+            )
+            # garante que coluna final seja string sem NaN para evitar problemas no Sheets/Looker
+            df_send["data_da_criacao"] = df_send["data_da_criacao"].fillna("").astype(str)
+
 except Exception as e:
     logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
     raise
