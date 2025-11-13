@@ -817,7 +817,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     try:
         if "canal" in df_loc.columns:
             df_loc["canal"] = df_loc["canal"].astype(str)
-            df_loc["canal"] = df_loc["canal"].str.replace(r"^\s*(Colab Gov|Portal Cidadão|Fala.BR)\s*$", "Aplicativo Colab", regex=True, case=False)
+            df_loc["canal"] = df_loc["canal"].str.replace(r"^\s*(Colab Gov|Portal Cidadão|Fala.BR|Online)\s*$", "Aplicativo Colab", regex=True, case=False)
             logging.info("Tratamento 7.9 (Padronização de 'canal') aplicado.")
     except Exception as e:
         logging.error(f"Erro no tratamento de 'canal': {e}", exc_info=True)
