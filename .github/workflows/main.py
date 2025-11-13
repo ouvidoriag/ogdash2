@@ -1366,9 +1366,9 @@ try:
        
         df_send = df_send_final.copy()  # Atribui o DataFrame final preparado para df_send
 
-        # ---------------------------
-        # Correção definitiva: data_da_criacao apenas para NOVOS (DD/MM/AAAA)
-        # ---------------------------
+        # ----------------------------------------------------------
+        # CORREÇÃO DEFINITIVA: data_da_criacao — APENAS NOVOS (DD/MM/AAAA)
+        # ----------------------------------------------------------
         EXCEL_BASE = pd.Timestamp("1899-12-30")
 
         def fix_data_criacao(val):
@@ -1392,7 +1392,7 @@ try:
             except:
                 pass
 
-            # Fallback: tenta ISO ou parse genérico (YYYY-MM-DD etc.)
+            # Fallback: tenta ISO ou parse genérico
             try:
                 dt = pd.to_datetime(s, dayfirst=False, errors="coerce")
                 if pd.notna(dt):
@@ -1400,144 +1400,70 @@ try:
             except:
                 pass
 
-            # último recurso: devolve string limpa (evita NaN)
+            # Último recurso: devolve string limpa
             return s
 
-        # calcula máscara: só aplicar a correção nas linhas que serão enviadas como NOVAS
+        # Máscara: aplicar somente nos novos
         if 'novos_protocolos_a_enviar' in globals():
             set_novos = {p.strip().upper() for p in novos_protocolos_a_enviar}
             mask_novos = df_send['protocolo'].astype(str).str.strip().str.upper().isin(set_novos)
         else:
             mask_novos = pd.Series(True, index=df_send.index)
 
+        # Aplica a correção apenas nos novos
         if "data_da_criacao" in df_send.columns and mask_novos.any():
             df_send.loc[mask_novos, "data_da_criacao"] = (
                 df_send.loc[mask_novos, "data_da_criacao"].apply(fix_data_criacao)
             )
-            # garante que coluna final seja string sem NaN para evitar problemas no Sheets/Looker
+
+        # Garante string e remove NaN
+        if "data_da_criacao" in df_send.columns:
             df_send["data_da_criacao"] = df_send["data_da_criacao"].fillna("").astype(str)
 
-except Exception as e:
-    logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
-    raise
-# ----------------------------------------------------------
-# CORREÇÃO DEFINITIVA DA DATA — APENAS NOVOS
-# ----------------------------------------------------------
-EXCEL_BASE = pd.Timestamp("1899-12-30")
+        # ----------------------------------------------------------
+        # PADRONIZAÇÃO FINAL SEGURA — NÃO REPARSAR O QUE JÁ ESTÁ OK
+        # ----------------------------------------------------------
+        def _is_ddmmyyyy(s):
+            return bool(re.fullmatch(r"\d{2}/\d{2}/\d{4}", str(s).strip()))
 
-def fix_data_criacao(val):
-    if pd.isna(val) or str(val).strip() == "":
-        return ""
-    s = str(val).strip()
+        if "data_da_criacao" in df_send.columns:
+            mask_needs = ~df_send["data_da_criacao"].astype(str).fillna("").apply(_is_ddmmyyyy)
 
-    # Excel serial (5–6 dígitos)
-    if re.fullmatch(r"\d{5,6}(\.0+)?", s):
-        try:
-            dt = EXCEL_BASE + pd.to_timedelta(float(s), "D")
-            return dt.strftime("%d/%m/%Y")
-        except:
-            pass
+            if mask_needs.any():
+                parsed = pd.to_datetime(
+                    df_send.loc[mask_needs, "data_da_criacao"].astype(str).str.strip(),
+                    dayfirst=True,
+                    errors="coerce"
+                )
 
-    # Tenta DD/MM/YYYY como prioridade
-    try:
-        dt = pd.to_datetime(s, dayfirst=True, errors="coerce")
-        if pd.notna(dt):
-            return dt.strftime("%d/%m/%Y")
-    except:
-        pass
+                df_send.loc[mask_needs, "data_da_criacao"] = (
+                    parsed.dt.strftime("%d/%m/%Y")
+                    .fillna(df_send.loc[mask_needs, "data_da_criacao"].astype(str).str.strip())
+                )
 
-    # Fallback: tenta parse ISO ou geral
-    try:
-        dt = pd.to_datetime(s, dayfirst=False, errors="coerce")
-        if pd.notna(dt):
-            return dt.strftime("%d/%m/%Y")
-    except:
-        pass
+            df_send["data_da_criacao"] = df_send["data_da_criacao"].fillna("").astype(str)
 
-    return s  # último recurso, mantém string
-
-# máscara para garantir que só novos sejam transformados
-if 'novos_protocolos_a_enviar' in globals():
-    mask_novos_novos = df_send['protocolo'].astype(str).str.strip().str.upper().isin(
-        {p.strip().upper() for p in novos_protocolos_a_enviar}
-    )
-else:
-    mask_novos_novos = pd.Series(True, index=df_send.index)
-
-# aplica correção
-if "data_da_criacao" in df_send.columns:
-    df_send.loc[mask_novos_novos, "data_da_criacao"] = (
-        df_send.loc[mask_novos_novos, "data_da_criacao"].apply(fix_data_criacao)
-    )
-        # --- Formatar data_da_criacao só nos NOVOS -> DD/MM/AAAA (simples e robusto) ---
-        EXCEL_BASE = pd.Timestamp("1899-12-30")
-
-        def _format_data_criacao_novo(val):
-            # preserva NaN como vazio (será substituído)
-            if pd.isna(val) or str(val).strip() == "":
-                return ""
-            # se for numérico e plausível como serial Excel (5-6 dígitos)
+        # ----------------------------------------------------------
+        # TRATAMENTO SEPARADO E SEGURO: data_da_conclusao
+        # ----------------------------------------------------------
+        if "data_da_conclusao" in df_send.columns:
             try:
-                if isinstance(val, (int, float)) and float(val) == float(val):  # not NaN
-                    sval = str(val).strip()
-                    if re.fullmatch(r"\d{5,6}(\.0+)?", sval):
-                        try:
-                            dt = EXCEL_BASE + pd.to_timedelta(float(sval), "D")
-                            return dt.strftime("%d/%m/%Y")
-                        except:
-                            pass
-            except:
-                pass
+                # Se existir função oficial do seu script, usa ela
+                if 'tratar_data_conclusao_item8' in globals():
+                    df_send["data_da_conclusao"] = df_send["data_da_conclusao"].apply(tratar_data_conclusao_item8)
 
-            # tenta parse com dayfirst=True (prioriza DD/MM/YYYY)
-            try:
-                dt = pd.to_datetime(str(val).strip(), dayfirst=True, errors="coerce")
-                if pd.notna(dt):
-                    return dt.strftime("%d/%m/%Y")
-            except:
-                pass
+                # Caso não exista, fallback seguro:
+                else:
+                    def _tratar_conclusao_fallback(x):
+                        if pd.isna(x) or str(x).strip().lower() in ["", "nan", "none", "não concluído"]:
+                            return "Não concluído"
+                        dt = pd.to_datetime(str(x).strip(), dayfirst=True, errors="coerce")
+                        return dt.strftime("%d/%m/%Y") if pd.notna(dt) else "Não concluído"
 
-            # fallback: tenta parse genérico
-            try:
-                dt2 = pd.to_datetime(str(val).strip(), dayfirst=False, errors="coerce")
-                if pd.notna(dt2):
-                    return dt2.strftime("%d/%m/%Y")
-            except:
-                pass
+                    df_send["data_da_conclusao"] = df_send["data_da_conclusao"].apply(_tratar_conclusao_fallback)
 
-            # se nada funcionou, devolve string limpa para evitar NaN no Sheets
-            return str(val).strip()
-
-        # determina máscara de novos (se a variável existir use-a; senão assume df_send são novos)
-        if 'novos_protocolos_a_enviar' in globals():
-            set_novos = {p.strip().upper() for p in novos_protocolos_a_enviar}
-            mask_novos = df_send['protocolo'].astype(str).str.strip().str.upper().isin(set_novos)
-        else:
-            mask_novos = pd.Series(True, index=df_send.index)
-
-        if "data_da_criacao" in df_send.columns and mask_novos.any():
-            df_send.loc[mask_novos, "data_da_criacao"] = df_send.loc[mask_novos, "data_da_criacao"].apply(_format_data_criacao_novo)
-            logging.info(f"Formatação (DD/MM/AAAA) aplicada em {mask_novos.sum()} linhas novas (data_da_criacao).")
-        else:
-            logging.info("Formatação de data_da_criacao: coluna ausente ou sem novos.")
-
-        # =====================================================
-        # 🔧 Padronização das datas antes do envio (DD/MM/AAAA)
-        # =====================================================
-        colunas_de_data = ["data_da_criacao", "data_da_conclusao"]
-
-        for coluna in colunas_de_data:
-            if coluna in df_send.columns:
-                try:
-                    # Converte para datetime, ignora erros silenciosamente
-                    df_send[coluna] = pd.to_datetime(df_send[coluna], errors='coerce')
-                    # Formata como DD/MM/AAAA
-                    df_send[coluna] = df_send[coluna].dt.strftime('%d/%m/%Y')
-                    # Substitui 'NaT' e nulos por vazio
-                    df_send[coluna] = df_send[coluna].replace('NaT', '').fillna('')
-                    logging.info(f"✅ Coluna '{coluna}' formatada no padrão DD/MM/AAAA.")
-                except Exception as e:
-                    logging.warning(f"⚠️ Falha ao formatar coluna '{coluna}' para DD/MM/AAAA: {e}")
+            except Exception as e:
+                logging.warning(f"Falha ao aplicar tratamento de data_da_conclusao: {e}")
 
 except Exception as e:
     logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
