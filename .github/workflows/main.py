@@ -1365,36 +1365,28 @@ try:
                     # Considerar um raise SystemExit aqui se a qualidade do dado for crítica
        
         df_send = df_send_final.copy()  # Atribui o DataFrame final preparado para df_send
+except Exception as e:
+    logging.critical(f"Erro na preparação final de df_send no Item 8: {e}", exc_info=True)
+    raise
 # ----------------------------------------------------------
-# CORREÇÃO SIMPLES E DEFINITIVA — data_da_criacao (NOVOS)
+# CORREÇÃO DEFINITIVA DA DATA — APENAS NOVOS
 # ----------------------------------------------------------
+EXCEL_BASE = pd.Timestamp("1899-12-30")
+
 def fix_data_criacao(val):
     if pd.isna(val) or str(val).strip() == "":
         return ""
-
     s = str(val).strip()
 
-    # 1) Se já estiver no formato DD/MM/AAAA
-    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
-        return s
-
-    # 2) Formato ISO (YYYY-MM-DD)
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+    # Excel serial (5–6 dígitos)
+    if re.fullmatch(r"\d{5,6}(\.0+)?", s):
         try:
-            dt = pd.to_datetime(s, format="%Y-%m-%d", dayfirst=False)
+            dt = EXCEL_BASE + pd.to_timedelta(float(s), "D")
             return dt.strftime("%d/%m/%Y")
         except:
             pass
 
-    # 3) DD/MM/YY → converter para DD/MM/YYYY
-    if re.fullmatch(r"\d{2}/\d{2}/\d{2}", s):
-        try:
-            dt = pd.to_datetime(s, format="%d/%m/%y", dayfirst=True)
-            return dt.strftime("%d/%m/%Y")
-        except:
-            pass
-
-    # 4) Tenta dayfirst sempre (garante que não inverta)
+    # Tenta DD/MM/YYYY como prioridade
     try:
         dt = pd.to_datetime(s, dayfirst=True, errors="coerce")
         if pd.notna(dt):
@@ -1402,13 +1394,29 @@ def fix_data_criacao(val):
     except:
         pass
 
-    # Se nada funcionou, retorna string limpa
-    return s
+    # Fallback: tenta parse ISO ou geral
+    try:
+        dt = pd.to_datetime(s, dayfirst=False, errors="coerce")
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+    except:
+        pass
 
-# aplica **somente aos novos**
+    return s  # último recurso, mantém string
+
+# máscara para garantir que só novos sejam transformados
+if 'novos_protocolos_a_enviar' in globals():
+    mask_novos_novos = df_send['protocolo'].astype(str).str.strip().str.upper().isin(
+        {p.strip().upper() for p in novos_protocolos_a_enviar}
+    )
+else:
+    mask_novos_novos = pd.Series(True, index=df_send.index)
+
+# aplica correção
 if "data_da_criacao" in df_send.columns:
-    df_send["data_da_criacao"] = df_send["data_da_criacao"].apply(fix_data_criacao)
-    logging.info("✔ data_da_criacao formatada corretamente para DD/MM/AAAA (sem inversão).")
+    df_send.loc[mask_novos_novos, "data_da_criacao"] = (
+        df_send.loc[mask_novos_novos, "data_da_criacao"].apply(fix_data_criacao)
+    )
         # --- Formatar data_da_criacao só nos NOVOS -> DD/MM/AAAA (simples e robusto) ---
         EXCEL_BASE = pd.Timestamp("1899-12-30")
 
