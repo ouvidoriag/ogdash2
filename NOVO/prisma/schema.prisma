@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Record {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  data      Json     // Armazena o JSON completo da planilha
+  createdAt DateTime @default(now())
+  
+  // Campos normalizados baseados nas colunas exatas da planilha
+  protocolo              String? // protocolo
+  dataDaCriacao          String? // data_da_criacao
+  statusDemanda          String? // status_demanda
+  prazoRestante          String? // prazo_restante
+  dataDaConclusao        String? // data_da_conclusao
+  tempoDeResolucaoEmDias String? // tempo_de_resolucao_em_dias
+  prioridade             String? // prioridade
+  tipoDeManifestacao     String? // tipo_de_manifestacao
+  tema                   String? // tema
+  assunto                String? // assunto
+  canal                  String? // canal
+  endereco               String? // endereco
+  unidadeCadastro        String? // unidade_cadastro
+  unidadeSaude           String? // unidade_saude
+  status                 String? // status
+  servidor               String? // servidor
+  responsavel            String? // responsavel
+  verificado             String? // verificado
+  orgaos                 String? // orgaos
+  
+  // Campos ISO para queries de data (normalizados de data_da_criacao e data_da_conclusao)
+  dataCriacaoIso    String? // YYYY-MM-DD
+  dataConclusaoIso  String? // YYYY-MM-DD
+
+  // Índices simples
+  @@index([protocolo])
+  @@index([statusDemanda])
+  @@index([tipoDeManifestacao])
+  @@index([tema])
+  @@index([assunto])
+  @@index([canal])
+  @@index([unidadeCadastro])
+  @@index([unidadeSaude])
+  @@index([status])
+  @@index([servidor])
+  @@index([responsavel])
+  @@index([prioridade])
+  @@index([orgaos])
+  @@index([dataCriacaoIso])
+  @@index([dataConclusaoIso])
+  
+  // Índices compostos para queries comuns (otimização)
+  @@index([dataCriacaoIso, status])
+  @@index([dataCriacaoIso, tema])
+  @@index([dataCriacaoIso, orgaos])
+  @@index([tema, orgaos])
+  @@index([status, tema])
+  @@index([unidadeCadastro, dataCriacaoIso])
+  @@index([servidor, dataCriacaoIso])
+  
+  @@map("records")
+}
+
+model ChatMessage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  text      String
+  sender    String   // 'user' ou 'cora'
+  createdAt DateTime @default(now())
+  
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// Cache de agregações pré-computadas no banco de dados
+model AggregationCache {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique // Chave única do cache (ex: "countBy:status:v2")
+  data      Json     // Dados agregados pré-computados
+  expiresAt DateTime // Data de expiração do cache
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([expiresAt])
+  @@map("aggregation_cache")
+}
+
