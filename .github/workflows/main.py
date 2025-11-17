@@ -934,7 +934,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                             continue
                         if w_clean in acronyms:
                             out_words.append(w_clean.upper())
-                        elif w_clean in small_words:
+                        elif w_clean.lower() in small_words:
                             out_words.append(w_clean.lower())
                         else:
                             out_words.append(w_clean.capitalize())
@@ -956,7 +956,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                     for i, w in enumerate(words):
                         if w in acronyms:
                             out.append(w.upper())
-                        elif w in small_words and i != 0:
+                        elif w.lower() in small_words and i != 0:
                             out.append(w.lower())
                         else:
                             out.append(w.capitalize())
