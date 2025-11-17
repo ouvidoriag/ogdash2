@@ -702,6 +702,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 "Lucia Helena Tinoco Pacehco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
                 "Lucia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lúcia  Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
                 "Lúcia Helena Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella", "Lucia Helenba Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
+                "Lucia Helana Tinoco Pacheco Varella": "Lúcia Helena Tinoco Pacheco Varella",
                 "Rafaella Marques Gomes Santos": "Rafaella Marques Gomes Santos",
                 "Roilene Pereira da Silva": "Rosilene Pereira da Silva", "Rosilene Pereira da Silva": "Rosilene Pereira da Silva",
                 "Stephanie dos Santos Silva": "Stephanie dos Santos Silva", "Stephanie Santos": "Stephanie dos Santos Silva",
@@ -868,6 +869,9 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 "uac - uac uph pilar": "UAC - UPH Pilar",
                 "uac - uac uph saracuruna": "UAC - UPH Saracuruna",
                 "uac - uac uph xerem": "UAC - UPH Xerém",
+                "ouvidoria geral": "Ouvidoria Geral",
+                "ouvidoria setorial da saúde": "Ouvidoria Setorial da Saúde",
+                "cidadão": "Cidadão"
             }
 
             # coluna auxiliar normalizada em lower para matching
