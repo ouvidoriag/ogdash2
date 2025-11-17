@@ -851,7 +851,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         logging.error(f"Erro no tratamento 7.10 (tempo_de_resolucao_em_dias): {e}", exc_info=True)
 
-     # --- NORMALIZAÇÃO PADRÃO DAS UACs (aplica-se aos registros que estão sendo tratados em _tratar_full) ---
+    # --- NORMALIZAÇÃO PADRÃO DAS UACs (aplica-se aos registros que estão sendo tratados em _tratar_full) ---
     try:
         if "unidade_cadastro" in df_loc.columns:
             # trim e normalização básica (mantemos a versão original em lowercase para matching)
@@ -863,30 +863,28 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 "uac - uph pilar": "UAC - UPH Pilar",
                 "uac - uph saracuruna": "UAC - UPH Saracuruna",
                 "uac - uph xerém": "UAC - UPH Xerém",
-                "uac - uph xerem": "UAC - UPH Xerém",      # variante sem acento
+                "uac - uph xerem": "UAC - UPH Xerém",
                 "uac - upa beira mar": "UAC - UPA Beira Mar",
                 "uac - hospital do olho": "UAC - Hospital do Olho",
-                # entradas administrativas / fallback comuns
                 "ouvidoria geral": "Ouvidoria Geral",
                 "ouvidoria setorial da saúde": "Ouvidoria Setorial da Saúde",
                 "cidadão": "Cidadão",
             }
 
-            # garante chaves em lowercase para matching consistente
             uac_mapa = {k.lower(): v for k, v in uac_mapa_raw.items()}
 
-            # coluna auxiliar em lowercase para matching
             tmp_lower = df_loc["unidade_cadastro"].astype(str).str.strip().str.lower().fillna("")
 
             # aplica mapeamento explícito (substitui variantes exatas)
             mapped = tmp_lower.replace(uac_mapa)
 
-            # FORMATAÇÃO SEGURO: preservar acrônimos e preposições, capitalizar nomes corretamente
+            # Formatação segura: acrônimos e preposições
             SMALL_WORDS = {"de", "da", "do", "dos", "das", "e", "em", "no", "na", "nos", "nas", "com", "por", "para", "pelas", "pelo"}
-            ACRONYMS = {"upa", "uph", "uac", "cer", "hsp", "upm"}  # adicione acrônimos se necessário
+            ACRONYMS = {"upa", "uph", "uac", "cer", "hsp", "upm"}
 
             def format_unidade_rest(s: str) -> str:
-                # entrada esperada: lowercase sem prefixo "uac - "
+                if s is None or str(s).strip() == "":
+                    return ""
                 parts = str(s).split()
                 out_parts = []
                 for w in parts:
@@ -896,31 +894,39 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                     elif wl in SMALL_WORDS:
                         out_parts.append(wl)  # preposições em minúscula
                     else:
-                        # capitaliza primeiro caractere e deixa o resto minúsculo (evita MAR/DO)
                         out_parts.append(wl.capitalize())
                 return " ".join(out_parts)
 
-            # aposta segura: detecta entradas que começam com "uac - " na versão lowercase original
+            # aplica regra para entradas que parecem "uac - ..."
             mask_uac_raw = tmp_lower.str.match(r"^\s*uac\s*-\s*", na=False)
-
             if mask_uac_raw.any():
-                # extrai a parte após "uac - " e formata
                 rest = tmp_lower[mask_uac_raw].str.replace(r"^\s*uac\s*-\s*", "", regex=True).str.strip()
                 rest = rest.str.replace(r"\s+", " ", regex=True).str.strip()
                 rest_fmt = rest.apply(format_unidade_rest)
-                # monta o valor final com prefixo padrão
                 mapped.loc[mask_uac_raw] = "UAC - " + rest_fmt
 
-            # Para quaisquer entradas mapeadas explicitamente (valores em uac_mapa), mapped já contém a forma correta.
-            # Para demais casos que não começam com "uac - " e não foram mapeados, mantemos o original (mas limpamos excesso de espaços).
-            mapped = mapped.fillna("").astype(str).str.strip()
+            # se algum valor mapeado for vazio, preservamos o original limpo
+            # (garante que o length e o índice permaneçam coerentes)
+            mapped = mapped.where(mapped != "", tmp_lower).astype(str).str.strip()
 
-            # escreve de volta com strip (garante que todos os valores sejam strings limpas)
+            # escreve de volta
             df_loc["unidade_cadastro"] = mapped.str.strip()
 
             logging.info("Normalização UAC aplicada em _tratar_full para 'unidade_cadastro' (regra segura de formatação).")
     except Exception as e:
-        logging.warning(f"Falha ao normalizar UACs dentro de _tratar_full: {e}")
+        logging.warning(f"Falha ao normalizar UACs dentro de _tratar_full: {e}", exc_info=True)
+
+    # ------------------------------------------------------------
+    # FINALIZAÇÃO: garante sempre retorno do DataFrame tratado
+    # ------------------------------------------------------------
+    try:
+        logging.debug(f"Finalizando _tratar_full. Shape final: {df_loc.shape}")
+    except Exception:
+        # em caso de problemas ao acessar shape, ainda retornamos o df_loc (defensivo)
+        pass
+
+    # Garantir retorno explícito em qualquer caminho de execução
+    return df_loc
 
 # Aplica o tratamento aos novos protocolos
 try:
