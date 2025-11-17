@@ -1583,54 +1583,77 @@ else:
 
         try:
             # --- SANITIZAÇÃO ROBUSTA (preservando datetimes e tipos primitivos) ---
-            # converte infinities / nulos para None, preserva datetimes como python datetime
+            # converte infinities / nulos para None, preserva datetimes como strings DD/MM/YYYY apenas no envio
             def _cell_for_sheets(v):
                 # nulos
                 if pd.isna(v):
                     return None
-                # numpy datetime64 ou pandas Timestamp -> python datetime
+
+                # pandas Timestamp / numpy datetime64 -> string 'DD/MM/YYYY' (temporário para envio)
                 if isinstance(v, (pd.Timestamp, np.datetime64)):
                     try:
-                        return pd.Timestamp(v).to_pydatetime()
+                        ts = pd.to_datetime(v, errors="coerce")
+                        if pd.isna(ts):
+                            return None
+                        return ts.strftime("%d/%m/%Y")
                     except Exception:
-                        return pd.to_datetime(v, errors="coerce").to_pydatetime() if pd.notna(pd.to_datetime(v, errors="coerce")) else None
+                        try:
+                            return pd.to_datetime(v, errors="coerce").strftime("%d/%m/%Y")
+                        except:
+                            return None
+
+                # python datetime/date -> string 'DD/MM/YYYY'
+                try:
+                    import datetime as _dt
+                    if isinstance(v, (_dt.datetime, _dt.date)):
+                        try:
+                            return v.strftime("%d/%m/%Y")
+                        except:
+                            return None
+                except Exception:
+                    pass
+
                 # numéricos finitos -> python primitives
                 if isinstance(v, (np.integer, int)):
                     return int(v)
                 if isinstance(v, (np.floating, float)):
                     if not np.isfinite(v):
                         return None
-                    # se for inteiro em float, transforma em int
                     if float(v).is_integer():
                         return int(round(v))
                     return float(v)
+
                 # booleans
                 if isinstance(v, (bool, np.bool_)):
                     return bool(v)
+
                 # strings vazias -> None
                 s = str(v).strip()
                 if s == "":
                     return None
+
+                # fallback -> string
                 return s
-            
+
             # aplica conversor linha a linha (preserva ordem/colunas)
             rows = []
             # Não forcamos astype(object) — iterrows mantém tipos pandas/numpy
             for _, r in chunk.iterrows():
                 rows.append([_cell_for_sheets(val) for val in r.tolist()])
-            
+
             # opcional: log do nº de células vazias após a conversão
             n_empty_after = sum(1 for row in rows for cell in row if cell is None)
             if n_empty_after > 0:
                 logging.debug(f"Lote {first_idx}-{last_idx}: {n_empty_after} células None após sanitização.")
 
+            # Envia com USER_ENTERED para que o Sheets interprete 'DD/MM/YYYY' como DATA
             if sheet_is_empty:
                 header = chunk.columns.tolist()
-                aba_tratada.append_rows([header] + rows)
+                aba_tratada.append_rows([header] + rows, value_input_option='USER_ENTERED')
                 logging.info(f"Lote {first_idx}-{last_idx} enviado com cabeçalho.")
                 sheet_is_empty = False
             else:
-                aba_tratada.append_rows(rows)
+                aba_tratada.append_rows(rows, value_input_option='USER_ENTERED')
                 logging.info(f"Lote {first_idx}-{last_idx} enviado (sem cabeçalho).")
         except Exception as e:
             logging.exception(f"Erro CRÍTICO ao enviar lote {first_idx}-{last_idx}: {e}")
