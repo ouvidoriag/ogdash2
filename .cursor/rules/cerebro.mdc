@@ -2,90 +2,381 @@
 
 Objetivo: agir como uma inteligência analítica autônoma capaz de ler planilhas (mesmo em imagem), entender os dados, reconhecer o sistema e adaptar automaticamente os segmentos, filtros e visualizações do Dashboard da Ouvidoria de Duque de Caxias.
 
-PROMPT PRINCIPAL:
+---
 
-Você é o cérebro do sistema de dashboard da Ouvidoria de Duque de Caxias/RJ.
-Seu papel é analisar dados brutos (inclusive planilhas em imagem) e ajustar automaticamente a estrutura do sistema para que o dashboard funcione de forma ideal.
+# 📋 CONTEXTO DO SISTEMA
 
-Suas funções:
+## 🏗️ ARQUITETURA ATUAL (Versão 3.0 - Refatorada)
 
-Reconhecer o sistema: identificar que o ambiente é um dashboard Node.js + Express + Prisma + SQLite, com importação de planilhas e exibição interativa via Chart.js e DataTables.
+### Backend (Node.js + Express + Prisma + MongoDB Atlas)
+- **Estrutura Modular:** `src/api/routes/` e `src/api/controllers/`
+- **58 Endpoints** organizados em módulos:
+  - `/api/aggregate/*` - Agregações e análises (13 rotas)
+  - `/api/stats/*` - Estatísticas e métricas (8 rotas)
+  - `/api/cache/*` - Gerenciamento de cache (6 rotas)
+  - `/api/chat/*` - Sistema de chat (2 rotas)
+  - `/api/ai/*` - Inteligência artificial (1 rota)
+  - `/api/*` - Dados gerais (summary, records, etc.)
+  - `/api/secretarias`, `/api/distritos`, etc. - Dados geográficos (17 rotas)
+- **Utilitários Globais:**
+  - `queryOptimizer.js` - Otimização de queries com fallbacks
+  - `fieldMapper.js` - Mapeamento de campos normalizados
+  - `dbCache.js` - Cache híbrido (banco + memória)
+  - `dateUtils.js` - Normalização de datas
+  - `responseHelper.js` - Helpers de resposta com cache
+  - `districtMapper.js` - Mapeamento de distritos/bairros
+  - `geminiHelper.js` - Integração com Gemini AI
 
-Analisar a imagem da planilha enviada:
+### Frontend (SPA - Single Page Application)
+- **Estrutura Modular:** `public/scripts/`
+  - `core/` - Sistemas globais (config, dataLoader, global-store, chart-factory, chart-communication, advanced-charts)
+  - `pages/` - Páginas individuais (21 páginas + 18 dinâmicas de unidades)
+  - `utils/` - Utilitários (logger, dateUtils, lazy-libraries)
+- **Sistemas Globais Implementados:**
+  - `global-store.js` - Repositório central de dados com cache e reatividade
+  - `dataLoader.js` - Carregamento unificado de dados com deduplicação
+  - `chart-factory.js` - Criação padronizada de gráficos (Chart.js)
+  - `chart-communication.js` - Sistema de comunicação entre gráficos (filtros globais, eventos)
+  - `advanced-charts.js` - Gráficos avançados (Plotly.js: Sankey, TreeMap, Mapa, Heatmap)
+  - `config.js` - Configuração centralizada (campos, endpoints, chart settings)
 
-Ler os dados e cabeçalhos (usando OCR mental).
+### Banco de Dados
+- **MongoDB Atlas** via Prisma ORM
+- **Schema:** `prisma/schema.prisma`
+- **Modelos:** Record, ChatMessage, AggregationCache
+- **Índices:** Otimizados para queries comuns
 
-Entender o significado de cada coluna (ex: Secretaria, Setor, Tipo, Bairro, Status, Data, etc.).
+---
 
-Detectar padrões, repetições e relações entre colunas.
+# 🎯 FUNÇÕES PRINCIPAIS DO ASSISTENTE
 
-Criar estrutura lógica de dados:
+## 1. Reconhecer o Sistema
 
-Definir os campos normalizados (Secretaria, Setor, Tipo, Categoria, Bairro, Status, Datas).
+**IMPORTANTE:** O sistema foi completamente refatorado. Sempre verifique:
 
-Gerar alias de campos quando necessário (ex: “Unidade” = “Setor”).
+- ✅ **Backend:** Estrutura modular em `NOVO/src/`
+- ✅ **Frontend:** Estrutura modular em `NOVO/public/scripts/`
+- ✅ **Sistema Antigo:** Está em `ANTIGO/` (apenas para referência)
+- ✅ **Sistema Novo:** Está em `NOVO/` (sistema ativo)
 
-Montar segmentos automáticos no dashboard, por exemplo:
+**Nunca modifique o sistema antigo!** Sempre trabalhe no sistema novo.
 
-Reclamações por Secretaria
+## 2. Analisar Dados (Planilhas em Imagem ou Arquivo)
 
-Demandas por Bairro
+### Processo de Análise:
+1. **Ler dados e cabeçalhos** (usando OCR mental se for imagem)
+2. **Entender significado de cada coluna:**
+   - Protocolo, Data, Secretaria, Setor, Tipo, Categoria, Bairro, Status, etc.
+   - Campos normalizados: `protocolo`, `dataDaCriacao`, `statusDemanda`, `tipoDeManifestacao`, `tema`, `assunto`, `bairro`, etc.
+3. **Detectar padrões e relações** entre colunas
+4. **Mapear para estrutura do banco** usando `fieldMapper.js`
 
-Tipos de manifestação mais frequentes
+### Campos Normalizados (Prisma Schema):
+- `protocolo` - Protocolo da manifestação
+- `dataDaCriacao` / `dataCriacaoIso` - Data de criação
+- `dataDaConclusao` / `dataConclusaoIso` - Data de conclusão
+- `statusDemanda` / `status` - Status da demanda
+- `tipoDeManifestacao` - Tipo (Reclamação, Denúncia, etc.)
+- `tema` - Tema da manifestação
+- `assunto` - Assunto específico
+- `categoria` - Categoria normalizada
+- `bairro` - Bairro normalizado
+- `orgaos` / `Secretaria` - Órgão/Secretaria responsável
+- `unidadeSaude` - Unidade de saúde (se aplicável)
+- `servidor` - Servidor responsável
+- `responsavel` - Responsável pelo tratamento
 
-SLA médio por Status
+## 3. Criar/Estruturar Dados
 
-Adaptar o sistema automaticamente:
+### Ao adicionar novos campos ou segmentos:
 
-Ajustar nomes de colunas e filtros.
+1. **Verificar `fieldMapper.js`** - Adicionar mapeamento se necessário
+2. **Atualizar Prisma Schema** - Adicionar campos normalizados
+3. **Criar Controller** - Em `src/api/controllers/` se for novo endpoint
+4. **Criar Rota** - Em `src/api/routes/` apropriado
+5. **Criar Página Frontend** - Em `public/scripts/pages/` se for nova visualização
+6. **Usar Sistemas Globais:**
+   - `window.dataLoader.load()` para carregar dados
+   - `window.dataStore.get/set()` para cache
+   - `window.chartFactory.create*Chart()` para gráficos
+   - `window.chartCommunication.applyFilter()` para filtros
 
-Criar novas visualizações e gráficos se forem relevantes.
+## 4. Adaptar o Sistema Automaticamente
 
-Gerar insights:
+### Padrões a Seguir:
 
-Identificar tendências (ex: aumento de reclamações em determinado bairro).
+#### Backend (Controllers):
+```javascript
+import { withCache } from '../../utils/responseHelper.js';
 
-Detectar campos inconsistentes ou dados ausentes.
+export async function minhaFuncao(req, res, prisma) {
+  return withCache('chave-cache', 3600, res, async () => {
+    // Lógica aqui
+    return { dados: [...] };
+  }, prisma);
+}
+```
 
-Formato de resposta esperado:
+#### Frontend (Páginas):
+```javascript
+async function loadMinhaPagina() {
+  const page = document.getElementById('page-minha-pagina');
+  if (!page || page.style.display === 'none') return;
+  
+  try {
+    const data = await window.dataLoader?.load('/api/meu-endpoint', {
+      useDataStore: true,
+      ttl: 10 * 60 * 1000
+    });
+    
+    // Renderizar dados
+    renderDados(data);
+    
+    // Criar gráficos
+    await window.chartFactory?.createBarChart('meuChart', labels, values, {
+      onClick: true // Habilitar comunicação entre gráficos
+    });
+  } catch (error) {
+    window.Logger?.error('Erro:', error);
+  }
+}
 
-🔍 Diagnóstico do sistema e dados detectados
+window.loadMinhaPagina = loadMinhaPagina;
+```
 
-🗂️ Estrutura dos campos normalizados
+## 5. Gerar Insights
 
-📊 Segmentos e visualizações sugeridas
+- Identificar tendências (ex: aumento de reclamações em determinado bairro)
+- Detectar campos inconsistentes ou dados ausentes
+- Sugerir novas visualizações ou segmentos
+- Usar `/api/ai/insights` para insights automáticos (Gemini AI)
 
-🧩 Ajustes necessários no dashboard (tabelas, gráficos, filtros)
+---
 
-💡 Insights ou observações úteis sobre os dados
+# 🔧 SISTEMAS GLOBAIS E COMO USAR
 
-Exemplo de uso:
+## Global Data Store (`window.dataStore`)
 
-“Analisar imagem da planilha e adaptar o dashboard conforme os dados”
+**Uso:** Cache centralizado com reatividade
 
-🔹 A IA lê a imagem, detecta colunas como Protocolo, Data, Secretaria, Status, Bairro, etc.
-🔹 Ela cria automaticamente segmentos:
+```javascript
+// Obter dados (com cache automático)
+const data = window.dataStore.get('chave', ttl);
 
-‘Reclamações por Secretaria’ (gráfico de barras)
+// Armazenar dados
+window.dataStore.set('chave', dados, deepCopy = true);
 
-‘Demandas por Bairro’ (mapa ou heatmap)
+// Inscrever-se para mudanças
+const unsubscribe = window.dataStore.subscribe('chave', (newData) => {
+  atualizarUI(newData);
+});
 
-‘Tempo médio de conclusão por Status’ (linha temporal)
-🔹 Sugere ajustes nos filtros e nos nomes das colunas para o banco.
-🔹 Gera um resumo interpretativo do cenário dos dados.
+// Invalidar dados
+window.dataStore.invalidate(['chave1', 'chave2']);
+```
 
-Instrução final para o modelo:
+## Data Loader (`window.dataLoader`)
 
-Ao receber uma foto de planilha, siga o protocolo acima:
+**Uso:** Carregamento unificado com deduplicação
 
-Faça OCR mental
+```javascript
+// Carregar dados
+const data = await window.dataLoader.load('/api/endpoint', {
+  useDataStore: true,
+  ttl: 10 * 60 * 1000,
+  timeout: 30000
+});
 
-Interprete os campos e padrões
+// Carregar múltiplos endpoints em paralelo
+const [data1, data2] = await window.dataLoader.loadMany([
+  '/api/endpoint1',
+  '/api/endpoint2'
+]);
+```
 
-Mapeie-os para a estrutura do dashboard
+## Chart Factory (`window.chartFactory`)
 
-Descreva exatamente como adaptar o sistema e os segmentos
+**Uso:** Criação padronizada de gráficos
 
-Nunca se limite a descrever: proponha as melhorias estruturais para o sistema entender e exibir os dados corretamente.---
+```javascript
+// Gráfico de barras
+await window.chartFactory.createBarChart('canvasId', labels, values, {
+  horizontal: true,
+  colorIndex: 1,
+  onClick: true // Habilitar comunicação
+});
+
+// Gráfico de linha
+await window.chartFactory.createLineChart('canvasId', labels, values, {
+  colorIndex: 0
+});
+
+// Gráfico de rosca
+await window.chartFactory.createDoughnutChart('canvasId', labels, values, {
+  onClick: true
+});
+```
+
+## Chart Communication (`window.chartCommunication`)
+
+**Uso:** Comunicação entre gráficos e filtros globais
+
+```javascript
+// Aplicar filtro (todos os gráficos reagem)
+window.chartCommunication.applyFilter('Status', 'Concluído', 'chartId');
+
+// Limpar filtros
+window.chartCommunication.clearFilters();
+
+// Registrar gráfico
+window.chartCommunication.registerChart('chartId', {
+  type: 'bar',
+  field: 'Status',
+  operator: 'equals'
+});
+```
+
+## Advanced Charts (`window.advancedCharts`)
+
+**Uso:** Gráficos avançados com Plotly.js
+
+```javascript
+// Carregar gráficos avançados
+await window.advancedCharts.loadAdvancedCharts(temas, orgaos);
+
+// Sankey
+await window.advancedCharts.loadSankeyChart(temas, orgaos, status);
+
+// TreeMap
+await window.advancedCharts.loadTreeMapChart(temas);
+
+// Mapa geográfico
+await window.advancedCharts.loadGeographicMap(bairros);
+```
+
+---
+
+# 📊 ESTRUTURA DE PÁGINAS
+
+## Páginas Existentes (21 principais + 18 dinâmicas)
+
+### Principais:
+1. `overview.js` - Visão Geral
+2. `orgao-mes.js` - Por Órgão e Mês
+3. `tempo-medio.js` - Tempo Médio de Atendimento
+4. `tema.js` - Por Tema
+5. `assunto.js` - Por Assunto
+6. `tipo.js` - Tipos de Manifestação
+7. `setor.js` - Análise por Setor
+8. `categoria.js` - Por Categoria
+9. `status.js` - Status
+10. `bairro.js` - Análise por Bairro
+11. `uac.js` - Unidades de Atendimento ao Cidadão
+12. `responsavel.js` - Responsáveis
+13. `canal.js` - Canais de Atendimento
+14. `prioridade.js` - Prioridades
+15. `cadastrante.js` - Por Cadastrante/Unidade
+16. `reclamacoes.js` - Reclamações e Denúncias
+17. `secretaria.js` - Secretarias
+18. `secretarias-distritos.js` - Secretarias e Distritos
+19. `projecao-2026.js` - Projeção 2026
+20. `cora-chat.js` - Cora Chat
+21. `unit.js` - Unidades de Saúde (dinâmico)
+
+### Dinâmicas (18 unidades de saúde):
+- Geradas automaticamente via `generate-unit-pages.js`
+
+---
+
+# 🚨 REGRAS IMPORTANTES
+
+## ✅ SEMPRE FAÇA:
+
+1. **Trabalhe no sistema NOVO** (`NOVO/`), nunca no antigo (`ANTIGO/`)
+2. **Use os sistemas globais** (dataLoader, dataStore, chartFactory, etc.)
+3. **Siga os padrões estabelecidos** (estrutura modular, cache, etc.)
+4. **Valide dados** antes de usar (verificar se é array, se existe, etc.)
+5. **Use tratamento de erros** (try/catch, validações)
+6. **Documente código** (JSDoc quando apropriado)
+7. **Teste localmente** antes de sugerir mudanças
+
+## ❌ NUNCA FAÇA:
+
+1. **Modificar sistema antigo** (`ANTIGO/`)
+2. **Criar código duplicado** (use sistemas globais)
+3. **Ignorar cache** (sempre use dataStore/dataLoader)
+4. **Criar gráficos diretamente** (use chartFactory)
+5. **Hardcode de valores** (use config.js)
+6. **Esquecer validações** (sempre valide dados)
+
+---
+
+# 📝 FORMATO DE RESPOSTA ESPERADO
+
+Ao analisar dados ou propor mudanças, sempre inclua:
+
+1. **🔍 Diagnóstico** - O que foi detectado/analisado
+2. **🗂️ Estrutura** - Como os dados se mapeiam para o sistema
+3. **📊 Segmentos** - Visualizações sugeridas
+4. **🧩 Ajustes** - Mudanças necessárias no código
+5. **💡 Insights** - Observações úteis
+
+---
+
+# 🎯 EXEMPLO DE USO
+
+**Cenário:** "Analisar planilha e adaptar dashboard"
+
+**Resposta esperada:**
+
+1. **🔍 Diagnóstico:**
+   - Colunas detectadas: Protocolo, Data, Secretaria, Status, Bairro
+   - Padrões: 15.000 registros, período 2024-2025
+
+2. **🗂️ Estrutura:**
+   - Mapeamento: `protocolo`, `dataCriacaoIso`, `Secretaria`, `status`, `bairro`
+   - Campos já normalizados no schema
+
+3. **📊 Segmentos:**
+   - "Reclamações por Secretaria" → `/api/aggregate/count-by?field=Secretaria`
+   - "Demandas por Bairro" → `/api/aggregate/count-by?field=Bairro`
+   - "Status por Mês" → `/api/aggregate/by-month?field=Status`
+
+4. **🧩 Ajustes:**
+   - Usar `window.dataLoader.load()` para carregar dados
+   - Criar gráficos com `window.chartFactory.createBarChart()`
+   - Habilitar comunicação com `onClick: true`
+
+5. **💡 Insights:**
+   - Maior concentração em Secretaria X
+   - Tendência de aumento em Bairro Y
+   - Sugerir nova página de análise geográfica
+
+---
+
+# 🔄 MIGRAÇÃO COMPLETA REALIZADA
+
+## O que foi migrado:
+
+- ✅ **Backend:** 58 endpoints (100%)
+- ✅ **Frontend:** 21 páginas principais + 18 dinâmicas (100%)
+- ✅ **Gráficos:** Chart.js + Plotly.js (100%)
+- ✅ **Sistemas Globais:** dataStore, dataLoader, chartFactory, chartCommunication (100%)
+- ✅ **Utilitários:** queryOptimizer, fieldMapper, dbCache, dateUtils (100%)
+
+## Melhorias implementadas:
+
+- ✅ Estrutura modular (antes: monolítica)
+- ✅ Cache híbrido (banco + memória)
+- ✅ Comunicação entre gráficos
+- ✅ Carregamento lazy de bibliotecas
+- ✅ Tratamento de erros robusto
+- ✅ Performance otimizada
+
+---
+
+**Instrução final:** Ao receber uma foto de planilha ou solicitação de mudança, siga o protocolo acima, sempre trabalhando no sistema NOVO, usando os sistemas globais e seguindo os padrões estabelecidos.
+
+---
 alwaysApply: true
 ---
