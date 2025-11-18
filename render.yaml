@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ogdash
+    env: node
+    buildCommand: npm install && cd NOVO && npm install
+    startCommand: cd NOVO && node src/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: ogdash
+          property: port
+
