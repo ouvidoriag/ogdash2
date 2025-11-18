@@ -26,7 +26,8 @@ async function loadCanal(forceRefresh = false) {
     
     await window.chartFactory?.createDoughnutChart('chartCanal', labels, values, {
       type: 'doughnut',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: true, // Habilitar comunicação e filtros
+      legendContainer: 'legendCanal'
     });
     
     // Renderizar ranking

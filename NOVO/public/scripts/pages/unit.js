@@ -132,6 +132,7 @@ async function renderTiposChart(canvas, tipos, unitName) {
   
   await window.chartFactory?.createDoughnutChart(chartId, labels, values, {
     type: 'doughnut',
+    field: 'tipoDeManifestacao',
     onClick: true, // Habilitar comunicação e filtros
     chartOptions: {
       plugins: {

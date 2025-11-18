@@ -293,6 +293,23 @@ function clearPersistent(key = null) {
   }
 }
 
+function invalidate(keys) {
+  if (!keys) {
+    clear(null);
+    return;
+  }
+  
+  if (Array.isArray(keys)) {
+    keys.forEach(key => {
+      if (typeof key === 'string') {
+        clear(key);
+      }
+    });
+  } else if (typeof keys === 'string') {
+    clear(keys);
+  }
+}
+
 function getStats() {
   return {
     dashboardDataAge: dataStore.dashboardDataTimestamp 
@@ -316,6 +333,7 @@ if (typeof window !== 'undefined') {
     get,
     set,
     clear,
+    invalidate,
     subscribe,
     getStats,
     getDefaultTTL: () => dataStore.defaultTTL,

@@ -54,12 +54,7 @@ function getPageLoader(page) {
     };
   }
   if (page === 'zeladoria-overview') {
-    return () => {
-      if (window.Logger) {
-        window.Logger.info('Página Overview Zeladoria carregada');
-      }
-      return Promise.resolve();
-    };
+    return window.loadZeladoriaOverview || (() => Promise.resolve());
   }
   
   // Páginas dinâmicas de unidades de saúde
@@ -99,7 +94,17 @@ function getPageLoader(page) {
     'uac': 'loadUAC',
     'responsavel': 'loadResponsavel',
     'canal': 'loadCanal',
-    'prioridade': 'loadPrioridade'
+    'prioridade': 'loadPrioridade',
+    // Páginas de Zeladoria
+    'zeladoria-status': 'loadZeladoriaStatus',
+    'zeladoria-categoria': 'loadZeladoriaCategoria',
+    'zeladoria-departamento': 'loadZeladoriaDepartamento',
+    'zeladoria-bairro': 'loadZeladoriaBairro',
+    'zeladoria-responsavel': 'loadZeladoriaResponsavel',
+    'zeladoria-canal': 'loadZeladoriaCanal',
+    'zeladoria-tempo': 'loadZeladoriaTempo',
+    'zeladoria-mensal': 'loadZeladoriaMensal',
+    'zeladoria-geografica': 'loadZeladoriaGeografica'
   };
   
   const funcName = loaderMap[page];

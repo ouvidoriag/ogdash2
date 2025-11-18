@@ -82,6 +82,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', version: '3.0.0' });
 });
 
+// Endpoint para Chrome DevTools (evita erro 404)
+app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req, res) => {
+  res.json({});
+});
+
 // Rotas da API
 app.use('/api', apiRoutes(prisma, getMongoClient));
 

@@ -30,7 +30,14 @@ async function loadReclamacoes() {
     const tipos = data.tipos || [];
     
     // Renderizar lista de assuntos
-    renderAssuntosList(assuntos);
+    if (assuntos && Array.isArray(assuntos)) {
+      renderReclamacoesAssuntosList(assuntos);
+    } else {
+      if (window.Logger) {
+        window.Logger.warn('Assuntos não é um array válido:', assuntos);
+      }
+      renderReclamacoesAssuntosList([]);
+    }
     
     // Renderizar gráfico de tipos
     await renderTiposChart(tipos);
@@ -48,7 +55,7 @@ async function loadReclamacoes() {
   }
 }
 
-function renderAssuntosList(assuntos) {
+function renderReclamacoesAssuntosList(assuntos) {
   const listaEl = document.getElementById('listaReclamacoes');
   if (!listaEl) return;
   
@@ -85,6 +92,7 @@ async function renderTiposChart(tipos) {
   
   await window.chartFactory?.createBarChart('chartReclamacoesTipo', labels, values, {
     horizontal: true,
+    field: 'tipoDeManifestacao',
     colorIndex: 4,
     label: 'Quantidade',
     onClick: true // Habilitar comunicação e filtros

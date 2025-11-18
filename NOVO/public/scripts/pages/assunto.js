@@ -84,7 +84,8 @@ async function renderStatusAssuntoChart(dataAssuntos) {
   if (labels.length > 0) {
     await window.chartFactory?.createDoughnutChart('chartStatusAssunto', labels, values, {
       type: 'doughnut',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: true, // Habilitar comunicação e filtros
+      legendContainer: 'legendStatusAssunto'
     });
   }
 }
@@ -111,7 +112,8 @@ async function renderAssuntoMesChart(dataAssuntoMes) {
   const labels = meses.map(m => window.dateUtils?.formatMonthYearShort(m) || m);
   
   await window.chartFactory?.createBarChart('chartAssuntoMes', labels, datasets, {
-    colorIndex: 0
+    colorIndex: 0,
+    legendContainer: 'legendAssuntoMes'
   });
 }
 

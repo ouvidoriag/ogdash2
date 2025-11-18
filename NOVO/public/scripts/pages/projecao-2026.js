@@ -103,9 +103,10 @@ async function renderProjecaoChart(historico, projecao2026) {
   await window.chartFactory?.createLineChart('chartProjecaoMensal', todosLabels, datasets, {
     fill: true,
     tension: 0.4,
+    legendContainer: 'legendProjecaoMensal',
     chartOptions: {
       plugins: {
-        legend: { display: true, position: 'top', labels: { color: '#94a3b8' } }
+        legend: { display: false } // Usar legenda customizada
       },
       scales: {
         x: { ticks: { maxRotation: 45, minRotation: 45 } }

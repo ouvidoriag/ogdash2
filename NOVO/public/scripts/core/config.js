@@ -92,6 +92,44 @@ const CHART_CONFIG = {
     '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1'
   ],
   
+  // Mapeamento de cores por tipo de manifestação
+  TIPO_MANIFESTACAO_COLORS: {
+    'elogio': '#10b981',        // Verde
+    'elogios': '#10b981',
+    'reclamação': '#f97316',    // Laranja
+    'reclamações': '#f97316',
+    'reclamacao': '#f97316',
+    'reclamacoes': '#f97316',
+    'reclama': '#f97316',
+    'denúncia': '#ef4444',      // Vermelho
+    'denúncias': '#ef4444',
+    'denuncia': '#ef4444',
+    'denuncias': '#ef4444',
+    'denún': '#ef4444',
+    'sugestão': '#3b82f6',      // Azul
+    'sugestões': '#3b82f6',
+    'sugestao': '#3b82f6',
+    'sugestoes': '#3b82f6',
+    'sugest': '#3b82f6',
+    'não informado': '#94a3b8', // Cinza
+    'nao informado': '#94a3b8',
+    'não informada': '#94a3b8',
+    'nao informada': '#94a3b8',
+    'não informados': '#94a3b8',
+    'nao informados': '#94a3b8',
+    'não informadas': '#94a3b8',
+    'nao informadas': '#94a3b8',
+    'acesso a informação': '#eab308', // Amarelo
+    'acesso a informacao': '#eab308',
+    'acesso à informação': '#eab308',
+    'acesso à informacao': '#eab308',
+    'esic': '#eab308',          // Amarelo
+    'e-sic': '#eab308',
+    'e sic': '#eab308',
+    'lei de acesso': '#eab308',
+    'lei acesso': '#eab308'
+  },
+  
   PERFORMANCE: {
     MAX_POINTS: 100,
     MAX_LABELS: 15,
@@ -152,6 +190,29 @@ const PERFORMANCE_CONFIG = {
   MAX_LIST_ITEMS: 50
 };
 
+/**
+ * Obter cor baseada no tipo de manifestação
+ * @param {string} tipo - Tipo de manifestação
+ * @returns {string} - Cor hexadecimal
+ */
+function getColorByTipoManifestacao(tipo) {
+  if (!tipo || typeof tipo !== 'string') {
+    return null;
+  }
+  
+  const tipoLower = tipo.toLowerCase().trim();
+  const colorMap = CHART_CONFIG.TIPO_MANIFESTACAO_COLORS;
+  
+  // Buscar correspondência exata ou parcial
+  for (const [key, color] of Object.entries(colorMap)) {
+    if (tipoLower.includes(key) || key.includes(tipoLower)) {
+      return color;
+    }
+  }
+  
+  return null;
+}
+
 window.config = {
   FIELD_NAMES,
   FIELD_LABELS,
@@ -160,7 +221,8 @@ window.config = {
   buildEndpoint,
   CHART_CONFIG,
   FORMAT_CONFIG,
-  PERFORMANCE_CONFIG
+  PERFORMANCE_CONFIG,
+  getColorByTipoManifestacao
 };
 
 window.FIELD_NAMES = FIELD_NAMES;

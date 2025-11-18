@@ -71,7 +71,8 @@ async function renderCategoriaMesChart(dataMes) {
   const labels = meses.map(m => window.dateUtils?.formatMonthYearShort(m) || m);
   
   await window.chartFactory?.createBarChart('chartCategoriaMes', labels, datasets, {
-    colorIndex: 0
+    colorIndex: 0,
+    legendContainer: 'legendCategoriaMes'
   });
 }
 

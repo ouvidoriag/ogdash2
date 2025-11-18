@@ -89,3 +89,54 @@ model AggregationCache {
   @@map("aggregation_cache")
 }
 
+// Modelo para dados de Zeladoria
+model Zeladoria {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  data      Json     // Armazena o JSON completo do CSV
+  createdAt DateTime @default(now())
+  
+  // Campos normalizados baseados nas colunas do CSV
+  origem                String? // Origem
+  status                String? // Status
+  protocoloEmpresa      String? // Protocolo da Empresa
+  categoria             String? // Categoria
+  responsavel           String? // Responsável
+  endereco              String? // Endereço
+  bairro                String? // Bairro
+  cidade                String? // Cidade
+  estado                String? // Estado
+  dataCriacao           String? // Data de criação
+  dataConclusao         String? // Data de conclusão
+  apoios                Int?    // Apoios
+  latitude              String? // Latitude
+  longitude             String? // Longitude
+  departamento          String? // Departamento
+  canal                 String? // Canal
+  prazo                 String? // Prazo
+  
+  // Campos ISO para queries de data
+  dataCriacaoIso        String? // YYYY-MM-DD
+  dataConclusaoIso      String? // YYYY-MM-DD
+  
+  // Índices simples
+  @@index([origem])
+  @@index([status])
+  @@index([protocoloEmpresa])
+  @@index([categoria])
+  @@index([responsavel])
+  @@index([bairro])
+  @@index([departamento])
+  @@index([canal])
+  @@index([dataCriacaoIso])
+  @@index([dataConclusaoIso])
+  
+  // Índices compostos para queries comuns
+  @@index([status, categoria])
+  @@index([dataCriacaoIso, status])
+  @@index([dataCriacaoIso, categoria])
+  @@index([departamento, status])
+  @@index([bairro, categoria])
+  
+  @@map("zeladoria")
+}
+

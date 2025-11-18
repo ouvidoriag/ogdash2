@@ -85,7 +85,8 @@ async function renderStatusTemaChart(dataTemas) {
   if (labels.length > 0) {
     await window.chartFactory?.createDoughnutChart('chartStatusTema', labels, values, {
       type: 'doughnut',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: true, // Habilitar comunicação e filtros
+      legendContainer: 'legendStatusTema'
     });
   }
 }
@@ -113,7 +114,8 @@ async function renderTemaMesChart(dataTemaMes) {
   const labels = meses.map(m => window.dateUtils?.formatMonthYearShort(m) || m);
   
   await window.chartFactory?.createBarChart('chartTemaMes', labels, datasets, {
-    colorIndex: 0
+    colorIndex: 0,
+    legendContainer: 'legendTemaMes'
   });
 }
 

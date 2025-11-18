@@ -26,7 +26,8 @@ async function loadStatusPage(forceRefresh = false) {
     
     await window.chartFactory?.createDoughnutChart('chartStatusPage', labels, values, {
       type: 'doughnut',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: true, // Habilitar comunicação e filtros
+      legendContainer: 'legendStatusPage'
     });
     
     // Carregar dados mensais
@@ -69,7 +70,8 @@ async function renderStatusMesChart(dataMes) {
   const labels = meses.map(m => window.dateUtils?.formatMonthYearShort(m) || m);
   
   await window.chartFactory?.createBarChart('chartStatusMes', labels, datasets, {
-    colorIndex: 0
+    colorIndex: 0,
+    legendContainer: 'legendStatusMes'
   });
 }
 

@@ -186,16 +186,47 @@ async function createBarChart(canvasId, labels, values, options = {}) {
           borderWidth: options.borderWidth || 1
         }));
       } else {
-        const colorIndex = options.colorIndex !== undefined ? options.colorIndex : 1;
-        const baseColor = options.backgroundColor 
-          ? (options.backgroundColor.startsWith('#') ? options.backgroundColor : getColorFromPalette(colorIndex, palette))
-          : getColorFromPalette(colorIndex, palette);
+        // Verificar se é tipo de manifestação e usar cores específicas
+        const isTipoManifestacao = options.field === 'tipoDeManifestacao' || 
+                                    options.field === 'Tipo' ||
+                                    canvasId.toLowerCase().includes('tipo') ||
+                                    (labels && labels.some(l => {
+                                      const tipoLower = (l || '').toLowerCase();
+                                      return tipoLower.includes('elogio') || 
+                                             tipoLower.includes('reclama') || 
+                                             tipoLower.includes('denúncia') || 
+                                             tipoLower.includes('denuncia') ||
+                                             tipoLower.includes('sugest');
+                                    }));
+        
+        let backgroundColor, borderColor;
+        
+        if (isTipoManifestacao && window.config?.getColorByTipoManifestacao) {
+          // Usar cores específicas por tipo de manifestação
+          backgroundColor = labels.map((label) => {
+            const color = window.config.getColorByTipoManifestacao(label);
+            return color ? getColorWithAlpha(color, 0.7) : getColorWithAlpha(getColorFromPalette(1, palette), 0.7);
+          });
+          borderColor = labels.map((label) => {
+            const color = window.config.getColorByTipoManifestacao(label);
+            return color || getColorFromPalette(1, palette);
+          });
+        } else {
+          // Usar cor padrão
+          const colorIndex = options.colorIndex !== undefined ? options.colorIndex : 1;
+          const baseColor = options.backgroundColor 
+            ? (options.backgroundColor.startsWith('#') ? options.backgroundColor : getColorFromPalette(colorIndex, palette))
+            : getColorFromPalette(colorIndex, palette);
+          
+          backgroundColor = options.backgroundColor || getColorWithAlpha(baseColor, 0.7);
+          borderColor = options.borderColor || baseColor;
+        }
         
         datasets = [{
           label: options.label || 'Dados',
           data: values,
-          backgroundColor: options.backgroundColor || getColorWithAlpha(baseColor, 0.7),
-          borderColor: options.borderColor || baseColor,
+          backgroundColor: Array.isArray(backgroundColor) ? backgroundColor : backgroundColor,
+          borderColor: Array.isArray(borderColor) ? borderColor : borderColor,
           borderWidth: options.borderWidth || 1
         }];
       }
@@ -219,6 +250,13 @@ async function createBarChart(canvasId, labels, values, options = {}) {
     
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
+    
+    // Criar legenda interativa se houver múltiplos datasets e container especificado
+    if (datasets.length > 1 && options.legendContainer) {
+      if (window.chartLegend && window.chartLegend.createInteractiveLegend) {
+        window.chartLegend.createInteractiveLegend(canvasId, options.legendContainer, datasets, options);
+      }
+    }
     
     // Registrar gráfico no sistema de comunicação
     if (window.chartCommunication) {
@@ -350,6 +388,13 @@ async function createLineChart(canvasId, labels, values, options = {}) {
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
     
+    // Criar legenda interativa se houver múltiplos datasets e container especificado
+    if (datasets.length > 1 && options.legendContainer) {
+      if (window.chartLegend && window.chartLegend.createInteractiveLegend) {
+        window.chartLegend.createInteractiveLegend(canvasId, options.legendContainer, datasets, options);
+      }
+    }
+    
     // Registrar gráfico no sistema de comunicação
     if (window.chartCommunication) {
       const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
@@ -426,13 +471,45 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
     const defaults = getChartDefaults('doughnut');
     const palette = getColorPalette();
     
-    const backgroundColor = Array.isArray(values) && values.length > 0
-      ? values.map((_, idx) => getColorWithAlpha(getColorFromPalette(idx, palette), 0.8))
-      : [getColorWithAlpha(getColorFromPalette(0, palette), 0.8)];
+    // Verificar se é tipo de manifestação e usar cores específicas
+    const isTipoManifestacao = options.field === 'tipoDeManifestacao' || 
+                                options.field === 'Tipo' ||
+                                canvasId.toLowerCase().includes('tipo') ||
+                                (labels && labels.some(l => {
+                                  const tipoLower = (l || '').toLowerCase();
+                                  return tipoLower.includes('elogio') || 
+                                         tipoLower.includes('reclama') || 
+                                         tipoLower.includes('denúncia') || 
+                                         tipoLower.includes('denuncia') ||
+                                         tipoLower.includes('sugest') ||
+                                         tipoLower.includes('esic') ||
+                                         tipoLower.includes('acesso') ||
+                                         tipoLower.includes('não informado') ||
+                                         tipoLower.includes('nao informado');
+                                }));
     
-    const borderColor = Array.isArray(values) && values.length > 0
-      ? values.map((_, idx) => getColorFromPalette(idx, palette))
-      : [getColorFromPalette(0, palette)];
+    let backgroundColor, borderColor;
+    
+    if (isTipoManifestacao && window.config?.getColorByTipoManifestacao) {
+      // Usar cores específicas por tipo de manifestação
+      backgroundColor = labels.map((label, idx) => {
+        const color = window.config.getColorByTipoManifestacao(label);
+        return color ? getColorWithAlpha(color, 0.8) : getColorWithAlpha(getColorFromPalette(idx, palette), 0.8);
+      });
+      borderColor = labels.map((label, idx) => {
+        const color = window.config.getColorByTipoManifestacao(label);
+        return color || getColorFromPalette(idx, palette);
+      });
+    } else {
+      // Usar paleta padrão
+      backgroundColor = Array.isArray(values) && values.length > 0
+        ? values.map((_, idx) => getColorWithAlpha(getColorFromPalette(idx, palette), 0.8))
+        : [getColorWithAlpha(getColorFromPalette(0, palette), 0.8)];
+      
+      borderColor = Array.isArray(values) && values.length > 0
+        ? values.map((_, idx) => getColorFromPalette(idx, palette))
+        : [getColorFromPalette(0, palette)];
+    }
     
     const config = {
       type: options.type || 'doughnut',
@@ -454,6 +531,23 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
     
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
+    
+    // Criar legenda interativa se container especificado
+    if (options.legendContainer && labels && labels.length > 0) {
+      if (window.chartLegend && window.chartLegend.createDoughnutLegend) {
+        // Aguardar um pouco para garantir que o gráfico está renderizado
+        setTimeout(() => {
+          window.chartLegend.createDoughnutLegend(
+            canvasId, 
+            options.legendContainer, 
+            labels, 
+            values, 
+            backgroundColor,
+            options
+          );
+        }, 100);
+      }
+    }
     
     // Registrar gráfico no sistema de comunicação
     if (window.chartCommunication) {

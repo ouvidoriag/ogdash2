@@ -34,19 +34,24 @@ export async function optimizedGroupBy(prisma, field, where = {}, options = {}) 
     const results = await prisma.record.groupBy({
       by: [field],
       where: Object.keys(where).length > 0 ? where : undefined,
-      _count: { _all: true },
-      orderBy: {
-        _count: {
-          _all: sortOrder === 'desc' ? 'desc' : 'asc'
-        }
-      },
-      ...(limit ? { take: limit } : {})
+      _count: { id: true }
     });
     
-    return results.map(r => ({
+    const mapped = results.map(r => ({
       key: r[field] ?? 'Não informado',
-      count: r._count._all
+      count: r._count.id
     }));
+    
+    // Ordenar manualmente (MongoDB não suporta orderBy com _count)
+    mapped.sort((a, b) => {
+      if (sortOrder === 'desc') {
+        return b.count - a.count;
+      } else {
+        return a.count - b.count;
+      }
+    });
+    
+    return limit ? mapped.slice(0, limit) : mapped;
   } catch (error) {
     // Fallback: se groupBy falhar, usar método tradicional (mas otimizado)
     console.warn(`⚠️ groupBy falhou para ${field}, usando fallback:`, error.message);
@@ -106,7 +111,7 @@ export async function optimizedGroupByMonth(prisma, where = {}, options = {}) {
         ...where,
         dataCriacaoIso: { not: null }
       },
-      _count: { _all: true }
+      _count: { id: true }
     });
     
     // Agrupar por mês (YYYY-MM)
@@ -114,7 +119,7 @@ export async function optimizedGroupByMonth(prisma, where = {}, options = {}) {
     for (const r of results) {
       if (!r.dataCriacaoIso) continue;
       const month = r.dataCriacaoIso.slice(0, 7); // YYYY-MM
-      monthMap.set(month, (monthMap.get(month) || 0) + r._count._all);
+      monthMap.set(month, (monthMap.get(month) || 0) + r._count.id);
     }
     
     const result = Array.from(monthMap.entries())

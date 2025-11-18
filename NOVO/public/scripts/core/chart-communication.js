@@ -326,6 +326,8 @@
     'chartOrgaoMes': { field: 'Orgaos', op: 'contains' },
     'chartSecretaria': { field: 'Secretaria', op: 'contains' },
     'chartTipo': { field: 'Tipo', op: 'eq' },
+    'chartTiposManifestacao': { field: 'Tipo', op: 'eq' },
+    'chartReclamacoesTipo': { field: 'Tipo', op: 'eq' },
     'chartSetor': { field: 'Setor', op: 'contains' },
     'chartCategoria': { field: 'Categoria', op: 'eq' },
     'chartBairro': { field: 'Bairro', op: 'contains' },

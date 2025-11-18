@@ -89,8 +89,11 @@ export async function averageTime(req, res, prisma) {
     // Calcular médias e retornar ordenado
     const result = Array.from(map.entries())
       .map(([org, stats]) => ({ 
-        org, 
+        org,
+        unit: org, // Compatibilidade com frontend
         dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+        average: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
+        media: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
         quantidade: stats.total
       }))
       .filter(item => item.dias > 0)
@@ -184,7 +187,10 @@ export async function averageTimeByDay(req, res, prisma) {
       const stats = map.get(dateKey) || { total: 0, sum: 0 };
       result.push({
         date: dateKey,
+        _id: dateKey, // Compatibilidade
         dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+        average: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
+        media: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
         quantidade: stats.total
       });
     }
@@ -195,12 +201,187 @@ export async function averageTimeByDay(req, res, prisma) {
 
 /**
  * GET /api/stats/average-time/by-week
- * Tempo médio por semana
+ * Tempo médio por semana (últimas 12 semanas)
  */
 export async function averageTimeByWeek(req, res, prisma) {
-  // Similar ao by-day, mas agrupa por semana
-  // Implementação similar, agrupando por semana ISO
-  return averageTimeByDay(req, res, prisma); // Por enquanto, usar mesma lógica
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
+  const apenasConcluidos = req.query.apenasConcluidos === 'true';
+  const incluirZero = req.query.incluirZero !== 'false';
+  
+  const key = servidor ? `avgTimeByWeek:servidor:${servidor}:v4` :
+              unidadeCadastro ? `avgTimeByWeek:uac:${unidadeCadastro}:v4` :
+              meses ? `avgTimeByWeek:meses:${meses.sort().join(',')}:v4` :
+              'avgTimeByWeek:v4';
+  
+  return withCache(key, 3600, res, async () => {
+    const where = {};
+    if (servidor) where.servidor = servidor;
+    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    
+    // Filtrar apenas últimos 24 meses
+    const todayForFilter = new Date();
+    const twoYearsAgo = new Date(todayForFilter);
+    twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
+    where.AND = [
+      ...(where.AND || []),
+      {
+        OR: [
+          { dataCriacaoIso: { gte: minDateStr } },
+          { dataDaCriacao: { contains: todayForFilter.getFullYear().toString() } },
+          { dataDaCriacao: { contains: (todayForFilter.getFullYear() - 1).toString() } }
+        ]
+      }
+    ];
+    
+    const rows = await prisma.record.findMany({
+      where: {
+        ...where,
+        dataDaCriacao: { not: null }
+      },
+      select: {
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        tempoDeResolucaoEmDias: true,
+        dataConclusaoIso: true,
+        dataDaConclusao: true,
+        data: true
+      },
+      take: 100000
+    });
+    
+    // Função para obter semana ISO (YYYY-Www) - implementação simplificada e robusta
+    function getISOWeek(dateStr) {
+      if (!dateStr) return null;
+      try {
+        const date = new Date(dateStr + 'T12:00:00');
+        if (isNaN(date.getTime())) return null;
+        
+        // Calcular semana ISO 8601
+        // A semana ISO começa na segunda-feira (dia 1)
+        const d = new Date(date);
+        const day = d.getDay(); // 0 = domingo, 1 = segunda, ..., 6 = sábado
+        const dayOfWeek = day === 0 ? 7 : day; // Converter domingo de 0 para 7
+        
+        // Mover para a quinta-feira da semana atual (dia 4)
+        const thursday = new Date(d);
+        thursday.setDate(d.getDate() + (4 - dayOfWeek));
+        
+        // Calcular número da semana baseado na quinta-feira
+        const year = thursday.getFullYear();
+        const jan1 = new Date(year, 0, 1);
+        const jan1Day = jan1.getDay() || 7; // Converter domingo para 7
+        
+        // Encontrar a primeira quinta-feira do ano
+        let firstThursday = new Date(jan1);
+        if (jan1Day <= 4) {
+          // Se 1º de janeiro é segunda a quinta, a primeira semana já começou
+          firstThursday.setDate(1 + (4 - jan1Day));
+        } else {
+          // Se 1º de janeiro é sexta, sábado ou domingo, a primeira semana começa na próxima segunda
+          firstThursday.setDate(1 + (7 - jan1Day + 4));
+        }
+        
+        // Calcular diferença em dias
+        const diffTime = thursday - firstThursday;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const weekNo = Math.floor(diffDays / 7) + 1;
+        
+        // Garantir que a semana está no intervalo válido (1-53)
+        const validWeekNo = Math.max(1, Math.min(53, weekNo));
+        
+        // Formato: YYYY-Www
+        return `${year}-W${String(validWeekNo).padStart(2, '0')}`;
+      } catch (e) {
+        console.error('Erro ao calcular semana ISO:', e, dateStr);
+        return null;
+      }
+    }
+    
+    const map = new Map();
+    const today = new Date();
+    // Aumentar o range para garantir que capturemos todas as últimas 12 semanas
+    // 12 semanas = 84 dias, mas vamos usar 100 dias para garantir margem
+    const hundredDaysAgo = new Date(today);
+    hundredDaysAgo.setDate(today.getDate() - 100);
+    const minDateForProcessing = hundredDaysAgo.toISOString().slice(0, 10);
+    
+    let processedCount = 0;
+    for (const r of rows) {
+      const dataCriacao = getDataCriacao(r);
+      if (!dataCriacao) continue;
+      
+      // Filtrar apenas registros das últimas 100 dias (últimas 12 semanas + margem)
+      if (dataCriacao < minDateForProcessing) continue;
+      
+      if (apenasConcluidos && !isConcluido(r)) continue;
+      
+      const days = getTempoResolucaoEmDias(r, incluirZero);
+      if (days === null) continue;
+      
+      const week = getISOWeek(dataCriacao);
+      if (!week) {
+        console.warn('⚠️ Semana ISO não calculada para data:', dataCriacao);
+        continue;
+      }
+      
+      if (!map.has(week)) map.set(week, { total: 0, sum: 0 });
+      const stats = map.get(week);
+      stats.total += 1;
+      stats.sum += days;
+      processedCount++;
+    }
+    
+    console.log(`📊 averageTimeByWeek: Processados ${processedCount} registros válidos de ${rows.length} totais. Semanas encontradas: ${map.size}`);
+    
+    // Gerar últimas 12 semanas (garantir que todas as semanas apareçam)
+    const result = [];
+    const weekSet = new Set();
+    
+    // Primeiro, adicionar todas as semanas encontradas nos dados
+    for (const week of map.keys()) {
+      weekSet.add(week);
+    }
+    
+    // Depois, adicionar as últimas 12 semanas mesmo que não tenham dados
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (i * 7));
+      const week = getISOWeek(d.toISOString().slice(0, 10));
+      if (week) {
+        weekSet.add(week);
+      }
+    }
+    
+    // Converter para array e ordenar
+    const weeks = Array.from(weekSet).sort().slice(-12);
+    
+    // Log para debug
+    if (weeks.length === 0) {
+      console.warn('⚠️ averageTimeByWeek: Nenhuma semana encontrada. Total de registros processados:', rows.length);
+    }
+    
+    // Criar resultado com todas as semanas
+    for (const week of weeks) {
+      const stats = map.get(week) || { total: 0, sum: 0 };
+      result.push({
+        week,
+        _id: week, // Compatibilidade
+        dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+        average: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
+        media: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
+        quantidade: stats.total
+      });
+    }
+    
+    // Log final para debug
+    console.log(`✅ averageTimeByWeek: Retornando ${result.length} semanas. Primeira: ${result[0]?.week}, Última: ${result[result.length - 1]?.week}`);
+    
+    return result;
+  }, prisma);
 }
 
 /**
@@ -257,7 +438,10 @@ export async function averageTimeByMonth(req, res, prisma) {
     return Array.from(map.entries())
       .map(([month, stats]) => ({
         month,
+        ym: month, // Compatibilidade
         dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+        average: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
+        media: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
         quantidade: stats.total
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
@@ -389,7 +573,11 @@ export async function averageTimeByUnit(req, res, prisma) {
     return Array.from(map.entries())
       .map(([unit, stats]) => ({
         unit,
+        org: unit, // Compatibilidade
+        _id: unit, // Compatibilidade
         dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+        average: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
+        media: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
         quantidade: stats.total
       }))
       .filter(item => item.dias > 0)
@@ -456,7 +644,10 @@ export async function averageTimeByMonthUnit(req, res, prisma) {
         return {
           unit,
           month,
+          ym: month, // Compatibilidade
           dias: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0,
+          average: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
+          media: stats.total > 0 ? Number((stats.sum / stats.total).toFixed(2)) : 0, // Compatibilidade
           quantidade: stats.total
         };
       })

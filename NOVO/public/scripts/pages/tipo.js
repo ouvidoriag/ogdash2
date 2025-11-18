@@ -26,18 +26,27 @@ async function loadTipo() {
     
     await window.chartFactory?.createDoughnutChart('chartTipo', labels, values, {
       type: 'pie',
-      onClick: true // Habilitar comunicação e filtros
+      field: 'tipoDeManifestacao',
+      onClick: true, // Habilitar comunicação e filtros
+      legendContainer: 'legendTipo'
     });
     
-    // Renderizar ranking
+    // Renderizar ranking com cores por tipo de manifestação
     const rankEl = document.getElementById('rankTipo');
     if (rankEl) {
-      rankEl.innerHTML = top10.map((item, idx) => `
-        <li class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
-          <span class="text-violet-300 font-mono">${item.key || item._id || 'N/A'}</span>
-          <span class="font-bold text-cyan-300">${(item.count || 0).toLocaleString('pt-BR')}</span>
-        </li>
-      `).join('');
+      rankEl.innerHTML = top10.map((item, idx) => {
+        const tipo = item.key || item._id || 'N/A';
+        const color = window.config?.getColorByTipoManifestacao?.(tipo);
+        const bgColor = color ? `${color}20` : 'slate-500/20';
+        const textColor = color || 'slate-300';
+        
+        return `
+          <li class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
+            <span class="font-mono px-2 py-1 rounded text-sm" style="background-color: ${color ? `${color}20` : 'rgba(148, 163, 184, 0.2)'}; color: ${color || '#cbd5e1'}">${tipo}</span>
+            <span class="font-bold" style="color: ${color || '#22d3ee'}">${(item.count || 0).toLocaleString('pt-BR')}</span>
+          </li>
+        `;
+      }).join('');
     }
     
     if (window.Logger) {

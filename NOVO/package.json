@@ -22,6 +22,7 @@
     "prisma:studio": "npx prisma studio",
     "import:excel": "node scripts/importExcel.js",
     "update:excel": "node scripts/updateFromExcel.js",
+    "import:zeladoria": "node scripts/importZeladoria.js",
     "db:backfill": "node scripts/backfillNormalized.js",
     "db:reset": "node scripts/resetDb.js",
     "db:analyze": "node scripts/analyzeDbStructure.js",

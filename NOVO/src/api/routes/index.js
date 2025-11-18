@@ -24,6 +24,7 @@ import chatRoutes from './chat.js';
 import aiRoutes from './ai.js';
 import dataRoutes from './data.js';
 import geographicRoutes from './geographic.js';
+import zeladoriaRoutes from './zeladoria.js';
 
 export default function apiRoutes(prisma, getMongoClient) {
   const router = express.Router();
@@ -48,6 +49,9 @@ export default function apiRoutes(prisma, getMongoClient) {
   
   // Rotas geográficas - Dados de secretarias, distritos, bairros, saúde
   router.use('/', geographicRoutes(prisma));
+  
+  // Rotas de Zeladoria - Dados de serviços de zeladoria
+  router.use('/zeladoria', zeladoriaRoutes(prisma, getMongoClient));
   
   return router;
 }
