@@ -873,16 +873,27 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
             # mapa explícito (chaves em minúsculas, sem acentos) para exceções conhecidas
             uac_mapa = {
                 "uac - cer iv": "UAC - CER IV",
+                "uac - cer iv ": "UAC - CER IV",
+                "uac - cer iv": "UAC - CER IV",
+
                 "uac - uph pilar": "UAC - UPH Pilar",
                 "uac - uph saracuruna": "UAC - UPH Saracuruna",
                 "uac - uph xerem": "UAC - UPH Xerém",
+
                 "uac - upa beira mar": "UAC - UPA Beira Mar",
+
                 "uac - hospital do olho": "UAC - Hospital do Olho",
+
+                # novas correções solicitadas
+                "uac - adao pereira nunes": "UAC - Adão Pereira Nunes",
+                "ouvidoria setorial da assistencia social": "Ouvidoria Setorial da Assistência Social",
+
                 # redundâncias comuns
                 "uac - uac cer iv": "UAC - CER IV",
                 "uac - uac uph pilar": "UAC - UPH Pilar",
                 "uac - uac uph saracuruna": "UAC - UPH Saracuruna",
                 "uac - uac uph xerem": "UAC - UPH Xerém",
+
                 # Ouvidorias / cidadania
                 "ouvidoria geral": "Ouvidoria Geral",
                 "ouvidoria setorial da saude": "Ouvidoria Setorial da Saúde",
@@ -901,31 +912,27 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
 
             # aplica mapeamento explícito (prioritário)
             mapped = tmp_norm.replace(uac_mapa)
-            # mapped contém valores finais para entradas mapeadas; se mapeado, vamos usar
-            is_mapped = mapped != tmp_norm  # True onde o replace alterou
+            is_mapped = mapped != tmp_norm
 
             # regra genérica: se começar com "uac - " ou "upa - " etc, formata mantendo acrônimos
             mask_uac = tmp_norm.str.match(r"^\s*(uac|upa|uph)\s*-\s*", na=False)
 
-            formatted = tmp_raw.copy()  # fallback para escrever de volta
+            formatted = tmp_raw.copy()
 
-            # 1) entradas mapeadas explicitamente -> usar o valor do mapa
+            # (1) entradas mapeadas
             formatted[is_mapped] = mapped[is_mapped]
 
-            # 2) entradas que se encaixam na regra UAC/UPA/UPH e não mapeadas: formatar palavra a palavra
+            # (2) regras UAC/UPA/UPH não mapeadas
             idx_to_fmt = mask_uac & (~is_mapped)
             if idx_to_fmt.any():
                 def _pretty_after_prefix(s):
-                    # s = original raw string
                     if not isinstance(s, str) or s.strip() == "":
                         return s
-                    # separar prefixo e resto
                     m = re.match(r"^\s*(?P<prefix>(uac|upa|uph))\s*-\s*(?P<rest>.+)$", _norm_text_for_match(s), flags=0)
                     if not m:
                         return s.strip().title()
                     prefix = m.group("prefix").upper()
                     rest = m.group("rest")
-                    # reconstruir palavras do rest aplicando regras
                     words = re.split(r"\s+", rest)
                     out_words = []
                     for w in words:
@@ -940,17 +947,15 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                             out_words.append(w_clean.capitalize())
                     return f"{prefix} - {' '.join(out_words)}"
 
-                # aplicar por índice
                 for idx in tmp_raw[idx_to_fmt].index:
                     formatted[idx] = _pretty_after_prefix(tmp_raw.at[idx])
 
-            # 3) entradas que não entram nas regras anteriores: tentar capitalização inteligente
+            # (3) capitalização inteligente (sem acentos)
             idx_other = (~is_mapped) & (~idx_to_fmt) & (tmp_norm != "")
             if idx_other.any():
                 def _smart_title(s):
                     if not isinstance(s, str) or s.strip() == "":
                         return s
-                    # separar por espaços e aplicar mesmas regras (acronyms/ small words)
                     words = re.split(r"\s+", _norm_text_for_match(s))
                     out = []
                     for i, w in enumerate(words):
@@ -964,7 +969,6 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 for idx in tmp_raw[idx_other].index:
                     formatted[idx] = _smart_title(tmp_raw.at[idx])
 
-            # finalmente: substituir strings vazias/None por None e garantir tipo string onde haja valor
             formatted = formatted.replace("", None)
             df_loc.loc[:, "unidade_cadastro"] = formatted.astype(object)
 
