@@ -50,6 +50,25 @@ async function loadAssunto() {
   }
 }
 
+/**
+ * Inicializar listeners de filtro para a página Assunto
+ */
+function initAssuntoFilterListeners() {
+  if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+    window.chartCommunication.createPageFilterListener('page-assunto', loadAssunto, 500);
+    if (window.Logger) {
+      window.Logger.success('✅ Listeners de filtro para Assunto inicializados');
+    }
+  }
+}
+
+// Inicializar listeners quando o script carregar
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAssuntoFilterListeners);
+} else {
+  initAssuntoFilterListeners();
+}
+
 async function renderAssuntoChart(dataAssuntos) {
   if (!dataAssuntos || dataAssuntos.length === 0) return;
   

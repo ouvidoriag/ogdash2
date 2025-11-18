@@ -54,7 +54,7 @@ export async function getDashboardData(req, res, prisma) {
         // Por mês (usar função otimizada)
         optimizedGroupByMonth(prisma, where, { dateFilter: true, limit: 24 }),
         
-        // Por dia (últimos 30 dias)
+        // Por dia (últimos 30 dias) - usar dados da planilha
         (async () => {
           const today = new Date();
           const d30 = new Date(today);
@@ -62,21 +62,23 @@ export async function getDashboardData(req, res, prisma) {
           const last30Str = d30.toISOString().slice(0, 10);
           const todayStr = today.toISOString().slice(0, 10);
           
-          const whereDate = {
-            ...where,
-            dataCriacaoIso: { gte: last30Str, lte: todayStr }
-          };
-          
+          // Buscar registros que têm data (usar dados da planilha)
           const rows = await prisma.record.findMany({
-            where: whereDate,
+            where: {
+              ...where,
+              OR: [
+                { dataDaCriacao: { not: null } },
+                { dataCriacaoIso: { not: null } }
+              ]
+            },
             select: { dataCriacaoIso: true, dataDaCriacao: true, data: true },
-            take: 50000
+            take: 100000
           });
           
           const dayMap = new Map();
           for (const r of rows) {
             const dataCriacao = getDataCriacao(r);
-            if (dataCriacao) {
+            if (dataCriacao && dataCriacao >= last30Str && dataCriacao <= todayStr) {
               dayMap.set(dataCriacao, (dayMap.get(dataCriacao) || 0) + 1);
             }
           }
@@ -143,7 +145,7 @@ export async function getDashboardData(req, res, prisma) {
         })
       ]);
       
-      // Calcular últimos 7 e 30 dias
+      // Calcular últimos 7 e 30 dias usando dados da planilha diretamente
       const today = new Date();
       const todayStr = today.toISOString().slice(0, 10);
       const d7 = new Date(today);
@@ -153,20 +155,39 @@ export async function getDashboardData(req, res, prisma) {
       d30.setDate(today.getDate() - 29);
       const last30Str = d30.toISOString().slice(0, 10);
       
-      const [last7Days, last30Days] = await Promise.all([
-        prisma.record.count({
-          where: {
-            ...where,
-            dataCriacaoIso: { gte: last7Str, lte: todayStr }
+      // Buscar registros recentes e filtrar usando getDataCriacao (usa dados da planilha)
+      const recentRecords = await prisma.record.findMany({
+        where: {
+          ...where,
+          // Filtrar por registros que têm dataDaCriacao ou data no JSON
+          OR: [
+            { dataDaCriacao: { not: null } },
+            { dataCriacaoIso: { not: null } }
+          ]
+        },
+        select: {
+          dataDaCriacao: true,
+          dataCriacaoIso: true,
+          data: true
+        },
+        take: 100000 // Limite alto para garantir que pegamos todos
+      });
+      
+      // Filtrar em memória usando getDataCriacao (que usa dados da planilha)
+      let last7Days = 0;
+      let last30Days = 0;
+      
+      for (const record of recentRecords) {
+        const dataCriacao = getDataCriacao(record);
+        if (dataCriacao) {
+          if (dataCriacao >= last7Str && dataCriacao <= todayStr) {
+            last7Days++;
           }
-        }),
-        prisma.record.count({
-          where: {
-            ...where,
-            dataCriacaoIso: { gte: last30Str, lte: todayStr }
+          if (dataCriacao >= last30Str && dataCriacao <= todayStr) {
+            last30Days++;
           }
-        })
-      ]);
+        }
+      }
       
       // Transformar dados para formato esperado pelo frontend
       const result = {

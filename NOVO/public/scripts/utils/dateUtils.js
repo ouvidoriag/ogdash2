@@ -113,6 +113,25 @@ function formatPercentage(num, decimals = 1) {
   return `${num.toFixed(decimals)}%`;
 }
 
+function formatDateShort(dateInput) {
+  if (!dateInput) return '';
+  
+  let date;
+  if (dateInput instanceof Date) {
+    date = dateInput;
+  } else if (typeof dateInput === 'string') {
+    date = new Date(dateInput);
+    if (isNaN(date.getTime())) return dateInput;
+  } else {
+    return '';
+  }
+  
+  // Formato: DD/MM
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+}
+
 window.dateUtils = {
   getToday,
   getTodayTimestamp,
@@ -121,6 +140,7 @@ window.dateUtils = {
   formatDate,
   formatMonthYear,
   formatMonthYearShort,
+  formatDateShort,
   formatNumber,
   formatPercentage
 };

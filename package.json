@@ -1,0 +1,50 @@
+{
+  "name": "ouvidoria-dashboard",
+  "version": "2.0.1.16",
+  "description": "Dashboard estratégico da Ouvidoria Geral de Duque de Caxias com IA Cora",
+  "private": true,
+  "type": "module",
+  "main": "NOVO/src/server.js",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "postinstall": "cd NOVO && npm install",
+    "prestart": "cd NOVO && node scripts/setup.js || true",
+    "start": "cd NOVO && node src/server.js",
+    "dev": "cd NOVO && node src/server.js",
+    "build": "cd NOVO && npm install && node scripts/setup.js || echo 'Setup completed'",
+    "setup": "cd NOVO && node scripts/setup.js",
+    "prisma:generate": "cd NOVO && npx prisma generate",
+    "prisma:migrate": "cd NOVO && npx prisma migrate deploy",
+    "prisma:push": "cd NOVO && npx prisma db push"
+  },
+  "keywords": [
+    "ouvidoria",
+    "dashboard",
+    "duque-de-caxias",
+    "prisma",
+    "mongodb",
+    "gemini-ai"
+  ],
+  "author": "Ouvidoria Geral de Duque de Caxias",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.19.2",
+    "mongodb": "^6.3.0",
+    "morgan": "^1.10.0",
+    "node-cache": "^5.1.2",
+    "prisma": "^5.20.0",
+    "xlsx": "^0.18.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ouvidoriag/ogdash.git"
+  }
+}
+

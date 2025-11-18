@@ -297,7 +297,7 @@ async function createBarChart(canvasId, labels, values, options = {}) {
                 fieldMapping.field,
                 label,
                 canvasId,
-                { toggle: true, operator: fieldMapping.op }
+                { toggle: true, operator: fieldMapping.op, clearPrevious: true }
               );
             }
           }
@@ -434,7 +434,7 @@ async function createLineChart(canvasId, labels, values, options = {}) {
                 fieldMapping.field,
                 label,
                 canvasId,
-                { toggle: true, operator: fieldMapping.op }
+                { toggle: true, operator: fieldMapping.op, clearPrevious: true }
               );
             }
           }
@@ -587,7 +587,7 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
                 fieldMapping.field,
                 label,
                 canvasId,
-                { toggle: true, operator: fieldMapping.op }
+                { toggle: true, operator: fieldMapping.op, clearPrevious: true }
               );
             }
           }

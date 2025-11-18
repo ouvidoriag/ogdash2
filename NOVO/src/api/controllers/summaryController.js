@@ -8,79 +8,47 @@ import { optimizedGroupBy } from '../../utils/queryOptimizer.js';
 import { getDataCriacao } from '../../utils/dateUtils.js';
 
 /**
- * Calcular últimos 7 e 30 dias com fallback robusto
+ * Calcular últimos 7 e 30 dias usando dados da planilha diretamente
  */
 async function calculateLastDays(prisma, where, todayStr, last7Str, last30Str) {
   let last7 = 0;
   let last30 = 0;
   
   try {
-    // OTIMIZAÇÃO: Usar count do Prisma com filtro de data (muito mais rápido)
-    const whereLast7 = {
-      ...where,
-      dataCriacaoIso: {
-        gte: last7Str,
-        lte: todayStr
+    // Buscar registros que têm data (usar dados da planilha diretamente)
+    const recentRecords = await prisma.record.findMany({
+      where: {
+        ...where,
+        // Filtrar por registros que têm dataDaCriacao ou data no JSON
+        OR: [
+          { dataDaCriacao: { not: null } },
+          { dataCriacaoIso: { not: null } }
+        ]
+      },
+      select: {
+        dataCriacaoIso: true,
+        dataDaCriacao: true,
+        data: true
+      },
+      take: 100000 // Limite alto para garantir que pegamos todos
+    });
+    
+    console.log(`📊 Processando ${recentRecords.length} registros usando dados da planilha...`);
+    
+    // Filtrar em memória usando getDataCriacao (que usa dados da planilha)
+    for (const r of recentRecords) {
+      const dataCriacao = getDataCriacao(r);
+      if (!dataCriacao) continue;
+      
+      if (dataCriacao >= last7Str && dataCriacao <= todayStr) {
+        last7++;
       }
-    };
-    
-    const whereLast30 = {
-      ...where,
-      dataCriacaoIso: {
-        gte: last30Str,
-        lte: todayStr
+      if (dataCriacao >= last30Str && dataCriacao <= todayStr) {
+        last30++;
       }
-    };
-    
-    // Executar contagens em paralelo
-    [last7, last30] = await Promise.all([
-      prisma.record.count({ where: whereLast7 }),
-      prisma.record.count({ where: whereLast30 })
-    ]);
-    
-    console.log(`✅ Resultado (agregação no banco): últimos 7 dias=${last7}, últimos 30 dias=${last30}`);
-    
-    // Se ainda está zerado, usar método alternativo baseado em dataDaCriacao
-    if (last7 === 0 && last30 === 0) {
-      console.log('⚠️ Contagem com dataCriacaoIso retornou 0, tentando com dataDaCriacao...');
-      
-      const today = new Date();
-      const recentRecords = await prisma.record.findMany({
-        where: {
-          ...where,
-          dataDaCriacao: { not: null },
-          OR: [
-            { dataDaCriacao: { contains: today.getFullYear().toString() } },
-            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
-          ]
-        },
-        select: {
-          dataCriacaoIso: true,
-          dataDaCriacao: true,
-          data: true
-        },
-        take: 100000
-      });
-      
-      console.log(`📊 Processando ${recentRecords.length} registros com getDataCriacao()...`);
-      
-      last7 = 0;
-      last30 = 0;
-      
-      for (const r of recentRecords) {
-        const dataCriacao = getDataCriacao(r);
-        if (!dataCriacao) continue;
-        
-        if (dataCriacao >= last7Str && dataCriacao <= todayStr) {
-          last7++;
-        }
-        if (dataCriacao >= last30Str && dataCriacao <= todayStr) {
-          last30++;
-        }
-      }
-      
-      console.log(`✅ Resultado (método alternativo): últimos 7 dias=${last7}, últimos 30 dias=${last30}`);
     }
+    
+    console.log(`✅ Resultado (usando dados da planilha): últimos 7 dias=${last7}, últimos 30 dias=${last30}`);
   } catch (error) {
     console.error('❌ Erro ao calcular últimos 7 e 30 dias:', error);
     last7 = 0;

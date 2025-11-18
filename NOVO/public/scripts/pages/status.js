@@ -50,6 +50,25 @@ async function loadStatusPage(forceRefresh = false) {
   }
 }
 
+/**
+ * Inicializar listeners de filtro para a página Status
+ */
+function initStatusFilterListeners() {
+  if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+    window.chartCommunication.createPageFilterListener('page-status', loadStatusPage, 500);
+    if (window.Logger) {
+      window.Logger.success('✅ Listeners de filtro para Status inicializados');
+    }
+  }
+}
+
+// Inicializar listeners quando o script carregar
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initStatusFilterListeners);
+} else {
+  initStatusFilterListeners();
+}
+
 async function renderStatusMesChart(dataMes) {
   const meses = [...new Set(dataMes.map(d => d.month || d.ym))].sort();
   const statuses = [...new Set(dataMes.map(d => d.status || d._id))];

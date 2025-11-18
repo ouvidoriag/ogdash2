@@ -100,38 +100,84 @@
      * @param {Object} options - Opções adicionais
      */
     apply(field, value, chartId = null, options = {}) {
-      const { toggle = true, operator = 'eq' } = options;
+      const { toggle = true, operator = 'eq', clearPrevious = true } = options;
       
-      // Verificar se já existe filtro para este campo
+      if (window.Logger) {
+        window.Logger.debug(`Aplicando filtro: ${field} = ${value}`, {
+          filtrosAntes: this.filters.length,
+          clearPrevious,
+          toggle
+        });
+      }
+      
+      // Verificar se já existe filtro para este campo e valor exato (ANTES de limpar)
       const existingIndex = this.filters.findIndex(f => f.field === field && f.value === value);
+      const filterExists = existingIndex > -1;
       
-      if (existingIndex > -1 && toggle) {
-        // Remover filtro se já existe (toggle)
-        this.filters.splice(existingIndex, 1);
-        if (this.activeField === field && this.activeValue === value) {
-          this.activeField = null;
-          this.activeValue = null;
+      // Se clearPrevious estiver habilitado (padrão), SEMPRE limpar todos os filtros anteriores
+      // NÃO emitir eventos filter:removed individuais para evitar múltiplos recarregamentos
+      // O evento filter:applied final será suficiente para atualizar tudo
+      if (clearPrevious && this.filters.length > 0) {
+        if (window.Logger) {
+          window.Logger.debug(`Limpando ${this.filters.length} filtro(s) anterior(es) (sem emitir eventos individuais)`);
         }
-      } else if (existingIndex === -1) {
+        
+        // Limpar todos os filtros anteriores sem emitir eventos
+        // Isso evita múltiplos recarregamentos desnecessários
+        this.filters = [];
+      }
+      
+      // Se o filtro já existia e toggle está habilitado, não adicionar (comportamento de toggle)
+      if (filterExists && toggle) {
+        // Filtro foi removido ao limpar acima, então não adicionar novamente
+        if (window.Logger) {
+          window.Logger.debug(`Filtro já existia, removendo (toggle)`);
+        }
+        this.activeField = null;
+        this.activeValue = null;
+        
+        // Persistir se habilitado
+        if (this.persist) {
+          this.save();
+        }
+        
+        // Invalidar dados no dataStore
+        this.invalidateData();
+        
+        // Atualizar UI
+        this.updateUI();
+        
+        // Notificar todos os gráficos registrados para se atualizarem
+        this.notifyAllCharts();
+        
+        // Emitir evento de filtros limpos (já que não há mais filtros)
+        eventBus.emit('filter:cleared', {});
+      } else {
         // Adicionar novo filtro
         this.filters.push({ field, value, operator, chartId });
         this.activeField = field;
         this.activeValue = value;
+        if (window.Logger) {
+          window.Logger.debug(`Filtro adicionado. Total de filtros: ${this.filters.length}`);
+        }
+        
+        // Persistir se habilitado
+        if (this.persist) {
+          this.save();
+        }
+        
+        // Invalidar dados no dataStore
+        this.invalidateData();
+        
+        // Atualizar UI
+        this.updateUI();
+        
+        // Notificar todos os gráficos registrados para se atualizarem
+        this.notifyAllCharts();
+        
+        // Emitir evento de filtro aplicado
+        eventBus.emit('filter:applied', { field, value, chartId, filters: [...this.filters] });
       }
-      
-      // Persistir se habilitado
-      if (this.persist) {
-        this.save();
-      }
-      
-      // Emitir evento de filtro aplicado
-      eventBus.emit('filter:applied', { field, value, chartId, filters: [...this.filters] });
-      
-      // Invalidar dados no dataStore
-      this.invalidateData();
-      
-      // Atualizar UI
-      this.updateUI();
     },
     
     /**
@@ -142,13 +188,23 @@
       this.activeField = null;
       this.activeValue = null;
       
+      // Limpar do localStorage também
+      try {
+        localStorage.removeItem('dashboardFilters');
+      } catch (e) {
+        // Ignorar erros
+      }
+      
       if (this.persist) {
-        this.save();
+        this.save(); // Salvar estado vazio
       }
       
       eventBus.emit('filter:cleared', {});
       this.invalidateData();
       this.updateUI();
+      
+      // Notificar todos os gráficos registrados para se atualizarem
+      this.notifyAllCharts();
     },
     
     /**
@@ -172,6 +228,9 @@
         eventBus.emit('filter:removed', { field, value });
         this.invalidateData();
         this.updateUI();
+        
+        // Notificar todos os gráficos registrados para se atualizarem
+        this.notifyAllCharts();
       }
     },
     
@@ -187,9 +246,17 @@
     
     /**
      * Salvar filtros no localStorage
+     * Só salva se houver filtros ativos (não salva array vazio)
      */
     save() {
       try {
+        // Se não há filtros, remover do localStorage
+        if (this.filters.length === 0) {
+          localStorage.removeItem('dashboardFilters');
+          return;
+        }
+        
+        // Salvar apenas se houver filtros
         localStorage.setItem('dashboardFilters', JSON.stringify({
           filters: this.filters,
           activeField: this.activeField,
@@ -202,18 +269,58 @@
     
     /**
      * Carregar filtros do localStorage
+     * Por padrão, NÃO carrega filtros ao inicializar (para evitar filtros persistentes indesejados)
      */
-    load() {
+    load(restoreFilters = false) {
+      // Se restoreFilters for false (padrão), limpar filtros salvos e não restaurar
+      if (!restoreFilters) {
+        try {
+          // Limpar filtros do localStorage para evitar persistência indesejada
+          localStorage.removeItem('dashboardFilters');
+          if (window.Logger) {
+            window.Logger.debug('Filtros do localStorage limpos na inicialização');
+          }
+        } catch (e) {
+          // Ignorar erros
+        }
+        return;
+      }
+      
+      // Se restoreFilters for true, carregar filtros salvos
       try {
         const saved = localStorage.getItem('dashboardFilters');
         if (saved) {
           const data = JSON.parse(saved);
-          this.filters = data.filters || [];
-          this.activeField = data.activeField || null;
-          this.activeValue = data.activeValue || null;
+          const loadedFilters = data.filters || [];
+          
+          // Se houver múltiplos filtros carregados, manter apenas o último (comportamento clearPrevious)
+          if (loadedFilters.length > 1) {
+            if (window.Logger) {
+              window.Logger.debug(`Carregados ${loadedFilters.length} filtros do localStorage, mantendo apenas o último`);
+            }
+            // Manter apenas o último filtro
+            this.filters = loadedFilters.slice(-1);
+            const lastFilter = this.filters[0];
+            this.activeField = lastFilter?.field || null;
+            this.activeValue = lastFilter?.value || null;
+          } else if (loadedFilters.length === 1) {
+            this.filters = loadedFilters;
+            this.activeField = data.activeField || null;
+            this.activeValue = data.activeValue || null;
+            if (window.Logger) {
+              window.Logger.debug('Filtro restaurado do localStorage:', this.filters[0]);
+            }
+          } else {
+            this.filters = [];
+            this.activeField = null;
+            this.activeValue = null;
+          }
         }
       } catch (e) {
         // Ignorar erros
+        if (window.Logger) {
+          window.Logger.warn('Erro ao carregar filtros do localStorage:', e);
+        }
       }
     },
     
@@ -266,12 +373,50 @@
       const indicator = document.getElementById('filterIndicator');
       if (indicator) {
         if (this.filters.length > 0) {
-          indicator.textContent = `${this.filters.length} filtro(s) ativo(s)`;
+          // Mostrar qual filtro está ativo
+          const activeFilter = this.filters[this.filters.length - 1]; // Último filtro (o ativo)
+          const fieldLabel = this.getFieldLabel(activeFilter.field);
+          const valueLabel = activeFilter.value;
+          
+          indicator.innerHTML = `
+            <div class="bg-cyan-500/20 border border-cyan-500/50 rounded-lg px-4 py-2 flex items-center gap-2 shadow-lg backdrop-blur-sm">
+              <span class="text-cyan-300 text-sm font-semibold">Filtro ativo:</span>
+              <span class="text-cyan-100 text-sm">${fieldLabel} = ${valueLabel}</span>
+              <button onclick="window.chartCommunication?.clearFilters()" 
+                      class="ml-2 text-cyan-300 hover:text-cyan-100 transition-colors" 
+                      title="Remover filtro">
+                ✕
+              </button>
+            </div>
+          `;
           indicator.classList.remove('hidden');
         } else {
           indicator.classList.add('hidden');
         }
       }
+    },
+    
+    /**
+     * Obter label amigável para um campo
+     */
+    getFieldLabel(field) {
+      const fieldLabels = {
+        'Status': 'Status',
+        'Tema': 'Tema',
+        'Assunto': 'Assunto',
+        'Orgaos': 'Órgão',
+        'Tipo': 'Tipo',
+        'Canal': 'Canal',
+        'Prioridade': 'Prioridade',
+        'Setor': 'Setor',
+        'Categoria': 'Categoria',
+        'Bairro': 'Bairro',
+        'UAC': 'UAC',
+        'Responsavel': 'Responsável',
+        'Secretaria': 'Secretaria',
+        'Data': 'Data'
+      };
+      return fieldLabels[field] || field;
     },
     
     /**
@@ -303,6 +448,25 @@
           el.setAttribute('data-filter-highlight', filter.field);
         });
       });
+    },
+    
+    /**
+     * Notificar todos os gráficos registrados para se atualizarem
+     */
+    notifyAllCharts() {
+      if (window.chartCommunication) {
+        const allCharts = window.chartCommunication.getAllCharts();
+        if (allCharts.length > 0 && window.Logger) {
+          window.Logger.debug(`Notificando ${allCharts.length} gráfico(s) para atualização`);
+        }
+        
+        // Emitir evento para que gráficos reativos se atualizem
+        eventBus.emit('charts:update-requested', {
+          filters: [...this.filters],
+          activeField: this.activeField,
+          activeValue: this.activeValue
+        });
+      }
     }
   };
 
@@ -314,6 +478,7 @@
   // ============================================
   
   const chartFieldMap = {
+    // Overview
     'chartStatus': { field: 'Status', op: 'eq' },
     'chartStatusPage': { field: 'Status', op: 'eq' },
     'chartStatusTema': { field: 'Status', op: 'eq' },
@@ -323,23 +488,95 @@
     'chartTopTemas': { field: 'Tema', op: 'eq' },
     'chartFunnelStatus': { field: 'Status', op: 'eq' },
     'chartSlaOverview': { field: null, op: null },
-    'chartOrgaoMes': { field: 'Orgaos', op: 'contains' },
-    'chartSecretaria': { field: 'Secretaria', op: 'contains' },
-    'chartTipo': { field: 'Tipo', op: 'eq' },
     'chartTiposManifestacao': { field: 'Tipo', op: 'eq' },
-    'chartReclamacoesTipo': { field: 'Tipo', op: 'eq' },
-    'chartSetor': { field: 'Setor', op: 'contains' },
-    'chartCategoria': { field: 'Categoria', op: 'eq' },
-    'chartBairro': { field: 'Bairro', op: 'contains' },
-    'chartUAC': { field: 'UAC', op: 'contains' },
-    'chartResponsavel': { field: 'Responsavel', op: 'contains' },
-    'chartCanal': { field: 'Canal', op: 'eq' },
-    'chartPrioridade': { field: 'Prioridade', op: 'eq' },
+    'chartCanais': { field: 'Canal', op: 'eq' },
+    'chartPrioridades': { field: 'Prioridade', op: 'eq' },
+    'chartUnidadesCadastro': { field: 'Unidade', op: 'contains' },
+    
+    // Status
+    'chartStatusMes': { field: 'Data', op: 'contains' },
+    
+    // Tema
     'chartTema': { field: 'Tema', op: 'eq' },
+    'chartTemaMes': { field: 'Data', op: 'contains' },
+    
+    // Assunto
     'chartAssunto': { field: 'Assunto', op: 'contains' },
-    'chartMonth': { field: 'Data', op: 'contains' },
+    'chartAssuntoMes': { field: 'Data', op: 'contains' },
+    
+    // Tipo
+    'chartTipo': { field: 'Tipo', op: 'eq' },
+    
+    // Órgão e Mês
+    'chartOrgaoMes': { field: 'Orgaos', op: 'contains' },
+    
+    // Secretaria
+    'chartSecretaria': { field: 'Secretaria', op: 'contains' },
+    'chartSecretariaMes': { field: 'Data', op: 'contains' },
+    'chartSecretariasDistritos': { field: 'Secretaria', op: 'contains' },
+    
+    // Setor
+    'chartSetor': { field: 'Setor', op: 'contains' },
+    
+    // Categoria
+    'chartCategoria': { field: 'Categoria', op: 'eq' },
+    'chartCategoriaMes': { field: 'Data', op: 'contains' },
+    
+    // Bairro
+    'chartBairro': { field: 'Bairro', op: 'contains' },
+    'chartBairroMes': { field: 'Data', op: 'contains' },
+    
+    // UAC
+    'chartUAC': { field: 'UAC', op: 'contains' },
+    
+    // Responsável
+    'chartResponsavel': { field: 'Responsavel', op: 'contains' },
+    
+    // Canal
+    'chartCanal': { field: 'Canal', op: 'eq' },
+    
+    // Prioridade
+    'chartPrioridade': { field: 'Prioridade', op: 'eq' },
+    
+    // Tempo Médio
     'chartTempoMedio': { field: 'Orgaos', op: 'contains' },
-    'chartTempoMedioMes': { field: 'Data', op: 'contains' }
+    'chartTempoMedioMes': { field: 'Data', op: 'contains' },
+    'chartTempoMedioDia': { field: 'Data', op: 'contains' },
+    'chartTempoMedioSemana': { field: 'Data', op: 'contains' },
+    'chartTempoMedioUnidade': { field: 'Unidade', op: 'contains' },
+    'chartTempoMedioUnidadeMes': { field: 'Data', op: 'contains' },
+    
+    // Cadastrante
+    'chartCadastranteMes': { field: 'Data', op: 'contains' },
+    
+    // Reclamações
+    'chartReclamacoesTipo': { field: 'Tipo', op: 'eq' },
+    'chartReclamacoesMes': { field: 'Data', op: 'contains' },
+    
+    // Projeção
+    'chartProjecaoMensal': { field: 'Data', op: 'contains' },
+    
+    // Unidades de Saúde (dinâmico)
+    'chartUnitTipos': { field: 'Tipo', op: 'eq' },
+    
+    // Zeladoria
+    'zeladoria-chart-status': { field: 'Status', op: 'eq' },
+    'zeladoria-chart-categoria': { field: 'Categoria', op: 'eq' },
+    'zeladoria-chart-departamento': { field: 'Departamento', op: 'contains' },
+    'zeladoria-chart-mensal': { field: 'Data', op: 'contains' },
+    'zeladoria-status-chart': { field: 'Status', op: 'eq' },
+    'zeladoria-categoria-chart': { field: 'Categoria', op: 'eq' },
+    'zeladoria-departamento-chart': { field: 'Departamento', op: 'contains' },
+    'zeladoria-bairro-chart': { field: 'Bairro', op: 'contains' },
+    'zeladoria-responsavel-chart': { field: 'Responsavel', op: 'contains' },
+    'zeladoria-canal-chart': { field: 'Canal', op: 'eq' },
+    'zeladoria-tempo-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-mensal-chart': { field: 'Data', op: 'contains' },
+    'chartZeladoriaStatus': { field: 'Status', op: 'eq' },
+    'chartZeladoriaCategoria': { field: 'Categoria', op: 'eq' },
+    
+    // Outros
+    'chartMonth': { field: 'Data', op: 'contains' }
   };
 
   // ============================================
@@ -444,6 +681,69 @@
   };
 
   // ============================================
+  // PAGE FILTER LISTENER - Utilitário para páginas
+  // ============================================
+  
+  /**
+   * Criar listener genérico de filtros para uma página
+   * Todas as páginas devem usar esta função para escutar eventos de filtro
+   * @param {string} pageId - ID da página (ex: 'page-tema')
+   * @param {Function} reloadFunction - Função para recarregar dados da página
+   * @param {number} debounceMs - Tempo de debounce em ms (padrão: 500)
+   */
+  function createPageFilterListener(pageId, reloadFunction, debounceMs = 500) {
+    if (!window.chartCommunication) {
+      if (window.Logger) {
+        window.Logger.warn(`Sistema de comunicação não disponível. Listener para ${pageId} não será criado.`);
+      }
+      return;
+    }
+    
+    let updateTimeout = null;
+    const timeoutKey = `${pageId}UpdateTimeout`;
+    
+    const handleFilterChange = () => {
+      const page = document.getElementById(pageId);
+      if (!page || page.style.display === 'none') {
+        return; // Página não está visível, não precisa atualizar
+      }
+      
+      // Invalidar cache do dataStore para forçar recarregamento
+      if (window.dataStore) {
+        window.dataStore.invalidate();
+      }
+      
+      // Debounce para evitar múltiplas atualizações simultâneas
+      clearTimeout(window[timeoutKey]);
+      window[timeoutKey] = setTimeout(() => {
+        if (window.Logger) {
+          window.Logger.debug(`Filtro mudou, recarregando ${pageId}...`);
+        }
+        reloadFunction(true); // forceRefresh = true
+      }, debounceMs);
+    };
+    
+    // Escutar eventos de filtro
+    window.chartCommunication.on('filter:applied', handleFilterChange);
+    window.chartCommunication.on('filter:removed', handleFilterChange);
+    window.chartCommunication.on('filter:cleared', handleFilterChange);
+    window.chartCommunication.on('charts:update-requested', handleFilterChange);
+    
+    if (window.Logger) {
+      window.Logger.debug(`✅ Listener de filtro criado para ${pageId}`);
+    }
+    
+    // Retornar função para remover listeners (opcional)
+    return () => {
+      window.chartCommunication.off('filter:applied', handleFilterChange);
+      window.chartCommunication.off('filter:removed', handleFilterChange);
+      window.chartCommunication.off('filter:cleared', handleFilterChange);
+      window.chartCommunication.off('charts:update-requested', handleFilterChange);
+      clearTimeout(window[timeoutKey]);
+    };
+  }
+
+  // ============================================
   // EXPORT - Exportar para window
   // ============================================
   
@@ -473,7 +773,10 @@
       unregisterChart: chartRegistry.unregister.bind(chartRegistry),
       getChart: chartRegistry.get.bind(chartRegistry),
       getAllCharts: chartRegistry.getAll.bind(chartRegistry),
-      getChartsByField: chartRegistry.getByField.bind(chartRegistry)
+      getChartsByField: chartRegistry.getByField.bind(chartRegistry),
+      
+      // Page Filter Listener
+      createPageFilterListener
     };
     
     // Compatibilidade com sistema antigo

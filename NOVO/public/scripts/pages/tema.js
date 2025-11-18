@@ -50,6 +50,26 @@ async function loadTema() {
   }
 }
 
+/**
+ * Inicializar listeners de filtro para a página Tema
+ * Escuta eventos do sistema de comunicação de gráficos para recarregar dados
+ */
+function initTemaFilterListeners() {
+  if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+    window.chartCommunication.createPageFilterListener('page-tema', loadTema, 500);
+    if (window.Logger) {
+      window.Logger.success('✅ Listeners de filtro para Tema inicializados');
+    }
+  }
+}
+
+// Inicializar listeners quando o script carregar
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initTemaFilterListeners);
+} else {
+  initTemaFilterListeners();
+}
+
 async function renderTemaChart(dataTemas) {
   if (!dataTemas || dataTemas.length === 0) return;
   

@@ -1,8 +1,13 @@
 /**
  * Página: Projeção 2026
- * Projeções e previsões para 2026
+ * Projeções e previsões para 2026 baseadas em análise de tendências históricas
  * 
- * Recriada com estrutura otimizada
+ * Recriada com:
+ * - Análise de tendência de crescimento real
+ * - Cálculo de sazonalidade mensal
+ * - Projeções mais precisas
+ * - Múltiplos gráficos informativos
+ * - KPIs detalhados
  */
 
 async function loadProjecao2026() {
@@ -16,7 +21,8 @@ async function loadProjecao2026() {
   }
   
   try {
-    const [byMonth, temas] = await Promise.all([
+    // Carregar todos os dados necessários em paralelo
+    const [byMonth, temas, dashboardData] = await Promise.all([
       window.dataLoader?.load('/api/aggregate/by-month', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
@@ -24,57 +30,191 @@ async function loadProjecao2026() {
       window.dataLoader?.load('/api/aggregate/by-theme', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
-      }) || []
+      }) || [],
+      window.dataLoader?.load('/api/dashboard-data', {
+        useDataStore: true,
+        ttl: 10 * 60 * 1000
+      }) || {}
     ]);
     
-    // Processar histórico
+    // Extrair tipos e órgãos do dashboardData
+    const tipos = dashboardData.manifestationsByType || [];
+    const orgaos = dashboardData.manifestationsByOrgan || [];
+    
+    // Processar histórico mensal
     const historico = byMonth.map(x => {
       const ym = x.ym || x.month || '';
       if (!ym || typeof ym !== 'string') {
         return {
           label: ym || 'Data inválida',
-          value: x.count || 0
+          value: x.count || 0,
+          ym: ym
         };
       }
       return {
         label: window.dateUtils?.formatMonthYear?.(ym) || ym,
-        value: x.count || 0
+        value: x.count || 0,
+        ym: ym
       };
-    });
+    }).sort((a, b) => a.ym.localeCompare(b.ym));
     
-    // Calcular média mensal dos últimos 12 meses
-    const ultimos12Meses = historico.slice(-12);
-    const mediaMensal = ultimos12Meses.reduce((sum, item) => sum + item.value, 0) / ultimos12Meses.length;
+    // Calcular tendência de crescimento e sazonalidade
+    const analise = calcularTendenciaESazonalidade(historico);
     
-    // Gerar projeção para 2026
-    const projecao2026 = [];
-    for (let mes = 1; mes <= 12; mes++) {
-      const ym = `2026-${String(mes).padStart(2, '0')}`;
-      projecao2026.push({
-        label: window.dateUtils?.formatMonthYear?.(ym) || `${mes}/2026`,
-        value: Math.round(mediaMensal * (1 + (Math.random() * 0.2 - 0.1))) // Variação de ±10%
-      });
-    }
+    // Gerar projeção para 2026 baseada em análise real
+    const projecao2026 = gerarProjecao2026(analise, historico);
     
-    // Renderizar gráfico de projeção
-    await renderProjecaoChart(historico, projecao2026);
+    // Renderizar todos os gráficos
+    await Promise.all([
+      renderProjecaoChart(historico, projecao2026),
+      renderCrescimentoPercentual(historico, projecao2026),
+      renderComparacaoAnual(historico, projecao2026),
+      renderSazonalidade(analise.sazonalidade),
+      renderProjecaoPorTema(temas, analise),
+      renderProjecaoPorTipo(tipos, analise)
+    ]);
     
-    // Renderizar estatísticas
-    renderEstatisticas(historico, projecao2026, mediaMensal);
-    
-    // Renderizar top temas
+    // Renderizar estatísticas e KPIs
+    renderEstatisticas(historico, projecao2026, analise);
+    renderKPIs(analise, projecao2026);
     renderTopTemas(temas);
+    renderTopTipos(tipos);
+    renderTopOrgaos(orgaos);
     
     if (window.Logger) {
       window.Logger.success('📈 loadProjecao2026: Concluído');
     }
   } catch (error) {
+    console.error('❌ Erro ao carregar Projecao2026:', error);
     if (window.Logger) {
       window.Logger.error('Erro ao carregar Projecao2026:', error);
     }
   }
 }
 
+/**
+ * Calcular tendência de crescimento e sazonalidade
+ */
+function calcularTendenciaESazonalidade(historico) {
+  if (historico.length < 3) {
+    // Se não há dados suficientes, usar média simples
+    const media = historico.reduce((sum, h) => sum + h.value, 0) / historico.length;
+    return {
+      taxaCrescimentoMensal: 0,
+      mediaMensal: media,
+      sazonalidade: {},
+      tendencia: 'estavel'
+    };
+  }
+  
+  // Calcular taxa de crescimento mensal (regressão linear simples)
+  let somaX = 0, somaY = 0, somaXY = 0, somaX2 = 0;
+  historico.forEach((item, index) => {
+    const x = index;
+    const y = item.value;
+    somaX += x;
+    somaY += y;
+    somaXY += x * y;
+    somaX2 += x * x;
+  });
+  
+  const n = historico.length;
+  const taxaCrescimentoMensal = (n * somaXY - somaX * somaY) / (n * somaX2 - somaX * somaX);
+  const mediaMensal = somaY / n;
+  
+  // Calcular sazonalidade (média por mês do ano)
+  const sazonalidade = {};
+  const mesesPorMes = {}; // { '01': [valores], '02': [valores], ... }
+  
+  historico.forEach(item => {
+    const mes = item.ym ? item.ym.split('-')[1] : null;
+    if (mes) {
+      if (!mesesPorMes[mes]) mesesPorMes[mes] = [];
+      mesesPorMes[mes].push(item.value);
+    }
+  });
+  
+  // Calcular média por mês
+  Object.keys(mesesPorMes).forEach(mes => {
+    const valores = mesesPorMes[mes];
+    const media = valores.reduce((sum, v) => sum + v, 0) / valores.length;
+    sazonalidade[mes] = media / mediaMensal; // Fator de sazonalidade (1.0 = média, >1.0 = acima da média)
+  });
+  
+  // Determinar tendência
+  const ultimos6Meses = historico.slice(-6);
+  const primeiros6Meses = historico.slice(0, 6);
+  const mediaUltimos6 = ultimos6Meses.reduce((sum, h) => sum + h.value, 0) / ultimos6Meses.length;
+  const mediaPrimeiros6 = primeiros6Meses.reduce((sum, h) => sum + h.value, 0) / primeiros6Meses.length;
+  const variacao = ((mediaUltimos6 - mediaPrimeiros6) / mediaPrimeiros6) * 100;
+  
+  let tendencia = 'estavel';
+  if (variacao > 10) tendencia = 'crescimento';
+  else if (variacao < -10) tendencia = 'declinio';
+  
+  return {
+    taxaCrescimentoMensal,
+    mediaMensal,
+    sazonalidade,
+    tendencia,
+    variacaoPercentual: variacao,
+    mediaUltimos6Meses: mediaUltimos6,
+    mediaPrimeiros6Meses: mediaPrimeiros6
+  };
+}
+
+/**
+ * Gerar projeção para 2026 baseada em análise real
+ */
+function gerarProjecao2026(analise, historico) {
+  const projecao2026 = [];
+  
+  // Calcular valor base para projeção usando média mensal e tendência
+  const mediaMensal = analise.mediaMensal;
+  
+  // Obter último mês histórico
+  const ultimoMesHistorico = historico.length > 0 ? historico[historico.length - 1] : null;
+  let ultimoAno = 2025;
+  let ultimoMes = 12;
+  
+  if (ultimoMesHistorico && ultimoMesHistorico.ym) {
+    const partes = ultimoMesHistorico.ym.split('-').map(Number);
+    ultimoAno = partes[0];
+    ultimoMes = partes[1];
+  }
+  
+  for (let mes = 1; mes <= 12; mes++) {
+    const mesStr = String(mes).padStart(2, '0');
+    const ym = `2026-${mesStr}`;
+    
+    // Calcular número de meses desde o último mês histórico
+    const mesesDesdeUltimo = (2026 - ultimoAno) * 12 + (mes - ultimoMes);
+    
+    // Aplicar crescimento mensal acumulado
+    const crescimentoAcumulado = analise.taxaCrescimentoMensal * mesesDesdeUltimo;
+    let valorBase = mediaMensal + crescimentoAcumulado;
+    
+    // Aplicar sazonalidade
+    const fatorSazonalidade = analise.sazonalidade[mesStr] || 1.0;
+    const valorProjetado = Math.round(valorBase * fatorSazonalidade);
+    
+    // Garantir valor mínimo razoável (não menos que 50% da média)
+    const valorFinal = Math.max(valorProjetado, Math.round(mediaMensal * 0.5));
+    
+    projecao2026.push({
+      label: window.dateUtils?.formatMonthYear?.(ym) || `${mes}/2026`,
+      value: valorFinal,
+      ym: ym,
+      mes: mes
+    });
+  }
+  
+  return projecao2026;
+}
+
+/**
+ * Renderizar gráfico principal de projeção
+ */
 async function renderProjecaoChart(historico, projecao2026) {
   const todosLabels = [...historico.map(h => h.label), ...projecao2026.map(p => p.label)];
   const historicoValues = historico.map(h => h.value);
@@ -106,28 +246,377 @@ async function renderProjecaoChart(historico, projecao2026) {
     legendContainer: 'legendProjecaoMensal',
     chartOptions: {
       plugins: {
-        legend: { display: false } // Usar legenda customizada
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `${context.dataset.label}: ${context.parsed.y.toLocaleString('pt-BR')} manifestações`;
+            }
+          }
+        }
       },
       scales: {
-        x: { ticks: { maxRotation: 45, minRotation: 45 } }
+        x: { ticks: { maxRotation: 45, minRotation: 45 } },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return value.toLocaleString('pt-BR');
+            }
+          }
+        }
       }
     }
   });
 }
 
-function renderEstatisticas(historico, projecao2026, mediaMensal) {
+/**
+ * Renderizar gráfico de crescimento percentual
+ */
+async function renderCrescimentoPercentual(historico, projecao2026) {
+  // Calcular crescimento mês a mês
+  const crescimento = [];
+  
+  // Histórico
+  for (let i = 1; i < historico.length; i++) {
+    const anterior = historico[i - 1].value;
+    const atual = historico[i].value;
+    const percentual = anterior > 0 ? ((atual - anterior) / anterior) * 100 : 0;
+    crescimento.push({
+      label: historico[i].label,
+      value: percentual,
+      tipo: 'historico'
+    });
+  }
+  
+  // Projeção
+  const ultimoHistorico = historico[historico.length - 1];
+  projecao2026.forEach((proj, index) => {
+    const anterior = index === 0 ? ultimoHistorico.value : projecao2026[index - 1].value;
+    const atual = proj.value;
+    const percentual = anterior > 0 ? ((atual - anterior) / anterior) * 100 : 0;
+    crescimento.push({
+      label: proj.label,
+      value: percentual,
+      tipo: 'projecao'
+    });
+  });
+  
+  const labels = crescimento.map(c => c.label);
+  const valores = crescimento.map(c => c.value);
+  
+  await window.chartFactory?.createBarChart('chartCrescimentoPercentual', labels, valores, {
+        colorIndex: 0,
+        chartOptions: {
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const valor = context.parsed.y;
+                  const sinal = valor >= 0 ? '+' : '';
+                  return `${sinal}${valor.toFixed(1)}%`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              ticks: {
+                callback: function(value) {
+                  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+                }
+              }
+            }
+          }
+        }
+      });
+}
+
+/**
+ * Renderizar gráfico de comparação anual
+ */
+async function renderComparacaoAnual(historico, projecao2026) {
+  // Agrupar por mês do ano (janeiro, fevereiro, etc.)
+  const mesesAno = {};
+  
+  historico.forEach(item => {
+    const mes = item.ym ? parseInt(item.ym.split('-')[1]) : null;
+    if (mes) {
+      if (!mesesAno[mes]) mesesAno[mes] = { historico: [], projecao: [] };
+      mesesAno[mes].historico.push(item.value);
+    }
+  });
+  
+  projecao2026.forEach(item => {
+    const mes = item.mes;
+    if (mes) {
+      if (!mesesAno[mes]) mesesAno[mes] = { historico: [], projecao: [] };
+      mesesAno[mes].projecao.push(item.value);
+    }
+  });
+  
+  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const labels = [];
+  const valoresHistorico = [];
+  const valoresProjecao = [];
+  
+  for (let mes = 1; mes <= 12; mes++) {
+    labels.push(meses[mes - 1]);
+    const dados = mesesAno[mes];
+    if (dados && dados.historico.length > 0) {
+      valoresHistorico.push(dados.historico.reduce((sum, v) => sum + v, 0) / dados.historico.length);
+    } else {
+      valoresHistorico.push(null);
+    }
+    if (dados && dados.projecao.length > 0) {
+      valoresProjecao.push(dados.projecao[0]);
+    } else {
+      valoresProjecao.push(null);
+    }
+  }
+  
+  const datasets = [
+    {
+      label: 'Média Histórica',
+      data: valoresHistorico,
+      borderColor: '#22d3ee',
+      backgroundColor: 'rgba(34,211,238,0.1)',
+      fill: false
+    },
+    {
+      label: 'Projeção 2026',
+      data: valoresProjecao,
+      borderColor: '#a78bfa',
+      backgroundColor: 'rgba(167,139,250,0.1)',
+      borderDash: [5, 5],
+      fill: false
+    }
+  ];
+  
+  await window.chartFactory?.createLineChart('chartComparacaoAnual', labels, datasets, {
+    fill: false,
+    legendContainer: 'legendComparacaoAnual',
+    chartOptions: {
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const valor = context.parsed.y;
+              return valor !== null ? `${context.dataset.label}: ${Math.round(valor).toLocaleString('pt-BR')}` : 'Sem dados';
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return value.toLocaleString('pt-BR');
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Renderizar gráfico de sazonalidade
+ */
+async function renderSazonalidade(sazonalidade) {
+  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const labels = [];
+  const valores = [];
+  
+  for (let mes = 1; mes <= 12; mes++) {
+    const mesStr = String(mes).padStart(2, '0');
+    labels.push(meses[mes - 1]);
+    valores.push((sazonalidade[mesStr] || 1.0) * 100); // Converter para percentual
+  }
+  
+  await window.chartFactory?.createBarChart('chartSazonalidade', labels, valores, {
+    colorIndex: 2,
+    chartOptions: {
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const valor = context.parsed.y;
+              const referencia = valor > 100 ? 'acima' : valor < 100 ? 'abaixo' : 'igual';
+              return `${valor.toFixed(1)}% da média (${referencia})`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return `${value.toFixed(0)}%`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Renderizar projeção por tema
+ */
+async function renderProjecaoPorTema(temas, analise) {
+  const topTemas = temas.slice(0, 10);
+  const fatorCrescimento = 1 + (analise.taxaCrescimentoMensal / analise.mediaMensal);
+  
+  const labels = topTemas.map(t => t.theme || t.tema || t._id || 'N/A');
+  const valoresAtuais = topTemas.map(t => t.count || 0);
+  const valoresProjetados = valoresAtuais.map(v => Math.round(v * fatorCrescimento * 12)); // Projeção anual
+  
+  const datasets = [
+    {
+      label: 'Atual (último período)',
+      data: valoresAtuais,
+      backgroundColor: 'rgba(34,211,238,0.6)'
+    },
+    {
+      label: 'Projeção 2026',
+      data: valoresProjetados,
+      backgroundColor: 'rgba(167,139,250,0.6)'
+    }
+  ];
+  
+  await window.chartFactory?.createBarChart('chartProjecaoTema', labels, valoresAtuais, {
+    colorIndex: 0,
+    chartOptions: {
+      indexAxis: 'y',
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const atual = context.parsed.x;
+              const projetado = Math.round(atual * fatorCrescimento * 12);
+              return `Atual: ${atual.toLocaleString('pt-BR')} | Projetado 2026: ${projetado.toLocaleString('pt-BR')}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return value.toLocaleString('pt-BR');
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Renderizar projeção por tipo
+ */
+async function renderProjecaoPorTipo(tipos, analise) {
+  const topTipos = tipos.slice(0, 8);
+  const fatorCrescimento = 1 + (analise.taxaCrescimentoMensal / analise.mediaMensal);
+  
+  const labels = topTipos.map(t => t.type || t.tipo || t._id || 'N/A');
+  const valores = topTipos.map(t => {
+    const atual = t.count || 0;
+    return Math.round(atual * fatorCrescimento * 12); // Projeção anual
+  });
+  
+  await window.chartFactory?.createDoughnutChart('chartProjecaoTipo', labels, valores, {
+    onClick: false,
+    legendContainer: 'legendProjecaoTipo',
+    chartOptions: {
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const valor = context.parsed;
+              const percentual = ((valor / valores.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+              return `${context.label}: ${valor.toLocaleString('pt-BR')} (${percentual}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Renderizar estatísticas principais
+ */
+function renderEstatisticas(historico, projecao2026, analise) {
   const totalHistorico = historico.reduce((sum, item) => sum + item.value, 0);
   const totalProjetado = projecao2026.reduce((sum, item) => sum + item.value, 0);
+  const mediaMensal = analise.mediaMensal;
+  const crescimentoAnual = ((totalProjetado - totalHistorico) / totalHistorico) * 100;
   
   const totalHistoricoEl = document.getElementById('totalHistorico');
   const totalProjetadoEl = document.getElementById('totalProjetado');
   const mediaMensalEl = document.getElementById('mediaMensal');
+  const crescimentoAnualEl = document.getElementById('crescimentoAnual');
+  const tendenciaEl = document.getElementById('tendencia');
   
   if (totalHistoricoEl) totalHistoricoEl.textContent = totalHistorico.toLocaleString('pt-BR');
   if (totalProjetadoEl) totalProjetadoEl.textContent = totalProjetado.toLocaleString('pt-BR');
   if (mediaMensalEl) mediaMensalEl.textContent = Math.round(mediaMensal).toLocaleString('pt-BR');
+  if (crescimentoAnualEl) {
+    const sinal = crescimentoAnual >= 0 ? '+' : '';
+    crescimentoAnualEl.textContent = `${sinal}${crescimentoAnual.toFixed(1)}%`;
+    crescimentoAnualEl.className = crescimentoAnual >= 0 ? 'text-2xl font-bold text-emerald-300' : 'text-2xl font-bold text-rose-300';
+  }
+  if (tendenciaEl) {
+    const icone = analise.tendencia === 'crescimento' ? '📈' : analise.tendencia === 'declinio' ? '📉' : '➡️';
+    const texto = analise.tendencia === 'crescimento' ? 'Crescimento' : analise.tendencia === 'declinio' ? 'Declínio' : 'Estável';
+    tendenciaEl.innerHTML = `${icone} ${texto}`;
+  }
 }
 
+/**
+ * Renderizar KPIs detalhados
+ */
+function renderKPIs(analise, projecao2026) {
+  const kpisContainer = document.getElementById('kpisProjecao');
+  if (!kpisContainer) return;
+  
+  const mesPico = projecao2026.reduce((max, item) => item.value > max.value ? item : max, projecao2026[0]);
+  const mesBaixo = projecao2026.reduce((min, item) => item.value < min.value ? item : min, projecao2026[0]);
+  
+  kpisContainer.innerHTML = `
+    <div class="grid grid-cols-2 gap-4">
+      <div class="bg-slate-800/50 rounded-lg p-4">
+        <div class="text-slate-400 text-xs mb-1">Taxa de Crescimento Mensal</div>
+        <div class="text-lg font-bold text-cyan-300">${(analise.taxaCrescimentoMensal).toFixed(1)}</div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-4">
+        <div class="text-slate-400 text-xs mb-1">Variação (6 meses)</div>
+        <div class="text-lg font-bold ${analise.variacaoPercentual >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
+          ${analise.variacaoPercentual >= 0 ? '+' : ''}${analise.variacaoPercentual.toFixed(1)}%
+        </div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-4">
+        <div class="text-slate-400 text-xs mb-1">Mês de Pico (2026)</div>
+        <div class="text-lg font-bold text-violet-300">${mesPico.label}</div>
+        <div class="text-xs text-slate-500">${mesPico.value.toLocaleString('pt-BR')} manifestações</div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-4">
+        <div class="text-slate-400 text-xs mb-1">Mês Mais Baixo (2026)</div>
+        <div class="text-lg font-bold text-rose-300">${mesBaixo.label}</div>
+        <div class="text-xs text-slate-500">${mesBaixo.value.toLocaleString('pt-BR')} manifestações</div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Renderizar top temas
+ */
 function renderTopTemas(temas) {
   const topTemas = temas.slice(0, 10);
   const listaTemasEl = document.getElementById('listaTemasProjecao');
@@ -146,5 +635,46 @@ function renderTopTemas(temas) {
   }).join('');
 }
 
-window.loadProjecao2026 = loadProjecao2026;
+/**
+ * Renderizar top tipos
+ */
+function renderTopTipos(tipos) {
+  const topTipos = tipos.slice(0, 8);
+  const listaTiposEl = document.getElementById('listaTiposProjecao');
+  if (!listaTiposEl) return;
+  
+  listaTiposEl.innerHTML = topTipos.map((item, idx) => {
+    const tipo = item.type || item.tipo || item._id || 'N/A';
+    const quantidade = item.count || item.quantidade || 0;
+    return `
+      <div class="flex items-center gap-3 py-2 border-b border-white/5">
+        <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
+        <div class="flex-1 text-sm text-slate-300 truncate">${tipo}</div>
+        <div class="text-lg font-bold text-cyan-300 min-w-[80px] text-right">${quantidade.toLocaleString('pt-BR')}</div>
+      </div>
+    `;
+  }).join('');
+}
 
+/**
+ * Renderizar top órgãos
+ */
+function renderTopOrgaos(orgaos) {
+  const topOrgaos = orgaos.slice(0, 8);
+  const listaOrgaosEl = document.getElementById('listaOrgaosProjecao');
+  if (!listaOrgaosEl) return;
+  
+  listaOrgaosEl.innerHTML = topOrgaos.map((item, idx) => {
+    const orgao = item.organ || item.orgao || item._id || 'N/A';
+    const quantidade = item.count || item.quantidade || 0;
+    return `
+      <div class="flex items-center gap-3 py-2 border-b border-white/5">
+        <div class="text-sm text-slate-400 w-8">${idx + 1}º</div>
+        <div class="flex-1 text-sm text-slate-300 truncate">${orgao}</div>
+        <div class="text-lg font-bold text-emerald-300 min-w-[80px] text-right">${quantidade.toLocaleString('pt-BR')}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.loadProjecao2026 = loadProjecao2026;

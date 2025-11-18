@@ -4,6 +4,8 @@
  * Muito mais rápido e eficiente
  */
 
+import { getDataCriacao } from './dateUtils.js';
+
 /**
  * Obter filtro de data otimizado (últimos 24 meses)
  */
@@ -98,49 +100,29 @@ async function fallbackGroupBy(prisma, field, where = {}, options = {}) {
 }
 
 /**
- * Agregação por mês otimizada usando groupBy
+ * Agregação por mês otimizada usando dados da planilha
  */
 export async function optimizedGroupByMonth(prisma, where = {}, options = {}) {
-  const { limit = 24 } = options; // Últimos 24 meses por padrão
+  const { limit = 24, dateFilter = true } = options; // Últimos 24 meses por padrão
   
-  try {
-    // Usar groupBy no campo dataCriacaoIso
-    const results = await prisma.record.groupBy({
-      by: ['dataCriacaoIso'],
-      where: {
-        ...where,
-        dataCriacaoIso: { not: null }
-      },
-      _count: { id: true }
-    });
-    
-    // Agrupar por mês (YYYY-MM)
-    const monthMap = new Map();
-    for (const r of results) {
-      if (!r.dataCriacaoIso) continue;
-      const month = r.dataCriacaoIso.slice(0, 7); // YYYY-MM
-      monthMap.set(month, (monthMap.get(month) || 0) + r._count.id);
-    }
-    
-    const result = Array.from(monthMap.entries())
-      .map(([ym, count]) => ({ ym, count }))
-      .sort((a, b) => a.ym.localeCompare(b.ym))
-      .slice(-limit); // Últimos N meses
-    
-    return result;
-  } catch (error) {
-    console.warn('⚠️ groupBy por mês falhou, usando fallback:', error.message);
-    return await fallbackGroupByMonth(prisma, where, options);
-  }
+  // Sempre usar fallback que processa dados da planilha diretamente
+  // Isso garante que usamos dataDaCriacao ou data.data_da_criacao
+  return await fallbackGroupByMonth(prisma, where, { ...options, dateFilter });
 }
 
 /**
- * Fallback: agregação por mês em memória
+ * Fallback: agregação por mês em memória usando dados da planilha
  */
 async function fallbackGroupByMonth(prisma, where = {}, options = {}) {
   const { limit = 24, dateFilter = true } = options;
   
-  const finalWhere = { ...where, dataDaCriacao: { not: null } };
+  const finalWhere = { 
+    ...where,
+    OR: [
+      { dataDaCriacao: { not: null } },
+      { dataCriacaoIso: { not: null } }
+    ]
+  };
   
   if (dateFilter) {
     const dateFilterObj = getDateFilter();
@@ -162,10 +144,10 @@ async function fallbackGroupByMonth(prisma, where = {}, options = {}) {
   
   const monthMap = new Map();
   for (const r of rows) {
-    const mes = r.dataCriacaoIso?.slice(0, 7) || 
-                r.dataDaCriacao?.slice(0, 7) ||
-                (r.data?.data_da_criacao ? new Date(r.data.data_da_criacao).toISOString().slice(0, 7) : null);
-    if (!mes) continue;
+    // Usar getDataCriacao que já tem fallback para dados da planilha
+    const dataCriacao = getDataCriacao(r);
+    if (!dataCriacao) continue;
+    const mes = dataCriacao.slice(0, 7); // YYYY-MM
     monthMap.set(mes, (monthMap.get(mes) || 0) + 1);
   }
   
