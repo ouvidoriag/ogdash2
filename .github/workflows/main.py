@@ -570,7 +570,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
             MAP_TEMA_PARA_OUVIDORIA = {
                 "administração pública": "Ouvidoria Geral",
                 "agricultura": "Ouvidoria Setorial de Obras",
-                "assistência social e direitos humanos": "Ouvidoria Setorial da Assistência Social",
+                "assistência social e direitos humanos": "",
                 "assuntos jurídicos": "Ouvidoria Geral",
                 "comunicação social": "Ouvidoria Geral",
                 "controle governamental": "Ouvidoria Geral",
@@ -887,7 +887,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 # novas correções solicitadas
                 "uac - adao pereira nunes": "UAC - Adão Pereira Nunes",
                 "ouvidoria setorial da assistencia social": "Ouvidoria Setorial da Assistência Social",
-                "Ouvidoria Setorial de Assistência Social": "Ouvidoria Setorial da Assistência Social,
+                "Ouvidoria Setorial de Assistência Social": "Ouvidoria Setorial da Assistência Social",
 
                 # redundâncias comuns
                 "uac - uac cer iv": "UAC - CER IV",
