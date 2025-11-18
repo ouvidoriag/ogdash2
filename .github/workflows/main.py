@@ -887,6 +887,7 @@ def _tratar_full(df_in: pd.DataFrame) -> pd.DataFrame:
                 # novas correções solicitadas
                 "uac - adao pereira nunes": "UAC - Adão Pereira Nunes",
                 "ouvidoria setorial da assistencia social": "Ouvidoria Setorial da Assistência Social",
+                "Ouvidoria Setorial de Assistência Social": "Ouvidoria Setorial da Assistência Social,
 
                 # redundâncias comuns
                 "uac - uac cer iv": "UAC - CER IV",
