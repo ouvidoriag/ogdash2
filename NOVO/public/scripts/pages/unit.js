@@ -75,7 +75,7 @@ async function loadUnit(unitName) {
     // Renderizar lista de assuntos
     const assuntosContainer = section.querySelector('.unit-assuntos');
     if (assuntosContainer) {
-      renderAssuntosList(assuntosContainer, assuntos);
+      renderUnitAssuntosList(assuntosContainer, assuntos);
     }
     
     // Renderizar gráfico de tipos
@@ -94,8 +94,10 @@ async function loadUnit(unitName) {
   }
 }
 
-function renderAssuntosList(container, assuntos) {
-  if (assuntos.length === 0) {
+function renderUnitAssuntosList(container, assuntos) {
+  if (!container) return;
+  
+  if (!assuntos || assuntos.length === 0) {
     container.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum assunto encontrado</div>';
     return;
   }

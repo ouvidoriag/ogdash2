@@ -140,7 +140,7 @@ function renderAssuntosList(dataAssuntos) {
   const listaAssuntos = document.getElementById('listaAssuntos');
   if (!listaAssuntos) return;
   
-  if (dataAssuntos.length === 0) {
+  if (!dataAssuntos || !Array.isArray(dataAssuntos) || dataAssuntos.length === 0) {
     listaAssuntos.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum assunto encontrado</div>';
     return;
   }
