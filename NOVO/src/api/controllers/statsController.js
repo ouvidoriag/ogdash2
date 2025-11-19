@@ -50,7 +50,7 @@ export async function averageTime(req, res, prisma) {
       ];
     }
     
-    // Buscar apenas registros com dados necessários
+    // Buscar apenas registros com dados necessários (limitar para evitar timeout)
     const rows = await prisma.record.findMany({
       where: {
         ...where,
@@ -65,7 +65,8 @@ export async function averageTime(req, res, prisma) {
         dataDaCriacao: true,
         dataConclusaoIso: true,
         dataDaConclusao: true
-      }
+      },
+      take: 50000 // Reduzir de 100000 para 50000 para melhor performance
     });
     
     // Agrupar por órgão/unidade e calcular média
@@ -154,7 +155,7 @@ export async function averageTimeByDay(req, res, prisma) {
         dataDaConclusao: true,
         data: true
       },
-      take: 100000
+      take: 50000 // Reduzir para melhor performance e evitar timeout
     });
     
     const map = new Map();
@@ -250,7 +251,7 @@ export async function averageTimeByWeek(req, res, prisma) {
         dataDaConclusao: true,
         data: true
       },
-      take: 100000
+      take: 50000 // Reduzir para melhor performance e evitar timeout
     });
     
     // Função para obter semana ISO (YYYY-Www) - implementação simplificada e robusta
@@ -416,7 +417,7 @@ export async function averageTimeByMonth(req, res, prisma) {
         dataDaConclusao: true,
         data: true
       },
-      take: 100000
+      take: 50000 // Reduzir para melhor performance e evitar timeout
     });
     
     const map = new Map();
@@ -485,7 +486,7 @@ export async function averageTimeStats(req, res, prisma) {
         dataDaConclusao: true,
         data: true
       },
-      take: 100000
+      take: 50000
     });
     
     const days = [];
@@ -552,7 +553,7 @@ export async function averageTimeByUnit(req, res, prisma) {
         dataDaConclusao: true,
         data: true
       },
-      take: 100000
+      take: 50000 // Reduzir para melhor performance e evitar timeout
     });
     
     const map = new Map();
@@ -617,7 +618,7 @@ export async function averageTimeByMonthUnit(req, res, prisma) {
         dataDaConclusao: true,
         data: true
       },
-      take: 100000
+      take: 50000
     });
     
     const map = new Map();

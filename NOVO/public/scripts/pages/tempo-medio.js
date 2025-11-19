@@ -67,6 +67,7 @@ async function loadTempoMedio(forceRefresh = false) {
   try {
     // Carregar dados por mês primeiro (para popular dropdown)
     const dataMes = await window.dataLoader?.load('/api/stats/average-time/by-month', {
+      fallback: [], // Fallback para erro 502
       useDataStore: true,
       ttl: 5 * 60 * 1000
     }) || [];
@@ -92,7 +93,8 @@ async function loadTempoMedio(forceRefresh = false) {
     
     const stats = await window.dataLoader?.load(statsUrl, {
       useDataStore: !mesSelecionado, // Não cachear quando há filtro
-      ttl: 5 * 60 * 1000
+      ttl: 5 * 60 * 1000,
+      fallback: { media: 0, mediana: 0, minimo: 0, maximo: 0, total: 0 } // Fallback para erro 502
     }) || {};
     
     if (window.Logger) {
@@ -273,7 +275,8 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '') {
     
     const dataOrgao = await window.dataLoader?.load(dataOrgaoUrl, {
         useDataStore: !mesSelecionado, // Não cachear quando há filtro
-        ttl: 5 * 60 * 1000
+        ttl: 5 * 60 * 1000,
+        fallback: [] // Fallback para erro 502
       }) || [];
     
     // Gráfico principal: Tempo médio por órgão/unidade
@@ -367,7 +370,8 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
     
     const dataDia = await window.dataLoader?.load(dataDiaUrl, {
       useDataStore: !mesSelecionado, // Não cachear quando há filtro
-      ttl: 5 * 60 * 1000
+      ttl: 5 * 60 * 1000,
+      fallback: [] // Fallback para erro 502
     }) || [];
     
     if (dataDia && Array.isArray(dataDia) && dataDia.length > 0) {
@@ -398,7 +402,8 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
     
     const dataSemana = await window.dataLoader?.load(dataSemanaUrl, {
       useDataStore: !mesSelecionado, // Não cachear quando há filtro
-      ttl: 5 * 60 * 1000
+      ttl: 5 * 60 * 1000,
+      fallback: [] // Fallback para erro 502
     }) || [];
     
     if (dataSemana && Array.isArray(dataSemana) && dataSemana.length > 0) {
@@ -444,7 +449,8 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
     
     const dataUnidade = await window.dataLoader?.load(dataUnidadeUrl, {
       useDataStore: !mesSelecionado, // Não cachear quando há filtro
-      ttl: 5 * 60 * 1000
+      ttl: 5 * 60 * 1000,
+      fallback: [] // Fallback para erro 502
     }) || [];
     
     if (dataUnidade && Array.isArray(dataUnidade) && dataUnidade.length > 0) {
@@ -471,7 +477,8 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
     
     const dataUnidadeMes = await window.dataLoader?.load(dataUnidadeMesUrl, {
       useDataStore: !mesSelecionado, // Não cachear quando há filtro
-      ttl: 5 * 60 * 1000
+      ttl: 5 * 60 * 1000,
+      fallback: [] // Fallback para erro 502
     }) || [];
     
     if (dataUnidadeMes && Array.isArray(dataUnidadeMes) && dataUnidadeMes.length > 0) {

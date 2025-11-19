@@ -17,21 +17,119 @@
         --accent: #a78bfa;
         --success: #34d399;
         --danger: #fb7185;
+        --text-primary: #f1f5f9;
+        --text-secondary: #cbd5e1;
+        --border: rgba(255,255,255,0.08);
       }
+      
+      /* Modo Escuro (padrão) */
+      body.dark-mode,
+      body:not(.light-mode) {
+        --bg: #0b1020;
+        --panel: #0f172a;
+        --muted: #94a3b8;
+        --text-primary: #f1f5f9;
+        --text-secondary: #cbd5e1;
+        --border: rgba(255,255,255,0.08);
+      }
+      
+      /* Modo Claro */
+      body.light-mode {
+        --bg: #f8fafc;
+        --panel: #ffffff;
+        --muted: #64748b;
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --border: rgba(0,0,0,0.1);
+      }
+      
       body { 
         background: radial-gradient(1200px 600px at top left, rgba(34,211,238,0.08), transparent 60%), 
                     radial-gradient(1200px 600px at bottom right, rgba(167,139,250,0.08), transparent 60%), 
-                    var(--bg); 
+                    var(--bg);
+        color: var(--text-primary);
+        transition: background-color 0.3s ease, color 0.3s ease;
       }
+      
+      body.light-mode {
+        background: radial-gradient(1200px 600px at top left, rgba(34,211,238,0.05), transparent 60%), 
+                    radial-gradient(1200px 600px at bottom right, rgba(167,139,250,0.05), transparent 60%), 
+                    var(--bg);
+      }
+      
       .glass { 
         background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); 
         box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08); 
-        border: 1px solid rgba(255,255,255,0.08); 
+        border: 1px solid var(--border);
+        transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
       }
+      
+      body.light-mode .glass {
+        background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95)); 
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5); 
+        border: 1px solid var(--border);
+      }
+      
       .neon { text-shadow: 0 0 12px rgba(34,211,238,0.65), 0 0 24px rgba(167,139,250,0.45); }
+      body.light-mode .neon { text-shadow: 0 0 8px rgba(34,211,238,0.4), 0 0 16px rgba(167,139,250,0.3); }
+      
       .glow-ring { box-shadow: 0 0 0 2px rgba(34,211,238,0.15), 0 0 32px rgba(34,211,238,0.25); }
+      body.light-mode .glow-ring { box-shadow: 0 0 0 2px rgba(34,211,238,0.2), 0 0 24px rgba(34,211,238,0.3); }
+      
       .skeleton { background: rgba(255,255,255,0.06); }
+      body.light-mode .skeleton { background: rgba(0,0,0,0.05); }
+      
       canvas { max-height: 340px; }
+      
+      /* Botão de alternância de tema */
+      .theme-toggle {
+        position: relative;
+        width: 50px;
+        height: 26px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 13px;
+        border: 1px solid var(--border);
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      
+      body.light-mode .theme-toggle {
+        background: rgba(0,0,0,0.1);
+      }
+      
+      .theme-toggle::before {
+        content: '';
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #fbbf24;
+        top: 2px;
+        left: 2px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      }
+      
+      body.light-mode .theme-toggle::before {
+        left: calc(100% - 22px);
+        background: #f59e0b;
+      }
+      
+      .theme-toggle:hover {
+        transform: scale(1.05);
+      }
+      
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border-width: 0;
+      }
       
       nav[id="sideMenuOuvidoria"] div[data-page].active,
       nav[id="sideMenuZeladoria"] div[data-page].active {
@@ -41,9 +139,21 @@
         font-weight: 600;
       }
       
+      body.light-mode nav[id="sideMenuOuvidoria"] div[data-page].active,
+      body.light-mode nav[id="sideMenuZeladoria"] div[data-page].active {
+        background: linear-gradient(90deg, rgba(34,211,238,0.2) 0%, rgba(34,211,238,0.1) 100%);
+        border-left: 3px solid #22d3ee;
+        color: #0891b2;
+      }
+      
       nav[id="sideMenuOuvidoria"] div[data-page]:hover:not(.active),
       nav[id="sideMenuZeladoria"] div[data-page]:hover:not(.active) {
         background: rgba(255,255,255,0.05);
+      }
+      
+      body.light-mode nav[id="sideMenuOuvidoria"] div[data-page]:hover:not(.active),
+      body.light-mode nav[id="sideMenuZeladoria"] div[data-page]:hover:not(.active) {
+        background: rgba(0,0,0,0.05);
       }
       
       .section-selector {
@@ -52,15 +162,29 @@
         border: none;
       }
       
+      body.light-mode .section-selector {
+        color: #64748b;
+      }
+      
       .section-selector.active {
         background: linear-gradient(90deg, rgba(34,211,238,0.15) 0%, rgba(34,211,238,0.05) 100%);
         color: #22d3ee;
         font-weight: 600;
       }
       
+      body.light-mode .section-selector.active {
+        background: linear-gradient(90deg, rgba(34,211,238,0.2) 0%, rgba(34,211,238,0.1) 100%);
+        color: #0891b2;
+      }
+      
       .section-selector:hover:not(.active) {
         background: rgba(255,255,255,0.05);
         color: #cbd5e1;
+      }
+      
+      body.light-mode .section-selector:hover:not(.active) {
+        background: rgba(0,0,0,0.05);
+        color: #475569;
       }
       
       :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar {
@@ -79,8 +203,111 @@
       :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(180deg, #111, #222);
       }
+      
+      body.light-mode :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+      }
+      body.light-mode :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #94a3b8, #64748b);
+      }
+      
+      /* Ajustes de texto para modo claro */
+      body.light-mode .text-slate-100 { color: var(--text-primary) !important; }
+      body.light-mode .text-slate-300 { color: var(--text-secondary) !important; }
+      body.light-mode .text-slate-400 { color: var(--muted) !important; }
+      body.light-mode .bg-slate-800\/50 { background-color: rgba(0,0,0,0.05) !important; }
+      body.light-mode .bg-slate-900\/30 { background-color: rgba(0,0,0,0.03) !important; }
     </style>
     <script>
+      // Sistema de alternância de tema (modo claro/escuro)
+      (function() {
+        const THEME_KEY = 'dashboard-theme';
+        const LIGHT_MODE = 'light';
+        const DARK_MODE = 'dark';
+        
+        // Carregar tema salvo ou usar padrão (escuro)
+        function loadTheme() {
+          const savedTheme = localStorage.getItem(THEME_KEY) || DARK_MODE;
+          applyTheme(savedTheme);
+        }
+        
+        // Aplicar tema
+        function applyTheme(theme) {
+          const body = document.body;
+          if (theme === LIGHT_MODE) {
+            body.classList.remove('dark-mode');
+            body.classList.add('light-mode');
+          } else {
+            body.classList.remove('light-mode');
+            body.classList.add('dark-mode');
+          }
+          localStorage.setItem(THEME_KEY, theme);
+          
+          // Atualizar gráficos se Chart.js estiver disponível
+          if (window.Chart) {
+            const textColor = theme === LIGHT_MODE ? '#475569' : '#94a3b8';
+            const gridColor = theme === LIGHT_MODE ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+            const tooltipBg = theme === LIGHT_MODE ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)';
+            const tooltipTitleColor = theme === LIGHT_MODE ? '#0f172a' : '#e2e8f0';
+            const tooltipBodyColor = theme === LIGHT_MODE ? '#475569' : '#cbd5e1';
+            
+            // Atualizar todos os gráficos Chart.js
+            Chart.helpers.each(Chart.instances, function(chart) {
+              if (chart.options && chart.options.scales) {
+                Object.keys(chart.options.scales).forEach(scaleKey => {
+                  const scale = chart.options.scales[scaleKey];
+                  if (scale.ticks) scale.ticks.color = textColor;
+                  if (scale.grid) scale.grid.color = gridColor;
+                });
+              }
+              
+              if (chart.options && chart.options.plugins && chart.options.plugins.tooltip) {
+                const tooltip = chart.options.plugins.tooltip;
+                if (tooltip.backgroundColor !== undefined) tooltip.backgroundColor = tooltipBg;
+                if (tooltip.titleColor !== undefined) tooltip.titleColor = tooltipTitleColor;
+                if (tooltip.bodyColor !== undefined) tooltip.bodyColor = tooltipBodyColor;
+              }
+              
+              chart.update('none');
+            });
+          }
+        }
+        
+        // Alternar tema
+        function toggleTheme() {
+          const currentTheme = localStorage.getItem(THEME_KEY) || DARK_MODE;
+          const newTheme = currentTheme === LIGHT_MODE ? DARK_MODE : LIGHT_MODE;
+          applyTheme(newTheme);
+        }
+        
+        // Inicializar quando DOM estiver pronto
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', loadTheme);
+        } else {
+          loadTheme();
+        }
+        
+        // Adicionar event listener ao botão quando disponível
+        function initThemeToggle() {
+          const toggleBtn = document.getElementById('themeToggle');
+          if (toggleBtn) {
+            toggleBtn.addEventListener('click', toggleTheme);
+          } else {
+            // Tentar novamente após um pequeno delay
+            setTimeout(initThemeToggle, 100);
+          }
+        }
+        
+        initThemeToggle();
+        
+        // Exportar para uso global se necessário
+        window.themeManager = {
+          toggle: toggleTheme,
+          set: applyTheme,
+          get: () => localStorage.getItem(THEME_KEY) || DARK_MODE
+        };
+      })();
+      
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')
@@ -104,12 +331,17 @@
     <div class="min-h-screen grid grid-cols-12 gap-6 p-6">
       <aside class="col-span-12 lg:col-span-3 xl:col-span-2 glass rounded-2xl p-5">
         <div class="mb-6">
-          <div class="flex items-center gap-3 mb-4">
-            <img src="/dc-logo.png" alt="Duque de Caxias" class="h-12 w-auto object-contain" />
-            <div>
-              <div id="sectionTitle" class="text-lg font-semibold">Ouvidoria</div>
-              <div class="text-xs text-slate-400">Dashboard Futurista</div>
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <img src="/dc-logo.png" alt="Duque de Caxias" class="h-12 w-auto object-contain" />
+              <div>
+                <div id="sectionTitle" class="text-lg font-semibold">Ouvidoria</div>
+                <div class="text-xs text-slate-400">Dashboard Futurista</div>
+              </div>
             </div>
+            <button id="themeToggle" class="theme-toggle" title="Alternar entre modo claro e escuro" aria-label="Alternar tema">
+              <span class="sr-only">Alternar tema</span>
+            </button>
           </div>
           <div class="flex gap-2 bg-slate-800/50 rounded-lg p-1">
             <button id="btnSectionOuvidoria" data-section="ouvidoria" class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all section-selector active">

@@ -74,9 +74,14 @@ window.dataLoader = {
         clearTimeout(timeoutId);
         
         if (!res.ok) {
-          if (res.status === 404 || res.status === 500) {
+          // Tratar erros 502, 503, 504 (gateway/timeout) como erros recuperáveis
+          if (res.status === 404 || res.status === 500 || res.status === 502 || res.status === 503 || res.status === 504) {
             if (window.Logger) {
               window.Logger.warn(`${endpoint}: HTTP ${res.status}, retornando fallback`);
+            }
+            // Se for erro de gateway/timeout, tentar limpar cache para forçar nova requisição
+            if ((res.status === 502 || res.status === 503 || res.status === 504) && window.dataStore) {
+              window.dataStore.clear(endpoint);
             }
             return fallback;
           }

@@ -37,8 +37,20 @@ function getColorWithAlpha(color, alpha = 0.7) {
   return color;
 }
 
+function isLightMode() {
+  return document.body.classList.contains('light-mode');
+}
+
 function getChartDefaults(chartType) {
   const config = window.config?.CHART_CONFIG || {};
+  const lightMode = isLightMode();
+  
+  // Cores adaptáveis ao tema
+  const textColor = lightMode ? '#475569' : '#94a3b8';
+  const gridColor = lightMode ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+  const tooltipBg = lightMode ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)';
+  const tooltipTitleColor = lightMode ? '#0f172a' : '#e2e8f0';
+  const tooltipBodyColor = lightMode ? '#475569' : '#cbd5e1';
   
   const defaults = {
     responsive: true,
@@ -47,9 +59,9 @@ function getChartDefaults(chartType) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: config.TOOLTIP?.BACKGROUND || 'rgba(15, 23, 42, 0.95)',
-        titleColor: config.TOOLTIP?.TITLE_COLOR || '#e2e8f0',
-        bodyColor: config.TOOLTIP?.BODY_COLOR || '#cbd5e1',
+        backgroundColor: config.TOOLTIP?.BACKGROUND || tooltipBg,
+        titleColor: config.TOOLTIP?.TITLE_COLOR || tooltipTitleColor,
+        bodyColor: config.TOOLTIP?.BODY_COLOR || tooltipBodyColor,
         borderColor: config.TOOLTIP?.BORDER_COLOR || 'rgba(34, 211, 238, 0.3)',
         borderWidth: config.TOOLTIP?.BORDER_WIDTH || 1,
         padding: config.TOOLTIP?.PADDING || 12
@@ -63,13 +75,13 @@ function getChartDefaults(chartType) {
         ...defaults,
         scales: {
           x: { 
-            ticks: { color: '#94a3b8' },
+            ticks: { color: textColor },
             beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.05)' }
+            grid: { color: gridColor }
           },
           y: { 
-            ticks: { color: '#94a3b8' },
-            grid: { color: 'rgba(255,255,255,0.05)' }
+            ticks: { color: textColor },
+            grid: { color: gridColor }
           }
         }
       };
@@ -80,13 +92,13 @@ function getChartDefaults(chartType) {
         indexAxis: 'y',
         scales: {
           x: { 
-            ticks: { color: '#94a3b8' },
+            ticks: { color: textColor },
             beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.05)' }
+            grid: { color: gridColor }
           },
           y: { 
-            ticks: { color: '#94a3b8' },
-            grid: { color: 'rgba(255,255,255,0.05)' }
+            ticks: { color: textColor },
+            grid: { color: gridColor }
           }
         }
       };
@@ -96,13 +108,13 @@ function getChartDefaults(chartType) {
         ...defaults,
         scales: {
           x: { 
-            ticks: { color: '#94a3b8' },
-            grid: { color: 'rgba(255,255,255,0.05)' }
+            ticks: { color: textColor },
+            grid: { color: gridColor }
           },
           y: { 
-            ticks: { color: '#94a3b8' },
+            ticks: { color: textColor },
             beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.05)' }
+            grid: { color: gridColor }
           }
         }
       };
