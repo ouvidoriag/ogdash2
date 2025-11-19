@@ -45,6 +45,7 @@ function loadHome() {
 
 function getPageLoader(page) {
   if (page === 'home') return loadHome;
+  if (page === 'unidades-saude') return window.loadUnidadesSaude || (() => Promise.resolve());
   if (page === 'zeladoria-home') {
     return () => {
       if (window.Logger) {

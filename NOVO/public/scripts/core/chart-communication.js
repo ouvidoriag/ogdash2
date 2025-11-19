@@ -508,7 +508,8 @@
     'chartTipo': { field: 'Tipo', op: 'eq' },
     
     // Órgão e Mês
-    'chartOrgaoMes': { field: 'Orgaos', op: 'contains' },
+    'chartOrgaoMes': { field: 'Data', op: 'contains' }, // Filtra por mês quando clicado
+    'chartOrgaos': { field: 'Orgaos', op: 'contains' }, // Filtra por órgão quando clicado
     
     // Secretaria
     'chartSecretaria': { field: 'Secretaria', op: 'contains' },

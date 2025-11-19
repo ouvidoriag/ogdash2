@@ -32,7 +32,13 @@ export async function filterRecords(req, res, prisma) {
         whereClause[col] = f.value;
         fieldsNeeded.add(col);
       } else if (col && f.op === 'contains') {
-        whereClause[col] = { contains: f.value };
+        // Para campos de data, usar startsWith se o valor for no formato YYYY-MM
+        if ((col === 'dataDaCriacao' || col === 'dataCriacaoIso') && /^\d{4}-\d{2}$/.test(f.value)) {
+          // Filtro por mês: usar startsWith para melhor performance
+          whereClause[col] = { startsWith: f.value };
+        } else {
+          whereClause[col] = { contains: f.value };
+        }
         fieldsNeeded.add(col);
       } else {
         needsInMemoryFilter.push(f);

@@ -52,13 +52,18 @@ self.addEventListener('message', (event) => {
   // IMPORTANTE: Sempre responder imediatamente ou ignorar
   // NUNCA retornar true para indicar resposta assíncrona
   
-  // Ignorar completamente mensagens de extensões do navegador
-  if (!event.data || typeof event.data !== 'object') {
+  // Ignorar completamente mensagens de extensões do navegador ou mensagens inválidas
+  if (!event || !event.data) {
     return; // Ignora silenciosamente
   }
   
+  // Ignorar mensagens que não são do nosso código
+  if (typeof event.data !== 'object' || !event.data.type) {
+    return; // Ignora silenciosamente mensagens de extensões
+  }
+  
   // Processar apenas mensagens conhecidas do nosso código
-  if (event.data.type && ['SKIP_WAITING', 'CACHE_CLEAR'].includes(event.data.type)) {
+  if (['SKIP_WAITING', 'CACHE_CLEAR'].includes(event.data.type)) {
     if (event.data.type === 'SKIP_WAITING') {
       self.skipWaiting();
     }
@@ -82,4 +87,5 @@ self.addEventListener('message', (event) => {
   
   // IMPORTANTE: NÃO retornar true aqui - isso causa o erro de canal fechado
   // O listener não deve indicar resposta assíncrona
+  // Não retornar nada (undefined) para indicar que a mensagem foi processada
 });
