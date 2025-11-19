@@ -40,7 +40,13 @@ async function loadReclamacoes() {
     }
     
     // Renderizar gráfico de tipos
-    await renderTiposChart(tipos);
+    if (tipos && Array.isArray(tipos) && tipos.length > 0) {
+      await renderTiposChart(tipos);
+    } else {
+      if (window.Logger) {
+        window.Logger.warn('Tipos não é um array válido ou está vazio:', tipos);
+      }
+    }
     
     // Renderizar gráfico mensal
     await renderReclamacoesMesChart(dataMensal);
@@ -85,7 +91,12 @@ function renderReclamacoesAssuntosList(assuntos) {
 }
 
 async function renderTiposChart(tipos) {
-  if (!tipos || tipos.length === 0) return;
+  if (!tipos || !Array.isArray(tipos) || tipos.length === 0) {
+    if (window.Logger) {
+      window.Logger.warn('renderTiposChart: tipos inválido ou vazio');
+    }
+    return;
+  }
   
   const labels = tipos.map(t => t.tipo || t.key || t._id || 'N/A');
   const values = tipos.map(t => t.quantidade || t.count || 0);

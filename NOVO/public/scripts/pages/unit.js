@@ -80,8 +80,8 @@ async function loadUnit(unitName) {
     
     // Renderizar gráfico de tipos
     const tiposCanvas = section.querySelector('.unit-tipos');
-    if (tiposCanvas && tipos.length > 0) {
-      await renderTiposChart(tiposCanvas, tipos, unitName);
+    if (tiposCanvas && tipos && tipos.length > 0) {
+      await renderUnitTiposChart(tiposCanvas, tipos, unitName);
     }
     
     if (window.Logger) {
@@ -122,7 +122,9 @@ function renderUnitAssuntosList(container, assuntos) {
   }).join('');
 }
 
-async function renderTiposChart(canvas, tipos, unitName) {
+async function renderUnitTiposChart(canvas, tipos, unitName) {
+  if (!canvas || !tipos || !Array.isArray(tipos) || tipos.length === 0) return;
+  
   const labels = tipos.map(t => t.tipo || t.key || t._id || 'N/A');
   const values = tipos.map(t => t.quantidade || t.count || 0);
   const chartId = `chartUnit${unitName.replace(/\s+/g, '').replace(/-/g, '')}Tipos`;
