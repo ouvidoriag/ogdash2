@@ -21,9 +21,9 @@ async function loadSecretaria() {
       ttl: 10 * 60 * 1000
     }) || [];
     
-    const top10 = data.slice(0, 10);
-    const labels = top10.map(x => x.key || x._id || 'N/A');
-    const values = top10.map(x => x.count || 0);
+    const top20 = data.slice(0, 20);
+    const labels = top20.map(x => x.key || x._id || 'N/A');
+    const values = top20.map(x => x.count || 0);
     
     await window.chartFactory?.createBarChart('chartSecretaria', labels, values, {
       horizontal: true,
@@ -35,7 +35,7 @@ async function loadSecretaria() {
     // Renderizar ranking
     const rankEl = document.getElementById('rankSecretaria');
     if (rankEl) {
-      rankEl.innerHTML = top10.map((item, idx) => `
+      rankEl.innerHTML = top20.map((item, idx) => `
         <li class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
           <span class="text-cyan-300 font-mono">${item.key || item._id || 'N/A'}</span>
           <span class="font-bold text-violet-300">${(item.count || 0).toLocaleString('pt-BR')}</span>

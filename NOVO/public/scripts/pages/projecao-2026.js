@@ -76,7 +76,7 @@ async function loadProjecao2026() {
     
     // Renderizar estatísticas e KPIs
     renderEstatisticas(historico, projecao2026, analise);
-    renderKPIs(analise, projecao2026);
+    renderProjecaoKPIs(analise, projecao2026);
     renderTopTemas(temas);
     renderTopTipos(tipos);
     renderTopOrgaos(orgaos);
@@ -96,14 +96,32 @@ async function loadProjecao2026() {
  * Calcular tendência de crescimento e sazonalidade
  */
 function calcularTendenciaESazonalidade(historico) {
+  if (!historico || historico.length === 0) {
+    // Se não há dados, retornar objeto vazio com valores padrão
+    return {
+      taxaCrescimentoMensal: 0,
+      mediaMensal: 0,
+      sazonalidade: {},
+      tendencia: 'estavel',
+      variacaoPercentual: 0,
+      mediaUltimos6Meses: 0,
+      mediaPrimeiros6Meses: 0
+    };
+  }
+  
   if (historico.length < 3) {
     // Se não há dados suficientes, usar média simples
-    const media = historico.reduce((sum, h) => sum + h.value, 0) / historico.length;
+    const media = historico.length > 0 
+      ? historico.reduce((sum, h) => sum + (h.value || 0), 0) / historico.length 
+      : 0;
     return {
       taxaCrescimentoMensal: 0,
       mediaMensal: media,
       sazonalidade: {},
-      tendencia: 'estavel'
+      tendencia: 'estavel',
+      variacaoPercentual: 0,
+      mediaUltimos6Meses: media,
+      mediaPrimeiros6Meses: media
     };
   }
   
@@ -138,15 +156,21 @@ function calcularTendenciaESazonalidade(historico) {
   Object.keys(mesesPorMes).forEach(mes => {
     const valores = mesesPorMes[mes];
     const media = valores.reduce((sum, v) => sum + v, 0) / valores.length;
-    sazonalidade[mes] = media / mediaMensal; // Fator de sazonalidade (1.0 = média, >1.0 = acima da média)
+    sazonalidade[mes] = mediaMensal > 0 ? (media / mediaMensal) : 1.0; // Fator de sazonalidade (1.0 = média, >1.0 = acima da média)
   });
   
   // Determinar tendência
   const ultimos6Meses = historico.slice(-6);
   const primeiros6Meses = historico.slice(0, 6);
-  const mediaUltimos6 = ultimos6Meses.reduce((sum, h) => sum + h.value, 0) / ultimos6Meses.length;
-  const mediaPrimeiros6 = primeiros6Meses.reduce((sum, h) => sum + h.value, 0) / primeiros6Meses.length;
-  const variacao = ((mediaUltimos6 - mediaPrimeiros6) / mediaPrimeiros6) * 100;
+  const mediaUltimos6 = ultimos6Meses.length > 0 
+    ? ultimos6Meses.reduce((sum, h) => sum + (h.value || 0), 0) / ultimos6Meses.length 
+    : 0;
+  const mediaPrimeiros6 = primeiros6Meses.length > 0 
+    ? primeiros6Meses.reduce((sum, h) => sum + (h.value || 0), 0) / primeiros6Meses.length 
+    : 0;
+  const variacao = mediaPrimeiros6 > 0 
+    ? ((mediaUltimos6 - mediaPrimeiros6) / mediaPrimeiros6) * 100 
+    : 0;
   
   let tendencia = 'estavel';
   if (variacao > 10) tendencia = 'crescimento';
@@ -169,8 +193,26 @@ function calcularTendenciaESazonalidade(historico) {
 function gerarProjecao2026(analise, historico) {
   const projecao2026 = [];
   
+  // Validar parâmetros
+  if (!analise || typeof analise !== 'object') {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ gerarProjecao2026: analise inválida, usando valores padrão');
+    }
+    analise = {
+      mediaMensal: 0,
+      taxaCrescimentoMensal: 0,
+      sazonalidade: {}
+    };
+  }
+  
+  if (!historico || !Array.isArray(historico)) {
+    historico = [];
+  }
+  
   // Calcular valor base para projeção usando média mensal e tendência
-  const mediaMensal = analise.mediaMensal;
+  const mediaMensal = typeof analise.mediaMensal === 'number' ? analise.mediaMensal : 0;
+  const taxaCrescimentoMensal = typeof analise.taxaCrescimentoMensal === 'number' ? analise.taxaCrescimentoMensal : 0;
+  const sazonalidade = analise.sazonalidade || {};
   
   // Obter último mês histórico
   const ultimoMesHistorico = historico.length > 0 ? historico[historico.length - 1] : null;
@@ -179,8 +221,10 @@ function gerarProjecao2026(analise, historico) {
   
   if (ultimoMesHistorico && ultimoMesHistorico.ym) {
     const partes = ultimoMesHistorico.ym.split('-').map(Number);
-    ultimoAno = partes[0];
-    ultimoMes = partes[1];
+    if (partes.length === 2 && !isNaN(partes[0]) && !isNaN(partes[1])) {
+      ultimoAno = partes[0];
+      ultimoMes = partes[1];
+    }
   }
   
   for (let mes = 1; mes <= 12; mes++) {
@@ -191,15 +235,16 @@ function gerarProjecao2026(analise, historico) {
     const mesesDesdeUltimo = (2026 - ultimoAno) * 12 + (mes - ultimoMes);
     
     // Aplicar crescimento mensal acumulado
-    const crescimentoAcumulado = analise.taxaCrescimentoMensal * mesesDesdeUltimo;
+    const crescimentoAcumulado = taxaCrescimentoMensal * mesesDesdeUltimo;
     let valorBase = mediaMensal + crescimentoAcumulado;
     
     // Aplicar sazonalidade
-    const fatorSazonalidade = analise.sazonalidade[mesStr] || 1.0;
+    const fatorSazonalidade = sazonalidade[mesStr] || 1.0;
     const valorProjetado = Math.round(valorBase * fatorSazonalidade);
     
-    // Garantir valor mínimo razoável (não menos que 50% da média)
-    const valorFinal = Math.max(valorProjetado, Math.round(mediaMensal * 0.5));
+    // Garantir valor mínimo razoável (não menos que 50% da média, ou 1 se média for 0)
+    const valorMinimo = mediaMensal > 0 ? Math.round(mediaMensal * 0.5) : 1;
+    const valorFinal = Math.max(valorProjetado, valorMinimo);
     
     projecao2026.push({
       label: window.dateUtils?.formatMonthYear?.(ym) || `${mes}/2026`,
@@ -467,7 +512,7 @@ async function renderSazonalidade(sazonalidade) {
  * Renderizar projeção por tema
  */
 async function renderProjecaoPorTema(temas, analise) {
-  const topTemas = temas.slice(0, 10);
+  const topTemas = temas.slice(0, 20);
   const fatorCrescimento = 1 + (analise.taxaCrescimentoMensal / analise.mediaMensal);
   
   const labels = topTemas.map(t => t.theme || t.tema || t._id || 'N/A');
@@ -581,9 +626,34 @@ function renderEstatisticas(historico, projecao2026, analise) {
 /**
  * Renderizar KPIs detalhados
  */
-function renderKPIs(analise, projecao2026) {
+function renderProjecaoKPIs(analise, projecao2026) {
   const kpisContainer = document.getElementById('kpisProjecao');
   if (!kpisContainer) return;
+  
+  // Validar parâmetros
+  if (!analise || typeof analise !== 'object') {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ renderProjecaoKPIs: analise inválida ou não fornecida');
+    }
+    kpisContainer.innerHTML = '<div class="text-slate-400 text-sm">Dados de análise não disponíveis</div>';
+    return;
+  }
+  
+  if (!projecao2026 || !Array.isArray(projecao2026) || projecao2026.length === 0) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ renderProjecaoKPIs: projecao2026 inválida ou vazia');
+    }
+    kpisContainer.innerHTML = '<div class="text-slate-400 text-sm">Dados de projeção não disponíveis</div>';
+    return;
+  }
+  
+  // Valores padrão para propriedades que podem estar ausentes
+  const taxaCrescimentoMensal = typeof analise.taxaCrescimentoMensal === 'number' 
+    ? analise.taxaCrescimentoMensal 
+    : 0;
+  const variacaoPercentual = typeof analise.variacaoPercentual === 'number' 
+    ? analise.variacaoPercentual 
+    : 0;
   
   const mesPico = projecao2026.reduce((max, item) => item.value > max.value ? item : max, projecao2026[0]);
   const mesBaixo = projecao2026.reduce((min, item) => item.value < min.value ? item : min, projecao2026[0]);
@@ -592,23 +662,23 @@ function renderKPIs(analise, projecao2026) {
     <div class="grid grid-cols-2 gap-4">
       <div class="bg-slate-800/50 rounded-lg p-4">
         <div class="text-slate-400 text-xs mb-1">Taxa de Crescimento Mensal</div>
-        <div class="text-lg font-bold text-cyan-300">${(analise.taxaCrescimentoMensal).toFixed(1)}</div>
+        <div class="text-lg font-bold text-cyan-300">${taxaCrescimentoMensal.toFixed(1)}</div>
       </div>
       <div class="bg-slate-800/50 rounded-lg p-4">
         <div class="text-slate-400 text-xs mb-1">Variação (6 meses)</div>
-        <div class="text-lg font-bold ${analise.variacaoPercentual >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
-          ${analise.variacaoPercentual >= 0 ? '+' : ''}${analise.variacaoPercentual.toFixed(1)}%
+        <div class="text-lg font-bold ${variacaoPercentual >= 0 ? 'text-emerald-300' : 'text-rose-300'}">
+          ${variacaoPercentual >= 0 ? '+' : ''}${variacaoPercentual.toFixed(1)}%
         </div>
       </div>
       <div class="bg-slate-800/50 rounded-lg p-4">
         <div class="text-slate-400 text-xs mb-1">Mês de Pico (2026)</div>
-        <div class="text-lg font-bold text-violet-300">${mesPico.label}</div>
-        <div class="text-xs text-slate-500">${mesPico.value.toLocaleString('pt-BR')} manifestações</div>
+        <div class="text-lg font-bold text-violet-300">${mesPico?.label || 'N/A'}</div>
+        <div class="text-xs text-slate-500">${(mesPico?.value || 0).toLocaleString('pt-BR')} manifestações</div>
       </div>
       <div class="bg-slate-800/50 rounded-lg p-4">
         <div class="text-slate-400 text-xs mb-1">Mês Mais Baixo (2026)</div>
-        <div class="text-lg font-bold text-rose-300">${mesBaixo.label}</div>
-        <div class="text-xs text-slate-500">${mesBaixo.value.toLocaleString('pt-BR')} manifestações</div>
+        <div class="text-lg font-bold text-rose-300">${mesBaixo?.label || 'N/A'}</div>
+        <div class="text-xs text-slate-500">${(mesBaixo?.value || 0).toLocaleString('pt-BR')} manifestações</div>
       </div>
     </div>
   `;
@@ -618,7 +688,7 @@ function renderKPIs(analise, projecao2026) {
  * Renderizar top temas
  */
 function renderTopTemas(temas) {
-  const topTemas = temas.slice(0, 10);
+  const topTemas = temas.slice(0, 20);
   const listaTemasEl = document.getElementById('listaTemasProjecao');
   if (!listaTemasEl) return;
   

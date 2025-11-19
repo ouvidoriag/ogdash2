@@ -15,14 +15,30 @@ async function loadBairro(forceRefresh = false) {
   }
   
   try {
+    // Destruir gráficos existentes antes de criar novos
+    if (window.chartFactory?.destroyCharts) {
+      window.chartFactory.destroyCharts([
+        'chartBairro',
+        'chartBairroMes'
+      ]);
+    }
+    
     const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Bairro', {
       useDataStore: true,
       ttl: 10 * 60 * 1000
     }) || [];
     
-    const top15 = data.slice(0, 15);
-    const labels = top15.map(x => x.key || x._id || 'N/A');
-    const values = top15.map(x => x.count || 0);
+    // Validar dados recebidos
+    if (!Array.isArray(data) || data.length === 0) {
+      if (window.Logger) {
+        window.Logger.warn('📍 loadBairro: Dados não são um array válido', data);
+      }
+      return;
+    }
+    
+    const top20 = data.slice(0, 20);
+    const labels = top20.map(x => x.key || x._id || 'N/A');
+    const values = top20.map(x => x.count || 0);
     
     await window.chartFactory?.createBarChart('chartBairro', labels, values, {
       horizontal: true,
@@ -53,7 +69,7 @@ async function loadBairro(forceRefresh = false) {
 
 async function renderBairroMesChart(dataMes) {
   const meses = [...new Set(dataMes.map(d => d.month || d.ym))].sort();
-  const bairros = [...new Set(dataMes.map(d => d.bairro || d._id))].slice(0, 10);
+  const bairros = [...new Set(dataMes.map(d => d.bairro || d._id))].slice(0, 20);
   
   const datasets = bairros.map((bairro, idx) => {
     const data = meses.map(mes => {

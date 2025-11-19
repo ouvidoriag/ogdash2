@@ -14,7 +14,7 @@
     "prestart": "cd NOVO && node scripts/setup.js || true",
     "start": "cd NOVO && node src/server.js",
     "dev": "cd NOVO && node src/server.js",
-    "build": "cd NOVO && npm install && node scripts/setup.js || true",
+    "build": "cd NOVO && npm install && npx prisma generate && node scripts/setup.js || true",
     "setup": "cd NOVO && node scripts/setup.js",
     "prisma:generate": "cd NOVO && npx prisma generate",
     "prisma:migrate": "cd NOVO && npx prisma migrate deploy",

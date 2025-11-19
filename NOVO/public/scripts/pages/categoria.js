@@ -15,14 +15,30 @@ async function loadCategoria(forceRefresh = false) {
   }
   
   try {
+    // Destruir gráficos existentes antes de criar novos
+    if (window.chartFactory?.destroyCharts) {
+      window.chartFactory.destroyCharts([
+        'chartCategoria',
+        'chartCategoriaMes'
+      ]);
+    }
+    
     const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Categoria', {
       useDataStore: true,
       ttl: 10 * 60 * 1000
     }) || [];
     
-    const top10 = data.slice(0, 10);
-    const labels = top10.map(x => x.key || x._id || 'N/A');
-    const values = top10.map(x => x.count || 0);
+    // Validar dados recebidos
+    if (!Array.isArray(data) || data.length === 0) {
+      if (window.Logger) {
+        window.Logger.warn('📂 loadCategoria: Dados não são um array válido', data);
+      }
+      return;
+    }
+    
+    const top20 = data.slice(0, 20);
+    const labels = top20.map(x => x.key || x._id || 'N/A');
+    const values = top20.map(x => x.count || 0);
     
     await window.chartFactory?.createBarChart('chartCategoria', labels, values, {
       horizontal: true,
@@ -53,7 +69,7 @@ async function loadCategoria(forceRefresh = false) {
 
 async function renderCategoriaMesChart(dataMes) {
   const meses = [...new Set(dataMes.map(d => d.month || d.ym))].sort();
-  const categorias = [...new Set(dataMes.map(d => d.categoria || d._id))].slice(0, 10);
+  const categorias = [...new Set(dataMes.map(d => d.categoria || d._id))].slice(0, 20);
   
   const datasets = categorias.map((categoria, idx) => {
     const data = meses.map(mes => {

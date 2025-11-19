@@ -279,7 +279,15 @@ async function createBarChart(canvasId, labels, values, options = {}) {
           const label = chart.data.labels[point.index];
           const value = chart.data.datasets[point.datasetIndex].data[point.index];
           
-          // Chamar callback customizado
+          // Chamar callback customizado primeiro (se existir)
+          if (typeof options.onClickCallback === 'function') {
+            options.onClickCallback(evt, points, chart);
+            // Se o callback customizado foi chamado, não aplicar filtro padrão
+            // (o callback customizado deve aplicar o filtro se necessário)
+            return;
+          }
+          
+          // Chamar callback customizado (compatibilidade com versão antiga)
           if (typeof options.onClick === 'function') {
             options.onClick(evt, points, chart);
           }
@@ -416,7 +424,15 @@ async function createLineChart(canvasId, labels, values, options = {}) {
           const datasetIndex = point.datasetIndex;
           const value = chart.data.datasets[datasetIndex].data[point.index];
           
-          // Chamar callback customizado
+          // Chamar callback customizado primeiro (se existir)
+          if (typeof options.onClickCallback === 'function') {
+            options.onClickCallback(evt, points, chart);
+            // Se o callback customizado foi chamado, não aplicar filtro padrão
+            // (o callback customizado deve aplicar o filtro se necessário)
+            return;
+          }
+          
+          // Chamar callback customizado (compatibilidade com versão antiga)
           if (typeof options.onClick === 'function') {
             options.onClick(evt, points, chart);
           }
@@ -569,7 +585,15 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
           const label = chart.data.labels[point.index];
           const value = chart.data.datasets[point.datasetIndex].data[point.index];
           
-          // Chamar callback customizado
+          // Chamar callback customizado primeiro (se existir)
+          if (typeof options.onClickCallback === 'function') {
+            options.onClickCallback(evt, points, chart);
+            // Se o callback customizado foi chamado, não aplicar filtro padrão
+            // (o callback customizado deve aplicar o filtro se necessário)
+            return;
+          }
+          
+          // Chamar callback customizado (compatibilidade com versão antiga)
           if (typeof options.onClick === 'function') {
             options.onClick(evt, points, chart);
           }
@@ -715,6 +739,77 @@ function createReactiveChart(canvasId, dataStoreKey, dataTransformer, chartOptio
   return unsubscribe;
 }
 
+/**
+ * Função utilitária global para destruir gráficos Chart.js de forma segura
+ * Pode ser usada em qualquer página antes de criar novos gráficos
+ * 
+ * @param {string|string[]} chartId - ID do canvas ou array de IDs
+ * @returns {boolean} - true se algum gráfico foi destruído
+ */
+function destroyChartSafely(chartId) {
+  let destroyed = false;
+  const ids = Array.isArray(chartId) ? chartId : [chartId];
+  
+  ids.forEach(id => {
+    try {
+      // Verificar se existe no window e tem método destroy
+      if (window[id] && typeof window[id].destroy === 'function') {
+        window[id].destroy();
+        window[id] = null;
+        destroyed = true;
+        if (window.Logger) {
+          window.Logger.debug(`Gráfico ${id} destruído (window[${id}])`);
+        }
+      }
+      
+      // Também tentar destruir via Chart.js se estiver disponível
+      if (typeof window.Chart !== 'undefined' && typeof window.Chart.getChart === 'function') {
+        const existingChart = window.Chart.getChart(id);
+        if (existingChart && typeof existingChart.destroy === 'function') {
+          existingChart.destroy();
+          destroyed = true;
+          if (window.Logger) {
+            window.Logger.debug(`Gráfico ${id} destruído (Chart.getChart)`);
+          }
+        }
+      }
+      
+      // Verificar se o canvas existe e limpar
+      const canvas = document.getElementById(id);
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+    } catch (error) {
+      // Ignorar erros ao destruir gráficos (pode não existir)
+      if (window.Logger) {
+        window.Logger.debug(`Erro ao destruir gráfico ${id}:`, error);
+      }
+    }
+  });
+  
+  return destroyed;
+}
+
+/**
+ * Destruir múltiplos gráficos de uma vez
+ * 
+ * @param {string[]} chartIds - Array de IDs de gráficos
+ */
+function destroyCharts(chartIds) {
+  if (!Array.isArray(chartIds) || chartIds.length === 0) {
+    return;
+  }
+  
+  chartIds.forEach(id => destroyChartSafely(id));
+  
+  if (window.Logger) {
+    window.Logger.debug(`Destruídos ${chartIds.length} gráfico(s)`);
+  }
+}
+
 if (typeof window !== 'undefined') {
   window.chartFactory = {
     getChartDefaults,
@@ -725,7 +820,9 @@ if (typeof window !== 'undefined') {
     createLineChart,
     createDoughnutChart,
     updateChart,
-    createReactiveChart
+    createReactiveChart,
+    destroyChart: destroyChartSafely,
+    destroyCharts: destroyCharts
   };
   
   if (window.Logger) {

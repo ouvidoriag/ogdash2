@@ -15,12 +15,37 @@ async function loadStatusPage(forceRefresh = false) {
   }
   
   try {
+    // Destruir gráficos existentes antes de criar novos
+    if (window.chartFactory?.destroyCharts) {
+      window.chartFactory.destroyCharts([
+        'chartStatusPage',
+        'chartStatusMes'
+      ]);
+    }
+    
     const data = await window.dataLoader?.load('/api/stats/status-overview', {
       useDataStore: true,
       ttl: 5 * 60 * 1000
     }) || {};
     
+    // Validar dados recebidos
+    if (!data || typeof data !== 'object') {
+      if (window.Logger) {
+        window.Logger.warn('📊 loadStatusPage: Dados inválidos', data);
+      }
+      return;
+    }
+    
     const statusCounts = data.statusCounts || data.status || [];
+    
+    // Validar que statusCounts é um array
+    if (!Array.isArray(statusCounts) || statusCounts.length === 0) {
+      if (window.Logger) {
+        window.Logger.warn('📊 loadStatusPage: statusCounts não é um array válido', statusCounts);
+      }
+      return;
+    }
+    
     const labels = statusCounts.map(s => s.status || s._id || 'N/A');
     const values = statusCounts.map(s => s.count || 0);
     

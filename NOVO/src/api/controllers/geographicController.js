@@ -12,17 +12,78 @@ import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const projectRoot = path.join(__dirname, '../../../..');
+// projectRoot deve apontar para a pasta NOVO (mesmo que o server.js)
+const projectRoot = path.join(__dirname, '../..');
 
 /**
  * Carrega dados de secretarias e distritos
  */
 function loadSecretariasDistritos() {
   try {
-    const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
-    return JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    // Tentar múltiplos caminhos possíveis
+    // projectRoot = NOVO (mesmo que server.js)
+    const possiblePaths = [
+      path.join(projectRoot, 'data', 'secretarias-distritos.json'), // NOVO/data/...
+      path.join(__dirname, '../../data', 'secretarias-distritos.json'), // Relativo ao controller
+      path.join(process.cwd(), 'data', 'secretarias-distritos.json'), // Onde o processo está rodando
+      path.join(process.cwd(), 'NOVO', 'data', 'secretarias-distritos.json'), // Se rodando da raiz
+      path.join(__dirname, '../../../../data', 'secretarias-distritos.json'), // Fallback
+      path.join(__dirname, '../../../../NOVO/data', 'secretarias-distritos.json') // Fallback
+    ];
+    
+    console.log('🔍 loadSecretariasDistritos: Procurando arquivo...');
+    console.log(`   projectRoot: ${projectRoot}`);
+    console.log(`   __dirname: ${__dirname}`);
+    console.log(`   process.cwd(): ${process.cwd()}`);
+    
+    let dataPath = null;
+    for (const possiblePath of possiblePaths) {
+      const exists = fs.existsSync(possiblePath);
+      console.log(`   ${exists ? '✅' : '❌'} ${possiblePath}`);
+      if (exists) {
+        dataPath = possiblePath;
+        break;
+      }
+    }
+    
+    if (!dataPath) {
+      console.error('❌ Arquivo secretarias-distritos.json não encontrado em nenhum dos caminhos!');
+      console.error('   Caminhos tentados:', possiblePaths);
+      return { secretarias: [], distritos: {}, estatisticas: {} };
+    }
+    
+    console.log(`📂 Arquivo encontrado: ${dataPath}`);
+    const fileContent = fs.readFileSync(dataPath, 'utf8');
+    const data = JSON.parse(fileContent);
+    
+    // Validar estrutura
+    if (!data || typeof data !== 'object') {
+      console.error('❌ Dados inválidos: não é um objeto');
+      return { secretarias: [], distritos: {}, estatisticas: {} };
+    }
+    
+    const distritosCount = data.distritos && typeof data.distritos === 'object' ? Object.keys(data.distritos).length : 0;
+    const secretariasCount = Array.isArray(data.secretarias) ? data.secretarias.length : 0;
+    
+    console.log(`✅ Dados carregados de: ${dataPath}`);
+    console.log(`   - Distritos: ${distritosCount}`);
+    console.log(`   - Secretarias: ${secretariasCount}`);
+    console.log(`   - Estatísticas: ${data.estatisticas ? 'Sim' : 'Não'}`);
+    
+    if (distritosCount === 0) {
+      console.error('⚠️ AVISO: Nenhum distrito encontrado nos dados!');
+      console.error('   Estrutura do objeto:', Object.keys(data));
+      if (data.distritos) {
+        console.error('   Tipo de distritos:', typeof data.distritos);
+        console.error('   É array?', Array.isArray(data.distritos));
+      }
+    }
+    
+    return data;
   } catch (error) {
     console.error('❌ Erro ao carregar secretarias-distritos.json:', error);
+    console.error('   Mensagem:', error.message);
+    console.error('   Stack:', error.stack);
     return { secretarias: [], distritos: {}, estatisticas: {} };
   }
 }
@@ -75,11 +136,53 @@ export async function getSecretariasByDistrict(req, res, prisma) {
  */
 export async function getDistritos(req, res, prisma) {
   return safeQuery(res, async () => {
+    console.log('📊 getDistritos: Iniciando...');
     const data = loadSecretariasDistritos();
-    return {
-      distritos: data.distritos,
-      estatisticas: data.estatisticas
+    
+    // Validar estrutura dos dados
+    if (!data || typeof data !== 'object') {
+      console.error('❌ getDistritos: dados inválidos ou não é objeto');
+      console.error('   Tipo recebido:', typeof data);
+      return {
+        distritos: {},
+        estatisticas: {}
+      };
+    }
+    
+    // Garantir que distritos existe e é um objeto
+    const distritos = data.distritos && typeof data.distritos === 'object' && !Array.isArray(data.distritos) 
+      ? data.distritos 
+      : {};
+    const estatisticas = data.estatisticas && typeof data.estatisticas === 'object' && !Array.isArray(data.estatisticas)
+      ? data.estatisticas 
+      : {};
+    
+    // Log para debug
+    console.log('📊 getDistritos: Dados processados');
+    console.log(`   - Distritos disponíveis: ${Object.keys(distritos).length}`);
+    console.log(`   - Estatísticas:`, Object.keys(estatisticas).length > 0 ? 'Sim' : 'Não');
+    if (Object.keys(distritos).length > 0) {
+      console.log(`   - Nomes dos distritos:`, Object.keys(distritos).slice(0, 3).join(', '), '...');
+    }
+    
+    // Validar que temos pelo menos um distrito
+    if (Object.keys(distritos).length === 0) {
+      console.error('❌ getDistritos: Nenhum distrito encontrado nos dados!');
+      console.error('   Estrutura do data:', Object.keys(data));
+      console.error('   Tipo de data.distritos:', typeof data.distritos);
+      console.error('   É array?', Array.isArray(data.distritos));
+      if (data.distritos) {
+        console.error('   Conteúdo de data.distritos:', JSON.stringify(data.distritos).substring(0, 200));
+      }
+    }
+    
+    const result = {
+      distritos: distritos,
+      estatisticas: estatisticas
     };
+    
+    console.log(`✅ getDistritos: Retornando ${Object.keys(distritos).length} distritos`);
+    return result;
   });
 }
 

@@ -2,8 +2,9 @@ services:
   - type: web
     name: ogdash
     env: node
-    buildCommand: npm install && cd NOVO && npm install && cd NOVO && node scripts/setup.js || true
-    startCommand: cd NOVO && npm install && node scripts/setup.js || true && node src/server.js
+    rootDir: .
+    buildCommand: npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -12,4 +13,10 @@ services:
           type: web
           name: ogdash
           property: port
+      - key: MONGODB_ATLAS_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
 

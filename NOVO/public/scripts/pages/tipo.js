@@ -20,9 +20,9 @@ async function loadTipo() {
       ttl: 10 * 60 * 1000
     }) || [];
     
-    const top10 = data.slice(0, 10);
-    const labels = top10.map(x => x.key || x._id || 'N/A');
-    const values = top10.map(x => x.count || 0);
+    const top20 = data.slice(0, 20);
+    const labels = top20.map(x => x.key || x._id || 'N/A');
+    const values = top20.map(x => x.count || 0);
     
     await window.chartFactory?.createDoughnutChart('chartTipo', labels, values, {
       type: 'pie',
@@ -34,7 +34,7 @@ async function loadTipo() {
     // Renderizar ranking com cores por tipo de manifestação
     const rankEl = document.getElementById('rankTipo');
     if (rankEl) {
-      rankEl.innerHTML = top10.map((item, idx) => {
+      rankEl.innerHTML = top20.map((item, idx) => {
         const tipo = item.key || item._id || 'N/A';
         const color = window.config?.getColorByTipoManifestacao?.(tipo);
         const bgColor = color ? `${color}20` : 'slate-500/20';

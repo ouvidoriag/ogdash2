@@ -86,6 +86,25 @@ window.dataLoader = {
         const data = await res.json();
         const count = this._countItems(data);
         
+        // Validar dados antes de salvar no cache (especialmente para /api/distritos)
+        if (endpoint === '/api/distritos') {
+          if (!data || !data.distritos || Object.keys(data.distritos || {}).length === 0) {
+            console.warn('⚠️ dataLoader: /api/distritos retornou dados vazios, não salvando no cache');
+            console.warn('   Estrutura recebida:', data ? Object.keys(data) : 'null');
+            if (window.Logger) {
+              window.Logger.warn('/api/distritos: Dados vazios recebidos, ignorando cache');
+            }
+            // Limpar cache antigo se existir
+            if (window.dataStore) {
+              window.dataStore.clear('/api/distritos');
+            }
+            return data; // Retornar mesmo assim, mas sem salvar no cache
+          }
+          // Validar que os dados são válidos antes de salvar
+          console.log('✅ dataLoader: /api/distritos validado, salvando no cache');
+          console.log(`   - Distritos: ${Object.keys(data.distritos).length}`);
+        }
+        
         if (window.dataStore) {
           const useDeepCopy = deepCopy !== false;
           

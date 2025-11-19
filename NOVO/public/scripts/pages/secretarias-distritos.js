@@ -15,17 +15,50 @@ async function loadSecretariasDistritos() {
     return Promise.resolve();
   }
   
+  // Mostrar estado de carregamento
+  const listaEl = document.getElementById('listaDistritos');
+  const estatisticasEl = document.getElementById('estatisticasDistritos');
+  const chartEl = document.getElementById('chartSecretariasDistritos');
+  
+  if (listaEl) {
+    listaEl.innerHTML = '<div class="text-center text-slate-400 py-4">Carregando distritos...</div>';
+  }
+  if (estatisticasEl) {
+    estatisticasEl.innerHTML = '<div class="text-center text-slate-400 py-4">Carregando estatísticas...</div>';
+  }
+  
   try {
+    // Limpar cache se os dados anteriores estavam vazios
+    const cachedData = window.dataStore?.get('/api/distritos', 0);
+    if (cachedData && (!cachedData.distritos || Object.keys(cachedData.distritos || {}).length === 0)) {
+      console.log('🗑️ Limpando cache vazio de /api/distritos');
+      window.dataStore?.clear('/api/distritos');
+    }
+    
     const distritosData = await window.dataLoader?.load('/api/distritos', {
       useDataStore: true,
       ttl: 10 * 60 * 1000
     }) || null;
     
-    if (!distritosData || !distritosData.distritos) {
-      const listaEl = document.getElementById('listaDistritos');
+    if (!distritosData) {
       if (listaEl) {
-        listaEl.innerHTML = '<div class="text-center text-slate-400 py-4">Erro ao carregar dados de distritos</div>';
+        listaEl.innerHTML = '<div class="text-center text-red-400 py-4">❌ Erro: Não foi possível carregar dados da API</div>';
       }
+      if (estatisticasEl) {
+        estatisticasEl.innerHTML = '<div class="text-center text-red-400 py-4">❌ Erro ao carregar estatísticas</div>';
+      }
+      console.error('❌ loadSecretariasDistritos: distritosData é null');
+      return;
+    }
+    
+    if (!distritosData.distritos || Object.keys(distritosData.distritos).length === 0) {
+      if (listaEl) {
+        listaEl.innerHTML = '<div class="text-center text-amber-400 py-4">⚠️ Nenhum distrito encontrado nos dados</div>';
+      }
+      if (estatisticasEl) {
+        estatisticasEl.innerHTML = '<div class="text-center text-amber-400 py-4">⚠️ Estatísticas não disponíveis</div>';
+      }
+      console.warn('⚠️ loadSecretariasDistritos: distritos está vazio ou não existe');
       return;
     }
     
@@ -39,16 +72,40 @@ async function loadSecretariasDistritos() {
     renderDistritosEstatisticas(estatisticas);
     
     // Renderizar gráfico de distribuição
-    if (estatisticas.secretariasPorDistrito) {
+    if (estatisticas.secretariasPorDistrito && Object.keys(estatisticas.secretariasPorDistrito).length > 0) {
       await renderSecretariasDistritosChart(estatisticas.secretariasPorDistrito);
+    } else {
+      // Mostrar mensagem se não houver dados para o gráfico
+      if (chartEl && chartEl.parentElement) {
+        const chartContainer = chartEl.parentElement;
+        const existingMsg = chartContainer.querySelector('.chart-error-msg');
+        if (!existingMsg) {
+          const msg = document.createElement('div');
+          msg.className = 'chart-error-msg text-center text-amber-400 py-4 text-sm';
+          msg.textContent = '⚠️ Dados de secretarias por distrito não disponíveis';
+          chartContainer.appendChild(msg);
+        }
+      }
     }
     
     if (window.Logger) {
       window.Logger.success('🗺️ loadSecretariasDistritos: Concluído');
     }
   } catch (error) {
+    console.error('❌ Erro ao carregar SecretariasDistritos:', error);
     if (window.Logger) {
       window.Logger.error('Erro ao carregar SecretariasDistritos:', error);
+    }
+    
+    // Mostrar mensagem de erro detalhada
+    if (listaEl) {
+      listaEl.innerHTML = `<div class="text-center text-red-400 py-4">
+        ❌ Erro ao carregar dados<br>
+        <span class="text-xs text-slate-500">${error.message || 'Erro desconhecido'}</span>
+      </div>`;
+    }
+    if (estatisticasEl) {
+      estatisticasEl.innerHTML = '<div class="text-center text-red-400 py-4">❌ Erro ao carregar estatísticas</div>';
     }
   }
 }
@@ -133,21 +190,50 @@ function renderDistritosEstatisticas(estatisticas) {
 }
 
 async function renderSecretariasDistritosChart(secretariasPorDistrito) {
-  const distritoLabels = Object.keys(secretariasPorDistrito).map(d => 
-    d.replace('º Distrito - ', '').split('(')[0].trim()
-  );
-  const distritoValues = Object.values(secretariasPorDistrito);
+  const chartEl = document.getElementById('chartSecretariasDistritos');
+  if (!chartEl) {
+    console.error('❌ chartSecretariasDistritos não encontrado');
+    return;
+  }
   
-  await window.chartFactory?.createBarChart('chartSecretariasDistritos', distritoLabels, distritoValues, {
-    colorIndex: 9,
-    label: 'Quantidade de Secretarias',
-    onClick: true, // Habilitar comunicação e filtros
-    chartOptions: {
-      scales: {
-        x: { ticks: { maxRotation: 45, minRotation: 45 } }
-      }
+  // Remover mensagem de erro anterior se existir
+  const chartContainer = chartEl.parentElement;
+  if (chartContainer) {
+    const existingMsg = chartContainer.querySelector('.chart-error-msg');
+    if (existingMsg) {
+      existingMsg.remove();
     }
-  });
+  }
+  
+  try {
+    const distritoLabels = Object.keys(secretariasPorDistrito).map(d => 
+      d.replace('º Distrito - ', '').split('(')[0].trim()
+    );
+    const distritoValues = Object.values(secretariasPorDistrito);
+    
+    if (distritoLabels.length === 0 || distritoValues.length === 0) {
+      throw new Error('Dados vazios para o gráfico');
+    }
+    
+    await window.chartFactory?.createBarChart('chartSecretariasDistritos', distritoLabels, distritoValues, {
+      colorIndex: 9,
+      label: 'Quantidade de Secretarias',
+      onClick: true, // Habilitar comunicação e filtros
+      chartOptions: {
+        scales: {
+          x: { ticks: { maxRotation: 45, minRotation: 45 } }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao renderizar gráfico:', error);
+    if (chartContainer) {
+      const msg = document.createElement('div');
+      msg.className = 'chart-error-msg text-center text-red-400 py-4 text-sm';
+      msg.textContent = `❌ Erro ao renderizar gráfico: ${error.message || 'Erro desconhecido'}`;
+      chartContainer.appendChild(msg);
+    }
+  }
 }
 
 window.loadSecretariasDistritos = loadSecretariasDistritos;

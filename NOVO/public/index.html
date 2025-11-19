@@ -153,6 +153,11 @@
             <div data-page="prioridade" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⚡ Prioridades</div>
             <div data-page="bairro" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📍 Bairro</div>
           </div>
+          
+          <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🏥 Unidades de Saúde</div>
+            <div data-page="unidades-saude" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏥 Unidades de Saúde</div>
+          </div>
         </nav>
         
         <nav id="sideMenuZeladoria" class="space-y-3 text-sm" style="display: none;">
@@ -298,114 +303,7 @@
           </section>
 
           <!-- ============================================ -->
-          <!-- SEÇÃO 2: ANÁLISE TEMPORAL -->
-          <!-- ============================================ -->
-          <section class="mb-6">
-            <div class="flex items-center gap-2 mb-4">
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
-              <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider px-3">📈 Análise Temporal</h2>
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
-            </div>
-            <div class="grid grid-cols-12 gap-6">
-              <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-cyan-300 mb-4">📊 Tendência Mensal (Últimos 12 meses)</h3>
-                <div class="rounded-xl overflow-visible bg-slate-900/30 p-2 relative">
-                  <canvas id="chartTrend"></canvas>
-                </div>
-                <div id="chartTrendInfo" class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div class="text-center">
-                    <div class="text-slate-400 text-xs mb-1">Média</div>
-                    <div id="trendMedia" class="text-cyan-300 font-bold">—</div>
-                  </div>
-                  <div class="text-center">
-                    <div class="text-slate-400 text-xs mb-1">Total</div>
-                    <div id="trendTotal" class="text-violet-300 font-bold">—</div>
-                  </div>
-                  <div class="text-center">
-                    <div class="text-slate-400 text-xs mb-1">Maior</div>
-                    <div id="trendMax" class="text-emerald-300 font-bold">—</div>
-                  </div>
-                  <div class="text-center">
-                    <div class="text-slate-400 text-xs mb-1">Menor</div>
-                    <div id="trendMin" class="text-rose-300 font-bold">—</div>
-                  </div>
-                </div>
-              </div>
-              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-cyan-300 mb-4">📅 Distribuição Diária (Últimos 30 dias)</h3>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
-                  <canvas id="chartDailyDistribution"></canvas>
-                </div>
-                <div id="dailyInfo" class="mt-4 p-3 bg-slate-800/50 rounded-lg"></div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ============================================ -->
-          <!-- SEÇÃO 3: STATUS E SLA -->
-          <!-- ============================================ -->
-          <section class="mb-6">
-            <div class="flex items-center gap-2 mb-4">
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/50 to-transparent"></div>
-              <h2 class="text-sm font-semibold text-violet-400 uppercase tracking-wider px-3">🎯 Status e SLA</h2>
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/50 to-transparent"></div>
-            </div>
-            <div class="grid grid-cols-12 gap-6">
-              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-violet-300 mb-4">📊 Funil por Status</h3>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
-                  <canvas id="chartFunnelStatus"></canvas>
-                </div>
-                <div id="statusInfo" class="mt-3 p-3 bg-slate-800/50 rounded-lg text-center"></div>
-                <div id="legendFunnelStatus" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
-              </div>
-              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-teal-300 mb-4">⏱️ Status de SLA</h3>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
-                  <canvas id="chartSLA"></canvas>
-                </div>
-                <div id="legendSLA" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
-                <div id="slaInfo" class="mt-4 p-3 bg-slate-800/50 rounded-lg"></div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ============================================ -->
-          <!-- SEÇÃO 4: RANKINGS E TOP PERFORMERS -->
-          <!-- ============================================ -->
-          <section class="mb-6">
-            <div class="flex items-center gap-2 mb-4">
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
-              <h2 class="text-sm font-semibold text-purple-400 uppercase tracking-wider px-3">🏆 Rankings e Top Performers</h2>
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
-            </div>
-            <div class="grid grid-cols-12 gap-6">
-              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-cyan-300 mb-4">🏛️ Top Órgãos</h3>
-                <div class="text-xs text-slate-400 mb-2">Top 10 órgãos com mais manifestações</div>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
-                  <canvas id="chartTopOrgaos"></canvas>
-                </div>
-              </div>
-              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-emerald-300 mb-4">📑 Top Temas</h3>
-                <div class="text-xs text-slate-400 mb-2">Top 10 temas mais frequentes</div>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
-                  <canvas id="chartTopTemas"></canvas>
-                </div>
-              </div>
-              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-indigo-300 mb-4">📍 Top Unidades de Cadastro</h3>
-                <div class="text-xs text-slate-400 mb-2">Top 10 unidades com mais registros</div>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
-                  <canvas id="chartUnidadesCadastro"></canvas>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ============================================ -->
-          <!-- SEÇÃO 5: DISTRIBUIÇÕES E CATEGORIAS -->
+          <!-- SEÇÃO 2: DISTRIBUIÇÕES E CATEGORIAS -->
           <!-- ============================================ -->
           <section class="mb-6">
             <div class="flex items-center gap-2 mb-4">
@@ -415,29 +313,136 @@
             </div>
             <div class="grid grid-cols-12 gap-6">
               <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-pink-300 mb-4">📝 Tipos de Manifestação</h3>
-                <div class="text-xs text-slate-400 mb-2">Distribuição por tipo</div>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
+                <h3 class="font-semibold text-pink-300 mb-3">📝 Tipos de Manifestação</h3>
+                <div class="text-xs text-slate-400 mb-3">Distribuição por tipo</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
                   <canvas id="chartTiposManifestacao"></canvas>
                 </div>
-                <div id="tiposInfo" class="mt-3 p-3 bg-slate-800/50 rounded-lg text-center"></div>
-                <div id="legendTiposManifestacao" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
+                <div id="tiposInfo" class="mb-3 p-3 bg-slate-800/50 rounded-lg text-center text-sm"></div>
+                <div id="legendTiposManifestacao" class="space-y-2 max-h-[200px] overflow-y-auto text-xs"></div>
               </div>
               <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-amber-300 mb-4">📞 Canais de Atendimento</h3>
-                <div class="text-xs text-slate-400 mb-2">Distribuição por canal</div>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
+                <h3 class="font-semibold text-amber-300 mb-3">📞 Canais de Atendimento</h3>
+                <div class="text-xs text-slate-400 mb-3">Distribuição por canal</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
                   <canvas id="chartCanais"></canvas>
                 </div>
-                <div id="legendCanais" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
+                <div id="legendCanais" class="space-y-2 max-h-[200px] overflow-y-auto text-xs"></div>
               </div>
               <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-                <h3 class="font-semibold text-red-300 mb-4">⚡ Prioridades</h3>
-                <div class="text-xs text-slate-400 mb-2">Distribuição por nível de prioridade</div>
-                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-2">
+                <h3 class="font-semibold text-red-300 mb-3">⚡ Prioridades</h3>
+                <div class="text-xs text-slate-400 mb-3">Distribuição por nível de prioridade</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
                   <canvas id="chartPrioridades"></canvas>
                 </div>
-                <div id="legendPrioridades" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
+                <div id="legendPrioridades" class="space-y-2 max-h-[200px] overflow-y-auto text-xs"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================ -->
+          <!-- SEÇÃO 3: RANKINGS E TOP PERFORMERS -->
+          <!-- ============================================ -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-purple-400 uppercase tracking-wider px-3">🏆 Rankings e Top Performers</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-cyan-300 mb-3">🏛️ Top Órgãos</h3>
+                <div class="text-xs text-slate-400 mb-3">Top 20 órgãos com mais manifestações</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartTopOrgaos"></canvas>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-emerald-300 mb-3">📑 Top Temas</h3>
+                <div class="text-xs text-slate-400 mb-3">Top 20 temas mais frequentes</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartTopTemas"></canvas>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-indigo-300 mb-3">📍 Top Unidades de Cadastro</h3>
+                <div class="text-xs text-slate-400 mb-3">Top 20 unidades com mais registros</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartUnidadesCadastro"></canvas>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================ -->
+          <!-- SEÇÃO 4: STATUS E SLA -->
+          <!-- ============================================ -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-violet-400 uppercase tracking-wider px-3">🎯 Status e SLA</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-violet-300 mb-3">📊 Funil por Status</h3>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                  <canvas id="chartFunnelStatus"></canvas>
+                </div>
+                <div id="statusInfo" class="mb-3 p-3 bg-slate-800/50 rounded-lg text-center text-sm"></div>
+                <div id="legendFunnelStatus" class="space-y-2 max-h-[250px] overflow-y-auto text-xs"></div>
+              </div>
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-teal-300 mb-3">⏱️ Status de SLA</h3>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                  <canvas id="chartSLA"></canvas>
+                </div>
+                <div id="legendSLA" class="mb-3 space-y-2 max-h-[200px] overflow-y-auto text-xs"></div>
+                <div id="slaInfo" class="p-3 bg-slate-800/50 rounded-lg text-sm"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============================================ -->
+          <!-- SEÇÃO 5: ANÁLISE TEMPORAL -->
+          <!-- ============================================ -->
+          <section class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider px-3">📈 Análise Temporal</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+            </div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-cyan-300 mb-3">📊 Tendência Mensal (Últimos 12 meses)</h3>
+                <div class="rounded-xl overflow-visible bg-slate-900/30 p-3 mb-3">
+                  <canvas id="chartTrend"></canvas>
+                </div>
+                <div id="chartTrendInfo" class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div class="text-center p-2 bg-slate-800/30 rounded-lg">
+                    <div class="text-slate-400 text-xs mb-1">Média</div>
+                    <div id="trendMedia" class="text-cyan-300 font-bold">—</div>
+                  </div>
+                  <div class="text-center p-2 bg-slate-800/30 rounded-lg">
+                    <div class="text-slate-400 text-xs mb-1">Total</div>
+                    <div id="trendTotal" class="text-violet-300 font-bold">—</div>
+                  </div>
+                  <div class="text-center p-2 bg-slate-800/30 rounded-lg">
+                    <div class="text-slate-400 text-xs mb-1">Maior</div>
+                    <div id="trendMax" class="text-emerald-300 font-bold">—</div>
+                  </div>
+                  <div class="text-center p-2 bg-slate-800/30 rounded-lg">
+                    <div class="text-slate-400 text-xs mb-1">Menor</div>
+                    <div id="trendMin" class="text-rose-300 font-bold">—</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-cyan-300 mb-3">📅 Distribuição Diária (Últimos 30 dias)</h3>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                  <canvas id="chartDailyDistribution"></canvas>
+                </div>
+                <div id="dailyInfo" class="p-3 bg-slate-800/50 rounded-lg text-sm"></div>
               </div>
             </div>
           </section>
@@ -499,7 +504,20 @@
         <!-- Página: Tempo Médio -->
         <section id="page-tempo-medio" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
             <h2 class="neon text-xl font-bold">Tempo Médio de Atendimento / Dias</h2>
+            </div>
+            <div class="mt-4">
+              <label for="selectMesTempoMedio" class="block text-sm font-medium text-slate-300 mb-2">
+                Filtrar por mês:
+              </label>
+              <select 
+                id="selectMesTempoMedio" 
+                class="w-full md:w-64 px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+              >
+                <option value="">Todos os meses</option>
+              </select>
+            </div>
           </header>
           
           <div class="grid grid-cols-12 gap-6 mb-6">
@@ -525,42 +543,75 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-12 gap-6">
+          <!-- Gráfico Principal e Ranking -->
+          <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Tempo Médio por Órgão/Unidade</h3>
-              <canvas id="chartTempoMedio"></canvas>
+              <h3 class="font-semibold mb-3 text-cyan-400">Tempo Médio por Órgão/Unidade</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartTempoMedio"></canvas>
+              </div>
             </div>
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Ranking</h3>
+              <h3 class="font-semibold mb-3 text-cyan-400">Ranking</h3>
               <div id="listaTempoMedio" class="space-y-2 max-h-[500px] overflow-y-auto">
                 <div class="text-center text-slate-400 py-4">Carregando...</div>
               </div>
             </div>
-            
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Tendência Diária (Últimos 30 dias)</h3>
-              <canvas id="chartTempoMedioDia"></canvas>
+          </div>
+
+          <!-- Tendências Temporais -->
+          <div class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider px-3">📈 Tendências Temporais</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
             </div>
-            
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Tendência Semanal (Últimas 12 semanas)</h3>
-              <canvas id="chartTempoMedioSemana"></canvas>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-3 text-cyan-400">Tendência Diária</h3>
+                <div class="text-xs text-slate-400 mb-3">Últimos 30 dias</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartTempoMedioDia"></canvas>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-3 text-cyan-400">Tendência Semanal</h3>
+                <div class="text-xs text-slate-400 mb-3">Últimas 12 semanas</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartTempoMedioSemana"></canvas>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-3 text-cyan-400">Tendência Mensal</h3>
+                <div class="text-xs text-slate-400 mb-3">Últimos 12 meses</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartTempoMedioMes"></canvas>
+                </div>
+              </div>
             </div>
-            
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Tendência Mensal (Últimos 12 meses)</h3>
-              <canvas id="chartTempoMedioMes"></canvas>
+          </div>
+
+          <!-- Análise por Unidade -->
+          <div class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-violet-400 uppercase tracking-wider px-3">🏢 Análise por Unidade</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/50 to-transparent"></div>
             </div>
-            
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-violet-400">Tempo Médio por Unidade de Cadastro</h3>
-              <canvas id="chartTempoMedioUnidade"></canvas>
-            </div>
-            
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-emerald-400">Tempo Médio por Unidade de Cadastro por Mês</h3>
-              <canvas id="chartTempoMedioUnidadeMes"></canvas>
-              <div id="legendTempoMedioUnidadeMes" class="mt-4 space-y-2"></div>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-3 text-violet-400">Tempo Médio por Unidade de Cadastro</h3>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartTempoMedioUnidade"></canvas>
+                </div>
+              </div>
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-3 text-emerald-400">Tempo Médio por Unidade de Cadastro por Mês</h3>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                  <canvas id="chartTempoMedioUnidadeMes"></canvas>
+                </div>
+                <div id="legendTempoMedioUnidadeMes" class="space-y-2 max-h-[200px] overflow-y-auto text-xs"></div>
+              </div>
             </div>
           </div>
         </section>
@@ -570,26 +621,45 @@
           <header class="glass rounded-2xl p-6 mb-6">
             <h2 class="neon text-xl font-bold">Manifestações por Tema</h2>
           </header>
-          <div class="grid grid-cols-12 gap-6">
+          
+          <!-- Gráficos Principais -->
+          <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-violet-400">Distribuição por Tema</h3>
-              <canvas id="chartTema"></canvas>
+              <h3 class="font-semibold mb-3 text-violet-400">Distribuição por Tema</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartTema"></canvas>
+              </div>
             </div>
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-violet-400">Status Geral</h3>
-              <canvas id="chartStatusTema"></canvas>
-              <div id="legendStatusTema" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
-            </div>
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-violet-400">Temas por Mês</h3>
-              <canvas id="chartTemaMes"></canvas>
-              <div id="legendTemaMes" class="mt-4 space-y-2"></div>
-            </div>
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-violet-400">Lista Completa de Temas</h3>
-              <div id="listaTemas" class="space-y-2 max-h-[500px] overflow-y-auto">
-                <div class="text-center text-slate-400 py-4">Carregando...</div>
+              <h3 class="font-semibold mb-3 text-violet-400">Status Geral</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartStatusTema"></canvas>
               </div>
+              <div id="legendStatusTema" class="space-y-2 max-h-[250px] overflow-y-auto text-xs"></div>
+            </div>
+          </div>
+
+          <!-- Análise Temporal -->
+          <div class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider px-3">📈 Análise Temporal</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+            </div>
+            <div class="glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-violet-400">Temas por Mês</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartTemaMes"></canvas>
+              </div>
+              <div id="legendTemaMes" class="space-y-2 text-xs"></div>
+            </div>
+          </div>
+
+          <!-- Lista Completa -->
+          <div class="glass rounded-2xl p-5">
+            <h3 class="font-semibold mb-3 text-violet-400">Lista Completa de Temas</h3>
+            <div id="listaTemas" class="space-y-2 max-h-[500px] overflow-y-auto">
+              <div class="text-center text-slate-400 py-4">Carregando...</div>
             </div>
           </div>
         </section>
@@ -599,26 +669,45 @@
           <header class="glass rounded-2xl p-6 mb-6">
             <h2 class="neon text-xl font-bold">Total por Assunto</h2>
           </header>
-          <div class="grid grid-cols-12 gap-6">
+          
+          <!-- Gráficos Principais -->
+          <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-emerald-400">Top 15 Assuntos</h3>
-              <canvas id="chartAssunto"></canvas>
+              <h3 class="font-semibold mb-3 text-emerald-400">Top 15 Assuntos</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartAssunto"></canvas>
+              </div>
             </div>
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-emerald-400">Status</h3>
-              <canvas id="chartStatusAssunto"></canvas>
-              <div id="legendStatusAssunto" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
-            </div>
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-emerald-400">Assuntos por Mês</h3>
-              <canvas id="chartAssuntoMes"></canvas>
-              <div id="legendAssuntoMes" class="mt-4 space-y-2"></div>
-            </div>
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-emerald-400">Lista Completa de Assuntos</h3>
-              <div id="listaAssuntos" class="space-y-2 max-h-[500px] overflow-y-auto">
-                <div class="text-center text-slate-400 py-4">Carregando...</div>
+              <h3 class="font-semibold mb-3 text-emerald-400">Status</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartStatusAssunto"></canvas>
               </div>
+              <div id="legendStatusAssunto" class="space-y-2 max-h-[250px] overflow-y-auto text-xs"></div>
+            </div>
+          </div>
+
+          <!-- Análise Temporal -->
+          <div class="mb-6">
+            <div class="flex items-center gap-2 mb-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+              <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider px-3">📈 Análise Temporal</h2>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
+            </div>
+            <div class="glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-emerald-400">Assuntos por Mês</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartAssuntoMes"></canvas>
+              </div>
+              <div id="legendAssuntoMes" class="space-y-2 text-xs"></div>
+            </div>
+          </div>
+
+          <!-- Lista Completa -->
+          <div class="glass rounded-2xl p-5">
+            <h3 class="font-semibold mb-3 text-emerald-400">Lista Completa de Assuntos</h3>
+            <div id="listaAssuntos" class="space-y-2 max-h-[500px] overflow-y-auto">
+              <div class="text-center text-slate-400 py-4">Carregando...</div>
             </div>
           </div>
         </section>
@@ -630,12 +719,14 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-violet-400">Distribuição por Tipo</h3>
-              <canvas id="chartTipo"></canvas>
-              <div id="legendTipo" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
+              <h3 class="font-semibold mb-3 text-violet-400">Distribuição por Tipo</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartTipo"></canvas>
+              </div>
+              <div id="legendTipo" class="space-y-2 max-h-[300px] overflow-y-auto text-xs"></div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-violet-400">Top Tipos (Rank)</h3>
+              <h3 class="font-semibold mb-3 text-violet-400">Top Tipos (Rank)</h3>
               <ul id="rankTipo" class="space-y-2"></ul>
             </div>
           </div>
@@ -648,11 +739,13 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-emerald-400">Registros por Setor</h3>
-              <canvas id="chartSetor"></canvas>
+              <h3 class="font-semibold mb-3 text-emerald-400">Registros por Setor</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartSetor"></canvas>
+              </div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-emerald-400">Top 10 Unidades de Cadastro (Rank)</h3>
+              <h3 class="font-semibold mb-3 text-emerald-400">Top 10 Unidades de Cadastro (Rank)</h3>
               <ul id="rankSetor" class="space-y-2"></ul>
             </div>
           </div>
@@ -665,11 +758,13 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-cyan-400">Total por UAC</h3>
-              <canvas id="chartUAC"></canvas>
+              <h3 class="font-semibold mb-3 text-cyan-400">Total por UAC</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartUAC"></canvas>
+              </div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-cyan-400">Top 10 UACs (Rank)</h3>
+              <h3 class="font-semibold mb-3 text-cyan-400">Top 10 UACs (Rank)</h3>
               <ul id="rankUAC" class="space-y-2"></ul>
             </div>
           </div>
@@ -682,11 +777,13 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-violet-400">Distribuição por Responsável</h3>
-              <canvas id="chartResponsavel"></canvas>
+              <h3 class="font-semibold mb-3 text-violet-400">Distribuição por Responsável</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartResponsavel"></canvas>
+              </div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-violet-400">Top Responsáveis (Rank)</h3>
+              <h3 class="font-semibold mb-3 text-violet-400">Top Responsáveis (Rank)</h3>
               <ul id="rankResponsavel" class="space-y-2"></ul>
             </div>
           </div>
@@ -699,12 +796,14 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-emerald-400">Distribuição por Canal</h3>
-              <canvas id="chartCanal"></canvas>
-              <div id="legendCanal" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
+              <h3 class="font-semibold mb-3 text-emerald-400">Distribuição por Canal</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartCanal"></canvas>
+              </div>
+              <div id="legendCanal" class="space-y-2 max-h-[300px] overflow-y-auto text-xs"></div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-emerald-400">Top Canais (Rank)</h3>
+              <h3 class="font-semibold mb-3 text-emerald-400">Top Canais (Rank)</h3>
               <ul id="rankCanal" class="space-y-2"></ul>
             </div>
           </div>
@@ -717,12 +816,14 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-rose-400">Distribuição por Prioridade</h3>
-              <canvas id="chartPrioridade"></canvas>
-              <div id="legendPrioridade" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
+              <h3 class="font-semibold mb-3 text-rose-400">Distribuição por Prioridade</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartPrioridade"></canvas>
+              </div>
+              <div id="legendPrioridade" class="space-y-2 max-h-[300px] overflow-y-auto text-xs"></div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-rose-400">Ranking de Prioridades</h3>
+              <h3 class="font-semibold mb-3 text-rose-400">Ranking de Prioridades</h3>
               <ul id="rankPrioridade" class="space-y-2"></ul>
             </div>
           </div>
@@ -735,13 +836,17 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-fuchsia-400">Top Temas</h3>
-              <canvas id="chartCategoria"></canvas>
+              <h3 class="font-semibold mb-3 text-fuchsia-400">Top Temas</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartCategoria"></canvas>
+              </div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-fuchsia-400">Categorias por Mês</h3>
-              <canvas id="chartCategoriaMes"></canvas>
-              <div id="legendCategoriaMes" class="mt-4 space-y-2"></div>
+              <h3 class="font-semibold mb-3 text-fuchsia-400">Categorias por Mês</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartCategoriaMes"></canvas>
+              </div>
+              <div id="legendCategoriaMes" class="space-y-2 text-xs"></div>
             </div>
           </div>
         </section>
@@ -753,14 +858,18 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-sky-400">Distribuição por Status</h3>
-              <canvas id="chartStatusPage"></canvas>
-              <div id="legendStatusPage" class="mt-4 space-y-2 max-h-[300px] overflow-y-auto"></div>
+              <h3 class="font-semibold mb-3 text-sky-400">Distribuição por Status</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartStatusPage"></canvas>
+              </div>
+              <div id="legendStatusPage" class="space-y-2 max-h-[300px] overflow-y-auto text-xs"></div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-sky-400">Status por Mês</h3>
-              <canvas id="chartStatusMes"></canvas>
-              <div id="legendStatusMes" class="mt-4 space-y-2"></div>
+              <h3 class="font-semibold mb-3 text-sky-400">Status por Mês</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartStatusMes"></canvas>
+              </div>
+              <div id="legendStatusMes" class="space-y-2 text-xs"></div>
             </div>
           </div>
         </section>
@@ -772,13 +881,17 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-amber-400">Top 15 Bairros</h3>
-              <canvas id="chartBairro"></canvas>
+              <h3 class="font-semibold mb-3 text-amber-400">Top 15 Bairros</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartBairro"></canvas>
+              </div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-amber-400">Bairros por Mês</h3>
-              <canvas id="chartBairroMes"></canvas>
-              <div id="legendBairroMes" class="mt-4 space-y-2"></div>
+              <h3 class="font-semibold mb-3 text-amber-400">Bairros por Mês</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                <canvas id="chartBairroMes"></canvas>
+              </div>
+              <div id="legendBairroMes" class="space-y-2 text-xs"></div>
             </div>
           </div>
         </section>
@@ -790,20 +903,22 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Por Servidor</h3>
+              <h3 class="font-semibold mb-3 text-cyan-400">Por Servidor</h3>
               <div id="listaServidores" class="space-y-2 max-h-[600px] overflow-y-auto">
                 <div class="text-center text-slate-400 py-4">Carregando...</div>
               </div>
             </div>
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-violet-400">Unidades de Cadastro</h3>
+              <h3 class="font-semibold mb-3 text-violet-400">Unidades de Cadastro</h3>
               <div id="listaUnidadesCadastro" class="space-y-2 max-h-[600px] overflow-y-auto">
                 <div class="text-center text-slate-400 py-4">Carregando...</div>
               </div>
             </div>
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-violet-400">Filtro / Mês</h3>
-              <canvas id="chartCadastranteMes"></canvas>
+              <h3 class="font-semibold mb-3 text-violet-400">Filtro / Mês</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartCadastranteMes"></canvas>
+              </div>
             </div>
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5 text-center" style="background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(167,139,250,0.15));">
               <div class="text-sm text-slate-400 mb-2">Manifestações</div>
@@ -818,19 +933,23 @@
           <header class="glass rounded-2xl p-6 mb-6">
             <h2 class="neon text-xl font-bold">Reclamações e Denúncias</h2>
           </header>
-          <div class="grid grid-cols-12 gap-6">
+          <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-rose-400">Lista de Assuntos</h3>
+              <h3 class="font-semibold mb-3 text-rose-400">Lista de Assuntos</h3>
               <div id="listaReclamacoes" class="space-y-2 max-h-[500px] overflow-y-auto">
                 <div class="text-center text-slate-400 py-4">Carregando...</div>
               </div>
             </div>
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-rose-400">Tipos de Ação</h3>
-              <canvas id="chartReclamacoesTipo"></canvas>
+              <h3 class="font-semibold mb-3 text-rose-400">Tipos de Ação</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartReclamacoesTipo"></canvas>
+              </div>
             </div>
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-rose-400">Reclamações por Mês</h3>
+          </div>
+          <div class="glass rounded-2xl p-5">
+            <h3 class="font-semibold mb-3 text-rose-400">Reclamações por Mês</h3>
+            <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
               <canvas id="chartReclamacoesMes"></canvas>
             </div>
           </div>
@@ -841,17 +960,21 @@
           <header class="glass rounded-2xl p-6 mb-6">
             <h2 class="neon text-xl font-bold">Secretarias</h2>
           </header>
-          <div class="grid grid-cols-12 gap-6">
+          <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-cyan-400">Distribuição por Secretaria</h3>
-              <canvas id="chartSecretaria"></canvas>
+              <h3 class="font-semibold mb-3 text-cyan-400">Distribuição por Secretaria</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartSecretaria"></canvas>
+              </div>
             </div>
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-cyan-400">Top Secretarias (Rank)</h3>
+              <h3 class="font-semibold mb-3 text-cyan-400">Top Secretarias (Rank)</h3>
               <ul id="rankSecretaria" class="space-y-2"></ul>
             </div>
-            <div class="col-span-12 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-2 text-cyan-400">Secretarias por Mês</h3>
+          </div>
+          <div class="glass rounded-2xl p-5">
+            <h3 class="font-semibold mb-3 text-cyan-400">Secretarias por Mês</h3>
+            <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
               <canvas id="chartSecretariaMes"></canvas>
             </div>
           </div>
@@ -864,21 +987,23 @@
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-4 text-cyan-400">Distritos</h3>
+              <h3 class="font-semibold mb-3 text-cyan-400">Distritos</h3>
               <div id="listaDistritos" class="space-y-2 max-h-[600px] overflow-y-auto">
                 <div class="text-center text-slate-400 py-4">Carregando...</div>
               </div>
             </div>
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center justify-between mb-3">
                 <h3 class="font-semibold text-violet-400">Distribuição de Secretarias por Distrito</h3>
                 <div id="distritoSelecionadoNome" class="text-sm text-slate-400"></div>
               </div>
-              <canvas id="chartSecretariasDistritos"></canvas>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartSecretariasDistritos"></canvas>
+              </div>
             </div>
-            <div class="col-span-12 grid grid-cols-4 gap-4">
-              <div id="estatisticasDistritos" class="col-span-12 grid grid-cols-4 gap-4">
-                <!-- Preenchido dinamicamente -->
+            <div class="col-span-12">
+              <div id="estatisticasDistritos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="text-center text-slate-400 py-4">Carregando estatísticas...</div>
               </div>
             </div>
           </div>
@@ -928,7 +1053,7 @@
               <h3 class="font-semibold mb-4 text-violet-400">📈 Crescimento Percentual Mês a Mês</h3>
               <p class="text-slate-400 text-xs mb-4">Variação percentual entre meses consecutivos (histórico e projeção)</p>
               <canvas id="chartCrescimentoPercentual"></canvas>
-            </div>
+              </div>
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-4 text-emerald-400">📅 Sazonalidade Mensal</h3>
               <p class="text-slate-400 text-xs mb-4">Padrão sazonal identificado nos dados históricos (100% = média mensal)</p>
@@ -952,14 +1077,14 @@
               <h3 class="font-semibold mb-4 text-violet-400">🎯 Projeção por Tema (Top 10)</h3>
               <p class="text-slate-400 text-xs mb-4">Projeção anual para 2026 baseada nos temas mais frequentes</p>
               <canvas id="chartProjecaoTema"></canvas>
-            </div>
+                </div>
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-4 text-cyan-400">📋 Projeção por Tipo</h3>
               <p class="text-slate-400 text-xs mb-4">Distribuição projetada por tipo de manifestação em 2026</p>
               <canvas id="chartProjecaoTipo"></canvas>
               <div id="legendProjecaoTipo" class="mt-4 space-y-2"></div>
-            </div>
-          </div>
+                </div>
+                </div>
           
           <!-- Rankings e Listas -->
           <div class="grid grid-cols-12 gap-6 mb-6">
@@ -1026,7 +1151,34 @@
           </div>
         </section>
         
-        <!-- Páginas de Unidades de Saúde (Dinâmicas) -->
+        <!-- Página Unificada de Unidades de Saúde -->
+        <section id="page-unidades-saude" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🏥 Unidades de Saúde</h2>
+            </div>
+            <div class="mt-4">
+              <label for="selectUnidade" class="block text-sm font-medium text-slate-300 mb-2">
+                Selecione uma unidade de saúde:
+              </label>
+              <select 
+                id="selectUnidade" 
+                class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+              >
+                <option value="" disabled selected>Carregando unidades...</option>
+              </select>
+            </div>
+          </header>
+          <div id="unidadeConteudo">
+            <div class="glass rounded-2xl p-12 text-center">
+              <div class="text-6xl mb-4">🏥</div>
+              <h3 class="text-xl font-semibold text-slate-300 mb-2">Selecione uma Unidade de Saúde</h3>
+              <p class="text-slate-400">Use o menu acima para escolher uma unidade e visualizar seus dados</p>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Páginas de Unidades de Saúde (Dinâmicas) - OBSOLETAS (mantidas para compatibilidade) -->
         <!-- Estas páginas são criadas dinamicamente via loadUnit() ou pré-definidas abaixo -->
         <section id="page-unit-adao" class="unit-page" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6"><h2 class="neon text-xl font-bold">Total de Assuntos Hospital Adão</h2></header>
@@ -1487,6 +1639,7 @@
     <script src="/scripts/pages/secretarias-distritos.js" defer></script>
     <script src="/scripts/pages/projecao-2026.js" defer></script>
     <script src="/scripts/pages/cora-chat.js" defer></script>
+    <script src="/scripts/pages/unidades-saude.js" defer></script>
     <script src="/scripts/pages/unit.js" defer></script>
     <script src="/scripts/utils/generate-unit-pages.js" defer></script>
     <script src="/scripts/pages/zeladoria-overview.js" defer></script>

@@ -239,12 +239,32 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     return;
   }
   
+  // Destruir gráficos existentes antes de criar novos (prevenir vazamentos de memória)
+  const chartIds = [
+    'chartTrend',
+    'chartFunnelStatus',
+    'chartDailyDistribution',
+    'chartTopOrgaos',
+    'chartTopTemas',
+    'chartTiposManifestacao',
+    'chartCanais',
+    'chartPrioridades',
+    'chartUnidadesCadastro'
+  ];
+  
+  if (window.chartFactory.destroyCharts) {
+    window.chartFactory.destroyCharts(chartIds);
+    if (window.Logger) {
+      window.Logger.debug('📊 Gráficos da Overview destruídos antes de recriar');
+    }
+  }
+  
   // ============================================
   // SEÇÃO 2: ANÁLISE TEMPORAL
   // ============================================
   
   // Gráfico de tendência mensal
-  if (byMonth && byMonth.length > 0) {
+  if (byMonth && Array.isArray(byMonth) && byMonth.length > 0) {
     const last12Months = byMonth.slice(-12);
     const labels = last12Months.map(m => {
       const month = m.month || m.ym || '';
@@ -646,8 +666,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   // ============================================
   
   // Top órgãos (se disponível)
-  if (byOrgan && byOrgan.length > 0) {
-    const topOrgaos = byOrgan.slice(0, 10);
+  if (byOrgan && Array.isArray(byOrgan) && byOrgan.length > 0) {
+    const topOrgaos = byOrgan.slice(0, 20);
     const labels = topOrgaos.map(o => o.organ || o._id || 'N/A');
     const values = topOrgaos.map(o => o.count || 0);
     
@@ -683,8 +703,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   }
   
   // Top temas (se disponível)
-  if (byTheme && byTheme.length > 0) {
-    const topTemas = byTheme.slice(0, 10);
+  if (byTheme && Array.isArray(byTheme) && byTheme.length > 0) {
+    const topTemas = byTheme.slice(0, 20);
     const labels = topTemas.map(t => t.theme || t._id || 'N/A');
     const values = topTemas.map(t => t.count || 0);
     
@@ -822,8 +842,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   }
   
   // Top unidades de cadastro (movido para seção de Rankings)
-  if (byUnit && byUnit.length > 0) {
-    const topUnidades = byUnit.slice(0, 10);
+  if (byUnit && Array.isArray(byUnit) && byUnit.length > 0) {
+    const topUnidades = byUnit.slice(0, 20);
     const labels = topUnidades.map(u => u.unit || 'N/A');
     const values = topUnidades.map(u => u.count || 0);
     
