@@ -36,7 +36,7 @@ async function loadSecretariasDistritos() {
     renderDistritosList(distritos, estatisticas);
     
     // Renderizar estatísticas
-    renderEstatisticas(estatisticas);
+    renderDistritosEstatisticas(estatisticas);
     
     // Renderizar gráfico de distribuição
     if (estatisticas.secretariasPorDistrito) {
@@ -101,9 +101,14 @@ function renderDistritosList(distritos, estatisticas) {
   });
 }
 
-function renderEstatisticas(estatisticas) {
+function renderDistritosEstatisticas(estatisticas) {
   const estatisticasDiv = document.getElementById('estatisticasDistritos');
   if (!estatisticasDiv) return;
+  
+  if (!estatisticas || typeof estatisticas !== 'object') {
+    estatisticasDiv.innerHTML = '<div class="text-center text-slate-400 py-4">Estatísticas não disponíveis</div>';
+    return;
+  }
   
   estatisticasDiv.innerHTML = `
     <div class="glass rounded-xl p-4">
