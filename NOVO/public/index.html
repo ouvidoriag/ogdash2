@@ -35,12 +35,14 @@
       
       /* Modo Claro */
       body.light-mode {
-        --bg: #f8fafc;
+        --bg: #f5f7fb;
         --panel: #ffffff;
-        --muted: #64748b;
+        --muted: #334155;
         --text-primary: #0f172a;
-        --text-secondary: #475569;
-        --border: rgba(0,0,0,0.1);
+        --text-secondary: #1e293b;
+        --border: rgba(15,23,42,0.12);
+        --light-accent: #e0f2ff;
+        --light-soft: #eef2ff;
       }
       
       body { 
@@ -52,9 +54,9 @@
       }
       
       body.light-mode {
-        background: radial-gradient(1200px 600px at top left, rgba(34,211,238,0.05), transparent 60%), 
-                    radial-gradient(1200px 600px at bottom right, rgba(167,139,250,0.05), transparent 60%), 
-                    var(--bg);
+        background: radial-gradient(1500px 700px at top left, rgba(34,211,238,0.12), transparent 60%), 
+                    radial-gradient(1500px 700px at bottom right, rgba(167,139,250,0.12), transparent 60%), 
+                    linear-gradient(160deg, #f8fbff 0%, #eef2ff 35%, #e0f2ff 100%);
       }
       
       .glass { 
@@ -65,9 +67,26 @@
       }
       
       body.light-mode .glass {
-        background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95)); 
-        box-shadow: 0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5); 
-        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,255,255,0.9)); 
+        box-shadow: 0 18px 40px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.85); 
+        border: 1px solid rgba(148,163,184,0.25);
+      }
+
+      body.light-mode .glass .section-title,
+      body.light-mode .glass .text-xs {
+        color: var(--text-primary) !important;
+      }
+
+      body.light-mode .glass .muted-label {
+        color: var(--text-secondary) !important;
+      }
+      
+      body.light-mode .glass {
+        color: var(--text-primary) !important;
+      }
+      
+      body.light-mode .glass * {
+        color: inherit;
       }
       
       .neon { text-shadow: 0 0 12px rgba(34,211,238,0.65), 0 0 24px rgba(167,139,250,0.45); }
@@ -77,11 +96,18 @@
       body.light-mode .glow-ring { box-shadow: 0 0 0 2px rgba(34,211,238,0.2), 0 0 24px rgba(34,211,238,0.3); }
       
       .skeleton { background: rgba(255,255,255,0.06); }
-      body.light-mode .skeleton { background: rgba(0,0,0,0.05); }
+      body.light-mode .skeleton { background: rgba(148,163,184,0.15); }
       
       canvas { max-height: 340px; }
       
       /* Botão de alternância de tema */
+      .theme-toggle-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+      }
+      
       .theme-toggle {
         position: relative;
         width: 50px;
@@ -91,10 +117,12 @@
         border: 1px solid var(--border);
         cursor: pointer;
         transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       }
       
       body.light-mode .theme-toggle {
         background: rgba(0,0,0,0.1);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       }
       
       .theme-toggle::before {
@@ -117,6 +145,11 @@
       
       .theme-toggle:hover {
         transform: scale(1.05);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+      }
+      
+      body.light-mode .theme-toggle:hover {
+        box-shadow: 0 6px 16px rgba(0,0,0,0.15);
       }
       
       .sr-only {
@@ -141,9 +174,10 @@
       
       body.light-mode nav[id="sideMenuOuvidoria"] div[data-page].active,
       body.light-mode nav[id="sideMenuZeladoria"] div[data-page].active {
-        background: linear-gradient(90deg, rgba(34,211,238,0.2) 0%, rgba(34,211,238,0.1) 100%);
-        border-left: 3px solid #22d3ee;
-        color: #0891b2;
+        background: linear-gradient(90deg, rgba(34,211,238,0.25) 0%, rgba(34,211,238,0.15) 100%);
+        border-left: 3px solid #0891b2;
+        color: #0e7490 !important;
+        font-weight: 600;
       }
       
       nav[id="sideMenuOuvidoria"] div[data-page]:hover:not(.active),
@@ -173,8 +207,9 @@
       }
       
       body.light-mode .section-selector.active {
-        background: linear-gradient(90deg, rgba(34,211,238,0.2) 0%, rgba(34,211,238,0.1) 100%);
-        color: #0891b2;
+        background: linear-gradient(90deg, rgba(34,211,238,0.25) 0%, rgba(34,211,238,0.15) 100%);
+        color: #0e7490 !important;
+        font-weight: 600;
       }
       
       .section-selector:hover:not(.active) {
@@ -212,11 +247,120 @@
       }
       
       /* Ajustes de texto para modo claro */
-      body.light-mode .text-slate-100 { color: var(--text-primary) !important; }
-      body.light-mode .text-slate-300 { color: var(--text-secondary) !important; }
-      body.light-mode .text-slate-400 { color: var(--muted) !important; }
-      body.light-mode .bg-slate-800\/50 { background-color: rgba(0,0,0,0.05) !important; }
-      body.light-mode .bg-slate-900\/30 { background-color: rgba(0,0,0,0.03) !important; }
+      body.light-mode .text-slate-100 { color: #0f172a !important; }
+      body.light-mode .text-slate-200 { color: #0f172a !important; }
+      body.light-mode .text-slate-300 { color: #1e293b !important; }
+      body.light-mode .text-slate-400 { color: #334155 !important; }
+      body.light-mode .text-slate-500,
+      body.light-mode .text-slate-600 { color: #475569 !important; }
+      body.light-mode [class~="text-white"],
+      body.light-mode [class*="text-white/"] { color: #0f172a !important; }
+      body.light-mode .text-gray-200,
+      body.light-mode .text-gray-300,
+      body.light-mode .text-gray-400 { color: #1e293b !important; }
+      body.light-mode .text-gray-500,
+      body.light-mode .text-gray-600 { color: #334155 !important; }
+      body.light-mode .bg-slate-800\/30 { background-color: rgba(30,41,59,0.15) !important; }
+      body.light-mode .bg-slate-800\/50 { background-color: rgba(30,41,59,0.2) !important; }
+      body.light-mode .bg-slate-900\/30 { background-color: rgba(15,23,42,0.12) !important; }
+      body.light-mode .bg-slate-900\/50 { background-color: rgba(15,23,42,0.18) !important; }
+      body.light-mode .bg-white\/5 { background-color: rgba(0,0,0,0.05) !important; }
+      
+      /* Ajustes de hover para modo claro */
+      body.light-mode .hover\:bg-white\/5:hover { background-color: rgba(0,0,0,0.05) !important; }
+      
+      /* Ajustes de bordas para modo claro */
+      body.light-mode .border-white\/10 { border-color: rgba(0,0,0,0.1) !important; }
+      body.light-mode .border-white\/5 { border-color: rgba(0,0,0,0.05) !important; }
+      
+      /* Ajustes de cores de texto específicas para modo claro */
+      body.light-mode .text-violet-300 { color: #7c3aed !important; }
+      body.light-mode .text-cyan-300 { color: #0891b2 !important; }
+      body.light-mode .text-emerald-300 { color: #059669 !important; }
+      body.light-mode .text-amber-300 { color: #d97706 !important; }
+      body.light-mode .text-blue-300 { color: #2563eb !important; }
+      body.light-mode .text-rose-300 { color: #e11d48 !important; }
+      body.light-mode .text-emerald-400 { color: #10b981 !important; }
+      
+      /* Ajustes de backgrounds com opacidade para modo claro */
+      body.light-mode .bg-cyan-500\/20 { background-color: rgba(6,182,212,0.15) !important; }
+      body.light-mode .bg-violet-500\/20 { background-color: rgba(139,92,246,0.15) !important; }
+      body.light-mode .bg-blue-500\/20 { background-color: rgba(59,130,246,0.15) !important; }
+      body.light-mode .bg-amber-500\/20 { background-color: rgba(245,158,11,0.15) !important; }
+      body.light-mode .bg-emerald-500\/20 { background-color: rgba(16,185,129,0.15) !important; }
+      body.light-mode .bg-emerald-600\/20 { background-color: rgba(5,150,105,0.15) !important; }
+      body.light-mode .bg-rose-500\/20 { background-color: rgba(244,63,94,0.15) !important; }
+      
+      /* Ajustes de barras de progresso */
+      body.light-mode .bg-slate-800 { background-color: rgba(30,41,59,0.3) !important; }
+      
+      /* Ajustes de distritos e itens interativos */
+      body.light-mode .hover\:border-cyan-400\/50:hover { border-color: rgba(6,182,212,0.4) !important; }
+      
+      /* Ajustes de chat */
+      body.light-mode .bg-slate-800\/60 { background-color: rgba(30,41,59,0.25) !important; }
+      
+      /* Garantir que todos os textos sejam legíveis */
+      body.light-mode .text-slate-200 { color: #1e293b !important; }
+      body.light-mode .text-slate-300 { color: #334155 !important; }
+      body.light-mode .text-slate-400 { color: #475569 !important; }
+      
+      /* Ajustes adicionais para elementos específicos */
+      body.light-mode .border-emerald-500\/20 { border-color: rgba(16,185,129,0.2) !important; }
+      
+      /* Ajustes para botões de marcar/desmarcar todos */
+      body.light-mode .btn-marcar-todos {
+        background-color: rgba(6,182,212,0.15) !important;
+        color: #0891b2 !important;
+      }
+      body.light-mode .btn-marcar-todos:hover {
+        background-color: rgba(6,182,212,0.25) !important;
+        color: #0e7490 !important;
+      }
+      body.light-mode .btn-desmarcar-todos {
+        background-color: rgba(30,41,59,0.2) !important;
+        color: #475569 !important;
+      }
+      body.light-mode .btn-desmarcar-todos:hover {
+        background-color: rgba(30,41,59,0.3) !important;
+        color: #334155 !important;
+      }
+      
+      /* Ajustes para controles de legenda */
+      body.light-mode .legend-controls {
+        border-top-color: rgba(0,0,0,0.1) !important;
+      }
+      
+      /* Ajustes para itens de legenda */
+      body.light-mode .legend-item {
+        border-color: rgba(0,0,0,0.1) !important;
+      }
+      body.light-mode .legend-item:hover {
+        background-color: rgba(0,0,0,0.05) !important;
+      }
+      body.light-mode .legend-item.border-white\/20 {
+        border-color: rgba(0,0,0,0.2) !important;
+      }
+      
+      /* Forçar cores escuras em todos os textos no modo claro */
+      body.light-mode * {
+        color: inherit;
+      }
+      
+      body.light-mode h1,
+      body.light-mode h2,
+      body.light-mode h3,
+      body.light-mode h4,
+      body.light-mode h5,
+      body.light-mode h6 {
+        color: #0f172a !important;
+      }
+      
+      body.light-mode p,
+      body.light-mode span,
+      body.light-mode div:not(.glass) {
+        color: inherit;
+      }
     </style>
     <script>
       // Sistema de alternância de tema (modo claro/escuro)
@@ -245,27 +389,44 @@
           
           // Atualizar gráficos se Chart.js estiver disponível
           if (window.Chart) {
-            const textColor = theme === LIGHT_MODE ? '#475569' : '#94a3b8';
-            const gridColor = theme === LIGHT_MODE ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
-            const tooltipBg = theme === LIGHT_MODE ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)';
+            const textColor = theme === LIGHT_MODE ? '#1e293b' : '#94a3b8';
+            const gridColor = theme === LIGHT_MODE ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)';
+            const tooltipBg = theme === LIGHT_MODE ? 'rgba(255, 255, 255, 0.98)' : 'rgba(15, 23, 42, 0.95)';
             const tooltipTitleColor = theme === LIGHT_MODE ? '#0f172a' : '#e2e8f0';
-            const tooltipBodyColor = theme === LIGHT_MODE ? '#475569' : '#cbd5e1';
+            const tooltipBodyColor = theme === LIGHT_MODE ? '#1e293b' : '#cbd5e1';
+            const tooltipBorderColor = theme === LIGHT_MODE ? 'rgba(15,23,42,0.2)' : 'rgba(34, 211, 238, 0.3)';
             
             // Atualizar todos os gráficos Chart.js
             Chart.helpers.each(Chart.instances, function(chart) {
               if (chart.options && chart.options.scales) {
                 Object.keys(chart.options.scales).forEach(scaleKey => {
                   const scale = chart.options.scales[scaleKey];
-                  if (scale.ticks) scale.ticks.color = textColor;
-                  if (scale.grid) scale.grid.color = gridColor;
+                  if (scale.ticks) {
+                    scale.ticks.color = textColor;
+                    scale.ticks.font = scale.ticks.font || {};
+                    scale.ticks.font.weight = '500';
+                  }
+                  if (scale.grid) {
+                    scale.grid.color = gridColor;
+                    scale.grid.lineWidth = theme === LIGHT_MODE ? 1 : 1;
+                  }
                 });
               }
               
-              if (chart.options && chart.options.plugins && chart.options.plugins.tooltip) {
-                const tooltip = chart.options.plugins.tooltip;
-                if (tooltip.backgroundColor !== undefined) tooltip.backgroundColor = tooltipBg;
-                if (tooltip.titleColor !== undefined) tooltip.titleColor = tooltipTitleColor;
-                if (tooltip.bodyColor !== undefined) tooltip.bodyColor = tooltipBodyColor;
+              if (chart.options && chart.options.plugins) {
+                if (chart.options.plugins.tooltip) {
+                  const tooltip = chart.options.plugins.tooltip;
+                  if (tooltip.backgroundColor !== undefined) tooltip.backgroundColor = tooltipBg;
+                  if (tooltip.titleColor !== undefined) tooltip.titleColor = tooltipTitleColor;
+                  if (tooltip.bodyColor !== undefined) tooltip.bodyColor = tooltipBodyColor;
+                  if (tooltip.borderColor !== undefined) tooltip.borderColor = tooltipBorderColor;
+                }
+                
+                // Atualizar legendas se existirem
+                if (chart.options.plugins.legend) {
+                  chart.options.plugins.legend.labels = chart.options.plugins.legend.labels || {};
+                  chart.options.plugins.legend.labels.color = textColor;
+                }
               }
               
               chart.update('none');
@@ -328,10 +489,17 @@
     </script>
   </head>
   <body class="text-slate-100">
+    <!-- Botão de alternância de tema fixo no topo direito -->
+    <div class="theme-toggle-container">
+      <button id="themeToggle" class="theme-toggle" title="Alternar entre modo claro e escuro" aria-label="Alternar tema">
+        <span class="sr-only">Alternar tema</span>
+      </button>
+    </div>
+    
     <div class="min-h-screen grid grid-cols-12 gap-6 p-6">
       <aside class="col-span-12 lg:col-span-3 xl:col-span-2 glass rounded-2xl p-5">
         <div class="mb-6">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center mb-4">
             <div class="flex items-center gap-3">
               <img src="/dc-logo.png" alt="Duque de Caxias" class="h-12 w-auto object-contain" />
               <div>
@@ -339,9 +507,6 @@
                 <div class="text-xs text-slate-400">Dashboard Futurista</div>
               </div>
             </div>
-            <button id="themeToggle" class="theme-toggle" title="Alternar entre modo claro e escuro" aria-label="Alternar tema">
-              <span class="sr-only">Alternar tema</span>
-            </button>
           </div>
           <div class="flex gap-2 bg-slate-800/50 rounded-lg p-1">
             <button id="btnSectionOuvidoria" data-section="ouvidoria" class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all section-selector active">
@@ -355,7 +520,6 @@
         
         <nav id="sideMenuOuvidoria" class="space-y-3 text-sm">
           <div class="space-y-1">
-            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🏠 Início</div>
             <div data-page="home" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏠 Home</div>
             <div data-page="main" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📊 Visão Geral</div>
             <a href="/chat" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer block transition-colors">💬 Cora - Chat</a>
@@ -384,6 +548,7 @@
             <div data-page="canal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📡 Canais</div>
             <div data-page="prioridade" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⚡ Prioridades</div>
             <div data-page="bairro" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📍 Bairro</div>
+            <div data-page="uac" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏢 UAC</div>
           </div>
           
           <div class="space-y-1 pt-2 border-t border-white/10">
@@ -394,7 +559,6 @@
         
         <nav id="sideMenuZeladoria" class="space-y-3 text-sm" style="display: none;">
           <div class="space-y-1">
-            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🏠 Início</div>
             <div data-page="zeladoria-home" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏠 Home Zeladoria</div>
             <div data-page="zeladoria-overview" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📊 Visão Geral</div>
           </div>
@@ -416,6 +580,35 @@
             <div data-page="zeladoria-geografica" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🗺️ Análise Geográfica</div>
           </div>
         </nav>
+        
+        <div class="mt-8 pt-6 border-t border-white/10">
+          <div class="text-xs font-semibold text-slate-300 mb-4 uppercase tracking-wider">Equipe Responsável</div>
+          <div class="space-y-3 text-xs">
+            <div class="pb-2 border-b border-white/5">
+              <div class="text-slate-400 mb-1">Ouvidoria Geral</div>
+              <div class="text-slate-200 font-medium">Edrisio Avelino</div>
+              <div class="text-slate-500 text-[10px] mt-0.5">Ouvidor Geral</div>
+            </div>
+            <div class="space-y-2">
+              <div>
+                <div class="text-slate-200 font-medium">Nilton Quaresma</div>
+                <div class="text-slate-500 text-[10px]">Diretor de Ouvidoria</div>
+              </div>
+              <div>
+                <div class="text-slate-200 font-medium">David Freitas</div>
+                <div class="text-slate-500 text-[10px]">Diretor de Análise de Dados</div>
+              </div>
+            </div>
+            <div class="pt-2 mt-2 border-t border-white/5">
+              <div class="text-slate-400 mb-2 text-[10px] uppercase tracking-wide">Analistas Estratégicos da Ouvidoria</div>
+              <div class="space-y-1 text-slate-300">
+                <div class="text-[11px]">• Nikolas Brian</div>
+                <div class="text-[11px]">• Rildo Luiz</div>
+                <div class="text-[11px]">• Wellington Ribeiro</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">

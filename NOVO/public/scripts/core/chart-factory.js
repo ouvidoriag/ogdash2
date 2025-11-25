@@ -3,12 +3,34 @@
  * Padroniza criação de gráficos usando configurações centralizadas
  */
 
+// Função para escurecer cores hexadecimais (útil para modo claro)
+function darkenHexColor(hex, amount = 0.3) {
+  if (!hex || !hex.startsWith('#')) return hex;
+  
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  
+  const newR = Math.max(0, Math.floor(r * (1 - amount)));
+  const newG = Math.max(0, Math.floor(g * (1 - amount)));
+  const newB = Math.max(0, Math.floor(b * (1 - amount)));
+  
+  return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+}
+
 function getColorPalette() {
   const config = window.config?.CHART_CONFIG || {};
-  return config.COLOR_PALETTE || [
+  const basePalette = config.COLOR_PALETTE || [
     '#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#e879f9',
     '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1'
   ];
+  
+  // Se estiver no modo claro, escurecer as cores para melhor contraste
+  if (isLightMode()) {
+    return basePalette.map(color => darkenHexColor(color, 0.25));
+  }
+  
+  return basePalette;
 }
 
 function getColorFromPalette(index, customPalette = null) {
@@ -46,11 +68,11 @@ function getChartDefaults(chartType) {
   const lightMode = isLightMode();
   
   // Cores adaptáveis ao tema
-  const textColor = lightMode ? '#475569' : '#94a3b8';
-  const gridColor = lightMode ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
-  const tooltipBg = lightMode ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)';
+  const textColor = lightMode ? '#1e293b' : '#94a3b8';
+  const gridColor = lightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)';
+  const tooltipBg = lightMode ? 'rgba(255, 255, 255, 0.98)' : 'rgba(15, 23, 42, 0.95)';
   const tooltipTitleColor = lightMode ? '#0f172a' : '#e2e8f0';
-  const tooltipBodyColor = lightMode ? '#475569' : '#cbd5e1';
+  const tooltipBodyColor = lightMode ? '#1e293b' : '#cbd5e1';
   
   const defaults = {
     responsive: true,

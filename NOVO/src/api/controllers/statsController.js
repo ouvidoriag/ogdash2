@@ -18,9 +18,15 @@ export async function averageTime(req, res, prisma) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
-  const key = servidor ? `avgTime:servidor:${servidor}:v3` :
-              unidadeCadastro ? `avgTime:uac:${unidadeCadastro}:v3` :
-              'avgTime:v3';
+  const mesesKey = meses && meses.length > 0
+    ? `:meses:${meses.slice().sort().join(',')}`
+    : '';
+  const keyBase = servidor
+    ? `avgTime:servidor:${servidor}`
+    : unidadeCadastro
+      ? `avgTime:uac:${unidadeCadastro}`
+      : 'avgTime';
+  const key = `${keyBase}${mesesKey}:v3`;
   
   return withCache(key, 3600, res, async () => {
     const where = {};
@@ -460,9 +466,15 @@ export async function averageTimeStats(req, res, prisma) {
   const apenasConcluidos = req.query.apenasConcluidos === 'true';
   const incluirZero = req.query.incluirZero !== 'false';
   
-  const key = servidor ? `avgTimeStats:servidor:${servidor}:v2` :
-              unidadeCadastro ? `avgTimeStats:uac:${unidadeCadastro}:v2` :
-              'avgTimeStats:v2';
+  const mesesKey = meses && meses.length > 0
+    ? `:meses:${meses.slice().sort().join(',')}`
+    : '';
+  const keyBase = servidor
+    ? `avgTimeStats:servidor:${servidor}`
+    : unidadeCadastro
+      ? `avgTimeStats:uac:${unidadeCadastro}`
+      : 'avgTimeStats';
+  const key = `${keyBase}${mesesKey}:v2`;
   
   return withCache(key, 3600, res, async () => {
     const where = {};

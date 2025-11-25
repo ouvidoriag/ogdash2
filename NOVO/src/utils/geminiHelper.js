@@ -1,8 +1,8 @@
 /**
- * Helper para integração com Gemini AI
+ * Helper para integração com IA
  */
 
-// Sistema de rotação de chaves da API Gemini
+// Sistema de rotação de chaves da API
 const GEMINI_API_KEYS = (process.env.GEMINI_API_KEY ? [process.env.GEMINI_API_KEY] : []).concat(
   process.env.GEMINI_API_KEY_2 ? [process.env.GEMINI_API_KEY_2] : []
 ).filter(k => k && k.trim());
@@ -10,7 +10,7 @@ const GEMINI_API_KEYS = (process.env.GEMINI_API_KEY ? [process.env.GEMINI_API_KE
 let currentKeyIndex = 0;
 
 /**
- * Obtém a chave atual do Gemini
+ * Obtém a chave atual da IA
  */
 export function getCurrentGeminiKey() {
   return GEMINI_API_KEYS[currentKeyIndex] || '';
@@ -48,12 +48,13 @@ export function hasGeminiKeys() {
  */
 export function initializeGemini() {
   if (GEMINI_API_KEYS.length > 0) {
-    console.log(`🤖 ${GEMINI_API_KEYS.length} chave(s) Gemini configurada(s)`);
+    console.log(`🤖 ${GEMINI_API_KEYS.length} chave(s) de IA configurada(s)`);
     GEMINI_API_KEYS.forEach((key, idx) => {
       console.log(`   Chave ${idx + 1}: ${key.substring(0, 15)}... (${key.length} caracteres)`);
     });
   } else {
-    console.warn('⚠️ Nenhuma chave Gemini encontrada');
+    // Não mencionar modelo quando IA está desativada
+    // console.warn removido para não expor qual modelo seria usado
   }
 }
 

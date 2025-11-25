@@ -98,9 +98,16 @@ async function main() {
         f.includes('ATUALIZADA')
       );
       if (xlsxFiles.length > 0) {
-        // Priorizar arquivo com "(4)" no nome
-        const fileWith4 = xlsxFiles.find(f => f.includes('(4)'));
-        excelPath = path.join(rootPath, fileWith4 || xlsxFiles[0]);
+        // Priorizar arquivo com número mais alto (mais recente)
+        // Ordenar por número no nome do arquivo (ex: (5) > (4) > (3))
+        const sortedFiles = xlsxFiles.sort((a, b) => {
+          const matchA = a.match(/\((\d+)\)/);
+          const matchB = b.match(/\((\d+)\)/);
+          const numA = matchA ? parseInt(matchA[1]) : 0;
+          const numB = matchB ? parseInt(matchB[1]) : 0;
+          return numB - numA; // Ordem decrescente (maior primeiro)
+        });
+        excelPath = path.join(rootPath, sortedFiles[0]);
       }
     } catch (error) {
       console.warn('⚠️ Erro ao ler diretório raiz:', error.message);
@@ -116,9 +123,11 @@ async function main() {
       }
     }
     
-    // Se ainda não encontrou, usar nome padrão
+    // Se ainda não encontrou, usar nome padrão (tentar (5) primeiro, depois (4))
     if (!excelPath) {
-      excelPath = path.join(rootPath, 'Dashboard_Duque_de_Caxias_Ouvidoria_Duque_de_Caxias_Tabela_ATUALIZADA (4).xlsx');
+      const defaultFile5 = path.join(rootPath, 'Dashboard_Duque_de_Caxias_Ouvidoria_Duque_de_Caxias_Tabela_ATUALIZADA (5).xlsx');
+      const defaultFile4 = path.join(rootPath, 'Dashboard_Duque_de_Caxias_Ouvidoria_Duque_de_Caxias_Tabela_ATUALIZADA (4).xlsx');
+      excelPath = fs.existsSync(defaultFile5) ? defaultFile5 : defaultFile4;
     }
     
     console.log(`📂 Lendo planilha: ${excelPath}\n`);

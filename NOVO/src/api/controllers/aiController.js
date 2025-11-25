@@ -104,7 +104,7 @@ async function detectPatternsAndAnomalies(prisma, servidor, unidadeCadastro) {
 
 /**
  * GET /api/ai/insights
- * Gera insights com IA (Gemini)
+ * Gera insights com IA
  */
 export async function getInsights(req, res, prisma) {
   const servidor = req.query.servidor;
@@ -146,11 +146,11 @@ export async function getInsights(req, res, prisma) {
         return { insights, patterns };
       }
       
-      // Gerar insights com IA (Gemini)
+      // Gerar insights com IA
       const GEMINI_API_KEY = getCurrentGeminiKey();
       
       if (!GEMINI_API_KEY) {
-        console.warn('⚠️ Nenhuma chave Gemini disponível para insights');
+        // Não mencionar modelo quando IA está desativada
         // Fallback para insights básicos
         const insights = [];
         if (patterns.anomalias.length > 0) {
@@ -174,7 +174,7 @@ export async function getInsights(req, res, prisma) {
         return { insights, patterns, geradoPorIA: false };
       }
       
-      console.log('🤖 Gerando insights com Gemini...');
+      console.log('🤖 Gerando insights com IA...');
       
       const dadosTexto = `
 ANÁLISE DE DADOS DA OUVIDORIA DE DUQUE DE CAXIAS
@@ -249,14 +249,14 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
         
         if (!resp.ok) {
           const errorText = await resp.text().catch(() => '');
-          console.error(`❌ Gemini API error ${resp.status}:`, errorText);
-          throw new Error(`Gemini API error: ${resp.status} - ${errorText.substring(0, 200)}`);
+          console.error(`❌ Erro na API de IA ${resp.status}:`, errorText);
+          throw new Error(`Erro na API de IA: ${resp.status} - ${errorText.substring(0, 200)}`);
         }
         
         const data = await resp.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
         
-        console.log('✅ Resposta recebida da Gemini para insights');
+        console.log('✅ Resposta recebida da IA para insights');
         
         // Tentar extrair JSON mesmo se vier com markdown
         let jsonStr = text.trim();
@@ -268,8 +268,8 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
         try {
           aiInsights = JSON.parse(jsonStr);
         } catch (parseError) {
-          console.error('❌ Erro ao fazer parse do JSON da Gemini:', parseError);
-          throw new Error('Resposta da Gemini não é um JSON válido');
+          console.error('❌ Erro ao fazer parse do JSON da IA:', parseError);
+          throw new Error('Resposta da IA não é um JSON válido');
         }
         
         console.log(`✅ ${aiInsights.insights?.length || 0} insights gerados pela IA`);
@@ -280,7 +280,7 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
           geradoPorIA: true
         };
       } catch (geminiError) {
-        console.error('❌ Erro ao chamar Gemini para insights:', geminiError);
+        console.error('❌ Erro ao chamar IA para insights:', geminiError);
         rotateToNextKey();
         
         // Fallback para insights básicos

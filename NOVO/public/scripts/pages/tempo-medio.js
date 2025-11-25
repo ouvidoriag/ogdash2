@@ -183,7 +183,11 @@ function popularDropdownMeses(dataMes) {
       const statsUrl = novoMes 
         ? `/api/stats/average-time/stats?meses=${encodeURIComponent(novoMes)}`
         : '/api/stats/average-time/stats';
-      window.dataStore.remove(statsUrl);
+      if (typeof window.dataStore.clear === 'function') {
+        window.dataStore.clear(statsUrl);
+      } else if (window.Logger) {
+        window.Logger.debug('dataStore.clear indisponível; cache específico não removido');
+      }
     }
     
     try {

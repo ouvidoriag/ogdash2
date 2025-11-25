@@ -135,14 +135,20 @@ function createInteractiveLegend(chartId, containerId, datasets, options = {}) {
       });
     });
 
+    // Remover controles existentes antes de criar novos (evitar duplicação)
+    const existingControls = container.querySelector('.legend-controls');
+    if (existingControls) {
+      existingControls.remove();
+    }
+    
     // Criar ou recriar controles sempre (para garantir que os listeners estejam ativos)
     const controls = document.createElement('div');
     controls.className = 'legend-controls flex gap-2 mt-2 pt-2 border-t border-white/10';
     controls.innerHTML = `
-      <button class="btn-marcar-todos text-xs px-3 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 transition-colors">
+      <button class="btn-marcar-todos text-xs px-3 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 transition-colors" type="button">
         Marcar Todos
       </button>
-      <button class="btn-desmarcar-todos text-xs px-3 py-1 rounded bg-slate-700/50 hover:bg-slate-700/70 text-slate-300 transition-colors">
+      <button class="btn-desmarcar-todos text-xs px-3 py-1 rounded bg-slate-700/50 hover:bg-slate-700/70 text-slate-300 transition-colors" type="button">
         Desmarcar Todos
       </button>
     `;
@@ -275,9 +281,6 @@ function createDoughnutLegend(chartId, containerId, labels, values, colors = nul
   // Função para renderizar legenda
   const renderLegend = () => {
     const total = values.reduce((sum, v) => sum + (v || 0), 0);
-
-    // Salvar controles existentes antes de limpar
-    const existingControls = container.querySelector('.legend-controls');
     
     container.innerHTML = labels.map((label, idx) => {
       const isVisible = window[visibilityKey][label] !== false;
@@ -321,14 +324,20 @@ function createDoughnutLegend(chartId, containerId, labels, values, colors = nul
       });
     });
 
+    // Remover controles existentes antes de criar novos (evitar duplicação)
+    const existingControls = container.querySelector('.legend-controls');
+    if (existingControls) {
+      existingControls.remove();
+    }
+    
     // Criar ou recriar controles sempre (para garantir que os listeners estejam ativos)
     const controls = document.createElement('div');
     controls.className = 'legend-controls flex gap-2 mt-2 pt-2 border-t border-white/10';
     controls.innerHTML = `
-      <button class="btn-marcar-todos text-xs px-3 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 transition-colors">
+      <button class="btn-marcar-todos text-xs px-3 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 transition-colors" type="button">
         Marcar Todos
       </button>
-      <button class="btn-desmarcar-todos text-xs px-3 py-1 rounded bg-slate-700/50 hover:bg-slate-700/70 text-slate-300 transition-colors">
+      <button class="btn-desmarcar-todos text-xs px-3 py-1 rounded bg-slate-700/50 hover:bg-slate-700/70 text-slate-300 transition-colors" type="button">
         Desmarcar Todos
       </button>
     `;

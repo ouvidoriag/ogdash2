@@ -92,7 +92,7 @@ const CHART_CONFIG = {
     '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1'
   ],
   
-  // Mapeamento de cores por tipo de manifestação
+  // Mapeamento de cores por tipo de manifestação (modo escuro)
   TIPO_MANIFESTACAO_COLORS: {
     'elogio': '#10b981',        // Verde
     'elogios': '#10b981',
@@ -128,6 +128,44 @@ const CHART_CONFIG = {
     'e sic': '#eab308',
     'lei de acesso': '#eab308',
     'lei acesso': '#eab308'
+  },
+  
+  // Mapeamento de cores por tipo de manifestação (modo claro - cores mais escuras para contraste)
+  TIPO_MANIFESTACAO_COLORS_LIGHT: {
+    'elogio': '#059669',        // Verde mais escuro
+    'elogios': '#059669',
+    'reclamação': '#ea580c',    // Laranja mais escuro
+    'reclamações': '#ea580c',
+    'reclamacao': '#ea580c',
+    'reclamacoes': '#ea580c',
+    'reclama': '#ea580c',
+    'denúncia': '#dc2626',      // Vermelho mais escuro
+    'denúncias': '#dc2626',
+    'denuncia': '#dc2626',
+    'denuncias': '#dc2626',
+    'denún': '#dc2626',
+    'sugestão': '#2563eb',      // Azul mais escuro
+    'sugestões': '#2563eb',
+    'sugestao': '#2563eb',
+    'sugestoes': '#2563eb',
+    'sugest': '#2563eb',
+    'não informado': '#64748b', // Cinza mais escuro
+    'nao informado': '#64748b',
+    'não informada': '#64748b',
+    'nao informada': '#64748b',
+    'não informados': '#64748b',
+    'nao informados': '#64748b',
+    'não informadas': '#64748b',
+    'nao informadas': '#64748b',
+    'acesso a informação': '#ca8a04', // Amarelo mais escuro
+    'acesso a informacao': '#ca8a04',
+    'acesso à informação': '#ca8a04',
+    'acesso à informacao': '#ca8a04',
+    'esic': '#ca8a04',          // Amarelo mais escuro
+    'e-sic': '#ca8a04',
+    'e sic': '#ca8a04',
+    'lei de acesso': '#ca8a04',
+    'lei acesso': '#ca8a04'
   },
   
   PERFORMANCE: {
@@ -191,6 +229,14 @@ const PERFORMANCE_CONFIG = {
 };
 
 /**
+ * Verificar se está no modo claro
+ * @returns {boolean}
+ */
+function isLightMode() {
+  return document.body && document.body.classList.contains('light-mode');
+}
+
+/**
  * Obter cor baseada no tipo de manifestação
  * @param {string} tipo - Tipo de manifestação
  * @returns {string} - Cor hexadecimal
@@ -201,7 +247,10 @@ function getColorByTipoManifestacao(tipo) {
   }
   
   const tipoLower = tipo.toLowerCase().trim();
-  const colorMap = CHART_CONFIG.TIPO_MANIFESTACAO_COLORS;
+  // Usar cores diferentes para modo claro e escuro
+  const colorMap = isLightMode() 
+    ? CHART_CONFIG.TIPO_MANIFESTACAO_COLORS_LIGHT 
+    : CHART_CONFIG.TIPO_MANIFESTACAO_COLORS;
   
   // Buscar correspondência exata ou parcial
   for (const [key, color] of Object.entries(colorMap)) {

@@ -3,7 +3,7 @@
  * Endpoints para inteligência artificial e insights
  * 
  * Endpoints:
- * - GET /api/ai/insights - Gerar insights com IA (Gemini)
+ * - GET /api/ai/insights - Gerar insights com IA
  * 
  * @param {PrismaClient} prisma - Cliente Prisma
  * @param {Function} getMongoClient - Função para obter cliente MongoDB
@@ -18,7 +18,7 @@ export default function aiRoutes(prisma, getMongoClient) {
   
   /**
    * GET /api/ai/insights
-   * Gerar insights inteligentes usando Gemini AI
+   * Gerar insights inteligentes usando IA
    * Query params: servidor, unidadeCadastro
    * 
    * Retorna:

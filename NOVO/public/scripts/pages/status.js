@@ -23,37 +23,33 @@ async function loadStatusPage(forceRefresh = false) {
       ]);
     }
     
-    const data = await window.dataLoader?.load('/api/stats/status-overview', {
+    // Usar endpoint correto para obter lista de status
+    const statusCounts = await window.dataLoader?.load('/api/aggregate/count-by?field=Status', {
       useDataStore: true,
       ttl: 5 * 60 * 1000
-    }) || {};
-    
-    // Validar dados recebidos
-    if (!data || typeof data !== 'object') {
-      if (window.Logger) {
-        window.Logger.warn('📊 loadStatusPage: Dados inválidos', data);
-      }
-      return;
-    }
-    
-    const statusCounts = data.statusCounts || data.status || [];
+    }) || [];
     
     // Validar que statusCounts é um array
     if (!Array.isArray(statusCounts) || statusCounts.length === 0) {
       if (window.Logger) {
         window.Logger.warn('📊 loadStatusPage: statusCounts não é um array válido', statusCounts);
       }
-      return;
+      // Criar gráfico vazio se não houver dados
+      await window.chartFactory?.createDoughnutChart('chartStatusPage', ['Sem dados'], [1], {
+        type: 'doughnut',
+        onClick: false,
+        legendContainer: 'legendStatusPage'
+      });
+    } else {
+      const labels = statusCounts.map(s => s.status || s._id || s.key || 'N/A');
+      const values = statusCounts.map(s => s.count || 0);
+      
+      await window.chartFactory?.createDoughnutChart('chartStatusPage', labels, values, {
+        type: 'doughnut',
+        onClick: true, // Habilitar comunicação e filtros
+        legendContainer: 'legendStatusPage'
+      });
     }
-    
-    const labels = statusCounts.map(s => s.status || s._id || 'N/A');
-    const values = statusCounts.map(s => s.count || 0);
-    
-    await window.chartFactory?.createDoughnutChart('chartStatusPage', labels, values, {
-      type: 'doughnut',
-      onClick: true, // Habilitar comunicação e filtros
-      legendContainer: 'legendStatusPage'
-    });
     
     // Carregar dados mensais
     const dataMes = await window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Status', {
@@ -63,6 +59,15 @@ async function loadStatusPage(forceRefresh = false) {
     
     if (dataMes.length > 0) {
       await renderStatusMesChart(dataMes);
+    } else {
+      // Criar gráfico vazio se não houver dados mensais
+      const canvas = document.getElementById('chartStatusMes');
+      if (canvas && window.chartFactory) {
+        await window.chartFactory.createBarChart('chartStatusMes', ['Sem dados'], [{ label: 'Sem dados', data: [0] }], {
+          colorIndex: 0,
+          legendContainer: 'legendStatusMes'
+        });
+      }
     }
     
     if (window.Logger) {
