@@ -50,9 +50,20 @@ export async function slaSummary(req, res, prisma) {
       ];
     }
     
+    // OTIMIZAÇÃO: Adicionar filtro de dataCriacaoIso para reduzir volume
+    // Buscar apenas registros dos últimos 24 meses (já filtrado acima)
+    const whereWithDate = {
+      ...where,
+      OR: [
+        { dataCriacaoIso: { gte: minDateStr } },
+        { dataDaCriacao: { not: null } }
+      ]
+    };
+    
     // Buscar campos necessários usando sistema global de datas
+    // OTIMIZADO: Reduzir take e usar filtros mais específicos
     const rows = await prisma.record.findMany({ 
-      where: { ...where, dataDaCriacao: { not: null } },
+      where: whereWithDate,
       select: { 
         dataCriacaoIso: true,
         dataDaCriacao: true,
@@ -64,7 +75,7 @@ export async function slaSummary(req, res, prisma) {
         tipoDeManifestacao: true,
         data: true
       },
-      take: 100000 // Limite de segurança para evitar timeout
+      take: 50000 // OTIMIZADO: Reduzido de 100000 para 50000 (filtro de data já reduz volume)
     });
     
     // Buckets: concluídos (verde escuro), verde claro (0-30), amarelo (31-60), vermelho (61+)

@@ -63,6 +63,107 @@ function isLightMode() {
   return document.body.classList.contains('light-mode');
 }
 
+/**
+ * Obter cor destacada (mais brilhante) para realce visual
+ * @param {string} color - Cor original (hex, rgb, rgba)
+ * @returns {string} Cor destacada
+ */
+function getHighlightedColor(color) {
+  if (!color) return '#22d3ee';
+  
+  // Se for rgba, aumentar opacidade e brilho
+  if (color.startsWith('rgba')) {
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (match) {
+      const r = Math.min(255, parseInt(match[1]) + 50);
+      const g = Math.min(255, parseInt(match[2]) + 50);
+      const b = Math.min(255, parseInt(match[3]) + 50);
+      const a = match[4] ? Math.min(1, parseFloat(match[4]) + 0.2) : 1;
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+  }
+  
+  // Se for hex, clarear
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    const newR = Math.min(255, r + 50);
+    const newG = Math.min(255, g + 50);
+    const newB = Math.min(255, b + 50);
+    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+  }
+  
+  // Fallback: cor ciano brilhante
+  return '#22d3ee';
+}
+
+/**
+ * Adicionar realce visual ao elemento clicado no gráfico
+ * @param {Chart} chart - Instância do Chart.js
+ * @param {number} datasetIndex - Índice do dataset
+ * @param {number} index - Índice do elemento
+ */
+function highlightChartElement(chart, datasetIndex, index) {
+  if (!chart) return;
+  
+  // Salvar cores originais se ainda não foram salvas
+  if (!chart._originalColors) {
+    chart._originalColors = {};
+    chart.data.datasets.forEach((dataset, dsIdx) => {
+      if (!chart._originalColors[dsIdx]) {
+        chart._originalColors[dsIdx] = [];
+      }
+      if (Array.isArray(dataset.backgroundColor)) {
+        chart._originalColors[dsIdx] = [...dataset.backgroundColor];
+      } else {
+        chart._originalColors[dsIdx] = dataset.backgroundColor;
+      }
+    });
+  }
+  
+  // Restaurar todas as cores primeiro
+  chart.data.datasets.forEach((dataset, dsIdx) => {
+    if (chart._originalColors[dsIdx]) {
+      if (Array.isArray(chart._originalColors[dsIdx])) {
+        dataset.backgroundColor = [...chart._originalColors[dsIdx]];
+      } else {
+        dataset.backgroundColor = chart._originalColors[dsIdx];
+      }
+    }
+  });
+  
+  // Destacar elemento clicado
+  const clickedDataset = chart.data.datasets[datasetIndex];
+  if (Array.isArray(clickedDataset.backgroundColor)) {
+    const originalColor = chart._originalColors[datasetIndex]?.[index] || clickedDataset.backgroundColor[index];
+    clickedDataset.backgroundColor[index] = getHighlightedColor(originalColor);
+  } else {
+    clickedDataset.backgroundColor = getHighlightedColor(clickedDataset.backgroundColor);
+  }
+  
+  chart.update('none'); // Atualizar sem animação
+  
+  // Restaurar cor após 1 segundo
+  if (chart._highlightTimeout) {
+    clearTimeout(chart._highlightTimeout);
+  }
+  chart._highlightTimeout = setTimeout(() => {
+    if (chart && chart._originalColors) {
+      chart.data.datasets.forEach((dataset, dsIdx) => {
+        if (chart._originalColors[dsIdx]) {
+          if (Array.isArray(chart._originalColors[dsIdx])) {
+            dataset.backgroundColor = [...chart._originalColors[dsIdx]];
+          } else {
+            dataset.backgroundColor = chart._originalColors[dsIdx];
+          }
+        }
+      });
+      chart.update('none');
+    }
+  }, 1000);
+}
+
 function getChartDefaults(chartType) {
   const config = window.config?.CHART_CONFIG || {};
   const lightMode = isLightMode();
@@ -303,45 +404,63 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       });
     }
     
-    // Adicionar handler de clique se fornecido
-    if (options.onClick) {
+    // Adicionar handler de clique (padrão: true, a menos que explicitamente desabilitado)
+    // PADRÃO: Todos os gráficos são interativos por padrão (sistema Looker/Power BI)
+    const shouldEnableClick = options.onClick !== false; // true por padrão, false apenas se explicitamente desabilitado
+    
+    if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
+      chart.canvas.classList.add('chart-clickable');
+      
       chart.canvas.onclick = (evt) => {
-        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
-        if (points.length > 0) {
-          const point = points[0];
-          const label = chart.data.labels[point.index];
-          const value = chart.data.datasets[point.datasetIndex].data[point.index];
+        try {
+          // Usar a API correta do Chart.js 4.x
+          const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
           
-          // Chamar callback customizado primeiro (se existir)
-          if (typeof options.onClickCallback === 'function') {
-            options.onClickCallback(evt, points, chart);
-            // Se o callback customizado foi chamado, não aplicar filtro padrão
-            // (o callback customizado deve aplicar o filtro se necessário)
-            return;
-          }
-          
-          // Chamar callback customizado (compatibilidade com versão antiga)
-          if (typeof options.onClick === 'function') {
-            options.onClick(evt, points, chart);
-          }
-          
-          // Mostrar feedback visual
-          if (window.chartCommunication) {
-            window.chartCommunication.showFeedback(canvasId, label, value);
-          }
-          
-          // Aplicar filtro se mapeamento existir
-          if (window.chartCommunication) {
-            const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
-            if (fieldMapping && fieldMapping.field) {
-              window.chartCommunication.applyFilter(
-                fieldMapping.field,
-                label,
-                canvasId,
-                { toggle: true, operator: fieldMapping.op, clearPrevious: true }
-              );
+          if (points.length > 0) {
+            const point = points[0];
+            const label = chart.data.labels[point.index];
+            const value = chart.data.datasets[point.datasetIndex].data[point.index];
+            const datasetIndex = point.datasetIndex;
+            const index = point.index;
+            
+            // REALCE VISUAL: Destacar elemento clicado
+            highlightChartElement(chart, datasetIndex, index);
+            
+            // Chamar callback customizado primeiro (se existir)
+            if (typeof options.onClickCallback === 'function') {
+              options.onClickCallback(evt, points, chart);
+              // Se o callback customizado foi chamado, não aplicar filtro padrão
+              // (o callback customizado deve aplicar o filtro se necessário)
+              return;
             }
+            
+            // Chamar callback customizado (compatibilidade com versão antiga)
+            if (typeof options.onClick === 'function') {
+              options.onClick(evt, points, chart);
+            }
+            
+            // Mostrar feedback visual
+            if (window.chartCommunication) {
+              window.chartCommunication.showFeedback(canvasId, label, value);
+            }
+            
+            // Aplicar filtro se mapeamento existir
+            if (window.chartCommunication) {
+              const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
+              if (fieldMapping && fieldMapping.field) {
+                window.chartCommunication.applyFilter(
+                  fieldMapping.field,
+                  label,
+                  canvasId,
+                  { toggle: true, operator: fieldMapping.op, clearPrevious: true }
+                );
+              }
+            }
+          }
+        } catch (error) {
+          if (window.Logger) {
+            window.Logger.error(`Erro ao processar clique no gráfico ${canvasId}:`, error);
           }
         }
       };
@@ -447,46 +566,63 @@ async function createLineChart(canvasId, labels, values, options = {}) {
       });
     }
     
-    // Adicionar handler de clique se fornecido
-    if (options.onClick) {
+    // Adicionar handler de clique (padrão: true, a menos que explicitamente desabilitado)
+    // PADRÃO: Todos os gráficos são interativos por padrão (sistema Looker/Power BI)
+    const shouldEnableClick = options.onClick !== false; // true por padrão, false apenas se explicitamente desabilitado
+    
+    if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
+      chart.canvas.classList.add('chart-clickable');
+      
       chart.canvas.onclick = (evt) => {
-        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
-        if (points.length > 0) {
-          const point = points[0];
-          const label = chart.data.labels[point.index];
-          const datasetIndex = point.datasetIndex;
-          const value = chart.data.datasets[datasetIndex].data[point.index];
+        try {
+          // Usar a API correta do Chart.js 4.x
+          const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
           
-          // Chamar callback customizado primeiro (se existir)
-          if (typeof options.onClickCallback === 'function') {
-            options.onClickCallback(evt, points, chart);
-            // Se o callback customizado foi chamado, não aplicar filtro padrão
-            // (o callback customizado deve aplicar o filtro se necessário)
-            return;
-          }
-          
-          // Chamar callback customizado (compatibilidade com versão antiga)
-          if (typeof options.onClick === 'function') {
-            options.onClick(evt, points, chart);
-          }
-          
-          // Mostrar feedback visual
-          if (window.chartCommunication) {
-            window.chartCommunication.showFeedback(canvasId, label, value);
-          }
-          
-          // Aplicar filtro se mapeamento existir
-          if (window.chartCommunication) {
-            const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
-            if (fieldMapping && fieldMapping.field) {
-              window.chartCommunication.applyFilter(
-                fieldMapping.field,
-                label,
-                canvasId,
-                { toggle: true, operator: fieldMapping.op, clearPrevious: true }
-              );
+          if (points.length > 0) {
+            const point = points[0];
+            const label = chart.data.labels[point.index];
+            const datasetIndex = point.datasetIndex;
+            const index = point.index;
+            const value = chart.data.datasets[datasetIndex].data[point.index];
+            
+            // REALCE VISUAL: Destacar elemento clicado
+            highlightChartElement(chart, datasetIndex, index);
+            
+            // Chamar callback customizado primeiro (se existir)
+            if (typeof options.onClickCallback === 'function') {
+              options.onClickCallback(evt, points, chart);
+              // Se o callback customizado foi chamado, não aplicar filtro padrão
+              // (o callback customizado deve aplicar o filtro se necessário)
+              return;
             }
+            
+            // Chamar callback customizado (compatibilidade com versão antiga)
+            if (typeof options.onClick === 'function') {
+              options.onClick(evt, points, chart);
+            }
+            
+            // Mostrar feedback visual
+            if (window.chartCommunication) {
+              window.chartCommunication.showFeedback(canvasId, label, value);
+            }
+            
+            // Aplicar filtro se mapeamento existir
+            if (window.chartCommunication) {
+              const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
+              if (fieldMapping && fieldMapping.field) {
+                window.chartCommunication.applyFilter(
+                  fieldMapping.field,
+                  label,
+                  canvasId,
+                  { toggle: true, operator: fieldMapping.op, clearPrevious: true }
+                );
+              }
+            }
+          }
+        } catch (error) {
+          if (window.Logger) {
+            window.Logger.error(`Erro ao processar clique no gráfico ${canvasId}:`, error);
           }
         }
       };
@@ -609,45 +745,63 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
       });
     }
     
-    // Adicionar handler de clique se fornecido
-    if (options.onClick) {
+    // Adicionar handler de clique (padrão: true, a menos que explicitamente desabilitado)
+    // PADRÃO: Todos os gráficos são interativos por padrão (sistema Looker/Power BI)
+    const shouldEnableClick = options.onClick !== false; // true por padrão, false apenas se explicitamente desabilitado
+    
+    if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
+      chart.canvas.classList.add('chart-clickable');
+      
       chart.canvas.onclick = (evt) => {
-        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
-        if (points.length > 0) {
-          const point = points[0];
-          const label = chart.data.labels[point.index];
-          const value = chart.data.datasets[point.datasetIndex].data[point.index];
+        try {
+          // Usar a API correta do Chart.js 4.x
+          const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
           
-          // Chamar callback customizado primeiro (se existir)
-          if (typeof options.onClickCallback === 'function') {
-            options.onClickCallback(evt, points, chart);
-            // Se o callback customizado foi chamado, não aplicar filtro padrão
-            // (o callback customizado deve aplicar o filtro se necessário)
-            return;
-          }
-          
-          // Chamar callback customizado (compatibilidade com versão antiga)
-          if (typeof options.onClick === 'function') {
-            options.onClick(evt, points, chart);
-          }
-          
-          // Mostrar feedback visual
-          if (window.chartCommunication) {
-            window.chartCommunication.showFeedback(canvasId, label, value);
-          }
-          
-          // Aplicar filtro se mapeamento existir
-          if (window.chartCommunication) {
-            const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
-            if (fieldMapping && fieldMapping.field) {
-              window.chartCommunication.applyFilter(
-                fieldMapping.field,
-                label,
-                canvasId,
-                { toggle: true, operator: fieldMapping.op, clearPrevious: true }
-              );
+          if (points.length > 0) {
+            const point = points[0];
+            const label = chart.data.labels[point.index];
+            const datasetIndex = point.datasetIndex;
+            const index = point.index;
+            const value = chart.data.datasets[datasetIndex].data[point.index];
+            
+            // REALCE VISUAL: Destacar elemento clicado
+            highlightChartElement(chart, datasetIndex, index);
+            
+            // Chamar callback customizado primeiro (se existir)
+            if (typeof options.onClickCallback === 'function') {
+              options.onClickCallback(evt, points, chart);
+              // Se o callback customizado foi chamado, não aplicar filtro padrão
+              // (o callback customizado deve aplicar o filtro se necessário)
+              return;
             }
+            
+            // Chamar callback customizado (compatibilidade com versão antiga)
+            if (typeof options.onClick === 'function') {
+              options.onClick(evt, points, chart);
+            }
+            
+            // Mostrar feedback visual
+            if (window.chartCommunication) {
+              window.chartCommunication.showFeedback(canvasId, label, value);
+            }
+            
+            // Aplicar filtro se mapeamento existir
+            if (window.chartCommunication) {
+              const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
+              if (fieldMapping && fieldMapping.field) {
+                window.chartCommunication.applyFilter(
+                  fieldMapping.field,
+                  label,
+                  canvasId,
+                  { toggle: true, operator: fieldMapping.op, clearPrevious: true }
+                );
+              }
+            }
+          }
+        } catch (error) {
+          if (window.Logger) {
+            window.Logger.error(`Erro ao processar clique no gráfico ${canvasId}:`, error);
           }
         }
       };

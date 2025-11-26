@@ -91,16 +91,53 @@
     activeField: null,
     activeValue: null,
     persist: true,
+    _debounceTimer: null, // Timer para debounce
+    _pendingFilter: null, // Filtro pendente durante debounce
     
     /**
-     * Aplicar filtro global
+     * Aplicar filtro global com debounce
      * @param {string} field - Campo a filtrar
      * @param {string} value - Valor do filtro
      * @param {string} chartId - ID do gráfico que aplicou o filtro
      * @param {Object} options - Opções adicionais
      */
     apply(field, value, chartId = null, options = {}) {
-      const { toggle = true, operator = 'eq', clearPrevious = true } = options;
+      // OTIMIZAÇÃO: Debounce de 300ms para evitar múltiplas requisições
+      const debounceDelay = options.debounce !== undefined ? options.debounce : 300;
+      
+      // Cancelar timer anterior se existir
+      if (this._debounceTimer && window.timerManager) {
+        window.timerManager.clearTimeout(this._debounceTimer);
+      } else if (this._debounceTimer) {
+        clearTimeout(this._debounceTimer);
+      }
+      
+      // Guardar filtro pendente
+      this._pendingFilter = { field, value, chartId, options };
+      
+      // Criar novo timer
+      const applyFilter = () => {
+        this._debounceTimer = null;
+        const pending = this._pendingFilter;
+        this._pendingFilter = null;
+        if (pending) {
+          this._applyImmediate(pending.field, pending.value, pending.chartId, pending.options);
+        }
+      };
+      
+      if (window.timerManager) {
+        this._debounceTimer = window.timerManager.setTimeout(applyFilter, debounceDelay, 'filter-debounce');
+      } else {
+        this._debounceTimer = setTimeout(applyFilter, debounceDelay);
+      }
+    },
+    
+    /**
+     * Aplicar filtro imediatamente (sem debounce)
+     * @private
+     */
+    _applyImmediate(field, value, chartId = null, options = {}) {
+      const { toggle = true, operator = 'eq', clearPrevious = true, debounce } = options;
       
       if (window.Logger) {
         window.Logger.debug(`Aplicando filtro: ${field} = ${value}`, {
@@ -452,6 +489,7 @@
     
     /**
      * Notificar todos os gráficos registrados para se atualizarem
+     * OTIMIZADO: Notifica TODOS os gráficos, KPIs e elementos interligados
      */
     notifyAllCharts() {
       if (window.chartCommunication) {
@@ -466,6 +504,38 @@
           activeField: this.activeField,
           activeValue: this.activeValue
         });
+        
+        // INTERLIGAÇÃO: Atualizar estado visual de KPIs
+        if (typeof updateKPIsVisualState === 'function') {
+          updateKPIsVisualState();
+        } else if (window.updateKPIsVisualState) {
+          window.updateKPIsVisualState();
+        }
+        
+        // INTERLIGAÇÃO: Notificar gráficos Chart.js através de elementos canvas
+        // O Chart.js não expõe Chart.instances como array, então iteramos sobre os canvas
+        if (window.Chart && typeof window.Chart.getChart === 'function') {
+          try {
+            // Buscar todos os elementos canvas que podem ter gráficos
+            document.querySelectorAll('canvas[id]').forEach(canvas => {
+              try {
+                const chart = window.Chart.getChart(canvas);
+                if (chart && typeof chart.update === 'function') {
+                  // Não atualizar aqui, deixar que os dados sejam recarregados primeiro
+                  // Os gráficos serão atualizados quando os dados forem recarregados
+                  // chart.update('none');
+                }
+              } catch (e) {
+                // Ignorar erros ao acessar gráficos individuais
+              }
+            });
+          } catch (e) {
+            // Ignorar erros ao iterar sobre canvas
+            if (window.Logger) {
+              window.Logger.debug('Erro ao acessar instâncias Chart.js:', e);
+            }
+          }
+        }
       }
     }
   };
@@ -485,13 +555,16 @@
     'chartStatusAssunto': { field: 'Status', op: 'eq' },
     'chartTrend': { field: 'Data', op: 'contains' },
     'chartTopOrgaos': { field: 'Orgaos', op: 'contains' },
+    'chartTopOrgaosBar': { field: 'Orgaos', op: 'contains' },
     'chartTopTemas': { field: 'Tema', op: 'eq' },
     'chartFunnelStatus': { field: 'Status', op: 'eq' },
     'chartSlaOverview': { field: null, op: null },
+    'chartSLA': { field: null, op: null }, // SLA não deve filtrar
     'chartTiposManifestacao': { field: 'Tipo', op: 'eq' },
     'chartCanais': { field: 'Canal', op: 'eq' },
     'chartPrioridades': { field: 'Prioridade', op: 'eq' },
     'chartUnidadesCadastro': { field: 'Unidade', op: 'contains' },
+    'chartDailyDistribution': { field: 'Data', op: 'contains' },
     
     // Status
     'chartStatusMes': { field: 'Data', op: 'contains' },
@@ -556,6 +629,11 @@
     
     // Projeção
     'chartProjecaoMensal': { field: 'Data', op: 'contains' },
+    'chartCrescimentoPercentual': { field: 'Data', op: 'contains' },
+    'chartComparacaoAnual': { field: 'Data', op: 'contains' },
+    'chartSazonalidade': { field: 'Data', op: 'contains' },
+    'chartProjecaoTema': { field: 'Tema', op: 'eq' },
+    'chartProjecaoTipo': { field: 'Tipo', op: 'eq' },
     
     // Unidades de Saúde (dinâmico)
     'chartUnitTipos': { field: 'Tipo', op: 'eq' },
@@ -572,7 +650,16 @@
     'zeladoria-responsavel-chart': { field: 'Responsavel', op: 'contains' },
     'zeladoria-canal-chart': { field: 'Canal', op: 'eq' },
     'zeladoria-tempo-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-tempo-mes-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-tempo-distribuicao-chart': { field: null, op: null }, // Distribuição não filtra
     'zeladoria-mensal-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-bairro-mes-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-canal-mes-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-responsavel-mes-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-departamento-mes-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-categoria-mes-chart': { field: 'Data', op: 'contains' },
+    'zeladoria-categoria-dept-chart': { field: 'Departamento', op: 'contains' },
+    'zeladoria-status-mes-chart': { field: 'Data', op: 'contains' },
     'chartZeladoriaStatus': { field: 'Status', op: 'eq' },
     'chartZeladoriaCategoria': { field: 'Categoria', op: 'eq' },
     
@@ -745,6 +832,77 @@
   }
 
   // ============================================
+  // AUTO-CONNECT PAGES - Sistema Automático de Conexão
+  // ============================================
+  
+  /**
+   * Conectar automaticamente todas as páginas ao sistema de filtros globais
+   * Sistema Looker/Power BI: Todas as páginas se atualizam quando um filtro é aplicado
+   */
+  function autoConnectAllPages() {
+    if (!window.chartCommunication) {
+      return;
+    }
+    
+    // Mapeamento de páginas para suas funções de carregamento
+    const pageLoaders = {
+      'page-main': window.loadOverview,
+      'page-orgao-mes': window.loadOrgaoMes,
+      'page-tipo': window.loadTipo,
+      'page-status': window.loadStatusPage,
+      'page-tema': window.loadTema,
+      'page-assunto': window.loadAssunto,
+      'page-bairro': window.loadBairro,
+      'page-categoria': window.loadCategoria,
+      'page-canal': window.loadCanal,
+      'page-prioridade': window.loadPrioridade,
+      'page-setor': window.loadSetor,
+      'page-responsavel': window.loadResponsavel,
+      'page-uac': window.loadUAC,
+      'page-secretaria': window.loadSecretaria,
+      'page-secretarias-distritos': window.loadSecretariasDistritos,
+      'page-unidades-saude': window.loadUnidadesSaude,
+      'page-reclamacoes': window.loadReclamacoes,
+      'page-tempo-medio': window.loadTempoMedio,
+      'page-cadastrante': window.loadCadastrante,
+      'page-projecao-2026': window.loadProjecao2026,
+      'page-zeladoria-overview': window.loadZeladoriaOverview,
+      'page-zeladoria-status': window.loadZeladoriaStatus,
+      'page-zeladoria-categoria': window.loadZeladoriaCategoria,
+      'page-zeladoria-departamento': window.loadZeladoriaDepartamento,
+      'page-zeladoria-bairro': window.loadZeladoriaBairro,
+      'page-zeladoria-responsavel': window.loadZeladoriaResponsavel,
+      'page-zeladoria-canal': window.loadZeladoriaCanal,
+      'page-zeladoria-tempo': window.loadZeladoriaTempo,
+      'page-zeladoria-mensal': window.loadZeladoriaMensal,
+      'page-zeladoria-geografica': window.loadZeladoriaGeografica,
+      'page-zeladoria-colab-demandas': window.loadColabDemandas,
+      'page-zeladoria-colab-criar': window.loadZeladoriaColabCriar,
+      'page-zeladoria-colab-categorias': window.loadZeladoriaColabCategorias
+    };
+    
+    // Conectar todas as páginas que têm loader
+    Object.entries(pageLoaders).forEach(([pageId, loader]) => {
+      if (loader && typeof loader === 'function') {
+        try {
+          createPageFilterListener(pageId, loader, 500);
+          if (window.Logger) {
+            window.Logger.debug(`✅ Página ${pageId} conectada automaticamente ao sistema de filtros`);
+          }
+        } catch (error) {
+          if (window.Logger) {
+            window.Logger.warn(`Erro ao conectar página ${pageId}:`, error);
+          }
+        }
+      }
+    });
+    
+    if (window.Logger) {
+      window.Logger.success(`✅ Sistema de interconexão global ativado - ${Object.keys(pageLoaders).length} páginas conectadas`);
+    }
+  }
+
+  // ============================================
   // EXPORT - Exportar para window
   // ============================================
   
@@ -777,7 +935,10 @@
       getChartsByField: chartRegistry.getByField.bind(chartRegistry),
       
       // Page Filter Listener
-      createPageFilterListener
+      createPageFilterListener,
+      
+      // Auto-connect
+      autoConnectAllPages
     };
     
     // Compatibilidade com sistema antigo
@@ -787,6 +948,25 @@
     
     if (window.Logger) {
       window.Logger.success('✅ Sistema de Comunicação entre Gráficos inicializado');
+    }
+    
+    // Conectar automaticamente todas as páginas ao sistema de filtros globais
+    // Sistema Looker/Power BI: Todas as páginas se atualizam quando um filtro é aplicado
+    // Aguardar um pouco para garantir que todas as funções de loader estejam disponíveis
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          if (window.chartCommunication && window.chartCommunication.autoConnectAllPages) {
+            window.chartCommunication.autoConnectAllPages();
+          }
+        }, 1500);
+      });
+    } else {
+      setTimeout(() => {
+        if (window.chartCommunication && window.chartCommunication.autoConnectAllPages) {
+          window.chartCommunication.autoConnectAllPages();
+        }
+      }, 1500);
     }
   }
 })();

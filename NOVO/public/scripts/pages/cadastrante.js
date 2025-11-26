@@ -130,7 +130,8 @@ async function renderCadastranteMesChart(dataMensal) {
   
   await window.chartFactory?.createBarChart('chartCadastranteMes', labels, values, {
     colorIndex: 1,
-    label: 'Quantidade'
+    label: 'Quantidade',
+    onClick: true // Habilitar comunicação e filtros globais
   });
 }
 

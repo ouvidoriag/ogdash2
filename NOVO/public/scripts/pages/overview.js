@@ -162,11 +162,17 @@ async function loadOverview(forceRefresh = false) {
 
 /**
  * Renderizar KPIs principais
+ * OTIMIZADO: KPIs agora são interligados e podem aplicar filtros
  */
 async function renderKPIs(summary, dailyData, byMonth) {
   const kpiTotal = document.getElementById('kpiTotal');
   const kpi7 = document.getElementById('kpi7');
   const kpi30 = document.getElementById('kpi30');
+  
+  // Encontrar containers dos KPIs para adicionar handlers
+  const kpiTotalContainer = kpiTotal?.closest('.glass') || kpiTotal?.parentElement;
+  const kpi7Container = kpi7?.closest('.glass') || kpi7?.parentElement;
+  const kpi30Container = kpi30?.closest('.glass') || kpi30?.parentElement;
   
   if (kpiTotal) {
     kpiTotal.textContent = (summary.total || 0).toLocaleString('pt-BR');
@@ -176,6 +182,93 @@ async function renderKPIs(summary, dailyData, byMonth) {
   }
   if (kpi30) {
     kpi30.textContent = (summary.last30 || 0).toLocaleString('pt-BR');
+  }
+  
+  // INTERLIGAÇÃO: Adicionar handlers de clique nos KPIs
+  // KPI Total: Limpar todos os filtros quando clicado
+  if (kpiTotalContainer && window.chartCommunication) {
+    kpiTotalContainer.style.cursor = 'pointer';
+    kpiTotalContainer.classList.add('kpi-clickable', 'kpi-total');
+    kpiTotalContainer.title = 'Clique para limpar todos os filtros';
+    
+    kpiTotalContainer.onclick = () => {
+      if (window.chartCommunication) {
+        window.chartCommunication.clearFilters();
+        if (window.Logger) {
+          window.Logger.debug('KPI Total clicado: Limpando todos os filtros');
+        }
+      }
+    };
+  }
+  
+  // KPI Últimos 7 dias: Filtrar por últimos 7 dias
+  if (kpi7Container && window.chartCommunication) {
+    kpi7Container.style.cursor = 'pointer';
+    kpi7Container.classList.add('kpi-clickable', 'kpi-7days');
+    kpi7Container.title = 'Clique para filtrar pelos últimos 7 dias';
+    
+    kpi7Container.onclick = () => {
+      if (window.chartCommunication && dailyData && dailyData.length > 0) {
+        // Calcular data de 7 dias atrás
+        const today = new Date();
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 6);
+        const dateStr = sevenDaysAgo.toISOString().slice(0, 10);
+        const monthStr = dateStr.substring(0, 7); // YYYY-MM
+        
+        // Aplicar filtro por data (últimos 7 dias)
+        window.chartCommunication.applyFilter(
+          'Data',
+          monthStr,
+          'kpi7',
+          { toggle: true, operator: 'contains', clearPrevious: true }
+        );
+        
+        if (window.Logger) {
+          window.Logger.debug('KPI 7 dias clicado: Filtrando por últimos 7 dias');
+        }
+      }
+    };
+  }
+  
+  // KPI Últimos 30 dias: Filtrar por últimos 30 dias
+  if (kpi30Container && window.chartCommunication) {
+    kpi30Container.style.cursor = 'pointer';
+    kpi30Container.classList.add('kpi-clickable', 'kpi-30days');
+    kpi30Container.title = 'Clique para filtrar pelos últimos 30 dias';
+    
+    kpi30Container.onclick = () => {
+      if (window.chartCommunication && dailyData && dailyData.length > 0) {
+        // Calcular data de 30 dias atrás
+        const today = new Date();
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(today.getDate() - 29);
+        const dateStr = thirtyDaysAgo.toISOString().slice(0, 10);
+        const monthStr = dateStr.substring(0, 7); // YYYY-MM
+        
+        // Aplicar filtro por data (últimos 30 dias)
+        window.chartCommunication.applyFilter(
+          'Data',
+          monthStr,
+          'kpi30',
+          { toggle: true, operator: 'contains', clearPrevious: true }
+        );
+        
+        if (window.Logger) {
+          window.Logger.debug('KPI 30 dias clicado: Filtrando por últimos 30 dias');
+        }
+      }
+    };
+  }
+  
+  // Atualizar estado visual dos KPIs baseado em filtros ativos
+  updateKPIsVisualState();
+  
+  // Escutar mudanças de filtros para atualizar estado visual
+  if (window.chartCommunication) {
+    window.chartCommunication.on('filter:applied', updateKPIsVisualState);
+    window.chartCommunication.on('filter:cleared', updateKPIsVisualState);
+    window.chartCommunication.on('filter:removed', updateKPIsVisualState);
   }
   
   // Renderizar sparklines se houver dados
@@ -189,6 +282,64 @@ async function renderKPIs(summary, dailyData, byMonth) {
     await renderSparkline('spark30', last30Days);
   }
 }
+
+/**
+ * Atualizar estado visual dos KPIs baseado em filtros ativos
+ * Exportada para uso global
+ */
+function updateKPIsVisualState() {
+  if (!window.chartCommunication) return;
+  
+  const filters = window.chartCommunication.filters.filters || [];
+  const hasFilters = filters.length > 0;
+  
+  // KPI Total: destacar se não há filtros (mostra que está "ativo")
+  const kpiTotalContainer = document.querySelector('.kpi-total');
+  if (kpiTotalContainer) {
+    if (!hasFilters) {
+      kpiTotalContainer.classList.add('kpi-active');
+      kpiTotalContainer.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+      kpiTotalContainer.style.backgroundColor = 'rgba(34, 211, 238, 0.05)';
+    } else {
+      kpiTotalContainer.classList.remove('kpi-active');
+      kpiTotalContainer.style.borderColor = '';
+      kpiTotalContainer.style.backgroundColor = '';
+    }
+  }
+  
+  // KPI 7 dias: destacar se filtro de data está ativo
+  const kpi7Container = document.querySelector('.kpi-7days');
+  if (kpi7Container) {
+    const hasDateFilter = filters.some(f => f.field === 'Data');
+    if (hasDateFilter) {
+      kpi7Container.classList.add('kpi-active');
+      kpi7Container.style.borderColor = 'rgba(167, 139, 250, 0.5)';
+      kpi7Container.style.backgroundColor = 'rgba(167, 139, 250, 0.05)';
+    } else {
+      kpi7Container.classList.remove('kpi-active');
+      kpi7Container.style.borderColor = '';
+      kpi7Container.style.backgroundColor = '';
+    }
+  }
+  
+  // KPI 30 dias: destacar se filtro de data está ativo
+  const kpi30Container = document.querySelector('.kpi-30days');
+  if (kpi30Container) {
+    const hasDateFilter = filters.some(f => f.field === 'Data');
+    if (hasDateFilter) {
+      kpi30Container.classList.add('kpi-active');
+      kpi30Container.style.borderColor = 'rgba(16, 185, 129, 0.5)';
+      kpi30Container.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
+    } else {
+      kpi30Container.classList.remove('kpi-active');
+      kpi30Container.style.borderColor = '';
+      kpi30Container.style.backgroundColor = '';
+    }
+  }
+}
+
+// Exportar função para uso global
+window.updateKPIsVisualState = updateKPIsVisualState;
 
 /**
  * Renderizar sparkline (gráfico pequeno)
@@ -207,6 +358,7 @@ async function renderSparkline(canvasId, data) {
     fill: true,
     tension: 0.4,
     colorIndex: 0,
+    onClick: false, // Sparklines não devem ser interativos
     chartOptions: {
       plugins: {
         legend: { display: false },
@@ -239,7 +391,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     return;
   }
   
-  // Destruir gráficos existentes antes de criar novos (prevenir vazamentos de memória)
+  // Destruir TODOS os gráficos existentes antes de criar novos (prevenir vazamentos de memória)
   const chartIds = [
     'chartTrend',
     'chartFunnelStatus',
@@ -249,14 +401,31 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     'chartTiposManifestacao',
     'chartCanais',
     'chartPrioridades',
-    'chartUnidadesCadastro'
+    'chartUnidadesCadastro',
+    'chartSLA',
+    'sparkTotal',
+    'spark7',
+    'spark30'
   ];
   
   if (window.chartFactory.destroyCharts) {
-    window.chartFactory.destroyCharts(chartIds);
+    const destroyed = window.chartFactory.destroyCharts(chartIds);
     if (window.Logger) {
-      window.Logger.debug('📊 Gráficos da Overview destruídos antes de recriar');
+      window.Logger.debug(`📊 Destruídos ${destroyed} gráfico(s)`);
     }
+  }
+  
+  // Também destruir gráficos Chart.js diretamente (fallback)
+  if (window.Chart && typeof window.Chart.getChart === 'function') {
+    chartIds.forEach(id => {
+      const canvas = document.getElementById(id);
+      if (canvas) {
+        const chart = window.Chart.getChart(canvas);
+        if (chart) {
+          chart.destroy();
+        }
+      }
+    });
   }
   
   // ============================================
@@ -336,6 +505,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         colorIndex: 0,
         fill: true,
         tension: 0.4,
+        onClick: true, // Habilitar comunicação e filtros globais
         chartOptions: {
           plugins: {
             tooltip: {
@@ -595,6 +765,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       
       await window.chartFactory.createBarChart('chartDailyDistribution', labels, values, {
         colorIndex: 0,
+        onClick: true, // Habilitar comunicação e filtros globais
         chartOptions: {
           plugins: {
             tooltip: {
@@ -646,11 +817,54 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   }
   
   // Carregar e renderizar SLA (parte da seção Status e SLA)
+  // IMPORTANTE: SLA também deve ser filtrado quando há filtros ativos
   try {
-    const slaData = await window.dataLoader?.load('/api/sla/summary', {
-      useDataStore: true,
-      ttl: 5 * 60 * 1000
-    });
+    let slaData = null;
+    
+    // Verificar se há filtros ativos
+    if (window.chartCommunication) {
+      const globalFilters = window.chartCommunication.filters.filters || [];
+      if (globalFilters.length > 0) {
+        // Se houver filtros, buscar dados filtrados e calcular SLA localmente
+        try {
+          const filterRequest = {
+            filters: globalFilters,
+            originalUrl: window.location.pathname
+          };
+          
+          const response = await fetch('/api/filter', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(filterRequest)
+          });
+          
+          if (response.ok) {
+            const filteredRows = await response.json();
+            // Calcular SLA dos dados filtrados
+            slaData = calculateSLAFromRows(filteredRows);
+            if (window.Logger) {
+              window.Logger.debug('📊 SLA calculado a partir de dados filtrados:', slaData);
+            }
+          }
+        } catch (filterError) {
+          if (window.Logger) {
+            window.Logger.warn('Erro ao calcular SLA com filtros, usando dados sem filtro:', filterError);
+          }
+        }
+      }
+    }
+    
+    // Se não há filtros ou houve erro, usar endpoint normal
+    if (!slaData) {
+      // Verificar se forceRefresh foi passado (pode não estar no escopo)
+      const shouldRefresh = typeof forceRefresh !== 'undefined' ? forceRefresh : false;
+      slaData = await window.dataLoader?.load('/api/sla/summary', {
+        useDataStore: !shouldRefresh,
+        ttl: 5 * 60 * 1000
+      });
+    }
     
     if (slaData) {
       await renderSLAChart(slaData);
@@ -1081,6 +1295,85 @@ async function loadAIInsights() {
       window.Logger.debug('Erro ao carregar insights de IA:', error);
     }
   }
+}
+
+/**
+ * Calcular SLA a partir de um array de registros filtrados
+ * @param {Array} rows - Array de registros filtrados
+ * @returns {Object} Objeto com dados de SLA
+ */
+function calculateSLAFromRows(rows) {
+  if (!rows || rows.length === 0) {
+    return {
+      concluidos: 0,
+      verdeClaro: 0,
+      amarelo: 0,
+      vermelho: 0
+    };
+  }
+  
+  let concluidos = 0;
+  let verdeClaro = 0;
+  let amarelo = 0;
+  let vermelho = 0;
+  
+  const now = new Date();
+  
+  for (const row of rows) {
+    const data = row.data || row;
+    
+    // Verificar se está concluído
+    const status = data.status || 
+                   data.status_demanda || 
+                   row.status || 
+                   row.status_demanda || 
+                   '';
+    
+    const isConcluido = status && (
+      status.toLowerCase().includes('concluído') ||
+      status.toLowerCase().includes('concluido') ||
+      status.toLowerCase().includes('finalizado') ||
+      status.toLowerCase().includes('resolvido')
+    );
+    
+    if (isConcluido) {
+      concluidos++;
+      continue;
+    }
+    
+    // Calcular prazo restante
+    let prazoRestante = null;
+    if (data.prazo_restante) {
+      prazoRestante = parseInt(data.prazo_restante);
+    } else if (data.prazoRestante) {
+      prazoRestante = parseInt(data.prazoRestante);
+    } else if (row.prazo_restante) {
+      prazoRestante = parseInt(row.prazo_restante);
+    } else if (row.prazoRestante) {
+      prazoRestante = parseInt(row.prazoRestante);
+    }
+    
+    // Classificar por prazo
+    if (prazoRestante !== null && !isNaN(prazoRestante)) {
+      if (prazoRestante <= 30) {
+        verdeClaro++;
+      } else if (prazoRestante <= 60) {
+        amarelo++;
+      } else {
+        vermelho++;
+      }
+    } else {
+      // Se não tem prazo, considerar como vermelho (atrasado)
+      vermelho++;
+    }
+  }
+  
+  return {
+    concluidos,
+    verdeClaro,
+    amarelo,
+    vermelho
+  };
 }
 
 /**

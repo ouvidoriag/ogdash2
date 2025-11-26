@@ -1,7 +1,27 @@
 /**
- * Página: Zeladoria - Por Status
+ * ============================================================================
+ * PÁGINA: ZELADORIA - ANÁLISE POR STATUS
+ * ============================================================================
  * 
- * Refatorada para trazer o máximo de informações possíveis
+ * Esta página apresenta uma análise detalhada das ocorrências de zeladoria
+ * agrupadas por status, permitindo monitorar o estado atual das demandas
+ * e identificar gargalos no processo de atendimento.
+ * 
+ * DADOS EXIBIDOS:
+ * - Distribuição de ocorrências por status (gráfico de rosca)
+ * - Ranking dos status mais frequentes
+ * - Evolução mensal das ocorrências por status
+ * - Estatísticas agregadas (total, fechados, abertos, taxa de resolução)
+ * - Dados adicionais: categoria, departamento, tempo médio por status
+ * 
+ * CAMPOS DO BANCO UTILIZADOS:
+ * - status: Status atual da demanda (NOVO, ABERTO, ATENDIMENTO, FECHADO, etc.)
+ * - categoria: Categoria das demandas
+ * - departamento: Departamento responsável
+ * - dataCriacao: Data de criação
+ * - dataConclusao: Data de conclusão (para cálculo de tempo médio)
+ * 
+ * ============================================================================
  */
 
 async function loadZeladoriaStatus() {
@@ -111,6 +131,7 @@ async function renderStatusMesChart(dataMes) {
   
   await window.chartFactory?.createBarChart('zeladoria-status-mes-chart', labels, datasets, {
     colorIndex: 0,
+    onClick: true, // Habilitar comunicação e filtros globais
     legendContainer: 'zeladoria-status-mes-legend'
   });
 }

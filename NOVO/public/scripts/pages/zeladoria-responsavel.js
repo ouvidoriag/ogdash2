@@ -1,7 +1,27 @@
 /**
- * Página: Zeladoria - Por Responsável
+ * ============================================================================
+ * PÁGINA: ZELADORIA - ANÁLISE POR RESPONSÁVEL
+ * ============================================================================
  * 
- * Refatorada para trazer o máximo de informações possíveis
+ * Esta página apresenta uma análise detalhada das ocorrências de zeladoria
+ * agrupadas por responsável, permitindo identificar a carga de trabalho
+ * individual e a distribuição de demandas entre os responsáveis.
+ * 
+ * DADOS EXIBIDOS:
+ * - Distribuição de ocorrências por responsável (gráfico de barras horizontal)
+ * - Ranking dos responsáveis com mais ocorrências
+ * - Evolução mensal das ocorrências por responsável
+ * - Estatísticas agregadas (total, concentração, média)
+ * - Dados adicionais: departamento, categoria, status, prazo
+ * 
+ * CAMPOS DO BANCO UTILIZADOS:
+ * - responsavel: Nome do responsável pelo atendimento
+ * - departamento: Departamento do responsável
+ * - categoria: Categoria das demandas atendidas
+ * - status: Status atual das demandas
+ * - prazo: Prazo estabelecido para resolução
+ * 
+ * ============================================================================
  */
 
 async function loadZeladoriaResponsavel() {
@@ -108,6 +128,7 @@ async function renderResponsavelMesChart(dataMes, topResponsaveis) {
   
   await window.chartFactory?.createBarChart('zeladoria-responsavel-mes-chart', labels, datasets, {
     colorIndex: 0,
+    onClick: true, // Habilitar comunicação e filtros globais
     legendContainer: 'zeladoria-responsavel-mes-legend'
   });
 }

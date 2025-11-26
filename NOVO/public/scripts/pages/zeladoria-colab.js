@@ -59,7 +59,10 @@ async function loadZeladoriaOverview() {
       await window.chartFactory?.createDoughnutChart('chartZeladoriaStatus', 
         Object.keys(statusCounts), 
         Object.values(statusCounts),
-        { type: 'doughnut' }
+        { 
+          type: 'doughnut',
+          onClick: true // Habilitar comunicação e filtros globais
+        }
       );
     }
     
@@ -86,7 +89,11 @@ async function loadZeladoriaOverview() {
       await window.chartFactory?.createBarChart('chartZeladoriaCategoria',
         topCategorias.map(c => c[0]),
         topCategorias.map(c => c[1]),
-        { horizontal: true, colorIndex: 1 }
+        { 
+          horizontal: true, 
+          colorIndex: 1,
+          onClick: true // Habilitar comunicação e filtros globais
+        }
       );
     }
     

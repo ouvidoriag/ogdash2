@@ -1,5 +1,30 @@
 /**
- * Página: Zeladoria - Visão Geral
+ * ============================================================================
+ * PÁGINA: ZELADORIA - VISÃO GERAL
+ * ============================================================================
+ * 
+ * Esta página apresenta uma visão consolidada e abrangente de todas as
+ * ocorrências de zeladoria, fornecendo um dashboard executivo com os
+ * principais indicadores e gráficos de síntese.
+ * 
+ * DADOS EXIBIDOS:
+ * - KPIs principais (total, fechados, abertos, tempo médio)
+ * - Distribuição por status (gráfico de rosca)
+ * - Top categorias (gráfico de barras horizontal)
+ * - Distribuição por departamento (gráfico de barras horizontal)
+ * - Evolução mensal (gráfico de linha)
+ * - Dados adicionais: origem, canal, prazo
+ * 
+ * CAMPOS DO BANCO UTILIZADOS:
+ * - status: Status atual da demanda
+ * - categoria: Categoria da demanda
+ * - departamento: Departamento responsável
+ * - origem: Origem da demanda
+ * - canal: Canal de entrada
+ * - prazo: Prazo estabelecido
+ * - dataCriacaoIso: Data de criação normalizada
+ * 
+ * ============================================================================
  */
 
 async function loadZeladoriaOverview() {

@@ -74,8 +74,36 @@ app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Servir arquivos estáticos
-app.use(express.static(publicDir));
+// OTIMIZAÇÃO: Cache headers para arquivos estáticos
+app.use(express.static(publicDir, {
+  maxAge: '1y', // Cache de 1 ano para arquivos estáticos
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, path) => {
+    // Arquivos JS, CSS, imagens: cache longo
+    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
+}));
+
+// OTIMIZAÇÃO: Middleware de cache para respostas da API
+app.use('/api', (req, res, next) => {
+  // Endpoints que mudam frequentemente: cache curto (5 min)
+  if (req.path.includes('/dashboard-data') || req.path.includes('/summary')) {
+    res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+    res.setHeader('ETag', `"${Date.now()}"`);
+  }
+  // Endpoints estáticos: cache longo (1 hora)
+  else if (req.path.includes('/distritos') || req.path.includes('/secretarias')) {
+    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+  }
+  // Outros endpoints: cache médio (10 min)
+  else {
+    res.setHeader('Cache-Control', 'public, max-age=600, must-revalidate');
+  }
+  next();
+});
 
 // Health check
 app.get('/api/health', (_req, res) => {

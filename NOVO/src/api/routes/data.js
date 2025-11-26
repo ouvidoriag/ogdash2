@@ -29,6 +29,7 @@ import { getUnit } from '../controllers/unitController.js';
 import { getComplaints } from '../controllers/complaintsController.js';
 import { slaSummary } from '../controllers/slaController.js';
 import { filterRecords } from '../controllers/filterController.js';
+import { getVencimento } from '../controllers/vencimentoController.js';
 import { getMetaAliases, reindexChat, exportDatabase } from '../controllers/utilsController.js';
 
 export default function dataRoutes(prisma, getMongoClient) {
@@ -81,6 +82,13 @@ export default function dataRoutes(prisma, getMongoClient) {
    * Query params: servidor, unidadeCadastro, meses
    */
   router.get('/sla/summary', (req, res) => slaSummary(req, res, prisma));
+  
+  /**
+   * GET /api/vencimento
+   * Protocolos próximos de vencer ou já vencidos
+   * Query params: filtro (vencidos, 3, 7, 15, 30), servidor, unidadeCadastro
+   */
+  router.get('/vencimento', (req, res) => getVencimento(req, res, prisma));
   
   /**
    * POST /api/filter

@@ -1,7 +1,27 @@
 /**
- * Página: Zeladoria - Tempo de Resolução
+ * ============================================================================
+ * PÁGINA: ZELADORIA - ANÁLISE DE TEMPO DE RESOLUÇÃO
+ * ============================================================================
  * 
- * Refatorada para trazer o máximo de informações possíveis
+ * Esta página apresenta uma análise detalhada do tempo de resolução das
+ * ocorrências de zeladoria, permitindo monitorar a eficiência do atendimento
+ * e identificar oportunidades de melhoria.
+ * 
+ * DADOS EXIBIDOS:
+ * - KPIs de tempo (tempo médio, fechados, abertos, eficiência)
+ * - Evolução mensal do tempo médio de resolução
+ * - Distribuição de tempo por faixas (0-7, 8-15, 16-30, 31-60, 60+ dias)
+ * - Análises detalhadas (performance, tendência, meta)
+ * - Dados adicionais: categoria, departamento, responsável
+ * 
+ * CAMPOS DO BANCO UTILIZADOS:
+ * - dataCriacaoIso: Data de criação normalizada
+ * - dataConclusaoIso: Data de conclusão normalizada
+ * - categoria: Categoria da demanda
+ * - departamento: Departamento responsável
+ * - responsavel: Responsável pelo atendimento
+ * 
+ * ============================================================================
  */
 
 async function loadZeladoriaTempo() {
@@ -119,6 +139,7 @@ async function renderTempoMesChart(timeSeries) {
   await window.chartFactory?.createLineChart('zeladoria-tempo-mes-chart', labels, tempoMedio, {
     colorIndex: 6,
     label: 'Tempo Médio (dias)',
+    onClick: true, // Habilitar comunicação e filtros globais
     legendContainer: 'zeladoria-tempo-mes-legend'
   });
 }
@@ -142,6 +163,7 @@ async function renderTempoDistribuicao(stats) {
   await window.chartFactory?.createBarChart('zeladoria-tempo-distribuicao-chart', labels, values, {
     colorIndex: 6,
     horizontal: true,
+    onClick: false, // Distribuição de tempo não deve filtrar
     legendContainer: 'zeladoria-tempo-distribuicao-legend'
   });
 }

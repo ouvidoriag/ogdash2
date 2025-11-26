@@ -1,9 +1,33 @@
 /**
- * Página: Zeladoria - Por Departamento
+ * ============================================================================
+ * PÁGINA: ZELADORIA - ANÁLISE POR DEPARTAMENTO
+ * ============================================================================
  * 
- * Refatorada para trazer o máximo de informações possíveis
+ * Esta página apresenta uma análise detalhada das ocorrências de zeladoria
+ * agrupadas por departamento responsável, permitindo identificar a carga de
+ * trabalho de cada departamento e sua distribuição ao longo do tempo.
+ * 
+ * DADOS EXIBIDOS:
+ * - Distribuição de ocorrências por departamento (gráfico de barras horizontal)
+ * - Ranking dos departamentos com mais ocorrências
+ * - Evolução mensal das ocorrências por departamento
+ * - Estatísticas agregadas (total, concentração, média)
+ * - Dados adicionais: categoria, responsável, status por departamento
+ * 
+ * CAMPOS DO BANCO UTILIZADOS:
+ * - departamento: Departamento responsável pelo atendimento
+ * - categoria: Categoria das demandas atendidas
+ * - responsavel: Responsável pelo atendimento
+ * - status: Status atual das demandas
+ * - dataCriacao: Data de criação das demandas
+ * 
+ * ============================================================================
  */
 
+/**
+ * Função principal de carregamento da página
+ * Carrega e renderiza todos os dados relacionados a departamentos
+ */
 async function loadZeladoriaDepartamento() {
   if (window.Logger) {
     window.Logger.debug('🏢 loadZeladoriaDepartamento: Iniciando');
@@ -78,7 +102,16 @@ async function loadZeladoriaDepartamento() {
 }
 
 /**
- * Renderizar gráfico de departamento por mês
+ * ========================================================================
+ * FUNÇÃO: renderDepartamentoMesChart
+ * ========================================================================
+ * Renderiza um gráfico de barras mostrando a evolução mensal das
+ * ocorrências por departamento ao longo do tempo.
+ * 
+ * PARÂMETROS:
+ * - dataMes: Array com dados mensais agregados
+ * - topDepartamentos: Array com os departamentos mais relevantes (top 10)
+ * ========================================================================
  */
 async function renderDepartamentoMesChart(dataMes, topDepartamentos) {
   const meses = [...new Set(dataMes.map(d => d.month || d.ym))].sort();
@@ -108,12 +141,21 @@ async function renderDepartamentoMesChart(dataMes, topDepartamentos) {
   
   await window.chartFactory?.createBarChart('zeladoria-departamento-mes-chart', labels, datasets, {
     colorIndex: 0,
+    onClick: true, // Habilitar comunicação e filtros globais
     legendContainer: 'zeladoria-departamento-mes-legend'
   });
 }
 
 /**
- * Renderizar ranking de departamentos
+ * ========================================================================
+ * FUNÇÃO: renderDepartamentoRanking
+ * ========================================================================
+ * Renderiza uma lista ranking dos departamentos ordenados por quantidade
+ * de ocorrências, exibindo posição, nome, quantidade e percentual.
+ * 
+ * PARÂMETROS:
+ * - data: Array de objetos com {key, count} ordenado por count
+ * ========================================================================
  */
 function renderDepartamentoRanking(data) {
   const rankEl = document.getElementById('zeladoria-departamento-ranking');
@@ -144,7 +186,21 @@ function renderDepartamentoRanking(data) {
 }
 
 /**
- * Renderizar estatísticas
+ * ========================================================================
+ * FUNÇÃO: renderDepartamentoStats
+ * ========================================================================
+ * Renderiza cards com estatísticas agregadas sobre a distribuição
+ * de ocorrências por departamento.
+ * 
+ * PARÂMETROS:
+ * - data: Array completo com todos os departamentos
+ * 
+ * MÉTRICAS EXIBIDAS:
+ * - Total de ocorrências: Soma de todas as ocorrências
+ * - Departamentos únicos: Quantidade de departamentos distintos
+ * - Top 3 concentração: Percentual de ocorrências nos 3 principais departamentos
+ * - Média por departamento: Média aritmética de ocorrências por departamento
+ * ========================================================================
  */
 function renderDepartamentoStats(data) {
   const statsEl = document.getElementById('zeladoria-departamento-stats');
@@ -158,21 +214,25 @@ function renderDepartamentoStats(data) {
   
   statsEl.innerHTML = `
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="glass rounded-lg p-4">
+      <div class="glass rounded-lg p-4 hover:bg-white/5 transition-colors" title="Total de ocorrências registradas">
         <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
         <div class="text-2xl font-bold text-cyan-300">${total.toLocaleString('pt-BR')}</div>
+        <div class="text-xs text-slate-500 mt-1">Todas as demandas</div>
       </div>
-      <div class="glass rounded-lg p-4">
+      <div class="glass rounded-lg p-4 hover:bg-white/5 transition-colors" title="Quantidade de departamentos distintos">
         <div class="text-xs text-slate-400 mb-1">Departamentos</div>
         <div class="text-2xl font-bold text-violet-300">${uniqueDepts}</div>
+        <div class="text-xs text-slate-500 mt-1">Unidades responsáveis</div>
       </div>
-      <div class="glass rounded-lg p-4">
+      <div class="glass rounded-lg p-4 hover:bg-white/5 transition-colors" title="Percentual de ocorrências concentradas nos 3 principais departamentos">
         <div class="text-xs text-slate-400 mb-1">Top 3 Concentração</div>
         <div class="text-2xl font-bold text-emerald-300">${top3Percent}%</div>
+        <div class="text-xs text-slate-500 mt-1">Foco prioritário</div>
       </div>
-      <div class="glass rounded-lg p-4">
+      <div class="glass rounded-lg p-4 hover:bg-white/5 transition-colors" title="Média aritmética de ocorrências por departamento">
         <div class="text-xs text-slate-400 mb-1">Média por Dept.</div>
         <div class="text-2xl font-bold text-amber-300">${avgPerDept}</div>
+        <div class="text-xs text-slate-500 mt-1">Distribuição média</div>
       </div>
     </div>
   `;

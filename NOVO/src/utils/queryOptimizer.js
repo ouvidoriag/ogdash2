@@ -174,17 +174,22 @@ export async function optimizedDistinct(prisma, field, where = {}, options = {})
   
   try {
     // Usar groupBy para obter valores distintos (muito mais rápido)
+    // NOTA: Prisma groupBy não suporta 'take' diretamente, então aplicamos o limite depois
     const results = await prisma.record.groupBy({
       by: [field],
       where: Object.keys(where).length > 0 ? where : undefined,
-      _count: { _all: true },
-      take: limit
+      _count: { _all: true }
+      // Removido 'take' - não é suportado pelo Prisma groupBy
     });
     
-    return results
+    // Filtrar, ordenar e aplicar limite após a query
+    const values = results
       .map(r => r[field])
       .filter(v => v !== null && v !== undefined && `${v}`.trim() !== '')
-      .sort();
+      .sort()
+      .slice(0, limit);
+    
+    return values;
   } catch (error) {
     // Fallback: buscar e processar em memória
     console.warn(`⚠️ groupBy distinct falhou para ${field}, usando fallback:`, error.message);

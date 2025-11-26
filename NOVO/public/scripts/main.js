@@ -80,6 +80,7 @@ function getPageLoader(page) {
     'cora-chat': 'loadCoraChat',
     'orgao-mes': 'loadOrgaoMes',
     'tempo-medio': 'loadTempoMedio',
+    'vencimento': 'loadVencimento',
     'tema': 'loadTema',
     'assunto': 'loadAssunto',
     'cadastrante': 'loadCadastrante',
@@ -249,7 +250,12 @@ function init() {
   initNavigation();
   initEventListeners();
   
-  setTimeout(preloadData, 2000);
+  // Usar Timer Manager se disponível, senão fallback para setTimeout
+  if (window.timerManager) {
+    window.timerManager.setTimeout(preloadData, 2000, 'preloadData');
+  } else {
+    setTimeout(preloadData, 2000);
+  }
   
   if (window.Logger) {
     window.Logger.success('Sistema inicializado');

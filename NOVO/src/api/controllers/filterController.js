@@ -20,6 +20,9 @@ export async function filterRecords(req, res, prisma) {
       return res.json([]);
     }
     
+    // Debug: log dos filtros recebidos
+    console.log('🔍 /api/filter: Filtros recebidos:', JSON.stringify(filters, null, 2));
+    
     // Construir where clause otimizado
     const whereClause = {};
     const needsInMemoryFilter = [];
@@ -28,7 +31,10 @@ export async function filterRecords(req, res, prisma) {
     // Separar filtros que podem usar where clause
     for (const f of filters) {
       const col = getNormalizedField(f.field);
+      
+      // Se o campo está normalizado no schema, tentar usar where clause
       if (col && f.op === 'eq') {
+        // Tentar filtrar pelo campo normalizado
         whereClause[col] = f.value;
         fieldsNeeded.add(col);
       } else if (col && f.op === 'contains') {
@@ -41,6 +47,7 @@ export async function filterRecords(req, res, prisma) {
         }
         fieldsNeeded.add(col);
       } else {
+        // Campo não normalizado ou operação não suportada - filtrar em memória
         needsInMemoryFilter.push(f);
         if (col) fieldsNeeded.add(col);
       }
@@ -51,26 +58,28 @@ export async function filterRecords(req, res, prisma) {
     const finalSelect = Object.keys(selectFields).length > 1 ? selectFields : undefined;
     const whereCondition = Object.keys(whereClause).length > 0 ? whereClause : undefined;
     
-    // OTIMIZAÇÃO: Limitar resultados para evitar timeout
-    const shouldLimit = !whereCondition || Object.keys(whereCondition).length === 0;
-    const hasStatusFilter = whereCondition?.status !== undefined;
-    const hasContainsFilter = Object.values(whereCondition || {}).some(v => 
-      typeof v === 'object' && v !== null && 'contains' in v
-    );
+    // IMPORTANTE: Se há filtros, NÃO limitar para garantir que todos os dados filtrados sejam retornados
+    // O limite só deve ser aplicado quando NÃO há filtros (caso de uso raro)
+    const hasFilters = filters.length > 0;
     
     let limitValue;
-    if (shouldLimit) {
+    if (!hasFilters) {
+      // Sem filtros: limitar a 10.000 para evitar carregar tudo desnecessariamente
       limitValue = 10000;
-    } else if (hasStatusFilter || hasContainsFilter) {
-      limitValue = 20000;
     } else {
-      limitValue = 50000;
+      // COM FILTROS: NUNCA limitar - precisamos de TODOS os registros para filtrar corretamente
+      // Se o where clause funcionou, o banco já filtra. Se não funcionou, precisamos filtrar em memória.
+      limitValue = undefined; // Sem limite quando há filtros
+      
+      console.log('🔍 /api/filter: Há filtros ativos, removendo limite de registros');
+      console.log('🔍 /api/filter: Where condition:', whereCondition);
+      console.log('🔍 /api/filter: Filtros em memória:', needsInMemoryFilter.length);
     }
     
     const queryOptions = {
       where: whereCondition,
       ...(finalSelect ? { select: finalSelect } : {}),
-      take: limitValue
+      ...(limitValue !== undefined ? { take: limitValue } : {}) // Só adicionar take se limitValue estiver definido
     };
     
     // Timeout de 8 segundos
@@ -89,24 +98,88 @@ export async function filterRecords(req, res, prisma) {
       throw queryError;
     }
     
-    // Aplicar filtros em memória apenas se necessário
+    // Aplicar filtros em memória
+    // IMPORTANTE: Sempre verificar em memória porque os campos normalizados podem não estar populados
+    // ou os valores podem estar no JSON com case diferente
     let filtered = allRows;
-    if (needsInMemoryFilter.length > 0) {
+    
+    if (filters.length > 0) {
       filtered = allRows.filter(r => {
-        for (const f of needsInMemoryFilter) {
+        // Verificar todos os filtros
+        for (const f of filters) {
           const col = getNormalizedField(f.field);
-          const value = col ? (r[col] || (r.data || {})[f.field] || '') : ((r.data || {})[f.field] || '');
-          const valueStr = `${value}`.toLowerCase();
-          const filterStr = `${f.value}`.toLowerCase();
           
-          if (f.op === 'eq' && valueStr !== filterStr) return false;
-          if (f.op === 'contains' && !valueStr.includes(filterStr)) return false;
+          // Tentar obter valor do campo normalizado primeiro, depois do JSON
+          let value = '';
+          
+          // 1. Tentar campo normalizado direto no registro
+          if (col && r[col] !== undefined && r[col] !== null) {
+            value = r[col];
+          } 
+          // 2. Tentar no JSON com diferentes variações de nome
+          else if (r.data && typeof r.data === 'object') {
+            // Tentar todas as variações possíveis do nome do campo
+            const fieldVariations = [
+              f.field,                    // Nome original: "Canal"
+              col,                        // Campo normalizado: "canal"
+              f.field?.toLowerCase(),      // "canal"
+              f.field?.toUpperCase(),      // "CANAL"
+              f.field?.charAt(0).toUpperCase() + f.field?.slice(1).toLowerCase(), // "Canal"
+              col?.charAt(0).toUpperCase() + col?.slice(1).toLowerCase() // "Canal" (se col = "canal")
+            ].filter(Boolean);
+            
+            // Buscar valor em todas as variações
+            for (const fieldName of fieldVariations) {
+              if (r.data[fieldName] !== undefined && r.data[fieldName] !== null) {
+                value = r.data[fieldName];
+                break;
+              }
+            }
+          }
+          
+          // Normalizar valores para comparação (case-insensitive, sem espaços extras)
+          const valueStr = `${value}`.trim().toLowerCase();
+          const filterStr = `${f.value}`.trim().toLowerCase();
+          
+          // Aplicar operação de filtro
+          if (f.op === 'eq') {
+            if (valueStr !== filterStr) {
+              return false; // Não corresponde, excluir registro
+            }
+          } else if (f.op === 'contains') {
+            if (!valueStr.includes(filterStr)) {
+              return false; // Não contém, excluir registro
+            }
+          }
         }
-        return true;
+        return true; // Passou em todos os filtros
       });
     }
     
     const result = filtered.map(r => ({ ...r, data: r.data || {} }));
+    
+    // Debug: log do resultado
+    console.log(`✅ /api/filter: Retornando ${result.length} registro(s) de ${allRows.length} total após filtros`);
+    if (result.length > 0 && result.length < allRows.length) {
+      // Se houve filtragem, mostrar amostra
+      const sample = result[0];
+      console.log('🔍 /api/filter: Primeiro registro filtrado:', {
+        id: sample.id,
+        canal: sample.canal || sample.data?.Canal || sample.data?.canal,
+        tipo: sample.tipoDeManifestacao || sample.data?.Tipo || sample.data?.tipo
+      });
+    } else if (result.length === allRows.length && filters.length > 0) {
+      // AVISO: Filtros não foram aplicados corretamente
+      console.warn('⚠️ /api/filter: ATENÇÃO - Filtros não reduziram o resultado!');
+      console.warn('⚠️ Filtros aplicados:', JSON.stringify(filters, null, 2));
+      const sample = allRows[0];
+      console.warn('⚠️ Primeiro registro (não filtrado):', {
+        id: sample.id,
+        canal: sample.canal || sample.data?.Canal || sample.data?.canal,
+        tipo: sample.tipoDeManifestacao || sample.data?.Tipo || sample.data?.tipo,
+        dataKeys: sample.data ? Object.keys(sample.data).slice(0, 10) : []
+      });
+    }
     
     return res.json(result);
   } catch (error) {

@@ -62,6 +62,11 @@ model Record {
   @@index([status, tema])
   @@index([unidadeCadastro, dataCriacaoIso])
   @@index([servidor, dataCriacaoIso])
+  // OTIMIZAÇÃO: Índices adicionais para queries frequentes
+  @@index([servidor, dataCriacaoIso, status])
+  @@index([orgaos, status, dataCriacaoIso])
+  @@index([tema, dataCriacaoIso, status])
+  @@index([unidadeCadastro, status, dataCriacaoIso])
   
   @@map("records")
 }

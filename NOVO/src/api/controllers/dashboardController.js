@@ -54,7 +54,7 @@ export async function getDashboardData(req, res, prisma) {
         // Por mês (usar função otimizada)
         optimizedGroupByMonth(prisma, where, { dateFilter: true, limit: 24 }),
         
-        // Por dia (últimos 30 dias) - usar dados da planilha
+        // Por dia (últimos 30 dias) - OTIMIZADO: usar agregação do MongoDB
         (async () => {
           const today = new Date();
           const d30 = new Date(today);
@@ -62,30 +62,61 @@ export async function getDashboardData(req, res, prisma) {
           const last30Str = d30.toISOString().slice(0, 10);
           const todayStr = today.toISOString().slice(0, 10);
           
-          // Buscar registros que têm data (usar dados da planilha)
-          const rows = await prisma.record.findMany({
-            where: {
+          // OTIMIZAÇÃO: Usar groupBy com filtro de dataCriacaoIso (campo indexado)
+          // Isso é muito mais rápido que buscar todos os registros
+          try {
+            const whereWithDate = {
               ...where,
-              OR: [
-                { dataDaCriacao: { not: null } },
-                { dataCriacaoIso: { not: null } }
-              ]
-            },
-            select: { dataCriacaoIso: true, dataDaCriacao: true, data: true },
-            take: 100000
-          });
-          
-          const dayMap = new Map();
-          for (const r of rows) {
-            const dataCriacao = getDataCriacao(r);
-            if (dataCriacao && dataCriacao >= last30Str && dataCriacao <= todayStr) {
-              dayMap.set(dataCriacao, (dayMap.get(dataCriacao) || 0) + 1);
+              dataCriacaoIso: {
+                gte: last30Str,
+                lte: todayStr
+              }
+            };
+            
+            // Buscar registros apenas dos últimos 30 dias com dataCriacaoIso
+            const rows = await prisma.record.findMany({
+              where: whereWithDate,
+              select: { dataCriacaoIso: true },
+              take: 50000 // Limite reduzido (apenas últimos 30 dias)
+            });
+            
+            // Agrupar por dia
+            const dayMap = new Map();
+            for (const r of rows) {
+              if (r.dataCriacaoIso) {
+                dayMap.set(r.dataCriacaoIso, (dayMap.get(r.dataCriacaoIso) || 0) + 1);
+              }
             }
+            
+            // Se não encontrou dados com dataCriacaoIso, usar fallback
+            if (dayMap.size === 0) {
+              const fallbackRows = await prisma.record.findMany({
+                where: {
+                  ...where,
+                  OR: [
+                    { dataCriacaoIso: { gte: last30Str } },
+                    { dataDaCriacao: { contains: todayStr.substring(0, 7) } }
+                  ]
+                },
+                select: { dataCriacaoIso: true, dataDaCriacao: true, data: true },
+                take: 30000 // Limite reduzido para fallback
+              });
+              
+              for (const r of fallbackRows) {
+                const dataCriacao = getDataCriacao(r);
+                if (dataCriacao && dataCriacao >= last30Str && dataCriacao <= todayStr) {
+                  dayMap.set(dataCriacao, (dayMap.get(dataCriacao) || 0) + 1);
+                }
+              }
+            }
+            
+            return Array.from(dayMap.entries())
+              .map(([date, count]) => ({ date, count }))
+              .sort((a, b) => a.date.localeCompare(b.date));
+          } catch (error) {
+            console.error('❌ Erro ao buscar dados por dia:', error);
+            return [];
           }
-          
-          return Array.from(dayMap.entries())
-            .map(([date, count]) => ({ date, count }))
-            .sort((a, b) => a.date.localeCompare(b.date));
         })(),
         
         // Por tema

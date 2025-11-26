@@ -98,6 +98,38 @@
       .skeleton { background: rgba(255,255,255,0.06); }
       body.light-mode .skeleton { background: rgba(148,163,184,0.15); }
       
+      /* Estilos para gráficos e KPIs clicáveis e interligados */
+      .chart-clickable {
+        transition: all 0.2s ease;
+      }
+      .chart-clickable:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 20px rgba(34, 211, 238, 0.2);
+      }
+      
+      .kpi-clickable {
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+      }
+      .kpi-clickable:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        border-color: rgba(34, 211, 238, 0.3);
+      }
+      .kpi-clickable.kpi-active {
+        border-color: rgba(34, 211, 238, 0.5) !important;
+        background: rgba(34, 211, 238, 0.05) !important;
+        box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+      }
+      
+      body.light-mode .kpi-clickable:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+      body.light-mode .kpi-clickable.kpi-active {
+        border-color: rgba(34, 211, 238, 0.4) !important;
+        background: rgba(34, 211, 238, 0.1) !important;
+      }
+      
       canvas { max-height: 340px; }
       
       /* Botão de alternância de tema */
@@ -529,6 +561,7 @@
             <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📊 Análises Principais</div>
             <div data-page="orgao-mes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏢 Por Órgão e Mês</div>
             <div data-page="tempo-medio" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏱️ Tempo Médio</div>
+            <div data-page="vencimento" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏰ Vencimento</div>
             <div data-page="tema" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📑 Por Tema</div>
             <div data-page="assunto" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📝 Por Assunto</div>
             <div data-page="cadastrante" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">👤 Por Cadastrante</div>
@@ -905,23 +938,116 @@
         <!-- Página: Por Órgão e Mês -->
         <section id="page-orgao-mes" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Por Órgão e Mês</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">Por Órgão e Mês</h2>
+              <div class="text-xs text-slate-400">Análise detalhada de manifestações</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalOrgaos" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Órgãos Únicos</div>
+                <div id="kpiOrgaosUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Órgão</div>
+                <div id="kpiMediaOrgao" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Período Analisado</div>
+                <div id="kpiPeriodo" class="text-lg font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
-          <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+          
+          <div class="grid grid-cols-12 gap-6 mb-6">
+            <!-- Lista de Órgãos -->
+            <div class="col-span-12 lg:col-span-5 glass rounded-2xl p-5">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold text-xl text-cyan-400">Manifestações por Órgão</h3>
-                <div class="text-xs text-slate-400">Total: <span id="totalOrgaos">—</span></div>
+                <div class="text-xs text-slate-400">Total: <span id="totalOrgaos" class="font-bold text-cyan-300">—</span></div>
               </div>
-              <div id="listaOrgaos" class="space-y-2 max-h-[600px] overflow-y-auto">
+              
+              <!-- Barra de Busca -->
+              <div class="mb-4">
+                <input 
+                  type="text" 
+                  id="searchOrgaos" 
+                  placeholder="🔍 Buscar órgão..." 
+                  class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                />
+              </div>
+              
+              <!-- Controles de Ordenação -->
+              <div class="flex items-center gap-2 mb-4">
+                <button 
+                  id="btnSortOrgaos" 
+                  class="px-3 py-1 text-xs bg-slate-800/50 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-700/50 transition-colors"
+                  onclick="toggleSortOrgaos()"
+                >
+                  Ordenar: <span id="sortMode">Maior → Menor</span>
+                </button>
+                <button 
+                  id="btnShowAllOrgaos" 
+                  class="px-3 py-1 text-xs bg-slate-800/50 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-700/50 transition-colors"
+                  onclick="showAllOrgaos()"
+                >
+                  Mostrar Todos
+                </button>
+              </div>
+              
+              <div id="listaOrgaos" class="space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar">
                 <div class="text-center text-slate-400 py-4">Carregando...</div>
               </div>
             </div>
-            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+            
+            <!-- Gráfico Mensal -->
+            <div class="col-span-12 lg:col-span-7 glass rounded-2xl p-5">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold text-xl text-violet-400">Manifestações por Mês</h3>
+                <div class="text-xs text-slate-400">
+                  <span id="infoMensal">Clique em um mês para filtrar</span>
+                </div>
               </div>
-              <canvas id="chartOrgaoMes"></canvas>
+              
+              <!-- Estatísticas do Gráfico Mensal -->
+              <div class="grid grid-cols-3 gap-3 mb-4">
+                <div class="glass rounded-lg p-3 border border-violet-500/20">
+                  <div class="text-xs text-slate-400 mb-1">Mês com Mais</div>
+                  <div id="mesMax" class="text-sm font-bold text-violet-300">—</div>
+                </div>
+                <div class="glass rounded-lg p-3 border border-violet-500/20">
+                  <div class="text-xs text-slate-400 mb-1">Mês com Menos</div>
+                  <div id="mesMin" class="text-sm font-bold text-violet-300">—</div>
+                </div>
+                <div class="glass rounded-lg p-3 border border-violet-500/20">
+                  <div class="text-xs text-slate-400 mb-1">Média Mensal</div>
+                  <div id="mesMedia" class="text-sm font-bold text-violet-300">—</div>
+                </div>
+              </div>
+              
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-4">
+                <canvas id="chartOrgaoMes"></canvas>
+              </div>
+              
+              <!-- Legenda e Informações -->
+              <div id="infoOrgaoMes" class="mt-4 p-3 bg-slate-800/50 rounded-lg text-xs text-slate-400">
+                💡 Dica: Clique em um mês no gráfico para filtrar os dados por período
+              </div>
+            </div>
+          </div>
+          
+          <!-- Gráfico de Comparação (Opcional) -->
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold text-lg text-amber-400 mb-4">Top 10 Órgãos</h3>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-4">
+                <canvas id="chartTopOrgaosBar"></canvas>
+              </div>
             </div>
           </div>
         </section>
@@ -1036,6 +1162,69 @@
                   <canvas id="chartTempoMedioUnidadeMes"></canvas>
                 </div>
                 <div id="legendTempoMedioUnidadeMes" class="space-y-2 max-h-[200px] overflow-y-auto text-xs"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Página: Vencimento -->
+        <section id="page-vencimento" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">⏰ Protocolos Próximos de Vencer</h2>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label for="selectFiltroVencimento" class="block text-sm font-medium text-slate-300 mb-2">
+                  Filtrar por prazo:
+                </label>
+                <select 
+                  id="selectFiltroVencimento" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="vencidos">Vencidos</option>
+                  <option value="3">Vencendo em até 3 dias</option>
+                  <option value="7">Vencendo em até 7 dias</option>
+                  <option value="15">Vencendo em até 15 dias</option>
+                  <option value="30">Vencendo em até 30 dias</option>
+                </select>
+              </div>
+              <div>
+                <label for="selectSecretariaVencimento" class="block text-sm font-medium text-slate-300 mb-2">
+                  Filtrar por secretaria:
+                </label>
+                <select 
+                  id="selectSecretariaVencimento" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todas as secretarias</option>
+                </select>
+              </div>
+              <div class="text-right">
+                <div class="text-sm text-slate-400 mb-1">Total de protocolos</div>
+                <div class="text-3xl font-extrabold text-cyan-300">
+                  <span id="counterVencimento">0</span>
+                </div>
+                <div class="text-xs text-slate-500 mt-1">
+                  <span id="filtroLabelVencimento">vencidos</span>
+                </div>
+              </div>
+            </div>
+          </header>
+          
+          <div class="glass rounded-2xl p-6">
+            <div class="mb-4">
+              <h3 class="font-semibold text-lg text-cyan-400 mb-2">Lista de Protocolos</h3>
+              <p class="text-sm text-slate-400">
+                Protocolos não concluídos com prazo de vencimento próximo ou já vencidos.
+                <br>
+                <span class="text-xs">Ouvidoria: 30 dias | SIC: 20 dias</span>
+              </p>
+            </div>
+            <div id="tableVencimento" class="overflow-x-auto">
+              <div class="text-center py-8 text-slate-400">
+                <div class="text-2xl mb-2 animate-spin">⏳</div>
+                <div>Carregando protocolos...</div>
               </div>
             </div>
           </div>
@@ -2036,6 +2225,7 @@
     <!-- Scripts -->
     <script src="/scripts/utils/lazy-libraries.js"></script>
     <script src="/scripts/utils/logger.js"></script>
+    <script src="/scripts/utils/timerManager.js"></script>
     <script src="/scripts/utils/dateUtils.js" defer></script>
     <script src="/scripts/core/config.js"></script>
     <script src="/scripts/core/dataLoader.js"></script>
@@ -2047,6 +2237,7 @@
     <script src="/scripts/pages/overview.js" defer></script>
     <script src="/scripts/pages/orgao-mes.js" defer></script>
     <script src="/scripts/pages/tempo-medio.js" defer></script>
+    <script src="/scripts/pages/vencimento.js" defer></script>
     <script src="/scripts/pages/tema.js" defer></script>
     <script src="/scripts/pages/assunto.js" defer></script>
     <script src="/scripts/pages/tipo.js" defer></script>
