@@ -74,7 +74,14 @@ async function loadVencimento(forceRefresh = false) {
     
     // Carregar dados (sempre forçar refresh quando há filtro de secretaria)
     const forceRefreshComFiltros = forceRefresh || !!secretariaFiltro;
-    const data = await window.dataLoader?.load(url, {
+    
+    // Verificar se dataLoader está disponível
+    if (!window.dataLoader || !window.dataLoader.load) {
+      console.error('❌ dataLoader não está disponível');
+      throw new Error('dataLoader não está disponível');
+    }
+    
+    const data = await window.dataLoader.load(url, {
       useDataStore: !forceRefreshComFiltros,
       ttl: 2 * 60 * 1000, // Cache de 2 minutos
       fallback: { total: 0, filtro, protocolos: [] }
@@ -519,38 +526,60 @@ async function recarregarVencimentos() {
 }
 
 // Exportar função globalmente - GARANTIR que sempre seja exportada
-try {
-  window.loadVencimento = loadVencimento;
+// IMPORTANTE: Executar imediatamente, não esperar por dependências
+(function() {
+  'use strict';
   
-  // Verificar se foi exportada corretamente
-  if (window.loadVencimento && typeof window.loadVencimento === 'function') {
-    if (window.Logger) {
-      window.Logger.debug('✅ Função loadVencimento exportada com sucesso');
+  try {
+    // Exportar função imediatamente
+    if (typeof loadVencimento === 'function') {
+      window.loadVencimento = loadVencimento;
+      console.log('✅ loadVencimento exportada');
+    } else {
+      console.error('❌ loadVencimento não é uma função');
     }
-  } else {
-    console.error('❌ Erro: loadVencimento não foi exportada corretamente');
+  } catch (error) {
+    console.error('❌ Erro ao exportar loadVencimento:', error);
   }
-} catch (error) {
-  console.error('❌ Erro ao exportar loadVencimento:', error);
-  // Tentar exportar novamente como fallback
-  if (typeof loadVencimento === 'function') {
-    window.loadVencimento = loadVencimento;
-  }
-}
-
-// Inicializar listeners quando o DOM estiver pronto
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
+  
+  // Função auxiliar para inicializar quando tudo estiver pronto
+  function initWhenReady() {
+    try {
+      // Verificar se elementos DOM existem
+      const page = document.getElementById('page-vencimento');
+      if (!page) {
+        // Tentar novamente depois
+        setTimeout(initWhenReady, 500);
+        return;
+      }
+      
+      // Inicializar listeners
       initVencimentoListeners();
-    }, 500);
-  });
-} else {
-  setTimeout(() => {
-    initVencimentoListeners();
-  }, 500);
-}
-
-if (window.Logger) {
-  window.Logger.debug('✅ Página Vencimento carregada');
-}
+      
+      if (window.Logger) {
+        window.Logger.debug('✅ Página Vencimento inicializada');
+      } else {
+        console.log('✅ Página Vencimento inicializada');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao inicializar página Vencimento:', error);
+    }
+  }
+  
+  // Inicializar quando o DOM estiver pronto
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(initWhenReady, 500);
+    });
+  } else {
+    // DOM já está pronto
+    setTimeout(initWhenReady, 500);
+  }
+  
+  // Log de carregamento
+  if (window.Logger) {
+    window.Logger.debug('✅ Script vencimento.js carregado');
+  } else {
+    console.log('✅ Script vencimento.js carregado');
+  }
+})();
