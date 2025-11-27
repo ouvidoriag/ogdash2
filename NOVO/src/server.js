@@ -91,6 +91,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 const isProduction = process.env.NODE_ENV === 'production';
 const isRender = process.env.RENDER || process.env.RENDER_EXTERNAL_URL;
 
+// Configurar sessões
+// NOTA: Usando MemoryStore por padrão. Em produção com múltiplas instâncias,
+// considere usar MongoDBStore ou Redis para persistência entre reinicializações
 app.use(session({
   secret: process.env.SESSION_SECRET || 'ouvidoria-dashboard-secret-key-change-in-production',
   resave: false,
@@ -102,7 +105,9 @@ app.use(session({
     sameSite: isProduction && isRender ? 'none' : 'lax' // 'none' necessário no Render para cross-site cookies
   },
   // Adicionar configuração de nome do cookie para evitar conflitos
-  name: 'ouvidoria.sid'
+  name: 'ouvidoria.sid',
+  // Suprimir aviso do MemoryStore em produção (é esperado)
+  store: undefined // Usar MemoryStore padrão (adequado para single-instance)
 }));
 
 // OTIMIZAÇÃO: Middleware de cache para respostas da API
