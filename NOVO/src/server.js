@@ -94,19 +94,6 @@ app.use(session({
   }
 }));
 
-// OTIMIZAÇÃO: Cache headers para arquivos estáticos
-app.use(express.static(publicDir, {
-  maxAge: '1y', // Cache de 1 ano para arquivos estáticos
-  etag: true,
-  lastModified: true,
-  setHeaders: (res, path) => {
-    // Arquivos JS, CSS, imagens: cache longo
-    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    }
-  }
-}));
-
 // OTIMIZAÇÃO: Middleware de cache para respostas da API
 app.use('/api', (req, res, next) => {
   // Endpoints que mudam frequentemente: cache curto (5 min)
@@ -142,6 +129,7 @@ app.use('/api/auth', authRoutes(prisma));
 // Depois registrar todas as outras rotas da API (protegidas)
 app.use('/api', requireAuth, apiRoutes(prisma, getMongoClient));
 
+// IMPORTANTE: Rotas de páginas ANTES do express.static para evitar conflitos
 // Rota raiz - página de login (pública)
 app.get('/', (_req, res) => {
   // Se já estiver autenticado, redirecionar para dashboard
@@ -169,6 +157,22 @@ app.get('/dashboard', requireAuth, (_req, res) => {
 app.get('/chat', requireAuth, (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
+
+// OTIMIZAÇÃO: Cache headers para arquivos estáticos
+// IMPORTANTE: Colocar DEPOIS das rotas de páginas para não interferir
+// index: false para não servir index.html automaticamente na rota /
+app.use(express.static(publicDir, {
+  index: false, // Não servir index.html automaticamente
+  maxAge: '1y', // Cache de 1 ano para arquivos estáticos
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // Arquivos JS, CSS, imagens: cache longo
+    if (filePath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
+}));
 
 // Catch-all: servir index.html para todas as outras rotas (SPA routing) - protegida
 // Exceção: não capturar /login e / (já tratadas acima)

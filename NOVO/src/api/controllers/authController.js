@@ -20,7 +20,15 @@ export async function login(req, res) {
       });
     }
 
-    const { prisma } = req;
+    if (!req.prisma) {
+      console.error('❌ Prisma não está disponível no request');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Erro de configuração do servidor' 
+      });
+    }
+
+    const prisma = req.prisma;
     
     // Buscar usuário no banco
     const user = await prisma.user.findUnique({
@@ -28,6 +36,7 @@ export async function login(req, res) {
     });
 
     if (!user) {
+      console.log(`⚠️ Tentativa de login com usuário inexistente: ${username.toLowerCase()}`);
       return res.status(401).json({ 
         success: false, 
         message: 'Usuário ou senha inválidos' 
@@ -38,6 +47,7 @@ export async function login(req, res) {
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
+      console.log(`⚠️ Senha incorreta para usuário: ${username.toLowerCase()}`);
       return res.status(401).json({ 
         success: false, 
         message: 'Usuário ou senha inválidos' 
@@ -49,6 +59,8 @@ export async function login(req, res) {
     req.session.username = user.username;
     req.session.isAuthenticated = true;
 
+    console.log(`✅ Login realizado com sucesso: ${user.username}`);
+
     res.json({
       success: true,
       message: 'Login realizado com sucesso',
@@ -58,7 +70,7 @@ export async function login(req, res) {
       }
     });
   } catch (error) {
-    console.error('Erro no login:', error);
+    console.error('❌ Erro no login:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Erro interno do servidor' 
