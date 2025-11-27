@@ -59,15 +59,27 @@ export async function login(req, res) {
     req.session.username = user.username;
     req.session.isAuthenticated = true;
 
-    console.log(`✅ Login realizado com sucesso: ${user.username}`);
-
-    res.json({
-      success: true,
-      message: 'Login realizado com sucesso',
-      user: {
-        id: user.id,
-        username: user.username
+    // IMPORTANTE: Salvar sessão explicitamente antes de enviar resposta
+    // Isso garante que a sessão seja persistida antes do redirect
+    req.session.save((err) => {
+      if (err) {
+        console.error('❌ Erro ao salvar sessão:', err);
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Erro ao criar sessão' 
+        });
       }
+
+      console.log(`✅ Login realizado com sucesso: ${user.username} (sessão: ${req.sessionID})`);
+
+      res.json({
+        success: true,
+        message: 'Login realizado com sucesso',
+        user: {
+          id: user.id,
+          username: user.username
+        }
+      });
     });
   } catch (error) {
     console.error('❌ Erro no login:', error);
@@ -93,7 +105,7 @@ export async function logout(req, res) {
         });
       }
       
-      res.clearCookie('connect.sid');
+      res.clearCookie('ouvidoria.sid');
       res.json({ 
         success: true, 
         message: 'Logout realizado com sucesso' 

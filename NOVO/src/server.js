@@ -72,6 +72,10 @@ async function getMongoClient() {
 // Inicializar aplicação Express
 const app = express();
 
+// IMPORTANTE: Configurar trust proxy para Render/Heroku funcionar corretamente
+// Isso permite que o Express confie nos headers X-Forwarded-* do proxy reverso
+app.set('trust proxy', 1);
+
 // Middlewares globais
 app.use(compression());
 app.use(cors({
@@ -83,15 +87,22 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Configurar sessões
+// IMPORTANTE: No Render, o cookie precisa de configurações específicas
+const isProduction = process.env.NODE_ENV === 'production';
+const isRender = process.env.RENDER || process.env.RENDER_EXTERNAL_URL;
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'ouvidoria-dashboard-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // HTTPS em produção
+    secure: isProduction && isRender ? 'auto' : isProduction, // 'auto' no Render detecta HTTPS automaticamente
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 horas
-  }
+    maxAge: 24 * 60 * 60 * 1000, // 24 horas
+    sameSite: isProduction && isRender ? 'none' : 'lax' // 'none' necessário no Render para cross-site cookies
+  },
+  // Adicionar configuração de nome do cookie para evitar conflitos
+  name: 'ouvidoria.sid'
 }));
 
 // OTIMIZAÇÃO: Middleware de cache para respostas da API

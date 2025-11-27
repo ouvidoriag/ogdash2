@@ -344,17 +344,17 @@ export function iniciarCronVencimentos(prismaClient) {
   
   prisma = prismaClient;
   
-  // Executar diariamente às 08:00
+  // Executar diariamente às 16:00
   // Formato: segundo minuto hora dia mês dia-da-semana
-  cron.schedule('0 8 * * *', async () => {
-    console.log('⏰ Executando verificação automática de vencimentos (8h)...');
+  cron.schedule('0 16 * * *', async () => {
+    console.log('⏰ Executando verificação automática de vencimentos (16h)...');
     await executarVerificacaoVencimentos();
   }, {
     scheduled: true,
     timezone: 'America/Sao_Paulo'
   });
   
-  console.log('✅ Cron de vencimentos iniciado (execução diária às 8h)');
+  console.log('✅ Cron de vencimentos iniciado (execução diária às 16h)');
 }
 
 /**
