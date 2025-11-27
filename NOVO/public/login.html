@@ -525,21 +525,45 @@
             }
         });
 
-        // Verificar se já está autenticado
+        // Verificar se já está autenticado (apenas uma vez ao carregar, com timeout)
+        let authCheckDone = false;
+        let authCheckTimeout = null;
+        
         (async () => {
+            if (authCheckDone) return;
+            authCheckDone = true;
+            
+            // Timeout de segurança para evitar loops
+            authCheckTimeout = setTimeout(() => {
+                authCheckDone = true;
+            }, 5000);
+            
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                
                 const response = await fetch('/api/auth/me', {
-                    credentials: 'include'
+                    credentials: 'include',
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.success) {
+                    if (data.success && data.user) {
+                        clearTimeout(authCheckTimeout);
+                        // Já está autenticado, redirecionar para dashboard
                         window.location.href = '/dashboard';
+                        return;
                     }
                 }
+                // Se não estiver autenticado (401), continuar na página de login
             } catch (error) {
-                // Não autenticado, continuar na página de login
+                // Não autenticado ou erro de rede, continuar na página de login
+                // Não mostrar erro, é esperado quando não está logado
+            } finally {
+                clearTimeout(authCheckTimeout);
             }
         })();
 

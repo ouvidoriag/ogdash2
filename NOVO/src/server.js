@@ -139,13 +139,13 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDir, 'login.html'));
 });
 
-// Rota de login (pública) - redireciona para raiz
+// Rota de login (pública) - servir login.html diretamente
 app.get('/login', (_req, res) => {
   // Se já estiver autenticado, redirecionar para dashboard
   if (_req.session && _req.session.isAuthenticated) {
     return res.redirect('/dashboard');
   }
-  res.redirect('/');
+  res.sendFile(path.join(publicDir, 'login.html'));
 });
 
 // Rota do dashboard - servir index.html (protegida)

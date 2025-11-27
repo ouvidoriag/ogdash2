@@ -111,17 +111,26 @@ export async function logout(req, res) {
 /**
  * GET /api/auth/me
  * Retorna informações do usuário autenticado
+ * Não requer autenticação - apenas verifica se está autenticado
  */
 export async function getCurrentUser(req, res) {
   try {
-    if (!req.session.isAuthenticated) {
+    // Verificar se está autenticado (sem usar requireAuth para evitar loops)
+    if (!req.session || !req.session.isAuthenticated) {
       return res.status(401).json({ 
         success: false, 
         message: 'Não autenticado' 
       });
     }
 
-    const { prisma } = req;
+    if (!req.prisma) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Erro de configuração do servidor' 
+      });
+    }
+
+    const prisma = req.prisma;
     const user = await prisma.user.findUnique({
       where: { id: req.session.userId },
       select: {

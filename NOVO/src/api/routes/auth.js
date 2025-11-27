@@ -22,7 +22,8 @@ export default function authRoutes(prisma) {
   router.post('/logout', requireAuth, logout);
 
   // GET /api/auth/me - Informações do usuário autenticado
-  router.get('/me', requireAuth, getCurrentUser);
+  // Não usa requireAuth para evitar loops de redirecionamento
+  router.get('/me', getCurrentUser);
 
   return router;
 }

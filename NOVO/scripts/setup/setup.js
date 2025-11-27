@@ -65,7 +65,8 @@ async function generatePrismaClient(maxRetries = 3, delay = 2000) {
       }
       
       // Usar --schema para garantir que encontre o schema
-      const schemaFile = path.join(projectRoot, 'prisma', 'schema.prisma');
+      // Usar schemaPath que já foi calculado e validado
+      const schemaFile = schemaPath || path.join(projectRoot, 'prisma', 'schema.prisma');
       execSync(`npx prisma generate --schema="${schemaFile}"`, { 
         cwd: projectRoot, 
         stdio: 'inherit',
