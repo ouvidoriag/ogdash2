@@ -155,6 +155,7 @@ window.dataLoader = {
         const res = await fetch(endpoint, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', // Importante: enviar cookies de sessão
           signal: controller.signal,
           cache: 'no-cache'
         });

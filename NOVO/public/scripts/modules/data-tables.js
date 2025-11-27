@@ -59,6 +59,7 @@ async function loadTable(limit = 50, filters = null) {
           headers: {
             'Content-Type': 'application/json'
           },
+          credentials: 'include', // Enviar cookies de sessão
           body: JSON.stringify(filterRequest)
         });
         

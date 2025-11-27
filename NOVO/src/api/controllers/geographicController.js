@@ -13,7 +13,8 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // projectRoot deve apontar para a pasta NOVO (mesmo que o server.js)
-const projectRoot = path.join(__dirname, '../..');
+// __dirname = NOVO/src/api/controllers, então precisamos subir 3 níveis para chegar em NOVO
+const projectRoot = path.join(__dirname, '../../..');
 
 /**
  * Carrega dados de secretarias e distritos
@@ -93,8 +94,39 @@ function loadSecretariasDistritos() {
  */
 function loadUnidadesSaude() {
   try {
-    const dataPath = path.join(projectRoot, 'data', 'unidades-saude.json');
-    return JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    // Tentar múltiplos caminhos possíveis
+    const possiblePaths = [
+      path.join(projectRoot, 'data', 'unidades-saude.json'), // NOVO/data/...
+      path.join(__dirname, '../../data', 'unidades-saude.json'), // Relativo ao controller
+      path.join(process.cwd(), 'data', 'unidades-saude.json'), // Onde o processo está rodando
+      path.join(process.cwd(), 'NOVO', 'data', 'unidades-saude.json'), // Se rodando da raiz
+    ];
+    
+    let dataPath = null;
+    for (const possiblePath of possiblePaths) {
+      if (fs.existsSync(possiblePath)) {
+        dataPath = possiblePath;
+        break;
+      }
+    }
+    
+    if (!dataPath) {
+      console.error('❌ Arquivo unidades-saude.json não encontrado em nenhum dos caminhos!');
+      return { unidades: [], estatisticas: {} };
+    }
+    
+    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    
+    // Validar estrutura
+    if (!data || typeof data !== 'object') {
+      console.error('❌ Dados inválidos: não é um objeto');
+      return { unidades: [], estatisticas: {} };
+    }
+    
+    const unidadesCount = Array.isArray(data.unidades) ? data.unidades.length : 0;
+    console.log(`✅ Dados de unidades de saúde carregados: ${unidadesCount} unidades`);
+    
+    return data;
   } catch (error) {
     console.error('❌ Erro ao carregar unidades-saude.json:', error);
     return { unidades: [], estatisticas: {} };

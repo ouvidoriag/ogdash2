@@ -16,9 +16,30 @@ let DISTRICTS_DATA = null;
 function loadDistrictsData() {
   if (!DISTRICTS_DATA) {
     try {
-      const dataPath = path.join(projectRoot, 'data', 'secretarias-distritos.json');
+      // Tentar múltiplos caminhos possíveis
+      const possiblePaths = [
+        path.join(projectRoot, 'data', 'secretarias-distritos.json'), // NOVO/data/...
+        path.join(__dirname, '../../data', 'secretarias-distritos.json'), // Relativo ao utils
+        path.join(process.cwd(), 'data', 'secretarias-distritos.json'), // Onde o processo está rodando
+        path.join(process.cwd(), 'NOVO', 'data', 'secretarias-distritos.json'), // Se rodando da raiz
+      ];
+      
+      let dataPath = null;
+      for (const possiblePath of possiblePaths) {
+        if (fs.existsSync(possiblePath)) {
+          dataPath = possiblePath;
+          break;
+        }
+      }
+      
+      if (!dataPath) {
+        console.error('❌ Arquivo secretarias-distritos.json não encontrado em nenhum dos caminhos!');
+        DISTRICTS_DATA = {};
+        return DISTRICTS_DATA;
+      }
+      
       const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-      DISTRICTS_DATA = data.distritos;
+      DISTRICTS_DATA = data.distritos || {};
     } catch (error) {
       console.error('❌ Erro ao carregar dados de distritos:', error);
       DISTRICTS_DATA = {};

@@ -25,9 +25,13 @@ import aiRoutes from './ai.js';
 import dataRoutes from './data.js';
 import geographicRoutes from './geographic.js';
 import zeladoriaRoutes from './zeladoria.js';
+import notificationRoutes from './notifications.js';
 
 export default function apiRoutes(prisma, getMongoClient) {
   const router = express.Router();
+  
+  // Nota: Rotas de autenticação (/api/auth) são registradas separadamente no server.js
+  // para que sejam públicas (sem requireAuth)
   
   // Rotas de agregação - Análises e agregações de dados
   router.use('/aggregate', aggregateRoutes(prisma, getMongoClient));
@@ -52,6 +56,9 @@ export default function apiRoutes(prisma, getMongoClient) {
   
   // Rotas de Zeladoria - Dados de serviços de zeladoria
   router.use('/zeladoria', zeladoriaRoutes(prisma, getMongoClient));
+  
+  // Rotas de Notificações - Sistema de notificações por email
+  router.use('/notifications', notificationRoutes(prisma));
   
   return router;
 }

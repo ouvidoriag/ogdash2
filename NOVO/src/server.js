@@ -10,14 +10,19 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import compression from 'compression';
+import session from 'express-session';
 import { PrismaClient } from '@prisma/client';
 import { MongoClient } from 'mongodb';
 
 // Importar rotas organizadas
 import apiRoutes from './api/routes/index.js';
+import authRoutes from './api/routes/auth.js';
 import { initializeDatabase } from './config/database.js';
 import { initializeCache } from './config/cache.js';
 import { initializeGemini } from './utils/geminiHelper.js';
+import { iniciarScheduler } from './services/email-notifications/scheduler.js';
+import { iniciarCronVencimentos } from './cron/vencimentos.cron.js';
+import { requireAuth } from './api/middleware/authMiddleware.js';
 
 // Resolver caminho absoluto
 const __filename = fileURLToPath(import.meta.url);
@@ -69,10 +74,25 @@ const app = express();
 
 // Middlewares globais
 app.use(compression());
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true // Permitir cookies
+}));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Configurar sessões
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'ouvidoria-dashboard-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // HTTPS em produção
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 horas
+  }
+}));
 
 // OTIMIZAÇÃO: Cache headers para arquivos estáticos
 app.use(express.static(publicDir, {
@@ -105,7 +125,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Health check
+// Health check (público)
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', version: '3.0.0' });
 });
@@ -116,10 +136,43 @@ app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req, res) => {
 });
 
 // Rotas da API
-app.use('/api', apiRoutes(prisma, getMongoClient));
+// Registrar rotas de autenticação primeiro (públicas)
+app.use('/api/auth', authRoutes(prisma));
 
-// Rota principal - servir index.html
+// Depois registrar todas as outras rotas da API (protegidas)
+app.use('/api', requireAuth, apiRoutes(prisma, getMongoClient));
+
+// Rota raiz - página de login (pública)
 app.get('/', (_req, res) => {
+  // Se já estiver autenticado, redirecionar para dashboard
+  if (_req.session && _req.session.isAuthenticated) {
+    return res.redirect('/dashboard');
+  }
+  res.sendFile(path.join(publicDir, 'login.html'));
+});
+
+// Rota de login (pública) - redireciona para raiz
+app.get('/login', (_req, res) => {
+  // Se já estiver autenticado, redirecionar para dashboard
+  if (_req.session && _req.session.isAuthenticated) {
+    return res.redirect('/dashboard');
+  }
+  res.redirect('/');
+});
+
+// Rota do dashboard - servir index.html (protegida)
+app.get('/dashboard', requireAuth, (_req, res) => {
+  res.sendFile(path.join(publicDir, 'index.html'));
+});
+
+// Rota para página de chat (SPA routing) - protegida
+app.get('/chat', requireAuth, (_req, res) => {
+  res.sendFile(path.join(publicDir, 'index.html'));
+});
+
+// Catch-all: servir index.html para todas as outras rotas (SPA routing) - protegida
+// Exceção: não capturar /login e / (já tratadas acima)
+app.get('*', requireAuth, (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
@@ -162,6 +215,22 @@ process.on('SIGTERM', async () => {
     // Inicializar Gemini
     initializeGemini();
     
+    // Inicializar scheduler de notificações por email
+    try {
+      iniciarScheduler(prisma);
+      console.log('📧 Scheduler de notificações por email iniciado');
+    } catch (error) {
+      console.warn('⚠️ Erro ao iniciar scheduler de notificações:', error.message);
+    }
+    
+    // Inicializar cron de vencimentos (sistema automático simplificado)
+    try {
+      iniciarCronVencimentos(prisma);
+      console.log('🔔 Cron de vencimentos automático iniciado');
+    } catch (error) {
+      console.warn('⚠️ Erro ao iniciar cron de vencimentos:', error.message);
+    }
+    
     // Iniciar servidor
     const port = Number(process.env.PORT ?? 3000);
     app.listen(port, () => {
@@ -177,4 +246,5 @@ process.on('SIGTERM', async () => {
 })();
 
 export default app;
+
 

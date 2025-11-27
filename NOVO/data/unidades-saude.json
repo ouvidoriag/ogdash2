@@ -420,9 +420,9 @@
     }
   ],
   "estatisticas": {
-    "totalUnidades": 37,
+    "totalUnidades": 38,
     "porDistrito": {
-      "1º Distrito - Duque de Caxias (Sede)": 20,
+      "1º Distrito - Duque de Caxias (Sede)": 21,
       "2º Distrito - Campos Elíseos": 5,
       "3º Distrito - Imbariê": 7,
       "4º Distrito - Xerém": 5
@@ -430,8 +430,8 @@
     "porTipo": {
       "UPA": 4,
       "UPH": 6,
-      "Hospital": 3,
-      "Hospital Especializado": 4,
+      "Hospital": 2,
+      "Hospital Especializado": 5,
       "Centro de Saúde": 1,
       "Centro Especializado": 6,
       "CAPS": 4,

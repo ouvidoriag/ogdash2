@@ -43,6 +43,72 @@ function loadHome() {
   return Promise.resolve();
 }
 
+/**
+ * Criar wrapper que aguarda função estar disponível
+ */
+function createWaitForFunctionWrapper(funcName) {
+  return async function(...args) {
+    // Tentar encontrar função imediatamente
+    let func = window[funcName];
+    if (func && typeof func === 'function') {
+      return func(...args);
+    }
+    
+    // Se não encontrou, aguardar até estar disponível (máximo 30 tentativas = 3 segundos)
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const maxAttempts = 30; // Aumentado para 30 tentativas (3 segundos)
+      const delay = 100; // 100ms entre tentativas
+      
+      const checkAndExecute = () => {
+        attempts++;
+        func = window[funcName];
+        
+        if (func && typeof func === 'function') {
+          // Função encontrada, executar
+          if (window.Logger) {
+            window.Logger.debug(`✅ Função ${funcName} encontrada após ${attempts} tentativa(s)`);
+          }
+          try {
+            const result = func(...args);
+            const promise = result && typeof result.then === 'function' ? result : Promise.resolve(result);
+            promise.then(resolve).catch(resolve);
+          } catch (error) {
+            if (window.Logger) {
+              window.Logger.error(`Erro ao executar ${funcName}:`, error);
+            }
+            resolve();
+          }
+        } else if (attempts >= maxAttempts) {
+          // Timeout - função não encontrada após todas as tentativas
+          // Verificar se o script pode estar com erro
+          const scripts = Array.from(document.querySelectorAll('script[src]'));
+          const scriptSrc = scripts.find(s => s.src && s.src.includes('vencimento.js'));
+          
+          if (window.Logger) {
+            const debugInfo = {
+              funcName,
+              attempts,
+              windowHasFunc: typeof window[funcName],
+              scriptLoaded: !!scriptSrc,
+              scriptSrc: scriptSrc?.src || 'não encontrado'
+            };
+            window.Logger.warn(`Função ${funcName} não encontrada após ${maxAttempts} tentativas`, debugInfo);
+          }
+          resolve();
+        } else {
+          // Tentar novamente após delay
+          const timerId = window.timerManager 
+            ? window.timerManager.setTimeout(checkAndExecute, delay, `waitFor-${funcName}-retry`)
+            : setTimeout(checkAndExecute, delay);
+        }
+      };
+      
+      checkAndExecute();
+    });
+  };
+}
+
 function getPageLoader(page) {
   if (page === 'home') return loadHome;
   if (page === 'unidades-saude') return window.loadUnidadesSaude || (() => Promise.resolve());
@@ -81,6 +147,7 @@ function getPageLoader(page) {
     'orgao-mes': 'loadOrgaoMes',
     'tempo-medio': 'loadTempoMedio',
     'vencimento': 'loadVencimento',
+    'filtros-avancados': 'loadFiltrosAvancados',
     'tema': 'loadTema',
     'assunto': 'loadAssunto',
     'cadastrante': 'loadCadastrante',
@@ -115,6 +182,9 @@ function getPageLoader(page) {
     if (func && typeof func === 'function') {
       return func;
     }
+    
+    // Se a função não está disponível, criar um wrapper que aguarda ela estar disponível
+    return createWaitForFunctionWrapper(funcName);
   }
   
   // Fallback: tentar gerar nome da função dinamicamente
@@ -128,7 +198,8 @@ function getPageLoader(page) {
     return window.data[loaderName];
   }
   
-  return null;
+  // Tentar aguardar função dinâmica também
+  return createWaitForFunctionWrapper(loaderName);
 }
 
 async function loadSection(page) {
@@ -244,11 +315,24 @@ async function preloadData() {
   }
 }
 
+function initUrlRouting() {
+  // Verificar se há rota na URL
+  const path = window.location.pathname;
+  
+  if (path === '/chat' || path === '/chat/') {
+    // Carregar página de chat
+    loadSection('cora-chat');
+    // Atualizar URL sem recarregar a página
+    window.history.replaceState({}, '', '/');
+  }
+}
+
 function init() {
   initSectionSelector();
   initPage();
   initNavigation();
   initEventListeners();
+  initUrlRouting(); // Adicionar roteamento de URL
   
   // Usar Timer Manager se disponível, senão fallback para setTimeout
   if (window.timerManager) {

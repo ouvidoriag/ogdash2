@@ -145,3 +145,40 @@ model Zeladoria {
   @@map("zeladoria")
 }
 
+// Modelo para rastrear notificações de email enviadas
+model NotificacaoEmail {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  protocolo         String   // Protocolo da demanda
+  secretaria        String   // Secretaria/órgão responsável
+  emailSecretaria   String   // Email da secretaria
+  tipoNotificacao   String   // '15_dias' | 'vencimento' | '60_dias_vencido'
+  dataVencimento    String   // Data de vencimento em formato YYYY-MM-DD
+  diasRestantes     Int      // Dias restantes no momento do envio
+  enviadoEm         DateTime @default(now()) // Data/hora do envio
+  status            String   @default("enviado") // 'enviado' | 'erro' | 'pendente'
+  mensagemErro      String?  // Mensagem de erro se houver
+  messageId         String?  // ID da mensagem no Gmail (para rastreamento)
+  
+  // Índices para consultas eficientes
+  @@index([protocolo])
+  @@index([secretaria])
+  @@index([tipoNotificacao])
+  @@index([dataVencimento])
+  @@index([enviadoEm])
+  @@index([status])
+  @@index([protocolo, tipoNotificacao]) // Evitar duplicatas
+  
+  @@map("notificacoes_email")
+}
+
+// Modelo para usuários do sistema
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  username  String   @unique // Nome de usuário único (já cria índice automaticamente)
+  password  String   // Senha (hash bcrypt)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("users")
+}
+

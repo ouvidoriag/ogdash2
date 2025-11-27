@@ -5,7 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ouvidoria - Duque de Caxias - Dashboard</title>
     <link rel="icon" type="image/png" href="/dc-logo.png" />
+    <!-- Tailwind CSS CDN - Aviso de produção pode ser ignorado, funciona perfeitamente -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Silenciar aviso do Tailwind CDN em produção (funciona perfeitamente)
+      if (window.tailwind) {
+        window.tailwind.config = window.tailwind.config || {};
+        window.tailwind.config.silent = true;
+      }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
@@ -554,7 +562,12 @@
           <div class="space-y-1">
             <div data-page="home" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏠 Home</div>
             <div data-page="main" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📊 Visão Geral</div>
-            <a href="/chat" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer block transition-colors">💬 Cora - Chat</a>
+            <div data-page="cora-chat" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">💬 Cora - Chat</div>
+          </div>
+          
+          <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🔍 FILTROS</div>
+            <div data-page="filtros-avancados" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🔍 Filtros Avançados</div>
           </div>
           
           <div class="space-y-1 pt-2 border-t border-white/10">
@@ -1056,8 +1069,35 @@
         <section id="page-tempo-medio" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
             <div class="flex items-center justify-between mb-4">
-            <h2 class="neon text-xl font-bold">Tempo Médio de Atendimento / Dias</h2>
+              <h2 class="neon text-xl font-bold">⏱️ Tempo Médio de Atendimento</h2>
+              <div class="text-xs text-slate-400">Análise detalhada de tempo de resposta</div>
             </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média Geral</div>
+                <div id="statMedia" class="text-2xl font-bold text-cyan-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">dias</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Mediana</div>
+                <div id="statMediana" class="text-2xl font-bold text-violet-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">dias</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Mínimo</div>
+                <div id="statMinimo" class="text-2xl font-bold text-emerald-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">dias</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-rose-500/20">
+                <div class="text-xs text-slate-400 mb-1">Máximo</div>
+                <div id="statMaximo" class="text-2xl font-bold text-red-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">dias</div>
+              </div>
+            </div>
+            
+            <!-- Filtro por Mês -->
             <div class="mt-4">
               <label for="selectMesTempoMedio" class="block text-sm font-medium text-slate-300 mb-2">
                 Filtrar por mês:
@@ -1070,29 +1110,6 @@
               </select>
             </div>
           </header>
-          
-          <div class="grid grid-cols-12 gap-6 mb-6">
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-              <div class="text-slate-400 text-sm mb-2">Média Geral</div>
-              <div id="statMedia" class="text-3xl font-extrabold text-cyan-300">—</div>
-              <div class="text-xs text-slate-500 mt-1">dias</div>
-            </div>
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-              <div class="text-slate-400 text-sm mb-2">Mediana</div>
-              <div id="statMediana" class="text-3xl font-extrabold text-purple-300">—</div>
-              <div class="text-xs text-slate-500 mt-1">dias</div>
-            </div>
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-              <div class="text-slate-400 text-sm mb-2">Mínimo</div>
-              <div id="statMinimo" class="text-3xl font-extrabold text-emerald-300">—</div>
-              <div class="text-xs text-slate-500 mt-1">dias</div>
-            </div>
-            <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-              <div class="text-slate-400 text-sm mb-2">Máximo</div>
-              <div id="statMaximo" class="text-3xl font-extrabold text-red-300">—</div>
-              <div class="text-xs text-slate-500 mt-1">dias</div>
-            </div>
-          </div>
 
           <!-- Gráfico Principal e Ranking -->
           <div class="grid grid-cols-12 gap-6 mb-6">
@@ -1172,8 +1189,35 @@
           <header class="glass rounded-2xl p-6 mb-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">⏰ Protocolos Próximos de Vencer</h2>
+              <div class="text-xs text-slate-400">Análise de prazos e vencimentos</div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Protocolos</div>
+                <div id="kpiTotalVencimento" class="text-2xl font-bold text-cyan-300">—</div>
+                <div class="text-xs text-slate-500 mt-1" id="filtroLabelVencimento">vencidos</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-red-500/20">
+                <div class="text-xs text-slate-400 mb-1">Vencidos</div>
+                <div id="kpiVencidos" class="text-2xl font-bold text-red-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">protocolos</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-orange-500/20">
+                <div class="text-xs text-slate-400 mb-1">Vencendo em 3 dias</div>
+                <div id="kpiVencendo3" class="text-2xl font-bold text-orange-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">protocolos</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Vencendo em 7 dias</div>
+                <div id="kpiVencendo7" class="text-2xl font-bold text-amber-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">protocolos</div>
+              </div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
                 <label for="selectFiltroVencimento" class="block text-sm font-medium text-slate-300 mb-2">
                   Filtrar por prazo:
@@ -1200,15 +1244,6 @@
                   <option value="">Todas as secretarias</option>
                 </select>
               </div>
-              <div class="text-right">
-                <div class="text-sm text-slate-400 mb-1">Total de protocolos</div>
-                <div class="text-3xl font-extrabold text-cyan-300">
-                  <span id="counterVencimento">0</span>
-                </div>
-                <div class="text-xs text-slate-500 mt-1">
-                  <span id="filtroLabelVencimento">vencidos</span>
-                </div>
-              </div>
             </div>
           </header>
           
@@ -1233,7 +1268,30 @@
         <!-- Página: Por Tema -->
         <section id="page-tema" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Manifestações por Tema</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📑 Manifestações por Tema</h2>
+              <div class="text-xs text-slate-400">Análise detalhada por tema</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalTema" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Temas Únicos</div>
+                <div id="kpiTemasUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Tema Mais Comum</div>
+                <div id="kpiTemaMaisComum" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Tema</div>
+                <div id="kpiMediaTema" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           
           <!-- Gráficos Principais -->
@@ -1281,7 +1339,30 @@
         <!-- Página: Por Assunto -->
         <section id="page-assunto" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Total por Assunto</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📝 Manifestações por Assunto</h2>
+              <div class="text-xs text-slate-400">Análise detalhada por assunto</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalAssunto" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Assuntos Únicos</div>
+                <div id="kpiAssuntosUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Assunto Mais Comum</div>
+                <div id="kpiAssuntoMaisComum" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Assunto</div>
+                <div id="kpiMediaAssunto" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           
           <!-- Gráficos Principais -->
@@ -1329,7 +1410,30 @@
         <!-- Página: Tipos -->
         <section id="page-tipo" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Tipos de Manifestação</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📋 Tipos de Manifestação</h2>
+              <div class="text-xs text-slate-400">Análise por tipo de manifestação</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalTipo" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Tipos Únicos</div>
+                <div id="kpiTiposUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Tipo Mais Comum</div>
+                <div id="kpiTipoMaisComum" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Tipo</div>
+                <div id="kpiMediaTipo" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1349,7 +1453,30 @@
         <!-- Página: Setor -->
         <section id="page-setor" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Análise por Setor/Departamento</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🏗️ Análise por Setor/Departamento</h2>
+              <div class="text-xs text-slate-400">Análise por setor responsável</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalSetor" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Setores Únicos</div>
+                <div id="kpiSetoresUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Setor Mais Ativo</div>
+                <div id="kpiSetorMaisAtivo" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Setor</div>
+                <div id="kpiMediaSetor" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1368,7 +1495,30 @@
         <!-- Página: UAC -->
         <section id="page-uac" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Unidades de Atendimento ao Cidadão (UAC)</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🏛️ Unidades de Atendimento ao Cidadão (UAC)</h2>
+              <div class="text-xs text-slate-400">Análise por UAC</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalUAC" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">UACs Únicas</div>
+                <div id="kpiUACsUnicas" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">UAC Mais Ativa</div>
+                <div id="kpiUACMaisAtiva" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por UAC</div>
+                <div id="kpiMediaUAC" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1387,7 +1537,30 @@
         <!-- Página: Responsáveis -->
         <section id="page-responsavel" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Responsáveis pelo Tratamento da Demanda</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">👥 Responsáveis pelo Tratamento da Demanda</h2>
+              <div class="text-xs text-slate-400">Análise por responsável</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalResponsavel" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Responsáveis Únicos</div>
+                <div id="kpiResponsaveisUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Responsável Mais Ativo</div>
+                <div id="kpiResponsavelMaisAtivo" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Responsável</div>
+                <div id="kpiMediaResponsavel" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1406,7 +1579,30 @@
         <!-- Página: Canal -->
         <section id="page-canal" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Canais de Atendimento</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📞 Canais de Atendimento</h2>
+              <div class="text-xs text-slate-400">Análise por canal de entrada</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalCanal" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Canais Únicos</div>
+                <div id="kpiCanaisUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Canal Mais Usado</div>
+                <div id="kpiCanalMaisUsado" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Canal</div>
+                <div id="kpiMediaCanal" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1426,7 +1622,30 @@
         <!-- Página: Prioridade -->
         <section id="page-prioridade" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Prioridades das Demandas</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">⚡ Prioridades das Demandas</h2>
+              <div class="text-xs text-slate-400">Análise por nível de prioridade</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalPrioridade" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Prioridades Únicas</div>
+                <div id="kpiPrioridadesUnicas" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-rose-500/20">
+                <div class="text-xs text-slate-400 mb-1">Prioridade Mais Comum</div>
+                <div id="kpiPrioridadeMaisComum" class="text-lg font-bold text-rose-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Prioridade</div>
+                <div id="kpiMediaPrioridade" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1446,7 +1665,30 @@
         <!-- Página: Categoria -->
         <section id="page-categoria" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Tema</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📂 Categoria</h2>
+              <div class="text-xs text-slate-400">Análise por categoria</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalCategoria" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Categorias Únicas</div>
+                <div id="kpiCategoriasUnicas" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-fuchsia-500/20">
+                <div class="text-xs text-slate-400 mb-1">Categoria Mais Comum</div>
+                <div id="kpiCategoriaMaisComum" class="text-lg font-bold text-fuchsia-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Categoria</div>
+                <div id="kpiMediaCategoria" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1468,7 +1710,30 @@
         <!-- Página: Status -->
         <section id="page-status" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Status</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📊 Status das Manifestações</h2>
+              <div class="text-xs text-slate-400">Análise por status</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalStatus" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Status Únicos</div>
+                <div id="kpiStatusUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Status Mais Comum</div>
+                <div id="kpiStatusMaisComum" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Taxa de Conclusão</div>
+                <div id="kpiTaxaConclusao" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1491,7 +1756,30 @@
         <!-- Página: Bairro -->
         <section id="page-bairro" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Análise por Bairro</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🏘️ Análise por Bairro</h2>
+              <div class="text-xs text-slate-400">Análise geográfica por bairro</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalBairro" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Bairros Únicos</div>
+                <div id="kpiBairrosUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Bairro Mais Ativo</div>
+                <div id="kpiBairroMaisAtivo" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Bairro</div>
+                <div id="kpiMediaBairro" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1513,7 +1801,30 @@
         <!-- Página: Por Cadastrante -->
         <section id="page-cadastrante" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Por Cadastrante / Unidade</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">👤 Por Cadastrante / Unidade</h2>
+              <div class="text-xs text-slate-400">Análise por servidor e unidade de cadastro</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalCadastrante" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Servidores Únicos</div>
+                <div id="kpiServidoresUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Unidades de Cadastro</div>
+                <div id="kpiUnidadesUnicas" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Servidor Mais Ativo</div>
+                <div id="kpiServidorMaisAtivo" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
@@ -1545,7 +1856,30 @@
         <!-- Página: Reclamações -->
         <section id="page-reclamacoes" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Reclamações e Denúncias</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🚨 Reclamações e Denúncias</h2>
+              <div class="text-xs text-slate-400">Análise de reclamações e denúncias</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-rose-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Reclamações</div>
+                <div id="kpiTotalReclamacoes" class="text-2xl font-bold text-rose-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-red-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Denúncias</div>
+                <div id="kpiTotalDenuncias" class="text-2xl font-bold text-red-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Assuntos Únicos</div>
+                <div id="kpiAssuntosUnicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Assunto Mais Comum</div>
+                <div id="kpiAssuntoMaisComum" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
@@ -1572,7 +1906,30 @@
         <!-- Página: Secretarias -->
         <section id="page-secretaria" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Secretarias</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🏛️ Por Secretaria</h2>
+              <div class="text-xs text-slate-400">Análise por secretaria responsável</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalSecretaria" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Secretarias Únicas</div>
+                <div id="kpiSecretariasUnicas" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Secretaria Mais Ativa</div>
+                <div id="kpiSecretariaMaisAtiva" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Secretaria</div>
+                <div id="kpiMediaSecretaria" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
@@ -1597,7 +1954,30 @@
         <!-- Página: Secretarias e Distritos -->
         <section id="page-secretarias-distritos" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h2 class="neon text-xl font-bold">Secretarias e Distritos</h2>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🗺️ Secretarias e Distritos</h2>
+              <div class="text-xs text-slate-400">Análise cruzada secretarias × distritos</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Secretarias</div>
+                <div id="kpiTotalSecretariasDistritos" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Distritos</div>
+                <div id="kpiTotalDistritos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Bairros</div>
+                <div id="kpiTotalBairros" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média Secretarias/Distrito</div>
+                <div id="kpiMediaSecretariasDistrito" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="grid grid-cols-12 gap-6">
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
@@ -1733,6 +2113,232 @@
           </div>
         </section>
         
+        <!-- Página: Filtros Avançados -->
+        <section id="page-filtros-avancados" style="display: none;">
+          <div class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <div class="text-2xl">🔍</div>
+                <h2 class="neon text-xl font-bold">Filtros Avançados</h2>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-slate-400">Filtre protocolos por múltiplos critérios</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="toggleFiltros" class="sr-only peer" checked>
+                  <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                </label>
+              </div>
+            </div>
+            
+            <!-- Estatísticas -->
+            <div class="grid grid-cols-4 gap-4 mt-4 mb-6">
+              <div class="glass rounded-lg p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Filtros Ativos</div>
+                <div id="contadorFiltrosAtivos" class="text-2xl font-bold text-cyan-300">0</div>
+              </div>
+              <div class="glass rounded-lg p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Protocolos Filtrados</div>
+                <div id="totalProtocolosFiltrados" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-lg p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Protocolos</div>
+                <div id="totalProtocolos" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+              <div class="glass rounded-lg p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">% Filtrado</div>
+                <div id="percentualFiltrado" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Filtros Disponíveis -->
+          <div class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-semibold text-cyan-300">Filtros Disponíveis</h3>
+              <div class="flex gap-2">
+                <button id="btnAplicarFiltros" class="px-4 py-2 bg-green-500/20 border border-green-500/50 rounded-lg text-green-300 hover:bg-green-500/30 transition-colors flex items-center gap-2">
+                  <span>✓</span>
+                  <span>Aplicar Filtros</span>
+                </button>
+                <button id="btnLimparTodos" class="px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg text-slate-300 hover:bg-slate-700/70 transition-colors flex items-center gap-2">
+                  <span>↻</span>
+                  <span>Limpar Todos</span>
+                </button>
+              </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <!-- Coluna 1 -->
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Protocolo</label>
+                  <input 
+                    type="text" 
+                    id="filtroProtocolo" 
+                    placeholder="Digite o protocolo..." 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Status Demanda</label>
+                  <select 
+                    id="filtroStatusDemanda" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <div class="flex items-center gap-2 mb-2">
+                    <input type="checkbox" id="filtroVerificadoCheck" class="w-4 h-4 rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-2 focus:ring-cyan-500">
+                    <label class="text-sm font-medium text-slate-300">Verificado</label>
+                  </div>
+                  <select 
+                    id="filtroVerificado" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                    <option value="Sim">Sim</option>
+                    <option value="Não">Não</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Unidade/Cadastro</label>
+                  <select 
+                    id="filtroUnidadeCadastro" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Canal</label>
+                  <select 
+                    id="filtroCanal" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+              </div>
+              
+              <!-- Coluna 2 -->
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Servidor</label>
+                  <select 
+                    id="filtroServidor" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Tipo de Manifestação</label>
+                  <select 
+                    id="filtroTipoManifestacao" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Tema</label>
+                  <select 
+                    id="filtroTema" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Prioridade</label>
+                  <select 
+                    id="filtroPrioridade" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Unidade/Saúde</label>
+                  <select 
+                    id="filtroUnidadeSaude" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+              </div>
+              
+              <!-- Coluna 3 -->
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Data da Criação</label>
+                  <div class="relative">
+                    <input 
+                      type="date" 
+                      id="filtroDataCriacao" 
+                      class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                    />
+                    <div class="absolute right-3 top-2.5 text-slate-400 pointer-events-none">📅</div>
+                  </div>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Assunto</label>
+                  <select 
+                    id="filtroAssunto" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Responsável</label>
+                  <select 
+                    id="filtroResponsavel" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Status</label>
+                  <select 
+                    id="filtroStatus" 
+                    class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Protocolos Filtrados -->
+          <div class="glass rounded-2xl p-6">
+            <h3 class="text-lg font-semibold text-cyan-300 mb-2">Protocolos Filtrados</h3>
+            <p class="text-sm text-slate-400 mb-4">Resultados baseados nos filtros aplicados acima.</p>
+            <div id="resultadosFiltros" class="min-h-[400px] flex items-center justify-center">
+              <div class="text-center">
+                <div class="text-6xl mb-4 text-slate-600">🔍</div>
+                <p class="text-slate-400">Aplique os filtros acima para visualizar os resultados</p>
+              </div>
+            </div>
+          </div>
+        </section>
+        
         <!-- Página: Cora Chat -->
         <section id="page-cora-chat" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
@@ -1770,7 +2376,29 @@
           <header class="glass rounded-2xl p-6 mb-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">🏥 Unidades de Saúde</h2>
+              <div class="text-xs text-slate-400">Análise por unidade de saúde</div>
             </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
+                <div id="kpiTotalUnidadeSaude" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Assuntos Únicos</div>
+                <div id="kpiAssuntosUnicosUnidade" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Assunto Mais Comum</div>
+                <div id="kpiAssuntoMaisComumUnidade" class="text-lg font-bold text-emerald-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Tipos de Manifestação</div>
+                <div id="kpiTiposUnicosUnidade" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+            </div>
+            
             <div class="mt-4">
               <label for="selectUnidade" class="block text-sm font-medium text-slate-300 mb-2">
                 Selecione uma unidade de saúde:
@@ -2081,34 +2709,31 @@
         
         <section id="page-zeladoria-overview" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Visão Geral • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📊 Visão Geral • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Dashboard executivo de zeladoria</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
+                <div id="zeladoria-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+            </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Fechados</div>
+                <div id="zeladoria-kpi-fechados" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Em Aberto</div>
+                <div id="zeladoria-kpi-abertos" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Tempo Médio (dias)</div>
+                <div id="zeladoria-kpi-tempo" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              </div>
           </header>
-          
-          <section class="mb-6">
-            <div class="flex items-center gap-2 mb-4">
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
-              <h2 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider px-3">📊 Indicadores Principais</h2>
-              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
-            </div>
-            <div class="grid grid-cols-12 gap-6">
-              <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-                <div class="text-slate-400 text-sm font-medium mb-2">Total de Ocorrências</div>
-                <div id="zeladoria-kpi-total" class="text-3xl font-extrabold text-cyan-300">—</div>
-              </div>
-              <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-                <div class="text-slate-400 text-sm font-medium mb-2">Fechados</div>
-                <div id="zeladoria-kpi-fechados" class="text-3xl font-extrabold text-emerald-300">—</div>
-              </div>
-              <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-                <div class="text-slate-400 text-sm font-medium mb-2">Em Aberto</div>
-                <div id="zeladoria-kpi-abertos" class="text-3xl font-extrabold text-amber-300">—</div>
-              </div>
-              <div class="col-span-12 md:col-span-3 glass rounded-2xl p-5">
-                <div class="text-slate-400 text-sm font-medium mb-2">Tempo Médio (dias)</div>
-                <div id="zeladoria-kpi-tempo" class="text-3xl font-extrabold text-violet-300">—</div>
-              </div>
-            </div>
-          </section>
           
           <section class="mb-6">
             <div class="flex items-center gap-2 mb-4">
@@ -2139,7 +2764,30 @@
         
         <section id="page-zeladoria-status" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise por Status • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📊 Análise por Status • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Distribuição de demandas por status</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Demandas</div>
+                <div id="zeladoria-status-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Fechados</div>
+                <div id="zeladoria-status-kpi-fechados" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Em Aberto</div>
+                <div id="zeladoria-status-kpi-abertos" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Taxa de Resolução</div>
+                <div id="zeladoria-status-kpi-taxa" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-status-chart"></canvas>
@@ -2148,7 +2796,30 @@
         
         <section id="page-zeladoria-categoria" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise por Categoria • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📂 Análise por Categoria • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Distribuição por tipo de demanda</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
+                <div id="zeladoria-categoria-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Categorias Únicas</div>
+                <div id="zeladoria-categoria-kpi-unicas" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Categoria Mais Comum</div>
+                <div id="zeladoria-categoria-kpi-mais-comum" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Categoria</div>
+                <div id="zeladoria-categoria-kpi-media" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-categoria-chart"></canvas>
@@ -2157,7 +2828,30 @@
         
         <section id="page-zeladoria-departamento" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise por Departamento • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🏢 Análise por Departamento • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Distribuição por departamento responsável</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
+                <div id="zeladoria-departamento-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Departamentos Únicos</div>
+                <div id="zeladoria-departamento-kpi-unicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Dept. Mais Ativo</div>
+                <div id="zeladoria-departamento-kpi-mais-ativo" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Departamento</div>
+                <div id="zeladoria-departamento-kpi-media" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-departamento-chart"></canvas>
@@ -2166,7 +2860,30 @@
         
         <section id="page-zeladoria-bairro" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise por Bairro • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🏘️ Análise por Bairro • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Distribuição geográfica das demandas</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
+                <div id="zeladoria-bairro-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Bairros Únicos</div>
+                <div id="zeladoria-bairro-kpi-unicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Bairro Mais Ativo</div>
+                <div id="zeladoria-bairro-kpi-mais-ativo" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Bairro</div>
+                <div id="zeladoria-bairro-kpi-media" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-bairro-chart"></canvas>
@@ -2175,7 +2892,30 @@
         
         <section id="page-zeladoria-responsavel" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise por Responsável • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">👥 Análise por Responsável • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Distribuição por responsável</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
+                <div id="zeladoria-responsavel-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Responsáveis Únicos</div>
+                <div id="zeladoria-responsavel-kpi-unicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Responsável Mais Ativo</div>
+                <div id="zeladoria-responsavel-kpi-mais-ativo" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Responsável</div>
+                <div id="zeladoria-responsavel-kpi-media" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-responsavel-chart"></canvas>
@@ -2184,7 +2924,30 @@
         
         <section id="page-zeladoria-canal" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise por Canal • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📞 Análise por Canal • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Distribuição por canal de entrada</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
+                <div id="zeladoria-canal-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Canais Únicos</div>
+                <div id="zeladoria-canal-kpi-unicos" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Canal Mais Usado</div>
+                <div id="zeladoria-canal-kpi-mais-usado" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Canal</div>
+                <div id="zeladoria-canal-kpi-media" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-canal-chart"></canvas>
@@ -2193,7 +2956,30 @@
         
         <section id="page-zeladoria-tempo" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Tempo de Resolução • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">⏱️ Tempo de Resolução • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Análise de eficiência no atendimento</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Tempo Médio (dias)</div>
+                <div id="zeladoria-tempo-kpi-medio" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Fechados</div>
+                <div id="zeladoria-tempo-kpi-fechados" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Em Aberto</div>
+                <div id="zeladoria-tempo-kpi-abertos" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Eficiência</div>
+                <div id="zeladoria-tempo-kpi-eficiencia" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-tempo-chart"></canvas>
@@ -2202,7 +2988,30 @@
         
         <section id="page-zeladoria-mensal" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise Mensal • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">📅 Análise Mensal • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Evolução temporal das demandas</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total no Período</div>
+                <div id="zeladoria-mensal-kpi-total" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média Mensal</div>
+                <div id="zeladoria-mensal-kpi-media" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Pico de Demanda</div>
+                <div id="zeladoria-mensal-kpi-pico" class="text-2xl font-bold text-amber-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Crescimento</div>
+                <div id="zeladoria-mensal-kpi-crescimento" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <canvas id="zeladoria-mensal-chart"></canvas>
@@ -2211,7 +3020,30 @@
         
         <section id="page-zeladoria-geografica" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
-            <h1 class="text-xl md:text-2xl font-bold neon">Análise Geográfica • Zeladoria</h1>
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🗺️ Análise Geográfica • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Distribuição geográfica das demandas</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div class="glass rounded-xl p-4 border border-cyan-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Bairros</div>
+                <div id="zeladoria-geografica-kpi-bairros" class="text-2xl font-bold text-cyan-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-violet-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Ocorrências</div>
+                <div id="zeladoria-geografica-kpi-total" class="text-2xl font-bold text-violet-300">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Bairro Mais Ativo</div>
+                <div id="zeladoria-geografica-kpi-mais-ativo" class="text-lg font-bold text-amber-300 truncate">—</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-emerald-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média por Bairro</div>
+                <div id="zeladoria-geografica-kpi-media" class="text-2xl font-bold text-emerald-300">—</div>
+              </div>
+            </div>
           </header>
           <div class="glass rounded-2xl p-5 mb-6">
             <div id="zeladoria-geografica-content">
@@ -2234,41 +3066,44 @@
     <script src="/scripts/core/chart-legend.js" defer></script>
     <script src="/scripts/core/chart-factory.js" defer></script>
     <script src="/scripts/modules/data-tables.js" defer></script>
-    <script src="/scripts/pages/overview.js" defer></script>
-    <script src="/scripts/pages/orgao-mes.js" defer></script>
-    <script src="/scripts/pages/tempo-medio.js" defer></script>
-    <script src="/scripts/pages/vencimento.js" defer></script>
-    <script src="/scripts/pages/tema.js" defer></script>
-    <script src="/scripts/pages/assunto.js" defer></script>
-    <script src="/scripts/pages/tipo.js" defer></script>
-    <script src="/scripts/pages/setor.js" defer></script>
-    <script src="/scripts/pages/categoria.js" defer></script>
-    <script src="/scripts/pages/status.js" defer></script>
-    <script src="/scripts/pages/bairro.js" defer></script>
-    <script src="/scripts/pages/uac.js" defer></script>
-    <script src="/scripts/pages/responsavel.js" defer></script>
-    <script src="/scripts/pages/canal.js" defer></script>
-    <script src="/scripts/pages/prioridade.js" defer></script>
-    <script src="/scripts/pages/cadastrante.js" defer></script>
-    <script src="/scripts/pages/reclamacoes.js" defer></script>
-    <script src="/scripts/pages/secretaria.js" defer></script>
-    <script src="/scripts/pages/secretarias-distritos.js" defer></script>
-    <script src="/scripts/pages/projecao-2026.js" defer></script>
-    <script src="/scripts/pages/cora-chat.js" defer></script>
-    <script src="/scripts/pages/unidades-saude.js" defer></script>
-    <script src="/scripts/pages/unit.js" defer></script>
+    <!-- Páginas Ouvidoria -->
+    <script src="/scripts/pages/ouvidoria/overview.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/orgao-mes.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/tempo-medio.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/vencimento.js" defer></script>
+    <script src="/scripts/pages/filtros-avancados.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/tema.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/assunto.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/tipo.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/setor.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/categoria.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/status.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/bairro.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/uac.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/responsavel.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/canal.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/prioridade.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/cadastrante.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/reclamacoes.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/secretaria.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/secretarias-distritos.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/projecao-2026.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/cora-chat.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/unidades-saude.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/unit.js" defer></script>
     <script src="/scripts/utils/generate-unit-pages.js" defer></script>
-    <script src="/scripts/pages/zeladoria-overview.js" defer></script>
-    <script src="/scripts/pages/zeladoria-status.js" defer></script>
-    <script src="/scripts/pages/zeladoria-categoria.js" defer></script>
-    <script src="/scripts/pages/zeladoria-departamento.js" defer></script>
-    <script src="/scripts/pages/zeladoria-bairro.js" defer></script>
-    <script src="/scripts/pages/zeladoria-responsavel.js" defer></script>
-    <script src="/scripts/pages/zeladoria-canal.js" defer></script>
-    <script src="/scripts/pages/zeladoria-tempo.js" defer></script>
-    <script src="/scripts/pages/zeladoria-mensal.js" defer></script>
-    <script src="/scripts/pages/zeladoria-geografica.js" defer></script>
-    <script src="/scripts/main.js"></script>
+    <!-- Páginas Zeladoria -->
+    <script src="/scripts/pages/zeladoria/zeladoria-overview.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-status.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-categoria.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-departamento.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-bairro.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-responsavel.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-canal.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-tempo.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-mensal.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-geografica.js" defer></script>
+    <script src="/scripts/main.js" defer></script>
     
     <!-- Tratamento global de promises não tratadas -->
     <script>

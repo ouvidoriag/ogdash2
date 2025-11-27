@@ -62,3 +62,16 @@ build/
 *.key
 *.cert
 
+# Credenciais Gmail API
+gmail-credentials.json
+gmail-token.json
+config/gmail-credentials.json
+config/gmail-token.json
+
+# Credenciais Google Sheets API
+google-credentials.json
+*-credentials.json
+google-sheets-*.json
+config/google-credentials.json
+config/*-credentials.json
+

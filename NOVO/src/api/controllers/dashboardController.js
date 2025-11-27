@@ -110,9 +110,41 @@ export async function getDashboardData(req, res, prisma) {
               }
             }
             
-            return Array.from(dayMap.entries())
+            const result = Array.from(dayMap.entries())
               .map(([date, count]) => ({ date, count }))
               .sort((a, b) => a.date.localeCompare(b.date));
+            
+            // Se não encontrou dados, tentar uma busca mais ampla (sem filtro de data)
+            if (result.length === 0) {
+              console.warn('⚠️ Nenhum dado diário encontrado nos últimos 30 dias, tentando busca mais ampla...');
+              const allRows = await prisma.record.findMany({
+                where: where,
+                select: { dataCriacaoIso: true, dataDaCriacao: true, data: true },
+                take: 10000 // Limite para não sobrecarregar
+              });
+              
+              const today = new Date();
+              const d30 = new Date(today);
+              d30.setDate(today.getDate() - 29);
+              const last30Str = d30.toISOString().slice(0, 10);
+              const todayStr = today.toISOString().slice(0, 10);
+              
+              for (const r of allRows) {
+                const dataCriacao = getDataCriacao(r);
+                if (dataCriacao) {
+                  const dateStr = dataCriacao.slice(0, 10); // YYYY-MM-DD
+                  if (dateStr >= last30Str && dateStr <= todayStr) {
+                    dayMap.set(dateStr, (dayMap.get(dateStr) || 0) + 1);
+                  }
+                }
+              }
+              
+              return Array.from(dayMap.entries())
+                .map(([date, count]) => ({ date, count }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+            }
+            
+            return result;
           } catch (error) {
             console.error('❌ Erro ao buscar dados por dia:', error);
             return [];

@@ -25,12 +25,49 @@ const dataStore = {
 
 function createDeepCopy(data) {
   if (data === null || data === undefined) return data;
+  
+  // Proteção básica: verificar se contém objetos Chart.js antes de tentar serializar
+  function hasChartObjects(obj, depth = 0) {
+    if (depth > 10) return true; // Limite de profundidade
+    if (!obj || typeof obj !== 'object') return false;
+    
+    // Verificar se é Chart.js
+    if (obj.canvas || obj.config || (obj.constructor && obj.constructor.name === 'Chart')) {
+      return true;
+    }
+    
+    // Verificar propriedades recursivamente (limitado)
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key) && hasChartObjects(obj[key], depth + 1)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  // Se contém objetos Chart.js, não tentar fazer deep copy
+  if (hasChartObjects(data)) {
+    if (window.Logger) {
+      window.Logger.debug('dataStore.createDeepCopy: Dados contêm objetos Chart.js, retornando referência original');
+    }
+    return data;
+  }
+  
   try {
-    return JSON.parse(JSON.stringify(data));
+    return JSON.parse(JSON.stringify(data, (key, value) => {
+      // Ignorar objetos Chart.js
+      if (value && typeof value === 'object' && value.constructor) {
+        if (value.canvas || value.config || value.constructor.name === 'Chart') {
+          return undefined; // Remover do JSON
+        }
+      }
+      return value;
+    }));
   } catch (error) {
     if (window.Logger) {
-      window.Logger.warn('dataStore.createDeepCopy: Erro ao criar cópia, retornando referência original:', error);
+      window.Logger.warn('dataStore.createDeepCopy: Erro ao criar cópia, retornando referência original:', error.message);
     }
+    // Se houver erro (referência circular, objeto não serializável), retornar referência original
     return data;
   }
 }
@@ -180,11 +217,12 @@ function set(key, data, deepCopy = false) {
   
   let dataToStore = data;
   if (deepCopy && data !== null && data !== undefined) {
-    try {
-      dataToStore = JSON.parse(JSON.stringify(data));
-    } catch (error) {
+    // Usar createDeepCopy que tem proteção contra referências circulares
+    dataToStore = createDeepCopy(data);
+    // Se createDeepCopy retornou null ou erro, usar referência original
+    if (dataToStore === null && data !== null) {
       if (window.Logger) {
-        window.Logger.warn('dataStore.set: Erro ao criar deep copy, usando referência original:', error);
+        window.Logger.warn('dataStore.set: Dados contêm objetos não serializáveis (Chart.js?), usando referência original');
       }
       dataToStore = data;
     }

@@ -5,7 +5,7 @@
 
 import { withCache } from '../../utils/responseHelper.js';
 import { getMes } from '../../utils/dateUtils.js';
-import { getCurrentGeminiKey, rotateToNextKey, hasGeminiKeys } from '../../utils/geminiHelper.js';
+import { getCurrentGeminiKey, rotateToNextKey, hasGeminiKeys, isCurrentKeyInCooldown, markCurrentKeyInCooldown, hasAvailableKey } from '../../utils/geminiHelper.js';
 
 /**
  * Detecta padrões e anomalias nos dados
@@ -146,6 +146,32 @@ export async function getInsights(req, res, prisma) {
         return { insights, patterns };
       }
       
+      // Verificar se há chaves disponíveis (não em cooldown)
+      if (!hasAvailableKey()) {
+        console.log('⚠️ Todas as chaves em cooldown (quota excedida) - usando fallback');
+        // Fallback para insights básicos
+        const insights = [];
+        if (patterns.anomalias.length > 0) {
+          patterns.anomalias.forEach(a => {
+            insights.push({
+              tipo: 'anomalia',
+              insight: a.mensagem,
+              recomendacao: 'Revisar causas do aumento e implementar medidas preventivas.',
+              severidade: 'alta'
+            });
+          });
+        }
+        if (patterns.topSecretarias.length > 0) {
+          insights.push({
+            tipo: 'volume',
+            insight: `Maior volume: ${patterns.topSecretarias[0].nome} com ${patterns.topSecretarias[0].count.toLocaleString('pt-BR')} manifestações.`,
+            recomendacao: 'Monitorar de perto e garantir recursos adequados.',
+            severidade: 'media'
+          });
+        }
+        return { insights, patterns, geradoPorIA: false, motivo: 'quota_excedida' };
+      }
+      
       // Gerar insights com IA
       const GEMINI_API_KEY = getCurrentGeminiKey();
       
@@ -220,7 +246,16 @@ Formato JSON:
 Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
       
       try {
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+        // Verificar se a chave atual está em cooldown e rotacionar se necessário
+        if (isCurrentKeyInCooldown()) {
+          console.log('⏳ Chave atual em cooldown, tentando rotacionar...');
+          if (!rotateToNextKey() || !hasAvailableKey()) {
+            console.log('⚠️ Todas as chaves em cooldown - usando fallback');
+            throw new Error('Todas as chaves em cooldown (quota excedida)');
+          }
+        }
+        
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${getCurrentGeminiKey()}`;
         
         const payload = {
           system_instruction: {
@@ -249,7 +284,49 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
         
         if (!resp.ok) {
           const errorText = await resp.text().catch(() => '');
-          console.error(`❌ Erro na API de IA ${resp.status}:`, errorText);
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: { message: errorText } };
+          }
+          
+          // Tratar erro 429 (quota excedida) especificamente
+          if (resp.status === 429) {
+            console.warn(`⚠️ Quota excedida (429) na chave atual`);
+            
+            // Tentar extrair tempo de retry do erro
+            let retryAfterSeconds = 60; // Padrão: 60 segundos
+            try {
+              const retryInfo = errorData.error?.details?.find(d => d['@type']?.includes('RetryInfo'));
+              if (retryInfo?.retryDelay) {
+                // RetryDelay pode vir como "43s" ou como segundos
+                const delay = retryInfo.retryDelay;
+                if (typeof delay === 'string' && delay.endsWith('s')) {
+                  retryAfterSeconds = parseInt(delay.replace('s', ''), 10) || 60;
+                } else if (typeof delay === 'number') {
+                  retryAfterSeconds = delay;
+                }
+              }
+            } catch (e) {
+              // Ignorar erro ao extrair retry delay
+            }
+            
+            // Marcar chave atual como em cooldown
+            markCurrentKeyInCooldown(retryAfterSeconds);
+            
+            // Tentar rotacionar para próxima chave
+            if (rotateToNextKey() && hasAvailableKey()) {
+              console.log(`🔄 Tentando com próxima chave...`);
+              // Não fazer retry aqui - deixar o catch fazer o fallback
+              throw new Error('Quota excedida - chave rotacionada');
+            } else {
+              console.log('⚠️ Todas as chaves com quota excedida - usando fallback');
+              throw new Error('Todas as chaves com quota excedida');
+            }
+          }
+          
+          console.error(`❌ Erro na API de IA ${resp.status}:`, errorText.substring(0, 200));
           throw new Error(`Erro na API de IA: ${resp.status} - ${errorText.substring(0, 200)}`);
         }
         
@@ -280,8 +357,16 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
           geradoPorIA: true
         };
       } catch (geminiError) {
-        console.error('❌ Erro ao chamar IA para insights:', geminiError);
-        rotateToNextKey();
+        // Se o erro já foi tratado (quota excedida), não fazer nada aqui
+        // O erro será capturado e o fallback será retornado
+        if (geminiError.message?.includes('quota excedida') || geminiError.message?.includes('cooldown')) {
+          // Já foi tratado acima, apenas logar
+          console.log('⚠️ Usando fallback devido a quota excedida');
+        } else {
+          console.error('❌ Erro ao chamar IA para insights:', geminiError);
+          // Para outros erros, tentar rotacionar chave
+          rotateToNextKey();
+        }
         
         // Fallback para insights básicos
         const insights = [];
@@ -295,7 +380,15 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
             });
           });
         }
-        return { insights, patterns, geradoPorIA: false };
+        if (patterns.topSecretarias.length > 0) {
+          insights.push({
+            tipo: 'volume',
+            insight: `Maior volume: ${patterns.topSecretarias[0].nome} com ${patterns.topSecretarias[0].count.toLocaleString('pt-BR')} manifestações.`,
+            recomendacao: 'Monitorar de perto e garantir recursos adequados.',
+            severidade: 'media'
+          });
+        }
+        return { insights, patterns, geradoPorIA: false, motivo: geminiError.message?.includes('quota') ? 'quota_excedida' : 'erro_ia' };
       }
     } catch (error) {
       console.error('❌ Erro ao gerar insights:', error);
