@@ -26,6 +26,8 @@ export const FIELD_MAP = {
   'UAC': 'unidadeCadastro',
   'StatusDemanda': 'statusDemanda',
   'Data': 'dataDaCriacao',
+  'UnidadeSaude': 'unidadeSaude',
+  'unidadesaude': 'unidadeSaude', // Variante minúscula sem underscore
   
   // Aliases para compatibilidade
   'TipoManifestacao': 'tipoDeManifestacao',
@@ -58,11 +60,46 @@ export const FIELD_MAP = {
 export function getNormalizedField(field) {
   if (!field) return null;
   
-  const normalized = FIELD_MAP[field] || 
-                     FIELD_MAP[field.toLowerCase()] ||
-                     field.toLowerCase();
+  // Tentar encontrar no mapa exato
+  if (FIELD_MAP[field]) {
+    return FIELD_MAP[field];
+  }
   
-  return normalized;
+  // Tentar lowercase
+  const lowerField = field.toLowerCase();
+  if (FIELD_MAP[lowerField]) {
+    return FIELD_MAP[lowerField];
+  }
+  
+  // Tentar camelCase (primeira letra maiúscula)
+  const camelField = lowerField.charAt(0).toUpperCase() + lowerField.slice(1);
+  if (FIELD_MAP[camelField]) {
+    return FIELD_MAP[camelField];
+  }
+  
+  // Se não encontrou, retornar o campo original (pode ser que já esteja normalizado)
+  // Mas verificar se é um campo válido do Prisma
+  const prismaFields = [
+    'protocolo', 'dataDaCriacao', 'statusDemanda', 'prazoRestante',
+    'dataDaConclusao', 'tempoDeResolucaoEmDias', 'prioridade',
+    'tipoDeManifestacao', 'tema', 'assunto', 'canal', 'endereco',
+    'unidadeCadastro', 'unidadeSaude', 'status', 'servidor',
+    'responsavel', 'verificado', 'orgaos', 'dataCriacaoIso', 'dataConclusaoIso'
+  ];
+  
+  // Se o campo já está em camelCase e existe no Prisma, retornar como está
+  if (prismaFields.includes(field)) {
+    return field;
+  }
+  
+  // Caso contrário, tentar converter para camelCase
+  // Ex: unidadesaude -> unidadeSaude
+  if (lowerField.includes('unidade') && lowerField.includes('saude')) {
+    return 'unidadeSaude';
+  }
+  
+  // Fallback: retornar lowercase
+  return lowerField;
 }
 
 /**
