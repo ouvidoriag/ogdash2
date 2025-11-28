@@ -76,8 +76,9 @@ export default function statsRoutes(prisma, getMongoClient) {
    * GET /api/stats/status-overview
    * Visão geral de status com distribuição
    * Query params: servidor, unidadeCadastro
+   * OTIMIZAÇÃO: Usa pipeline MongoDB nativo
    */
-  router.get('/status-overview', (req, res) => statsController.statusOverview(req, res, prisma));
+  router.get('/status-overview', (req, res) => statsController.statusOverview(req, res, prisma, getMongoClient));
   
   return router;
 }

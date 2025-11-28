@@ -139,5 +139,10 @@ function updateZeladoriaGeograficaKPIs(sortedData, allData) {
   if (mediaEl) mediaEl.textContent = media.toLocaleString('pt-BR');
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-geografica', loadZeladoriaGeografica, 500);
+}
+
 window.loadZeladoriaGeografica = loadZeladoriaGeografica;
 

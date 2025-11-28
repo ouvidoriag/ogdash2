@@ -242,4 +242,9 @@ function updateZeladoriaStatusKPIs(stats, statusData) {
   if (taxaEl) taxaEl.textContent = `${taxaResolucao}%`;
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-status', loadZeladoriaStatus, 500);
+}
+
 window.loadZeladoriaStatus = loadZeladoriaStatus;

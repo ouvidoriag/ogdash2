@@ -33,7 +33,11 @@
     "gmail:auth": "node scripts/email/autorizar-gmail.js",
     "email:saude": "node scripts/email/enviar-email-saude.js",
     "email:real": "node scripts/email/enviar-email-real.js",
-    "create:users": "node scripts/setup/createUsers.js"
+    "create:users": "node scripts/setup/createUsers.js",
+    "docs:generate": "node scripts/generate-api-docs.js",
+    "docs:json": "node scripts/generate-api-docs.js --format json",
+    "docs:swagger": "node scripts/generate-api-docs.js --format swagger",
+    "analyze:architecture": "node scripts/analyze-architecture.js"
   },
   "keywords": [
     "ouvidoria",

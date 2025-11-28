@@ -131,5 +131,10 @@ function updateCategoriaKPIs(data) {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-categoria', loadCategoria, 500);
+}
+
 window.loadCategoria = loadCategoria;
 

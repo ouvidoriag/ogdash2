@@ -154,5 +154,10 @@ async function renderReclamacoesMesChart(dataMensal) {
   });
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-reclamacoes', loadReclamacoes, 500);
+}
+
 window.loadReclamacoes = loadReclamacoes;
 

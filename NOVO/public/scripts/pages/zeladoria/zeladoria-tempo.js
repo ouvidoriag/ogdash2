@@ -264,4 +264,9 @@ function updateZeladoriaTempoKPIs(stats) {
   if (eficienciaEl) eficienciaEl.textContent = `${eficiencia}%`;
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-tempo', loadZeladoriaTempo, 500);
+}
+
 window.loadZeladoriaTempo = loadZeladoriaTempo;

@@ -10,6 +10,7 @@
  * - /api/ai/* - Inteligência artificial e insights
  * - /api/* - Dados gerais (summary, records, etc.)
  * - /api/secretarias, /api/distritos, etc. - Dados geográficos
+ * - /api/colab/* - Integração com API do Colab
  * 
  * @param {PrismaClient} prisma - Cliente Prisma para acesso ao banco
  * @param {Function} getMongoClient - Função para obter cliente MongoDB nativo
@@ -26,12 +27,31 @@ import dataRoutes from './data.js';
 import geographicRoutes from './geographic.js';
 import zeladoriaRoutes from './zeladoria.js';
 import notificationRoutes from './notifications.js';
+import colabRoutes from './colab.js';
+import batchRoutes from './batch.js';
+import metricsRoutes from './metrics.js';
 
 export default function apiRoutes(prisma, getMongoClient) {
   const router = express.Router();
   
   // Nota: Rotas de autenticação (/api/auth) são registradas separadamente no server.js
   // para que sejam públicas (sem requireAuth)
+  
+  // Mapa de rotas carregadas (para debug e documentação)
+  const routesMap = {
+    aggregate: '/api/aggregate/*',
+    stats: '/api/stats/*',
+    cache: '/api/cache/*',
+    chat: '/api/chat/*',
+    ai: '/api/ai/*',
+    data: '/api/*',
+    geographic: '/api/secretarias, /api/distritos, etc.',
+    zeladoria: '/api/zeladoria/*',
+    notifications: '/api/notifications/*',
+    colab: '/api/colab/*',
+    batch: '/api/batch/*',
+    metrics: '/api/metrics/*'
+  };
   
   // Rotas de agregação - Análises e agregações de dados
   router.use('/aggregate', aggregateRoutes(prisma, getMongoClient));
@@ -59,6 +79,24 @@ export default function apiRoutes(prisma, getMongoClient) {
   
   // Rotas de Notificações - Sistema de notificações por email
   router.use('/notifications', notificationRoutes(prisma));
+  
+  // Rotas de Colab - Integração com API do Colab
+  router.use('/colab', colabRoutes());
+  
+  // Rotas de Batch - Requisições em lote
+  router.use('/batch', batchRoutes(prisma, getMongoClient));
+  
+  // Rotas de Métricas - Monitoramento do sistema
+  router.use('/metrics', metricsRoutes(prisma));
+  
+  // Log de carregamento das rotas (apenas em desenvolvimento)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔗 Rotas da API carregadas:', routesMap);
+    console.log(`✅ Total de módulos registrados: ${Object.keys(routesMap).length}`);
+  }
+  
+  // Expor mapa de rotas para documentação automática (opcional)
+  router.routesMap = routesMap;
   
   return router;
 }

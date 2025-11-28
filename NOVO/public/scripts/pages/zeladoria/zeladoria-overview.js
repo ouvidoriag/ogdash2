@@ -111,5 +111,10 @@ async function loadZeladoriaOverview() {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-overview', loadZeladoriaOverview, 500);
+}
+
 window.loadZeladoriaOverview = loadZeladoriaOverview;
 

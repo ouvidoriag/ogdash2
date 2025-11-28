@@ -83,5 +83,10 @@ function updateResponsavelKPIs(data) {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-responsavel', loadResponsavel, 500);
+}
+
 window.loadResponsavel = loadResponsavel;
 

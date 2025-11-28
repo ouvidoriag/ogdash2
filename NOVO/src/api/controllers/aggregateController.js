@@ -7,6 +7,11 @@ import { withCache } from '../../utils/responseHelper.js';
 import { optimizedGroupBy, optimizedGroupByMonth, getDateFilter } from '../../utils/queryOptimizer.js';
 import { getNormalizedField } from '../../utils/fieldMapper.js';
 import { getDataCriacao } from '../../utils/dateUtils.js';
+import { executeAggregation } from '../../utils/dbAggregations.js';
+import { buildTemaPipeline, buildAssuntoPipeline, buildOrgaoMesPipeline } from '../../utils/pipelines/index.js';
+import { formatGroupByResult, formatMonthlySeries } from '../../utils/dataFormatter.js';
+import { sanitizeFilters } from '../../utils/validateFilters.js';
+import { withSmartCache } from '../../utils/smartCache.js';
 
 /**
  * GET /api/aggregate/count-by
@@ -133,30 +138,104 @@ export async function timeSeries(req, res, prisma) {
 /**
  * GET /api/aggregate/by-theme
  * Agregação por tema
+ * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
  */
-export async function byTheme(req, res, prisma) {
-  const key = 'byTheme:v2';
-  // Cache de 1 hora
-  return withCache(key, 3600, res, async () => {
-    const rows = await prisma.record.groupBy({ by: ['tema'], _count: { _all: true } });
-    return rows
-      .map(r => ({ tema: r.tema ?? 'Não informado', quantidade: r._count._all }))
-      .sort((a, b) => b.quantidade - a.quantidade);
+export async function byTheme(req, res, prisma, getMongoClient) {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  // Construir filtros
+  const filters = {};
+  if (servidor) filters.servidor = servidor;
+  if (unidadeCadastro) filters.unidadeCadastro = unidadeCadastro;
+  
+  // Validar filtros
+  const sanitizedFilters = sanitizeFilters(filters);
+  
+  // Cache inteligente
+  const cacheKey = servidor ? `byTheme:servidor:${servidor}:v3` :
+                    unidadeCadastro ? `byTheme:uac:${unidadeCadastro}:v3` :
+                    'byTheme:v3';
+  
+  return withCache(cacheKey, 3600, res, async () => {
+    try {
+      // Usar cache inteligente se prisma disponível
+      if (prisma && getMongoClient) {
+        return await withSmartCache(
+          prisma,
+          'tema',
+          sanitizedFilters,
+          async () => {
+            const pipeline = buildTemaPipeline(sanitizedFilters, 50);
+            const result = await executeAggregation(getMongoClient, pipeline);
+            return formatGroupByResult(result, '_id', 'count');
+          }
+        );
+      }
+      
+      // Fallback para Prisma
+      const rows = await prisma.record.groupBy({ 
+        by: ['tema'], 
+        where: Object.keys(sanitizedFilters).length > 0 ? sanitizedFilters : undefined,
+        _count: { _all: true } 
+      });
+      return formatGroupByResult(rows.map(r => ({ _id: r.tema ?? 'Não informado', count: r._count._all })));
+    } catch (error) {
+      console.error('❌ Erro ao buscar dados por tema:', error);
+      throw error;
+    }
   }, prisma);
 }
 
 /**
  * GET /api/aggregate/by-subject
  * Agregação por assunto
+ * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
  */
-export async function bySubject(req, res, prisma) {
-  const key = 'bySubject:v2';
-  // Cache de 1 hora
-  return withCache(key, 3600, res, async () => {
-    const rows = await prisma.record.groupBy({ by: ['assunto'], _count: { _all: true } });
-    return rows
-      .map(r => ({ assunto: r.assunto ?? 'Não informado', quantidade: r._count._all }))
-      .sort((a, b) => b.quantidade - a.quantidade);
+export async function bySubject(req, res, prisma, getMongoClient) {
+  const servidor = req.query.servidor;
+  const unidadeCadastro = req.query.unidadeCadastro;
+  
+  // Construir filtros
+  const filters = {};
+  if (servidor) filters.servidor = servidor;
+  if (unidadeCadastro) filters.unidadeCadastro = unidadeCadastro;
+  
+  // Validar filtros
+  const sanitizedFilters = sanitizeFilters(filters);
+  
+  // Cache inteligente
+  const cacheKey = servidor ? `bySubject:servidor:${servidor}:v3` :
+                    unidadeCadastro ? `bySubject:uac:${unidadeCadastro}:v3` :
+                    'bySubject:v3';
+  
+  return withCache(cacheKey, 3600, res, async () => {
+    try {
+      // Usar cache inteligente se prisma disponível
+      if (prisma && getMongoClient) {
+        return await withSmartCache(
+          prisma,
+          'assunto',
+          sanitizedFilters,
+          async () => {
+            const pipeline = buildAssuntoPipeline(sanitizedFilters, 50);
+            const result = await executeAggregation(getMongoClient, pipeline);
+            return formatGroupByResult(result, '_id', 'count');
+          }
+        );
+      }
+      
+      // Fallback para Prisma
+      const rows = await prisma.record.groupBy({ 
+        by: ['assunto'], 
+        where: Object.keys(sanitizedFilters).length > 0 ? sanitizedFilters : undefined,
+        _count: { _all: true } 
+      });
+      return formatGroupByResult(rows.map(r => ({ _id: r.assunto ?? 'Não informado', count: r._count._all })));
+    } catch (error) {
+      console.error('❌ Erro ao buscar dados por assunto:', error);
+      throw error;
+    }
   }, prisma);
 }
 
@@ -572,29 +651,63 @@ export async function countByStatusMes(req, res, prisma) {
 /**
  * GET /api/aggregate/count-by-orgao-mes
  * Órgão por mês
+ * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
  */
-export async function countByOrgaoMes(req, res, prisma) {
+export async function countByOrgaoMes(req, res, prisma, getMongoClient) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
-  const cacheKey = servidor ? `orgaoMes:servidor:${servidor}:v2` : 
-                    unidadeCadastro ? `orgaoMes:uac:${unidadeCadastro}:v2` : 
-                    'orgaoMes:v2';
+  // Construir filtros
+  const filters = {};
+  if (servidor) filters.servidor = servidor;
+  if (unidadeCadastro) filters.unidadeCadastro = unidadeCadastro;
+  
+  // Validar filtros
+  const sanitizedFilters = sanitizeFilters(filters);
+  
+  // Cache inteligente
+  const cacheKey = servidor ? `orgaoMes:servidor:${servidor}:v3` : 
+                    unidadeCadastro ? `orgaoMes:uac:${unidadeCadastro}:v3` : 
+                    'orgaoMes:v3';
   
   return withCache(cacheKey, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
-    
-    // Usar sistema otimizado de agregação cruzada
-    const { optimizedCrossAggregation } = await import('../../utils/queryOptimizer.js');
-    return await optimizedCrossAggregation(
-      prisma, 
-      'orgaos', 
-      'dataCriacaoIso', 
-      where, 
-      { dateFilter: true, limit: 100000 }
-    );
+    try {
+      // Usar cache inteligente se prisma disponível
+      if (prisma && getMongoClient) {
+        return await withSmartCache(
+          prisma,
+          'orgaoMes',
+          sanitizedFilters,
+          async () => {
+            const pipeline = buildOrgaoMesPipeline(sanitizedFilters, 20, 12);
+            const result = await executeAggregation(getMongoClient, pipeline);
+            // Formatar resultado para o formato esperado
+            return result.map(item => ({
+              orgao: item.orgao,
+              month: item.month,
+              count: item.count
+            }));
+          }
+        );
+      }
+      
+      // Fallback para Prisma
+      const where = {};
+      if (servidor) where.servidor = servidor;
+      if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+      
+      const { optimizedCrossAggregation } = await import('../../utils/queryOptimizer.js');
+      return await optimizedCrossAggregation(
+        prisma, 
+        'orgaos', 
+        'dataCriacaoIso', 
+        where, 
+        { dateFilter: true, limit: 100000 }
+      );
+    } catch (error) {
+      console.error('❌ Erro ao buscar dados por órgão e mês:', error);
+      throw error;
+    }
   }, prisma);
 }
 

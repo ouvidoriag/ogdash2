@@ -495,4 +495,9 @@ function updateZeladoriaBairroKPIs(sortedData, allData) {
   if (mediaEl) mediaEl.textContent = media.toLocaleString('pt-BR');
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-bairro', loadZeladoriaBairro, 500);
+}
+
 window.loadZeladoriaBairro = loadZeladoriaBairro;

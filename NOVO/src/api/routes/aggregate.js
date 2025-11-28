@@ -45,14 +45,16 @@ export default function aggregateRoutes(prisma, getMongoClient) {
   /**
    * GET /api/aggregate/by-theme
    * Agregação por tema
+   * OTIMIZAÇÃO: Usa pipeline MongoDB nativo
    */
-  router.get('/by-theme', (req, res) => aggregateController.byTheme(req, res, prisma));
+  router.get('/by-theme', (req, res) => aggregateController.byTheme(req, res, prisma, getMongoClient));
   
   /**
    * GET /api/aggregate/by-subject
    * Agregação por assunto
+   * OTIMIZAÇÃO: Usa pipeline MongoDB nativo
    */
-  router.get('/by-subject', (req, res) => aggregateController.bySubject(req, res, prisma));
+  router.get('/by-subject', (req, res) => aggregateController.bySubject(req, res, prisma, getMongoClient));
   
   /**
    * GET /api/aggregate/by-server
@@ -107,8 +109,9 @@ export default function aggregateRoutes(prisma, getMongoClient) {
    * GET /api/aggregate/count-by-orgao-mes
    * Contagem de órgão por mês
    * Query params: servidor, unidadeCadastro, meses
+   * OTIMIZAÇÃO: Usa pipeline MongoDB nativo
    */
-  router.get('/count-by-orgao-mes', (req, res) => aggregateController.countByOrgaoMes(req, res, prisma));
+  router.get('/count-by-orgao-mes', (req, res) => aggregateController.countByOrgaoMes(req, res, prisma, getMongoClient));
   
   /**
    * GET /api/aggregate/by-district

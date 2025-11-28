@@ -461,6 +461,13 @@ window.verDetalhesDemanda = async (id, type) => {
   }
 };
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-colab-demandas', loadColabDemandas, 500);
+  window.chartCommunication.createPageFilterListener('page-zeladoria-colab-criar', loadZeladoriaColabCriar, 500);
+  window.chartCommunication.createPageFilterListener('page-zeladoria-colab-categorias', loadZeladoriaColabCategorias, 500);
+}
+
 // Exportar funções
 window.loadZeladoriaOverview = loadZeladoriaOverview;
 window.loadColabDemandas = loadColabDemandas;

@@ -113,6 +113,7 @@ export async function getVencimento(req, res, prisma) {
   const key = `vencimento:${filtro}:${mes || ''}:${prazoCustomizado || ''}:${servidor || ''}:${unidadeCadastro || ''}:${secretaria || ''}:v3`;
   
   // Cache de 5 minutos
+  // Timeout de 60s para endpoint pesado (processa muitos registros em memória)
   return withCache(key, 300, res, async () => {
     const where = {};
     if (servidor) where.servidor = servidor;
@@ -377,6 +378,6 @@ export async function getVencimento(req, res, prisma) {
       filtro,
       protocolos
     };
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 

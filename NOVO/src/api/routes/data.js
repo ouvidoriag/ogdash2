@@ -44,10 +44,10 @@ export default function dataRoutes(prisma, getMongoClient) {
   
   /**
    * GET /api/dashboard-data
-   * Dados completos para dashboard (agregações paralelas)
+   * Dados completos para dashboard (agregações otimizadas com MongoDB Native)
    * Query params: servidor, unidadeCadastro
    */
-  router.get('/dashboard-data', (req, res) => getDashboardData(req, res, prisma));
+  router.get('/dashboard-data', (req, res) => getDashboardData(req, res, prisma, getMongoClient));
   
   /**
    * GET /api/records
@@ -95,7 +95,12 @@ export default function dataRoutes(prisma, getMongoClient) {
    * Filtro dinâmico de registros
    * Body: { filters: [{ field, op, value }], originalUrl }
    */
-  router.post('/filter', (req, res) => filterRecords(req, res, prisma));
+  /**
+   * POST /api/filter
+   * Filtro dinâmico de registros (otimizado com MongoDB Native)
+   * Query params opcionais: cursor, pageSize (para paginação)
+   */
+  router.post('/filter', (req, res) => filterRecords(req, res, prisma, getMongoClient));
   
   /**
    * GET /api/meta/aliases

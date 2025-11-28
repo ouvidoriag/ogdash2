@@ -82,5 +82,10 @@ function updateCanalKPIs(data) {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-canal', loadCanal, 500);
+}
+
 window.loadCanal = loadCanal;
 

@@ -307,4 +307,9 @@ function updateZeladoriaCanalKPIs(data) {
   if (mediaEl) mediaEl.textContent = media.toLocaleString('pt-BR');
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-canal', loadZeladoriaCanal, 500);
+}
+
 window.loadZeladoriaCanal = loadZeladoriaCanal;

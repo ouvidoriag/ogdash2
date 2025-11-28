@@ -363,4 +363,9 @@ function updateZeladoriaCategoriaKPIs(sortedData, allData) {
   if (mediaEl) mediaEl.textContent = media.toLocaleString('pt-BR');
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-categoria', loadZeladoriaCategoria, 500);
+}
+
 window.loadZeladoriaCategoria = loadZeladoriaCategoria;

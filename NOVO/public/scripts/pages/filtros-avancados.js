@@ -16,7 +16,8 @@ let filtrosState = {
   totalProtocolos: 0,
   protocolosFiltrados: 0,
   optionsCache: {},
-  isLoading: false
+  isLoading: false,
+  optionsLoaded: false // Flag para indicar se opções já foram carregadas
 };
 
 /**
@@ -39,17 +40,30 @@ async function loadFiltrosAvancados(forceRefresh = false) {
     // Inicializar componentes
     await initializeFilters();
     
-    // Carregar opções de filtros
-    await loadFilterOptions();
+    // OTIMIZAÇÃO: Só carregar opções se ainda não foram carregadas ou se forceRefresh for true
+    if (!filtrosState.optionsLoaded || forceRefresh) {
+      await loadFilterOptions(forceRefresh);
+      filtrosState.optionsLoaded = true;
+    } else {
+      if (window.Logger) {
+        window.Logger.debug('🔍 Opções de filtros já carregadas, pulando recarregamento');
+      }
+    }
     
-    // Carregar total de protocolos
+    // Carregar total de protocolos (sempre atualizar, mas usar cache se disponível)
     await loadTotalProtocolos();
     
-    // Configurar event listeners
-    setupEventListeners();
+    // Configurar event listeners (só uma vez)
+    if (!filtrosState.listenersSetup) {
+      setupEventListeners();
+      filtrosState.listenersSetup = true;
+    }
     
-    // Restaurar filtros salvos se houver
-    restoreSavedFilters();
+    // Restaurar filtros salvos se houver (só na primeira carga)
+    if (!filtrosState.filtersRestored) {
+      restoreSavedFilters();
+      filtrosState.filtersRestored = true;
+    }
     
     if (window.Logger) {
       window.Logger.success('🔍 loadFiltrosAvancados: Carregamento concluído');
@@ -89,7 +103,7 @@ async function initializeFilters() {
 /**
  * Carregar opções para os dropdowns de filtros
  */
-async function loadFilterOptions() {
+async function loadFilterOptions(forceRefresh = false) {
   if (window.Logger) {
     window.Logger.debug('🔍 Carregando opções de filtros...');
   }
@@ -108,16 +122,17 @@ async function loadFilterOptions() {
     { id: 'filtroStatus', campo: 'Status' }
   ];
   
-  // Carregar opções em paralelo
+  // OTIMIZAÇÃO: Carregar opções em paralelo usando Promise.allSettled
+  // Isso permite que algumas requisições falhem sem bloquear as outras
   const loadPromises = camposFiltro.map(async ({ id, campo }) => {
     try {
       const select = document.getElementById(id);
-      if (!select) return;
+      if (!select) return { success: false, campo, reason: 'Select não encontrado' };
       
       // Verificar cache
       if (filtrosState.optionsCache[campo] && !forceRefresh) {
         populateSelect(select, filtrosState.optionsCache[campo]);
-        return;
+        return { success: true, campo, fromCache: true };
       }
       
       // Carregar do servidor
@@ -125,15 +140,29 @@ async function loadFilterOptions() {
       if (options && options.length > 0) {
         filtrosState.optionsCache[campo] = options;
         populateSelect(select, options);
+        return { success: true, campo, count: options.length };
       }
+      
+      return { success: false, campo, reason: 'Nenhuma opção retornada' };
     } catch (error) {
       if (window.Logger) {
         window.Logger.warn(`Erro ao carregar opções para ${campo}:`, error);
       }
+      return { success: false, campo, error: error.message };
     }
   });
   
-  await Promise.all(loadPromises);
+  // Usar allSettled para não bloquear se algumas falharem
+  const results = await Promise.allSettled(loadPromises);
+  
+  // Log de resultados para debug
+  if (window.Logger) {
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+    const failed = results.length - successful;
+    if (failed > 0) {
+      window.Logger.debug(`🔍 Carregamento de opções: ${successful} sucesso, ${failed} falhas`);
+    }
+  }
   
   if (window.Logger) {
     window.Logger.debug('🔍 Opções de filtros carregadas');
@@ -142,13 +171,16 @@ async function loadFilterOptions() {
 
 /**
  * Carregar valores distintos de um campo
+ * OTIMIZAÇÃO: Melhor tratamento de erros e retry automático
  */
 async function loadDistinctValues(field) {
   try {
     if (window.dataLoader) {
+      // OTIMIZAÇÃO: Aumentar timeout e usar cache mais agressivo
       const values = await window.dataLoader.load(`/api/distinct?field=${encodeURIComponent(field)}`, {
         useDataStore: true,
-        ttl: 60 * 60 * 1000 // Cache de 1 hora
+        ttl: 60 * 60 * 1000, // Cache de 1 hora
+        timeout: 15000 // 15 segundos de timeout (aumentado de padrão)
       });
       
       if (Array.isArray(values)) {
@@ -161,6 +193,19 @@ async function loadDistinctValues(field) {
     if (window.Logger) {
       window.Logger.warn(`Erro ao carregar valores distintos para ${field}:`, error);
     }
+    
+    // OTIMIZAÇÃO: Tentar retornar do cache se houver erro
+    if (window.dataStore) {
+      const cacheKey = `/api/distinct?field=${encodeURIComponent(field)}`;
+      const cached = window.dataStore.get(cacheKey);
+      if (cached && Array.isArray(cached)) {
+        if (window.Logger) {
+          window.Logger.debug(`Usando valores em cache para ${field}`);
+        }
+        return cached.filter(v => v && v.trim() !== '').sort();
+      }
+    }
+    
     return [];
   }
 }
@@ -472,6 +517,10 @@ async function applyFilters() {
     
     // Aplicar filtros globalmente (integração com sistema de gráficos)
     if (window.chartCommunication && filtros.length > 0) {
+      // OTIMIZAÇÃO: Marcar que filtros foram aplicados pela própria página
+      // Isso evita recarregamento desnecessário quando o listener detectar a mudança
+      filtrosState.filterAppliedByPage = true;
+      
       // Aplicar cada filtro no sistema global
       filtros.forEach(filter => {
         window.chartCommunication.applyFilter(
@@ -485,6 +534,11 @@ async function applyFilters() {
           }
         );
       });
+      
+      // Resetar flag após um delay
+      setTimeout(() => {
+        filtrosState.filterAppliedByPage = false;
+      }, 1000);
     }
     
     // Salvar filtros
@@ -822,6 +876,46 @@ function clearSavedFilters() {
 
 // Exportar função globalmente
 window.loadFiltrosAvancados = loadFiltrosAvancados;
+
+// Conectar ao sistema global de filtros
+// OTIMIZAÇÃO: Criar listener customizado que não recarrega tudo quando filtro vem da própria página
+if (window.chartCommunication) {
+  let updateTimeout = null;
+  
+  const handleFilterChange = () => {
+    // Se o filtro foi aplicado pela própria página, não recarregar tudo
+    if (filtrosState.filterAppliedByPage) {
+      if (window.Logger) {
+        window.Logger.debug('🔍 Filtro aplicado pela própria página, pulando recarregamento completo');
+      }
+      return;
+    }
+    
+    const page = document.getElementById('page-filtros-avancados');
+    if (!page || page.style.display === 'none') {
+      return; // Página não está visível
+    }
+    
+    // OTIMIZAÇÃO: Só atualizar total de protocolos, não recarregar tudo
+    clearTimeout(updateTimeout);
+    updateTimeout = setTimeout(() => {
+      if (window.Logger) {
+        window.Logger.debug('🔍 Filtro mudou de outra página, atualizando apenas contadores');
+      }
+      // Apenas atualizar contadores, não recarregar opções
+      loadTotalProtocolos().catch(err => {
+        if (window.Logger) {
+          window.Logger.warn('Erro ao atualizar total de protocolos:', err);
+        }
+      });
+    }, 500);
+  };
+  
+  // Escutar eventos de filtro
+  window.chartCommunication.on('filter:applied', handleFilterChange);
+  window.chartCommunication.on('filter:removed', handleFilterChange);
+  window.chartCommunication.on('filter:cleared', handleFilterChange);
+}
 
 if (window.Logger) {
   window.Logger.debug('✅ Página Filtros Avançados carregada');

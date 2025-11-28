@@ -582,4 +582,9 @@ async function recarregarVencimentos() {
   } else {
     console.log('✅ Script vencimento.js carregado');
   }
+  
+  // Conectar ao sistema global de filtros
+  if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+    window.chartCommunication.createPageFilterListener('page-vencimento', loadVencimento, 500);
+  }
 })();

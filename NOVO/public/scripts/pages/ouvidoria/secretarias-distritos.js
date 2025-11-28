@@ -266,5 +266,10 @@ function updateSecretariasDistritosKPIs(estatisticas) {
   if (kpiMedia) kpiMedia.textContent = mediaSecretariasDistrito;
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-secretarias-distritos', loadSecretariasDistritos, 500);
+}
+
 window.loadSecretariasDistritos = loadSecretariasDistritos;
 

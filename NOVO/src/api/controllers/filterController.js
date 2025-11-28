@@ -1,15 +1,23 @@
 /**
  * Controller de Filtros
  * POST /api/filter
+ * 
+ * OTIMIZAÇÃO: Usa MongoDB Native para queries mais eficientes
+ * Suporta paginação cursor-based opcional
  */
 
 import { getNormalizedField } from '../../utils/fieldMapper.js';
+import { paginateWithCursor } from '../../utils/cursorPagination.js';
 
 /**
  * POST /api/filter
  * Filtro dinâmico de registros
+ * @param {Object} req - Request object
+ * @param {Object} res - Response object
+ * @param {PrismaClient} prisma - Cliente Prisma (fallback)
+ * @param {Function} getMongoClient - Função para obter cliente MongoDB nativo
  */
-export async function filterRecords(req, res, prisma) {
+export async function filterRecords(req, res, prisma, getMongoClient) {
   try {
     const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
     const originalUrl = req.body?.originalUrl || '';
@@ -58,28 +66,76 @@ export async function filterRecords(req, res, prisma) {
     const finalSelect = Object.keys(selectFields).length > 1 ? selectFields : undefined;
     const whereCondition = Object.keys(whereClause).length > 0 ? whereClause : undefined;
     
-    // IMPORTANTE: Se há filtros, NÃO limitar para garantir que todos os dados filtrados sejam retornados
-    // O limite só deve ser aplicado quando NÃO há filtros (caso de uso raro)
+    // OTIMIZAÇÃO: Verificar se deve usar paginação cursor-based
+    const usePagination = req.query.cursor !== undefined || req.query.pageSize !== undefined;
+    const pageSize = req.query.pageSize ? parseInt(req.query.pageSize) : 50;
+    const cursor = req.query.cursor || null;
+    
+    let allRows;
+    
+    // Se usar paginação cursor-based e getMongoClient disponível
+    if (usePagination && getMongoClient) {
+      try {
+        // Converter whereClause do Prisma para formato MongoDB $match
+        const mongoMatch = {};
+        for (const [key, value] of Object.entries(whereClause)) {
+          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // Converter operadores Prisma para MongoDB
+            if (value.startsWith) {
+              mongoMatch[key] = { $regex: `^${value.startsWith}`, $options: 'i' };
+            } else if (value.contains) {
+              mongoMatch[key] = { $regex: value.contains, $options: 'i' };
+            } else {
+              mongoMatch[key] = value;
+            }
+          } else {
+            mongoMatch[key] = value;
+          }
+        }
+        
+        const paginationResult = await paginateWithCursor(
+          getMongoClient,
+          mongoMatch,
+          pageSize,
+          cursor
+        );
+        
+        // Formatar resultados
+        allRows = paginationResult.results.map(doc => ({
+          id: doc._id.toString(),
+          ...doc,
+          _id: doc._id.toString() // Compatibilidade
+        }));
+        
+        // Retornar com metadados de paginação
+        return res.json({
+          data: allRows,
+          nextCursor: paginationResult.nextCursor,
+          hasMore: paginationResult.hasMore,
+          pageSize: paginationResult.pageSize,
+          totalReturned: paginationResult.totalReturned
+        });
+      } catch (mongoError) {
+        console.warn('⚠️ Erro ao usar MongoDB Native, usando fallback Prisma:', mongoError.message);
+        // Continuar com Prisma como fallback
+      }
+    }
+    
+    // Fallback: usar Prisma (compatibilidade)
     const hasFilters = filters.length > 0;
     
     let limitValue;
     if (!hasFilters) {
-      // Sem filtros: limitar a 10.000 para evitar carregar tudo desnecessariamente
       limitValue = 10000;
     } else {
-      // COM FILTROS: NUNCA limitar - precisamos de TODOS os registros para filtrar corretamente
-      // Se o where clause funcionou, o banco já filtra. Se não funcionou, precisamos filtrar em memória.
       limitValue = undefined; // Sem limite quando há filtros
-      
       console.log('🔍 /api/filter: Há filtros ativos, removendo limite de registros');
-      console.log('🔍 /api/filter: Where condition:', whereCondition);
-      console.log('🔍 /api/filter: Filtros em memória:', needsInMemoryFilter.length);
     }
     
     const queryOptions = {
       where: whereCondition,
       ...(finalSelect ? { select: finalSelect } : {}),
-      ...(limitValue !== undefined ? { take: limitValue } : {}) // Só adicionar take se limitValue estiver definido
+      ...(limitValue !== undefined ? { take: limitValue } : {})
     };
     
     // Timeout de 8 segundos
@@ -87,7 +143,6 @@ export async function filterRecords(req, res, prisma) {
       setTimeout(() => reject(new Error('Query timeout após 8 segundos')), 8000)
     );
     
-    let allRows;
     try {
       allRows = await Promise.race([prisma.record.findMany(queryOptions), timeoutPromise]);
     } catch (queryError) {

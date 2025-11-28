@@ -23,6 +23,7 @@ import { initializeGemini } from './utils/geminiHelper.js';
 import { iniciarScheduler } from './services/email-notifications/scheduler.js';
 import { iniciarCronVencimentos } from './cron/vencimentos.cron.js';
 import { requireAuth } from './api/middleware/authMiddleware.js';
+import { startChangeStreamWatcher } from './services/changeStreamWatcher.js';
 
 // Resolver caminho absoluto
 const __filename = fileURLToPath(import.meta.url);
@@ -37,10 +38,43 @@ if (!mongodbUrl) {
   process.exit(1);
 }
 
-// Adicionar parâmetros de conexão otimizados
-if (!mongodbUrl.includes('serverSelectionTimeoutMS')) {
-  const separator = mongodbUrl.includes('?') ? '&' : '?';
-  mongodbUrl += `${separator}serverSelectionTimeoutMS=30000&connectTimeoutMS=30000&socketTimeoutMS=30000&retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=false`;
+// Adicionar parâmetros de conexão otimizados (apenas se não existirem)
+// Extrair query string da URL
+const urlParts = mongodbUrl.split('?');
+const baseUrl = urlParts[0];
+const existingQuery = urlParts[1] || '';
+
+// Parsear parâmetros existentes
+const urlParams = new URLSearchParams(existingQuery);
+const paramsToAdd = {};
+
+// Verificar e adicionar apenas parâmetros que não existem
+if (!urlParams.has('serverSelectionTimeoutMS')) {
+  paramsToAdd.serverSelectionTimeoutMS = '30000';
+}
+if (!urlParams.has('connectTimeoutMS')) {
+  paramsToAdd.connectTimeoutMS = '30000';
+}
+if (!urlParams.has('socketTimeoutMS')) {
+  paramsToAdd.socketTimeoutMS = '30000';
+}
+if (!urlParams.has('retryWrites')) {
+  paramsToAdd.retryWrites = 'true';
+}
+if (!urlParams.has('w')) {
+  paramsToAdd.w = 'majority';
+}
+if (!urlParams.has('tls')) {
+  paramsToAdd.tls = 'true';
+}
+
+// Reconstruir URL apenas se houver parâmetros para adicionar
+if (Object.keys(paramsToAdd).length > 0) {
+  // Adicionar novos parâmetros aos existentes
+  Object.entries(paramsToAdd).forEach(([key, value]) => {
+    urlParams.set(key, value);
+  });
+  mongodbUrl = `${baseUrl}?${urlParams.toString()}`;
 }
 
 // Configurar DATABASE_URL para o Prisma
@@ -249,6 +283,16 @@ process.on('SIGTERM', async () => {
       console.log('🔔 Cron de vencimentos automático iniciado');
     } catch (error) {
       console.warn('⚠️ Erro ao iniciar cron de vencimentos:', error.message);
+    }
+    
+    // Inicializar ChangeStream Watcher para invalidação automática de cache
+    let changeStream = null;
+    try {
+      changeStream = await startChangeStreamWatcher(prisma, getMongoClient);
+      console.log('👁️ ChangeStream Watcher ativo - Cache será invalidado automaticamente');
+    } catch (error) {
+      console.warn('⚠️ Erro ao iniciar ChangeStream Watcher:', error.message);
+      console.warn('⚠️ Cache não será invalidado automaticamente, mas sistema continuará funcionando');
     }
     
     // Iniciar servidor

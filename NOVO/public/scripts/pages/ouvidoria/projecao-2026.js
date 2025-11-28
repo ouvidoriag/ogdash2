@@ -752,4 +752,9 @@ function renderTopOrgaos(orgaos) {
   }).join('');
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-projecao-2026', loadProjecao2026, 500);
+}
+
 window.loadProjecao2026 = loadProjecao2026;

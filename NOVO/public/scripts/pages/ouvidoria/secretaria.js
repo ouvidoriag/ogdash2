@@ -103,5 +103,10 @@ function updateSecretariaKPIs(data) {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-secretaria', loadSecretaria, 500);
+}
+
 window.loadSecretaria = loadSecretaria;
 

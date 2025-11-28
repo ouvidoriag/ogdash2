@@ -530,5 +530,10 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-tempo-medio', loadTempoMedio, 500);
+}
+
 window.loadTempoMedio = loadTempoMedio;
 

@@ -251,4 +251,9 @@ function updateZeladoriaMensalKPIs(data) {
   if (crescimentoEl) crescimentoEl.textContent = crescimento;
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-zeladoria-mensal', loadZeladoriaMensal, 500);
+}
+
 window.loadZeladoriaMensal = loadZeladoriaMensal;

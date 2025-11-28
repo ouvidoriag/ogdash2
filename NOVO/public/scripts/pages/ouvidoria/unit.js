@@ -146,5 +146,22 @@ async function renderUnitTiposChart(canvas, tipos, unitName) {
   });
 }
 
+// Conectar ao sistema global de filtros (para páginas dinâmicas de unidades)
+// Nota: Páginas dinâmicas são conectadas via autoConnectAllPages, mas adicionamos aqui também
+// para garantir que funcionem mesmo se a página for carregada antes do autoConnectAllPages
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  // Para páginas dinâmicas, o listener será criado quando a página específica for carregada
+  // Mas podemos criar um listener genérico que funciona para todas as unidades
+  const originalLoadUnit = window.loadUnit;
+  window.loadUnit = async function(unitName) {
+    const result = await originalLoadUnit(unitName);
+    const pageId = `page-unit-${unitName.replace(/\s+/g, '-').toLowerCase()}`;
+    if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+      window.chartCommunication.createPageFilterListener(pageId, () => originalLoadUnit(unitName), 500);
+    }
+    return result;
+  };
+}
+
 window.loadUnit = loadUnit;
 

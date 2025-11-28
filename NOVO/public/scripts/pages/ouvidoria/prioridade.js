@@ -82,5 +82,10 @@ function updatePrioridadeKPIs(data) {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-prioridade', loadPrioridade, 500);
+}
+
 window.loadPrioridade = loadPrioridade;
 

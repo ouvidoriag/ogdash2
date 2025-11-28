@@ -866,6 +866,7 @@
       'page-tempo-medio': window.loadTempoMedio,
       'page-cadastrante': window.loadCadastrante,
       'page-projecao-2026': window.loadProjecao2026,
+      'page-vencimento': window.loadVencimento,
       'page-zeladoria-overview': window.loadZeladoriaOverview,
       'page-zeladoria-status': window.loadZeladoriaStatus,
       'page-zeladoria-categoria': window.loadZeladoriaCategoria,

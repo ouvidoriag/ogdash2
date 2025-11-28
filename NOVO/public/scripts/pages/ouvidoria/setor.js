@@ -83,5 +83,10 @@ function updateSetorKPIs(data) {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-setor', loadSetor, 500);
+}
+
 window.loadSetor = loadSetor;
 

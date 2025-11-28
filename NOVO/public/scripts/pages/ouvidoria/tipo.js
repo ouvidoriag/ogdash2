@@ -92,5 +92,10 @@ function updateTipoKPIs(data) {
   }
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-tipo', loadTipo, 500);
+}
+
 window.loadTipo = loadTipo;
 

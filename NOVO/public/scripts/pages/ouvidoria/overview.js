@@ -25,6 +25,29 @@ async function loadOverview(forceRefresh = false) {
     return Promise.resolve();
   }
   
+  // OTIMIZAÇÃO: Mostrar indicador de carregamento
+  const loadingIndicator = document.getElementById('overview-loading');
+  if (loadingIndicator) {
+    loadingIndicator.style.display = 'flex';
+  } else {
+    // Criar indicador se não existir
+    const loader = document.createElement('div');
+    loader.id = 'overview-loading';
+    loader.className = 'fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center';
+    loader.innerHTML = `
+      <div class="bg-slate-800 rounded-lg p-6 shadow-xl">
+        <div class="flex items-center gap-4">
+          <div class="animate-spin text-4xl">⏳</div>
+          <div>
+            <div class="text-lg font-semibold text-cyan-300 mb-1">Carregando Dashboard...</div>
+            <div class="text-sm text-slate-400">Aguarde enquanto os dados são carregados</div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(loader);
+  }
+  
   try {
     // Verificar se há filtros ativos
     let activeFilters = null;
@@ -48,20 +71,37 @@ async function loadOverview(forceRefresh = false) {
           originalUrl: window.location.pathname
         };
         
+        // OTIMIZAÇÃO: Adicionar timeout para evitar travamentos
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+        
         const response = await fetch('/api/filter', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           credentials: 'include', // Enviar cookies de sessão
-          body: JSON.stringify(filterRequest)
+          body: JSON.stringify(filterRequest),
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (response.ok) {
           const filteredRows = await response.json();
           
+          // OTIMIZAÇÃO: Limitar quantidade de registros processados se houver muitos
+          // Processar no máximo 50000 registros para manter performance
+          const rowsToProcess = filteredRows.length > 50000 
+            ? filteredRows.slice(0, 50000) 
+            : filteredRows;
+          
+          if (filteredRows.length > 50000 && window.Logger) {
+            window.Logger.warn(`📊 Muitos registros filtrados (${filteredRows.length}), processando apenas os primeiros 50000 para manter performance`);
+          }
+          
           // Agregar dados localmente
-          dashboardData = aggregateFilteredData(filteredRows);
+          dashboardData = aggregateFilteredData(rowsToProcess);
           
           if (window.Logger) {
             window.Logger.debug('📊 loadOverview: Dados agregados localmente com filtros', {
@@ -84,16 +124,18 @@ async function loadOverview(forceRefresh = false) {
           window.Logger.error('Erro ao aplicar filtros no overview, carregando sem filtros:', filterError);
         }
         // Em caso de erro, carregar sem filtros
+        // OTIMIZAÇÃO: Aumentar TTL para melhor performance
         dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
           useDataStore: !forceRefresh,
-          ttl: 5000
+          ttl: 5 * 60 * 1000 // 5 minutos ao invés de 5 segundos
         }) || {};
       }
     } else {
       // Sem filtros, usar endpoint normal
+      // OTIMIZAÇÃO: Aumentar TTL para 5 minutos (300000ms) para melhor performance
       dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
         useDataStore: !forceRefresh,
-        ttl: 5000
+        ttl: 5 * 60 * 1000 // 5 minutos ao invés de 5 segundos
       }) || {};
     }
     
@@ -138,13 +180,14 @@ async function loadOverview(forceRefresh = false) {
     const byPriority = dashboardData.manifestationsByPriority || [];
     const byUnit = dashboardData.manifestationsByUnit || [];
     
-    // Renderizar KPIs
+    // OTIMIZAÇÃO: Renderizar KPIs primeiro (mais rápido, feedback imediato)
     await renderKPIs(summary, byDay, byMonth);
     
+    // OTIMIZAÇÃO: Renderizar gráficos principais em paralelo quando possível
     // Renderizar gráficos principais (inclui todos os gráficos organizados por seção)
     await renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit);
     
-    // Carregar insights de IA (em background)
+    // OTIMIZAÇÃO: Carregar insights de IA em background (não bloqueia renderização)
     loadAIInsights().catch(err => {
       if (window.Logger) {
         window.Logger.warn('Erro ao carregar insights de IA:', err);
@@ -154,10 +197,44 @@ async function loadOverview(forceRefresh = false) {
     if (window.Logger) {
       window.Logger.success('📊 loadOverview: Carregamento concluído');
     }
+    
+    // OTIMIZAÇÃO: Ocultar indicador de carregamento
+    const loadingIndicator = document.getElementById('overview-loading');
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'none';
+    }
   } catch (error) {
     if (window.Logger) {
       window.Logger.error('Erro ao carregar overview:', error);
     }
+    
+    // OTIMIZAÇÃO: Mostrar mensagem de erro ao usuário
+    const pageMain = document.getElementById('page-main');
+    if (pageMain) {
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed top-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+      errorMessage.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span>❌</span>
+          <span>Erro ao carregar dados. Tente recarregar a página.</span>
+        </div>
+      `;
+      document.body.appendChild(errorMessage);
+      
+      // Remover mensagem após 5 segundos
+      setTimeout(() => {
+        errorMessage.remove();
+      }, 5000);
+    }
+    
+    // OTIMIZAÇÃO: Ocultar indicador de carregamento mesmo em caso de erro
+    const loadingIndicator = document.getElementById('overview-loading');
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'none';
+    }
+    
+    // Re-throw para que o erro seja visível no console
+    throw error;
   }
 }
 
@@ -881,6 +958,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   // SEÇÃO 4: RANKINGS E TOP PERFORMERS
   // ============================================
   
+  // OTIMIZAÇÃO: Renderizar gráficos de rankings em paralelo (não dependem uns dos outros)
+  const rankingPromises = [];
+  
   // Top órgãos (se disponível)
   if (byOrgan && Array.isArray(byOrgan) && byOrgan.length > 0) {
     const topOrgaos = byOrgan.slice(0, 20);
@@ -891,18 +971,28 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       window.Logger.debug('📊 Renderizando chartTopOrgaos:', { labels: labels.length, values: values.length });
     }
     
-    try {
-      await window.chartFactory.createBarChart('chartTopOrgaos', labels, values, {
+    rankingPromises.push(
+      window.chartFactory.createBarChart('chartTopOrgaos', labels, values, {
         horizontal: true,
         colorIndex: 1,
         onClick: true // Habilitar comunicação e filtros
-      });
-    } catch (error) {
-      console.error('Erro ao criar chartTopOrgaos:', error);
-      if (window.Logger) {
-        window.Logger.error('Erro ao criar chartTopOrgaos:', error);
-      }
-    }
+      }).catch(error => {
+        console.error('Erro ao criar chartTopOrgaos:', error);
+        if (window.Logger) {
+          window.Logger.error('Erro ao criar chartTopOrgaos:', error);
+        }
+        // Mostrar mensagem de erro no canvas
+        const canvas = document.getElementById('chartTopOrgaos');
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Erro ao carregar', canvas.width / 2, canvas.height / 2);
+        }
+      })
+    );
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Sem dados de órgãos para chartTopOrgaos');
@@ -928,18 +1018,27 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       window.Logger.debug('📊 Renderizando chartTopTemas:', { labels: labels.length, values: values.length });
     }
     
-    try {
-      await window.chartFactory.createBarChart('chartTopTemas', labels, values, {
+    rankingPromises.push(
+      window.chartFactory.createBarChart('chartTopTemas', labels, values, {
         horizontal: true,
         colorIndex: 2,
         onClick: true // Habilitar comunicação e filtros
-      });
-    } catch (error) {
-      console.error('Erro ao criar chartTopTemas:', error);
-      if (window.Logger) {
-        window.Logger.error('Erro ao criar chartTopTemas:', error);
-      }
-    }
+      }).catch(error => {
+        console.error('Erro ao criar chartTopTemas:', error);
+        if (window.Logger) {
+          window.Logger.error('Erro ao criar chartTopTemas:', error);
+        }
+        const canvas = document.getElementById('chartTopTemas');
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Erro ao carregar', canvas.width / 2, canvas.height / 2);
+        }
+      })
+    );
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Sem dados de temas para chartTopTemas');
@@ -953,6 +1052,11 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       ctx.textAlign = 'center';
       ctx.fillText('Sem dados disponíveis', canvas.width / 2, canvas.height / 2);
     }
+  }
+  
+  // Aguardar todos os gráficos de ranking em paralelo
+  if (rankingPromises.length > 0) {
+    await Promise.all(rankingPromises);
   }
   
   // ============================================
@@ -1026,20 +1130,23 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     }
   }
   
+  // OTIMIZAÇÃO: Renderizar gráficos de distribuição em paralelo
+  const distributionPromises = [];
+  
   // Canais de atendimento (doughnut chart)
   if (byChannel && byChannel.length > 0) {
     const topCanais = byChannel.slice(0, 8); // Top 8 canais
     const labels = topCanais.map(c => c.channel || 'N/A');
     const values = topCanais.map(c => c.count || 0);
     
-    try {
-      await window.chartFactory.createDoughnutChart('chartCanais', labels, values, {
+    distributionPromises.push(
+      window.chartFactory.createDoughnutChart('chartCanais', labels, values, {
         onClick: true,
         legendContainer: 'legendCanais'
-      });
-    } catch (error) {
-      console.error('Erro ao criar chartCanais:', error);
-    }
+      }).catch(error => {
+        console.error('Erro ao criar chartCanais:', error);
+      })
+    );
   }
   
   // Prioridades (doughnut chart)
@@ -1047,14 +1154,14 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     const labels = byPriority.map(p => p.priority || 'N/A');
     const values = byPriority.map(p => p.count || 0);
     
-    try {
-      await window.chartFactory.createDoughnutChart('chartPrioridades', labels, values, {
+    distributionPromises.push(
+      window.chartFactory.createDoughnutChart('chartPrioridades', labels, values, {
         onClick: true,
         legendContainer: 'legendPrioridades'
-      });
-    } catch (error) {
-      console.error('Erro ao criar chartPrioridades:', error);
-    }
+      }).catch(error => {
+        console.error('Erro ao criar chartPrioridades:', error);
+      })
+    );
   }
   
   // Top unidades de cadastro (movido para seção de Rankings)
@@ -1063,15 +1170,20 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     const labels = topUnidades.map(u => u.unit || 'N/A');
     const values = topUnidades.map(u => u.count || 0);
     
-    try {
-      await window.chartFactory.createBarChart('chartUnidadesCadastro', labels, values, {
+    distributionPromises.push(
+      window.chartFactory.createBarChart('chartUnidadesCadastro', labels, values, {
         horizontal: true,
         colorIndex: 3,
         onClick: true
-      });
-    } catch (error) {
-      console.error('Erro ao criar chartUnidadesCadastro:', error);
-    }
+      }).catch(error => {
+        console.error('Erro ao criar chartUnidadesCadastro:', error);
+      })
+    );
+  }
+  
+  // Aguardar todos os gráficos de distribuição em paralelo
+  if (distributionPromises.length > 0) {
+    await Promise.all(distributionPromises);
   }
   
   if (window.Logger) {
@@ -1430,6 +1542,7 @@ function aggregateFilteredData(rows) {
   let last7Count = 0;
   let last30Count = 0;
   
+  // OTIMIZAÇÃO: Processar todos os registros (já limitado a 50000 no loadOverview)
   for (const row of rows) {
     // Extrair dados - pode estar em row.data ou diretamente em row
     // Também verificar campos normalizados do banco

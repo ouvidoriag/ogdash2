@@ -394,6 +394,6 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
       console.error('❌ Erro ao gerar insights:', error);
       return { insights: [], patterns: {}, geradoPorIA: false, erro: error.message };
     }
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint de IA
 }
 

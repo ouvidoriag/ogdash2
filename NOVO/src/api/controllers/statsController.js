@@ -107,7 +107,7 @@ export async function averageTime(req, res, prisma) {
       .sort((a, b) => b.dias - a.dias);
     
     return result;
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
@@ -203,7 +203,7 @@ export async function averageTimeByDay(req, res, prisma) {
     }
     
     return result;
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
@@ -388,7 +388,7 @@ export async function averageTimeByWeek(req, res, prisma) {
     console.log(`✅ averageTimeByWeek: Retornando ${result.length} semanas. Primeira: ${result[0]?.week}, Última: ${result[result.length - 1]?.week}`);
     
     return result;
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
@@ -452,7 +452,7 @@ export async function averageTimeByMonth(req, res, prisma) {
         quantidade: stats.total
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
@@ -530,7 +530,7 @@ export async function averageTimeStats(req, res, prisma) {
       maximo,
       total: days.length
     };
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
@@ -595,7 +595,7 @@ export async function averageTimeByUnit(req, res, prisma) {
       }))
       .filter(item => item.dias > 0)
       .sort((a, b) => b.dias - a.dias);
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
@@ -668,14 +668,15 @@ export async function averageTimeByMonthUnit(req, res, prisma) {
         if (a.month !== b.month) return a.month.localeCompare(b.month);
         return a.unit.localeCompare(b.unit);
       });
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
  * GET /api/stats/status-overview
  * Visão geral de status (percentuais)
+ * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
  */
-export async function statusOverview(req, res, prisma) {
+export async function statusOverview(req, res, prisma, getMongoClient) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -690,29 +691,63 @@ export async function statusOverview(req, res, prisma) {
     
     const total = await prisma.record.count({ where });
     
+    // Construir filtros para pipeline
+    const filters = {};
+    if (servidor) filters.servidor = servidor;
+    if (unidadeCadastro) filters.unidadeCadastro = unidadeCadastro;
+    
     try {
-      const statusGroups = await prisma.record.groupBy({
-        by: ['status'],
-        where: Object.keys(where).length > 0 ? where : undefined,
-        _count: { _all: true }
-      });
+      // Tentar usar pipeline MongoDB nativo se disponível
+      let statusGroups;
+      if (getMongoClient) {
+        const { executeAggregation } = await import('../../utils/dbAggregations.js');
+        const { buildStatusPipeline } = await import('../../utils/pipelines/index.js');
+        const { formatGroupByResult } = await import('../../utils/dataFormatter.js');
+        const { sanitizeFilters } = await import('../../utils/validateFilters.js');
+        const { withSmartCache } = await import('../../utils/smartCache.js');
+        
+        const sanitizedFilters = sanitizeFilters(filters);
+        
+        statusGroups = await withSmartCache(
+          prisma,
+          'status',
+          sanitizedFilters,
+          async () => {
+            const pipeline = buildStatusPipeline(sanitizedFilters);
+            const result = await executeAggregation(getMongoClient, pipeline);
+            return formatGroupByResult(result, '_id', 'count');
+          }
+        );
+      } else {
+        // Fallback para Prisma
+        const rows = await prisma.record.groupBy({
+          by: ['status'],
+          where: Object.keys(where).length > 0 ? where : undefined,
+          _count: { _all: true }
+        });
+        statusGroups = rows.map(r => ({ 
+          key: r.status ?? 'Não informado', 
+          count: r._count._all,
+          _id: r.status ?? 'Não informado'
+        }));
+      }
       
       let concluidas = 0;
       let emAtendimento = 0;
       
       for (const group of statusGroups) {
-        const statusValue = group.status || '';
+        const statusValue = group.key || group.status || group._id || '';
         const status = `${statusValue}`.toLowerCase();
         
         if (status.includes('concluída') || status.includes('concluida') || 
             status.includes('encerrada') || status.includes('arquivamento') ||
             status.includes('resposta final')) {
-          concluidas += group._count._all;
+          concluidas += group.count || group.value || group._count?._all || 0;
         } else if (status.includes('em atendimento') || status.includes('aberto') || 
                    status.includes('pendente') || status.includes('análise') ||
                    status.includes('departamento') || status.includes('ouvidoria') ||
                    status.length > 0) {
-          emAtendimento += group._count._all;
+          emAtendimento += group.count || group.value || group._count?._all || 0;
         }
       }
       
@@ -769,6 +804,6 @@ export async function statusOverview(req, res, prisma) {
         }
       };
     }
-  }, prisma);
+  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
 }
 

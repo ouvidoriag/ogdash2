@@ -164,5 +164,10 @@ async function renderCadastranteMesChart(dataMensal) {
   });
 }
 
+// Conectar ao sistema global de filtros
+if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  window.chartCommunication.createPageFilterListener('page-cadastrante', loadCadastrante, 500);
+}
+
 window.loadCadastrante = loadCadastrante;
 
