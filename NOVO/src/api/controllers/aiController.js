@@ -1,38 +1,37 @@
 /**
  * Controller de IA
  * /api/ai/insights
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { withCache } from '../../utils/responseHelper.js';
 import { getMes } from '../../utils/dateUtils.js';
 import { getCurrentGeminiKey, rotateToNextKey, hasGeminiKeys, isCurrentKeyInCooldown, markCurrentKeyInCooldown, hasAvailableKey } from '../../utils/geminiHelper.js';
+import Record from '../../models/Record.model.js';
 
 /**
  * Detecta padrões e anomalias nos dados
  */
-async function detectPatternsAndAnomalies(prisma, servidor, unidadeCadastro) {
-  const where = {};
-  if (servidor) where.servidor = servidor;
-  if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+async function detectPatternsAndAnomalies(servidor, unidadeCadastro) {
+  const filter = {};
+  if (servidor) filter.servidor = servidor;
+  if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
   
   // Buscar dados dos últimos 3 meses para comparação
   const hoje = new Date();
   const tresMesesAtras = new Date(hoje);
   tresMesesAtras.setMonth(tresMesesAtras.getMonth() - 3);
   
+  filter.dataDaCriacao = { $ne: null };
+  
   // Buscar registros e agrupar por mês manualmente
-  const registros = await prisma.record.findMany({
-    where: {
-      ...where,
-      dataDaCriacao: { not: null }
-    },
-    select: {
-      dataCriacaoIso: true,
-      dataDaCriacao: true,
-      data: true
-    },
-    take: 50000
-  });
+  const registros = await Record.find(filter)
+    .select('dataCriacaoIso dataDaCriacao')
+    .limit(20000)
+    .lean();
   
   // Agrupar por mês usando a função getMes
   const porMes = new Map();
@@ -65,48 +64,42 @@ async function detectPatternsAndAnomalies(prisma, servidor, unidadeCadastro) {
     }
   }
   
-  // Executar agregações em paralelo
-  const [porSecretaria, porAssunto, porUnidade] = await Promise.all([
-    prisma.record.groupBy({
-      by: ['orgaos'],
-      where: { ...where, orgaos: { not: null } },
-      _count: true
-    }),
-    prisma.record.groupBy({
-      by: ['assunto'],
-      where: { ...where, assunto: { not: null } },
-      _count: true
-    }),
-    prisma.record.groupBy({
-      by: ['unidadeCadastro'],
-      where: { ...where, unidadeCadastro: { not: null } },
-      _count: true
-    })
-  ]);
+    // Executar agregações em paralelo
+    const [porSecretaria, porAssunto, porUnidade] = await Promise.all([
+      Record.aggregate([
+        { $match: { ...filter, orgaos: { $ne: null } } },
+        { $group: { _id: '$orgaos', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]),
+      Record.aggregate([
+        { $match: { ...filter, assunto: { $ne: null } } },
+        { $group: { _id: '$assunto', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]),
+      Record.aggregate([
+        { $match: { ...filter, unidadeCadastro: { $ne: null } } },
+        { $group: { _id: '$unidadeCadastro', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ])
+    ]);
+    
+    return {
+      anomalias,
+      topSecretarias: porSecretaria.map(s => ({ nome: s._id, count: s.count })),
+      topAssuntos: porAssunto.map(a => ({ nome: a._id, count: a.count })),
+      topUnidades: porUnidade.map(u => ({ nome: u._id, count: u.count })),
+      tendenciaMensal: meses.map(([mes, count]) => ({ mes, count }))
+    };
+  }
   
-  return {
-    anomalias,
-    topSecretarias: porSecretaria
-      .sort((a, b) => b._count - a._count)
-      .slice(0, 10)
-      .map(s => ({ nome: s.orgaos, count: s._count })),
-    topAssuntos: porAssunto
-      .sort((a, b) => b._count - a._count)
-      .slice(0, 10)
-      .map(a => ({ nome: a.assunto, count: a._count })),
-    topUnidades: porUnidade
-      .sort((a, b) => b._count - a._count)
-      .slice(0, 10)
-      .map(u => ({ nome: u.unidadeCadastro, count: u._count })),
-    tendenciaMensal: meses.map(([mes, count]) => ({ mes, count }))
-  };
-}
-
-/**
- * GET /api/ai/insights
- * Gera insights com IA
- */
-export async function getInsights(req, res, prisma) {
+  /**
+   * GET /api/ai/insights
+   * Gera insights com IA
+   */
+  export async function getInsights(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -114,10 +107,11 @@ export async function getInsights(req, res, prisma) {
                     unidadeCadastro ? `aiInsights:uac:${unidadeCadastro}:v1` : 
                     'aiInsights:v1';
   
-  return withCache(cacheKey, 1800, res, async () => {
+  // Cache de 5 horas para insights (dados base mudam a cada ~5h)
+  return withCache(cacheKey, 18000, res, async () => {
     try {
       // Detectar padrões e anomalias
-      const patterns = await detectPatternsAndAnomalies(prisma, servidor, unidadeCadastro);
+      const patterns = await detectPatternsAndAnomalies(servidor, unidadeCadastro);
       
       // Se não houver chave Gemini, retornar insights básicos
       if (!hasGeminiKeys()) {
@@ -255,7 +249,7 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
           }
         }
         
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${getCurrentGeminiKey()}`;
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${getCurrentGeminiKey()}`;
         
         const payload = {
           system_instruction: {
@@ -394,6 +388,6 @@ Retorne APENAS o JSON, sem markdown, sem explicações adicionais.`;
       console.error('❌ Erro ao gerar insights:', error);
       return { insights: [], patterns: {}, geradoPorIA: false, erro: error.message };
     }
-  }, prisma, null, 60000); // Timeout de 60s para endpoint de IA
+  }, null, 60000); // Timeout de 60s para endpoint de IA (prisma removido)
 }
 

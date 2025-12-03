@@ -5,7 +5,7 @@
  * - GET /api/metrics - Obter métricas do sistema
  * - GET /api/metrics/reset - Resetar métricas (apenas desenvolvimento)
  * 
- * @param {PrismaClient} prisma - Cliente Prisma
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @returns {express.Router} Router configurado
  */
 
@@ -60,7 +60,7 @@ export default function metricsRoutes(prisma) {
    *   }
    * }
    */
-  router.get('/', (req, res) => metricsController.getMetrics(req, res, prisma));
+  router.get('/', (req, res) => metricsController.getMetrics(req, res)); // REFATORAÇÃO: prisma removido
   
   /**
    * GET /api/metrics/reset

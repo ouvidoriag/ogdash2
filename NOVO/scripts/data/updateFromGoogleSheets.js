@@ -20,12 +20,10 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
-import { normalizeDate } from '../src/utils/dateUtils.js';
-
-const prisma = new PrismaClient({
-  log: ['error', 'warn'],
-});
+import mongoose from 'mongoose';
+import { initializeDatabase } from '../../src/config/database.js';
+import Record from '../../src/models/Record.model.js';
+import { normalizeDate } from '../../src/utils/dateUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,7 +109,8 @@ async function getGoogleSheetsClient() {
   }
   
   // Resolver caminho do arquivo de credenciais
-  const rootPath = path.join(__dirname, '..');
+  // Script está em NOVO/scripts/data/, precisa subir 2 níveis para chegar em NOVO/
+  const rootPath = path.join(__dirname, '../..');
   const credentialsFile = path.isAbsolute(credentialsPath)
     ? credentialsPath
     : path.join(rootPath, credentialsPath);
@@ -193,8 +192,13 @@ async function main() {
   console.log('🚀 Iniciando atualização de dados do Google Sheets...\n');
   
   try {
-    // Verificar conexão
-    await prisma.$connect();
+    // Conectar ao MongoDB usando Mongoose
+    const mongoUrl = process.env.MONGODB_ATLAS_URL || process.env.DATABASE_URL;
+    if (!mongoUrl) {
+      throw new Error('❌ MONGODB_ATLAS_URL ou DATABASE_URL não definido no .env');
+    }
+    
+    await initializeDatabase(mongoUrl);
     console.log('✅ Conectado ao banco de dados\n');
     
     // Obter ID da planilha
@@ -222,14 +226,14 @@ async function main() {
     console.log(`✅ ${json.length} linhas de dados processadas\n`);
     
     // Contar registros antes
-    const countBefore = await prisma.record.count();
+    const countBefore = await Record.countDocuments();
     console.log(`📊 Registros no banco antes: ${countBefore}\n`);
     
     // Buscar protocolos existentes COM DADOS COMPLETOS para comparação
     console.log('🔍 Buscando registros existentes no banco...');
-    const existingRecords = await prisma.record.findMany({
-      where: { protocolo: { not: null } }
-    });
+    const existingRecords = await Record.find({
+      protocolo: { $ne: null, $exists: true }
+    }).lean();
     
     // Criar mapas para acesso rápido
     const protocolMap = new Map(); // protocolo -> id
@@ -237,7 +241,7 @@ async function main() {
     
     existingRecords.forEach(record => {
       const protocolo = String(record.protocolo);
-      protocolMap.set(protocolo, record.id);
+      protocolMap.set(protocolo, record._id.toString());
       existingDataMap.set(protocolo, record);
     });
     
@@ -312,6 +316,10 @@ async function main() {
     const toUpdate = [];
     let skipped = 0;
     let unchanged = 0;
+    let duplicatasIgnoradas = 0;
+    
+    // Set para rastrear protocolos já processados da planilha (evitar duplicatas)
+    const protocolosProcessadosPlanilha = new Set();
     
     console.log('🔄 Processando e comparando dados...');
     for (const row of json) {
@@ -323,6 +331,16 @@ async function main() {
       }
       
       const protocolo = String(normalized.protocolo);
+      
+      // Se já processamos este protocolo nesta execução, ignorar (duplicata na planilha)
+      if (protocolosProcessadosPlanilha.has(protocolo)) {
+        duplicatasIgnoradas++;
+        continue;
+      }
+      
+      // Marcar como processado
+      protocolosProcessadosPlanilha.add(protocolo);
+      
       const existingRecord = existingDataMap.get(protocolo);
       
       if (existingRecord) {
@@ -331,7 +349,7 @@ async function main() {
         
         if (hasChanges) {
           toUpdate.push({
-            id: existingRecord.id,
+            _id: existingRecord._id,
             protocolo: protocolo,
             changedFields: changedFields
           });
@@ -344,7 +362,7 @@ async function main() {
       }
     }
     
-    console.log(`📊 Preparados: ${toUpdate.length} para atualizar, ${toInsert.length} para inserir, ${unchanged} sem mudanças, ${skipped} sem protocolo\n`);
+    console.log(`📊 Preparados: ${toUpdate.length} para atualizar, ${toInsert.length} para inserir, ${unchanged} sem mudanças, ${skipped} sem protocolo, ${duplicatasIgnoradas} duplicatas ignoradas na planilha\n`);
     
     // Processar atualizações (apenas campos que mudaram)
     let updated = 0;
@@ -358,10 +376,11 @@ async function main() {
         
         const updatePromises = slice.map(item => {
           // Atualizar apenas os campos que mudaram
-          return prisma.record.update({
-            where: { id: item.id },
-            data: item.changedFields
-          }).then(result => {
+          return Record.findByIdAndUpdate(
+            item._id,
+            { $set: item.changedFields },
+            { new: true }
+          ).then(result => {
             fieldsUpdated += Object.keys(item.changedFields).length;
             return result;
           }).catch(error => {
@@ -389,18 +408,18 @@ async function main() {
         const slice = toInsert.slice(i, i + batchSize);
         
         try {
-          await prisma.record.createMany({
-            data: slice,
-            skipDuplicates: true
+          // Usar insertMany com ordered: false para continuar mesmo com duplicatas
+          const result = await Record.insertMany(slice, {
+            ordered: false
           });
-          inserted += slice.length;
+          inserted += result.length;
         } catch (error) {
-          // Se createMany falhar, inserir um por um
-          if (error.code === 11000 || error.message.includes('duplicate')) {
+          // Se insertMany falhar, inserir um por um
+          if (error.code === 11000 || error.message.includes('duplicate') || error.writeErrors) {
             console.warn(`⚠️ Duplicatas detectadas no lote ${Math.floor(i / batchSize) + 1}, inserindo individualmente...`);
             for (const item of slice) {
               try {
-                await prisma.record.create({ data: item });
+                await Record.create(item);
                 inserted++;
               } catch (e) {
                 if (e.code !== 11000 && !e.message.includes('duplicate')) {
@@ -413,7 +432,7 @@ async function main() {
             // Tentar inserir um por um
             for (const item of slice) {
               try {
-                await prisma.record.create({ data: item });
+                await Record.create(item);
                 inserted++;
               } catch (e) {
                 console.error(`❌ Erro ao inserir protocolo ${item.protocolo}:`, e.message);
@@ -429,7 +448,7 @@ async function main() {
       console.log('');
     }
     
-    const countAfter = await prisma.record.count();
+    const countAfter = await Record.countDocuments();
     
     console.log('✅ Atualização concluída!');
     console.log(`📊 Estatísticas:`);
@@ -440,6 +459,7 @@ async function main() {
     console.log(`   - Registros sem mudanças: ${unchanged}`);
     console.log(`   - Novos registros inseridos: ${inserted}`);
     console.log(`   - Sem protocolo (ignorados): ${skipped}`);
+    console.log(`   - Duplicatas ignoradas na planilha: ${duplicatasIgnoradas}`);
     console.log(`   - Total de novos registros: ${countAfter - countBefore}`);
     console.log(`\n💡 Execute: npm run db:normalize para normalizar campos adicionais (se necessário)`);
     
@@ -447,7 +467,8 @@ async function main() {
     console.error('❌ Erro durante atualização:', error);
     process.exit(1);
   } finally {
-    await prisma.$disconnect();
+    await mongoose.connection.close();
+    console.log('\n🔌 Conexão com banco de dados fechada');
   }
 }
 

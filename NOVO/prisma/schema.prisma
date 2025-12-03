@@ -171,6 +171,42 @@ model NotificacaoEmail {
   @@map("notificacoes_email")
 }
 
+/// Informações de contato das Secretarias (dados vindos da planilha "Dados e emails.xlsx")
+model SecretariaInfo {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  /// Nome da secretaria / órgão
+  name            String?
+  /// Sigla da secretaria (se existir)
+  acronym         String?
+  /// Email principal da secretaria
+  email           String?
+  /// Email alternativo / cópia
+  alternateEmail  String?
+  /// Telefone principal
+  phone           String?
+  /// Telefone alternativo
+  phoneAlt        String?
+  /// Endereço completo
+  address         String?
+  /// Bairro
+  bairro          String?
+  /// Distrito (quando aplicável)
+  district        String?
+  /// Observações gerais
+  notes           String?
+  /// Linha completa original da planilha
+  rawData         Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([name])
+  @@index([district])
+  @@index([email])
+
+  @@map("secretarias_info")
+}
+
+
 // Modelo para usuários do sistema
 model User {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId

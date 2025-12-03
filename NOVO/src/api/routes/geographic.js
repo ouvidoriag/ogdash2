@@ -31,14 +31,14 @@
  * - GET /api/debug/district-mapping - Testar mapeamento de endereços
  * - POST /api/debug/district-mapping-batch - Testar mapeamento em lote
  * 
- * @param {PrismaClient} prisma - Cliente Prisma
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @returns {express.Router} Router configurado
  */
 
 import express from 'express';
 import * as geographicController from '../controllers/geographicController.js';
 
-export default function geographicRoutes(prisma) {
+export default function geographicRoutes() {
   const router = express.Router();
   
   // ========== SECRETARIAS ==========
@@ -46,37 +46,42 @@ export default function geographicRoutes(prisma) {
   /**
    * GET /api/secretarias
    * Listar todas as secretarias
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/secretarias', (req, res) => geographicController.getSecretarias(req, res, prisma));
+  router.get('/secretarias', (req, res) => geographicController.getSecretarias(req, res));
   
   /**
    * GET /api/secretarias/:district
    * Secretarias filtradas por distrito
    * Params: district - Nome ou código do distrito
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/secretarias/:district', (req, res) => geographicController.getSecretariasByDistrict(req, res, prisma));
+  router.get('/secretarias/:district', (req, res) => geographicController.getSecretariasByDistrict(req, res));
   
   // ========== DISTRITOS ==========
   
   /**
    * GET /api/distritos
    * Listar todos os distritos com estatísticas
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/distritos', (req, res) => geographicController.getDistritos(req, res, prisma));
+  router.get('/distritos', (req, res) => geographicController.getDistritos(req, res));
   
   /**
    * GET /api/distritos/:code
    * Informações de um distrito específico
    * Params: code - Código do distrito
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/distritos/:code', (req, res) => geographicController.getDistritoByCode(req, res, prisma));
+  router.get('/distritos/:code', (req, res) => geographicController.getDistritoByCode(req, res));
   
   /**
    * GET /api/distritos/:code/stats
    * Estatísticas detalhadas de um distrito
    * Params: code - Código do distrito
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/distritos/:code/stats', (req, res) => geographicController.getDistritoStats(req, res, prisma));
+  router.get('/distritos/:code/stats', (req, res) => geographicController.getDistritoStats(req, res));
   
   // ========== BAIRROS ==========
   
@@ -84,8 +89,9 @@ export default function geographicRoutes(prisma) {
    * GET /api/bairros
    * Listar bairros
    * Query params: distrito (opcional) - Filtrar por distrito
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/bairros', (req, res) => geographicController.getBairros(req, res, prisma));
+  router.get('/bairros', (req, res) => geographicController.getBairros(req, res));
   
   // ========== UNIDADES DE SAÚDE ==========
   
@@ -93,53 +99,61 @@ export default function geographicRoutes(prisma) {
    * GET /api/unidades-saude
    * Listar unidades de saúde
    * Query params: distrito, tipo, bairro (opcionais)
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/unidades-saude', (req, res) => geographicController.getUnidadesSaude(req, res, prisma));
+  router.get('/unidades-saude', (req, res) => geographicController.getUnidadesSaude(req, res));
   
   /**
    * GET /api/unidades-saude/por-distrito
    * Agrupar unidades de saúde por distrito
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/unidades-saude/por-distrito', (req, res) => geographicController.getUnidadesSaudeByDistrito(req, res, prisma));
+  router.get('/unidades-saude/por-distrito', (req, res) => geographicController.getUnidadesSaudeByDistrito(req, res));
   
   /**
    * GET /api/unidades-saude/por-bairro
    * Agrupar unidades de saúde por bairro
    * Query params: distrito (opcional) - Filtrar por distrito
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/unidades-saude/por-bairro', (req, res) => geographicController.getUnidadesSaudeByBairro(req, res, prisma));
+  router.get('/unidades-saude/por-bairro', (req, res) => geographicController.getUnidadesSaudeByBairro(req, res));
   
   /**
    * GET /api/unidades-saude/por-tipo
    * Agrupar unidades de saúde por tipo
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/unidades-saude/por-tipo', (req, res) => geographicController.getUnidadesSaudeByTipo(req, res, prisma));
+  router.get('/unidades-saude/por-tipo', (req, res) => geographicController.getUnidadesSaudeByTipo(req, res));
   
   // ========== SAÚDE ==========
   
   /**
    * GET /api/saude/manifestacoes
    * Manifestações relacionadas a saúde
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/saude/manifestacoes', (req, res) => geographicController.getSaudeManifestacoes(req, res, prisma));
+  router.get('/saude/manifestacoes', (req, res) => geographicController.getSaudeManifestacoes(req, res));
   
   /**
    * GET /api/saude/por-distrito
    * Manifestações de saúde agrupadas por distrito
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/saude/por-distrito', (req, res) => geographicController.getSaudePorDistrito(req, res, prisma));
+  router.get('/saude/por-distrito', (req, res) => geographicController.getSaudePorDistrito(req, res));
   
   /**
    * GET /api/saude/por-tema
    * Manifestações de saúde agrupadas por tema
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/saude/por-tema', (req, res) => geographicController.getSaudePorTema(req, res, prisma));
+  router.get('/saude/por-tema', (req, res) => geographicController.getSaudePorTema(req, res));
   
   /**
    * GET /api/saude/por-unidade
    * Manifestações de saúde agrupadas por unidade
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/saude/por-unidade', (req, res) => geographicController.getSaudePorUnidade(req, res, prisma));
+  router.get('/saude/por-unidade', (req, res) => geographicController.getSaudePorUnidade(req, res));
   
   // ========== DEBUG ==========
   
@@ -147,15 +161,17 @@ export default function geographicRoutes(prisma) {
    * GET /api/debug/district-mapping
    * Testar mapeamento de endereço para distrito
    * Query params: endereco (obrigatório)
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/debug/district-mapping', (req, res) => geographicController.debugDistrictMapping(req, res, prisma));
+  router.get('/debug/district-mapping', (req, res) => geographicController.debugDistrictMapping(req, res));
   
   /**
    * POST /api/debug/district-mapping-batch
    * Testar mapeamento de múltiplos endereços
    * Body: { enderecos: string[] }
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.post('/debug/district-mapping-batch', (req, res) => geographicController.debugDistrictMappingBatch(req, res, prisma));
+  router.post('/debug/district-mapping-batch', (req, res) => geographicController.debugDistrictMappingBatch(req, res));
   
   return router;
 }

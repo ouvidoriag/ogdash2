@@ -64,7 +64,7 @@ async function loadZeladoriaStatus() {
     
     // Criar gráfico principal (doughnut)
     await window.chartFactory?.createDoughnutChart('zeladoria-status-chart', labels, values, {
-      onClick: true,
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       field: 'status',
       legendContainer: 'zeladoria-status-legend'
     });
@@ -134,7 +134,7 @@ async function renderStatusMesChart(dataMes) {
   
   await window.chartFactory?.createBarChart('zeladoria-status-mes-chart', labels, datasets, {
     colorIndex: 0,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-status-mes-legend'
   });
 }

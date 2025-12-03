@@ -279,7 +279,7 @@ async function renderUnidadeTiposChart(canvas, tipos, unitName) {
   await window.chartFactory?.createDoughnutChart(chartId, labels, values, {
     type: 'doughnut',
     field: 'tipoDeManifestacao',
-    onClick: true, // Habilitar comunicação e filtros
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     chartOptions: {
       plugins: {
         legend: { display: true, position: 'right', labels: { color: '#94a3b8' } }

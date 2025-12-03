@@ -8,9 +8,11 @@
 // Garantir que dotenv está carregado
 import 'dotenv/config';
 
+import logger from '../../utils/logger.js';
+
 // Verificar se fetch está disponível (Node.js 18+)
 if (typeof fetch === 'undefined') {
-  console.warn('⚠️ fetch não está disponível. Instalando node-fetch...');
+  logger.warn('fetch não está disponível - pode ser necessário node-fetch');
   // Em Node.js < 18, precisaríamos importar node-fetch
   // Mas como o package.json exige Node >= 18, assumimos que fetch está disponível
 }
@@ -28,7 +30,7 @@ const COLAB_USE_STAGING = process.env.COLAB_USE_STAGING === 'true';
 const API_BASE = COLAB_USE_STAGING ? COLAB_STAGING_API_BASE : COLAB_API_BASE;
 
 // Log de configuração (sem expor credenciais)
-console.log('🏗️ Colab API configurada:', {
+logger.info('Colab API configurada', {
   base: API_BASE,
   hasApplicationId: !!COLAB_APPLICATION_ID,
   hasApiKey: !!COLAB_REST_API_KEY,
@@ -58,10 +60,10 @@ function getColabHeaders() {
  */
 export async function getCategories(req, res) {
   try {
-    console.log('🔍 getCategories chamado');
+    logger.info('Buscando categorias do Colab');
     const headers = getColabHeaders();
     if (!headers) {
-      console.error('❌ Credenciais do Colab não configuradas:', {
+      logger.error('Credenciais do Colab não configuradas', {
         hasApplicationId: !!COLAB_APPLICATION_ID,
         hasApiKey: !!COLAB_REST_API_KEY,
         hasAuthTicket: !!COLAB_ADMIN_USER_AUTH_TICKET
@@ -90,8 +92,7 @@ export async function getCategories(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao buscar categorias do Colab:', error);
-    console.error('❌ Stack:', error.stack);
+    logger.errorWithContext('Erro ao buscar categorias do Colab', error);
     return res.status(500).json({ 
       error: 'Erro ao buscar categorias do Colab',
       message: error.message,
@@ -106,10 +107,10 @@ export async function getCategories(req, res) {
  */
 export async function getPosts(req, res) {
   try {
-    console.log('🔍 getPosts chamado');
+    logger.info('Buscando posts do Colab', { category, page, perPage });
     const headers = getColabHeaders();
     if (!headers) {
-      console.error('❌ Credenciais do Colab não configuradas:', {
+      logger.error('Credenciais do Colab não configuradas', {
         hasApplicationId: !!COLAB_APPLICATION_ID,
         hasApiKey: !!COLAB_REST_API_KEY,
         hasAuthTicket: !!COLAB_ADMIN_USER_AUTH_TICKET
@@ -152,8 +153,7 @@ export async function getPosts(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao buscar demandas do Colab:', error);
-    console.error('❌ Stack:', error.stack);
+    logger.errorWithContext('Erro ao buscar demandas do Colab', error, { category, page });
     return res.status(500).json({ 
       error: 'Erro ao buscar demandas do Colab',
       message: error.message,
@@ -195,7 +195,7 @@ export async function getPostById(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao buscar demanda do Colab:', error);
+    logger.errorWithContext('Erro ao buscar demanda do Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao buscar demanda do Colab',
       message: error.message 
@@ -244,7 +244,7 @@ export async function createPost(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao criar demanda no Colab:', error);
+    logger.errorWithContext('Erro ao criar demanda no Colab', error);
     return res.status(500).json({ 
       error: 'Erro ao criar demanda no Colab',
       message: error.message 
@@ -277,7 +277,7 @@ export async function acceptPost(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao aceitar demanda no Colab:', error);
+    logger.errorWithContext('Erro ao aceitar demanda no Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao aceitar demanda no Colab',
       message: error.message 
@@ -316,7 +316,7 @@ export async function rejectPost(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao rejeitar demanda no Colab:', error);
+    logger.errorWithContext('Erro ao rejeitar demanda no Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao rejeitar demanda no Colab',
       message: error.message 
@@ -363,7 +363,7 @@ export async function solvePost(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao finalizar demanda no Colab:', error);
+    logger.errorWithContext('Erro ao finalizar demanda no Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao finalizar demanda no Colab',
       message: error.message 
@@ -399,7 +399,7 @@ export async function createComment(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao criar comentário no Colab:', error);
+    logger.errorWithContext('Erro ao criar comentário no Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao criar comentário no Colab',
       message: error.message 
@@ -429,7 +429,7 @@ export async function getComments(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao buscar comentários do Colab:', error);
+    logger.errorWithContext('Erro ao buscar comentários do Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao buscar comentários do Colab',
       message: error.message 
@@ -462,7 +462,7 @@ export async function getEventById(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao buscar evento do Colab:', error);
+    logger.errorWithContext('Erro ao buscar evento do Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao buscar evento do Colab',
       message: error.message 
@@ -492,7 +492,7 @@ export async function acceptEvent(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao aceitar evento no Colab:', error);
+    logger.errorWithContext('Erro ao aceitar evento no Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao aceitar evento no Colab',
       message: error.message 
@@ -533,7 +533,7 @@ export async function solveEvent(req, res) {
     const data = await response.json();
     return res.json(data);
   } catch (error) {
-    console.error('❌ Erro ao finalizar evento no Colab:', error);
+    logger.errorWithContext('Erro ao finalizar evento no Colab', error, { id });
     return res.status(500).json({ 
       error: 'Erro ao finalizar evento no Colab',
       message: error.message 
@@ -550,7 +550,7 @@ export async function receiveWebhook(req, res) {
     const webhookData = req.body;
     const eventType = req.headers['x-colab-event'] || 'unknown';
     
-    console.log(`📥 Webhook recebido do Colab: ${eventType}`, webhookData);
+    logger.info('Webhook recebido do Colab', { eventType, data: webhookData });
     
     // Aqui você pode processar o webhook conforme necessário
     // Exemplos: salvar no banco, atualizar cache, notificar usuários, etc.
@@ -562,7 +562,7 @@ export async function receiveWebhook(req, res) {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('❌ Erro ao processar webhook do Colab:', error);
+    logger.errorWithContext('Erro ao processar webhook do Colab', error);
     return res.status(500).json({ 
       error: 'Erro ao processar webhook',
       message: error.message 

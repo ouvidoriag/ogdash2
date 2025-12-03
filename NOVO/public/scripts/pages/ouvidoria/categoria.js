@@ -44,7 +44,7 @@ async function loadCategoria(forceRefresh = false) {
       horizontal: true,
       colorIndex: 4,
       label: 'Manifestações',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: false // FILTROS DE CLIQUE DESABILITADOS
     });
     
     // Carregar dados mensais

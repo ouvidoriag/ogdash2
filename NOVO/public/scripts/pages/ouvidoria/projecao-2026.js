@@ -288,7 +288,7 @@ async function renderProjecaoChart(historico, projecao2026) {
   await window.chartFactory?.createLineChart('chartProjecaoMensal', todosLabels, datasets, {
     fill: true,
     tension: 0.4,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'legendProjecaoMensal',
     chartOptions: {
       plugins: {
@@ -353,7 +353,7 @@ async function renderCrescimentoPercentual(historico, projecao2026) {
   
   await window.chartFactory?.createBarChart('chartCrescimentoPercentual', labels, valores, {
         colorIndex: 0,
-        onClick: true, // Habilitar comunicação e filtros globais
+        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
         chartOptions: {
           plugins: {
             tooltip: {
@@ -442,7 +442,7 @@ async function renderComparacaoAnual(historico, projecao2026) {
   
   await window.chartFactory?.createLineChart('chartComparacaoAnual', labels, datasets, {
     fill: false,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'legendComparacaoAnual',
     chartOptions: {
       plugins: {
@@ -485,7 +485,7 @@ async function renderSazonalidade(sazonalidade) {
   
   await window.chartFactory?.createBarChart('chartSazonalidade', labels, valores, {
     colorIndex: 2,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     chartOptions: {
       plugins: {
         tooltip: {
@@ -538,7 +538,7 @@ async function renderProjecaoPorTema(temas, analise) {
   
   await window.chartFactory?.createBarChart('chartProjecaoTema', labels, valoresAtuais, {
     colorIndex: 0,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     chartOptions: {
       indexAxis: 'y',
       plugins: {
@@ -580,7 +580,7 @@ async function renderProjecaoPorTipo(tipos, analise) {
   });
   
   await window.chartFactory?.createDoughnutChart('chartProjecaoTipo', labels, valores, {
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'legendProjecaoTipo',
     chartOptions: {
       plugins: {

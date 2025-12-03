@@ -9,15 +9,20 @@
 import { withCache } from '../../utils/responseHelper.js';
 import { getOverviewData } from '../../utils/dbAggregations.js';
 import { sanitizeFilters } from '../../utils/validateFilters.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * GET /api/dashboard-data
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
+ * 
  * @param {Object} req - Request object
  * @param {Object} res - Response object
- * @param {PrismaClient} prisma - Cliente Prisma (usado apenas para cache)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB nativo
  */
-export async function getDashboardData(req, res, prisma, getMongoClient) {
+export async function getDashboardData(req, res, getMongoClient) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -25,9 +30,9 @@ export async function getDashboardData(req, res, prisma, getMongoClient) {
               unidadeCadastro ? `dashboardData:uac:${unidadeCadastro}:v2` :
               'dashboardData:v2';
   
-  // Cache de 5 minutos para dados agregados
+  // Cache de 5 horas para dados agregados (dados mudam a cada ~5h)
   // OTIMIZAÇÃO: Usar MongoDB Native com pipeline $facet (3-10x mais rápido)
-  return withCache(key, 300, res, async () => {
+  return withCache(key, 18000, res, async () => {
     try {
       // Construir e validar filtros
       const filters = {};
@@ -39,28 +44,28 @@ export async function getDashboardData(req, res, prisma, getMongoClient) {
       try {
         sanitizedFilters = sanitizeFilters(filters);
       } catch (validationError) {
-        console.error('❌ Erro na validação de filtros:', validationError.message);
+        logger.error('Erro na validação de filtros:', { error: validationError.message });
         // Se validação falhar, usar filtros vazios (mais seguro)
         sanitizedFilters = {};
       }
       
       // Verificar se getMongoClient está disponível
       if (!getMongoClient) {
-        console.error('❌ getMongoClient não disponível');
+        logger.error('getMongoClient não disponível');
         throw new Error('MongoDB client não disponível');
       }
       
-      // Usar pipeline otimizado com $facet e cache inteligente
+      // Usar pipeline otimizado com $facet e cache inteligente (Mongoose)
       const startTime = Date.now();
       let result;
       
       try {
-        result = await getOverviewData(getMongoClient, sanitizedFilters, prisma);
+        result = await getOverviewData(getMongoClient, sanitizedFilters, true); // useCache = true
         const duration = Date.now() - startTime;
         
         // Log de performance
         if (duration > 1000) {
-          console.log(`📊 Dashboard Data (MongoDB Native): ${duration}ms`, {
+          logger.info(`Dashboard Data (MongoDB Native): ${duration}ms`, {
             total: result.totalManifestations,
             byMonth: result.manifestationsByMonth.length,
             byStatus: result.manifestationsByStatus.length,
@@ -73,9 +78,7 @@ export async function getDashboardData(req, res, prisma, getMongoClient) {
           });
         }
       } catch (mongoError) {
-        console.error('⚠️ Erro ao usar MongoDB Native, tentando fallback com Prisma:', mongoError.message);
-        // Fallback para Prisma se MongoDB falhar (compatibilidade)
-        // Nota: Isso é mais lento, mas garante que o sistema continue funcionando
+        logger.error('Erro ao usar MongoDB Native:', { error: mongoError.message });
         throw new Error('MongoDB aggregation failed. Please check database connection.');
       }
       
@@ -94,8 +97,8 @@ export async function getDashboardData(req, res, prisma, getMongoClient) {
       
       return result;
     } catch (error) {
-      console.error('❌ Erro ao buscar dados do dashboard:', error);
+      logger.error('Erro ao buscar dados do dashboard:', { error: error.message });
       throw error;
     }
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado (sem memoryCache)
 }

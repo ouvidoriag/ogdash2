@@ -25,7 +25,7 @@
     "test:sheets": "node scripts/test/testGoogleSheets.js",
     "pipeline": "node scripts/data/runPipeline.js",
     "setup:python": "node scripts/setup/setup-python.js",
-    "clean:old": "node scripts/maintenance/limpar-arquivos-antigos.js",
+    "fix:prisma": "node scripts/maintenance/fix-prisma.js",
     "map:system": "node scripts/maintenance/mapear-sistema.js",
     "import:zeladoria": "node scripts/data/importZeladoria.js",
     "test:pages": "node scripts/test/run-page-tests.js",
@@ -59,10 +59,12 @@
     "express-session": "^1.18.2",
     "googleapis": "^144.0.0",
     "mongodb": "^6.3.0",
+    "mongoose": "^9.0.0",
     "morgan": "^1.10.0",
     "node-cache": "^5.1.2",
     "node-cron": "^3.0.3",
     "prisma": "^5.22.0",
+    "winston": "^3.11.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

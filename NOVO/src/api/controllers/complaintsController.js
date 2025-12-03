@@ -1,32 +1,36 @@
 /**
  * Controller para /api/complaints-denunciations
  * Reclamações e denúncias
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { withCache } from '../../utils/responseHelper.js';
+import Record from '../../models/Record.model.js';
 
 /**
  * GET /api/complaints-denunciations
  */
-export async function getComplaints(req, res, prisma) {
-  const key = 'complaints:v2';
+export async function getComplaints(req, res) {
+  const key = 'complaints:v3';
   
   return withCache(key, 3600, res, async () => {
     // Buscar variações do texto para cobrir diferentes grafias
-    const allRecords = await prisma.record.findMany({
-      where: {
-        OR: [
-          { tipoDeManifestacao: { contains: 'Reclamação' } },
-          { tipoDeManifestacao: { contains: 'Reclamacao' } },
-          { tipoDeManifestacao: { contains: 'Reclama' } },
-          { tipoDeManifestacao: { contains: 'Denúncia' } },
-          { tipoDeManifestacao: { contains: 'Denuncia' } },
-          { tipoDeManifestacao: { contains: 'Denún' } }
-        ]
-      },
-      select: { assunto: true, tipoDeManifestacao: true },
-      take: 5000
-    });
+    const allRecords = await Record.find({
+      $or: [
+        { tipoDeManifestacao: { $regex: 'Reclamação', $options: 'i' } },
+        { tipoDeManifestacao: { $regex: 'Reclamacao', $options: 'i' } },
+        { tipoDeManifestacao: { $regex: 'Reclama', $options: 'i' } },
+        { tipoDeManifestacao: { $regex: 'Denúncia', $options: 'i' } },
+        { tipoDeManifestacao: { $regex: 'Denuncia', $options: 'i' } },
+        { tipoDeManifestacao: { $regex: 'Denún', $options: 'i' } }
+      ]
+    })
+    .select('assunto tipoDeManifestacao')
+    .limit(5000)
+    .lean();
     
     // Filtrar em memória para case-insensitive
     const records = allRecords.filter(r => {
@@ -55,6 +59,6 @@ export async function getComplaints(req, res, prisma) {
       .sort((a, b) => b.quantidade - a.quantidade);
     
     return { assuntos, tipos };
-  }, prisma);
+  });
 }
 

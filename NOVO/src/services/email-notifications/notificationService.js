@@ -3,10 +3,11 @@
  * Identifica demandas que precisam de notificação e envia emails
  */
 
+import logger from '../../utils/logger.js';
 import { getDataCriacao, isConcluido } from '../../utils/dateUtils.js';
 import { sendEmail } from './gmailService.js';
 import { 
-  getEmailSecretaria, 
+  getEmailsSecretariaFromDB, 
   EMAIL_REMETENTE, 
   NOME_REMETENTE,
   EMAIL_OUVIDORIA_GERAL,
@@ -15,6 +16,8 @@ import {
   getTemplate60Dias,
   getTemplateResumoOuvidoriaGeral
 } from './emailConfig.js';
+import NotificacaoEmail from '../../models/NotificacaoEmail.model.js';
+import Record from '../../models/Record.model.js';
 
 /**
  * Obter prazo por tipo de manifestação
@@ -68,21 +71,25 @@ function calcularDiasRestantes(dataVencimento, hoje) {
 
 /**
  * Verificar se já foi enviada notificação do tipo especificado
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 async function jaFoiNotificado(prisma, protocolo, tipoNotificacao) {
-  const notificacao = await prisma.notificacaoEmail.findFirst({
-    where: {
-      protocolo: protocolo,
-      tipoNotificacao: tipoNotificacao,
-      status: 'enviado'
-    }
-  });
+  const notificacao = await NotificacaoEmail.findOne({
+    protocolo: protocolo,
+    tipoNotificacao: tipoNotificacao,
+    status: 'enviado'
+  }).lean();
   
   return !!notificacao;
 }
 
 /**
  * Registrar notificação no banco
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 async function registrarNotificacao(prisma, dados) {
   const {
@@ -98,23 +105,21 @@ async function registrarNotificacao(prisma, dados) {
   } = dados;
   
   try {
-    const notificacao = await prisma.notificacaoEmail.create({
-      data: {
-        protocolo,
-        secretaria,
-        emailSecretaria,
-        tipoNotificacao,
-        dataVencimento,
-        diasRestantes,
-        messageId,
-        status,
-        mensagemErro
-      }
+    const notificacao = await NotificacaoEmail.create({
+      protocolo,
+      secretaria,
+      emailSecretaria,
+      tipoNotificacao,
+      dataVencimento,
+      diasRestantes,
+      messageId,
+      status,
+      mensagemErro
     });
     
     return notificacao;
   } catch (error) {
-    console.error('❌ Erro ao registrar notificação:', error);
+    logger.errorWithContext('Erro ao registrar notificação', error, { protocolo, tipoNotificacao });
     throw error;
   }
 }
@@ -132,27 +137,15 @@ async function buscarDemandas15Dias(prisma) {
   const dataVencimento15DiasStr = dataVencimento15Dias.toISOString().slice(0, 10);
   
   // Buscar todas as demandas não concluídas
-  const records = await prisma.record.findMany({
-    where: {
-      OR: [
-        { dataCriacaoIso: { not: null } },
-        { dataDaCriacao: { not: null } }
-      ]
-    },
-    select: {
-      id: true,
-      protocolo: true,
-      dataCriacaoIso: true,
-      dataDaCriacao: true,
-      tipoDeManifestacao: true,
-      tema: true,
-      assunto: true,
-      orgaos: true,
-      status: true,
-      statusDemanda: true,
-      data: true
-    }
-  });
+  // REFATORAÇÃO: Prisma → Mongoose
+  const records = await Record.find({
+    $or: [
+      { dataCriacaoIso: { $ne: null, $exists: true } },
+      { dataDaCriacao: { $ne: null, $exists: true } }
+    ]
+  })
+  .select('protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos status statusDemanda data')
+  .lean();
   
   const demandas = [];
   
@@ -216,27 +209,15 @@ async function buscarDemandasVencimentoHoje(prisma) {
   hoje.setHours(0, 0, 0, 0);
   const hojeStr = hoje.toISOString().slice(0, 10);
   
-  const records = await prisma.record.findMany({
-    where: {
-      OR: [
-        { dataCriacaoIso: { not: null } },
-        { dataDaCriacao: { not: null } }
-      ]
-    },
-    select: {
-      id: true,
-      protocolo: true,
-      dataCriacaoIso: true,
-      dataDaCriacao: true,
-      tipoDeManifestacao: true,
-      tema: true,
-      assunto: true,
-      orgaos: true,
-      status: true,
-      statusDemanda: true,
-      data: true
-    }
-  });
+  // REFATORAÇÃO: Prisma → Mongoose
+  const records = await Record.find({
+    $or: [
+      { dataCriacaoIso: { $ne: null, $exists: true } },
+      { dataDaCriacao: { $ne: null, $exists: true } }
+    ]
+  })
+  .select('protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos status statusDemanda data')
+  .lean();
   
   const demandas = [];
   
@@ -300,27 +281,15 @@ async function buscarDemandas60DiasVencidas(prisma) {
   dataVencimento60Dias.setDate(hoje.getDate() - 60);
   const dataVencimento60DiasStr = dataVencimento60Dias.toISOString().slice(0, 10);
   
-  const records = await prisma.record.findMany({
-    where: {
-      OR: [
-        { dataCriacaoIso: { not: null } },
-        { dataDaCriacao: { not: null } }
-      ]
-    },
-    select: {
-      id: true,
-      protocolo: true,
-      dataCriacaoIso: true,
-      dataDaCriacao: true,
-      tipoDeManifestacao: true,
-      tema: true,
-      assunto: true,
-      orgaos: true,
-      status: true,
-      statusDemanda: true,
-      data: true
-    }
-  });
+  // REFATORAÇÃO: Prisma → Mongoose
+  const records = await Record.find({
+    $or: [
+      { dataCriacaoIso: { $ne: null, $exists: true } },
+      { dataDaCriacao: { $ne: null, $exists: true } }
+    ]
+  })
+  .select('protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos status statusDemanda data')
+  .lean();
   
   const demandas = [];
   
@@ -377,10 +346,10 @@ async function buscarDemandas60DiasVencidas(prisma) {
  * Enviar notificações de 15 dias (agrupadas por secretaria)
  */
 export async function enviarNotificacoes15Dias(prisma) {
-  console.log('📧 Buscando demandas para notificação de 15 dias...');
+  logger.info('Buscando demandas para notificação de 15 dias');
   
   const demandas = await buscarDemandas15Dias(prisma);
-  console.log(`📧 Encontradas ${demandas.length} demandas para notificar (15 dias)`);
+  logger.info('Demandas encontradas para notificação (15 dias)', { total: demandas.length });
   
   // Agrupar por secretaria
   const porSecretaria = {};
@@ -397,51 +366,76 @@ export async function enviarNotificacoes15Dias(prisma) {
   // Enviar um email por secretaria com todos os protocolos
   for (const [secretaria, protocolos] of Object.entries(porSecretaria)) {
     try {
-      const emailSecretaria = getEmailSecretaria(secretaria);
+      const emailsSecretaria = await getEmailsSecretariaFromDB(secretaria, prisma);
       const template = await getTemplate15Dias({
         secretaria,
         protocolos: protocolos,
         totalNaoRespondidas: 0
       }, prisma);
       
-      const { messageId } = await sendEmail(
-        emailSecretaria,
-        template.subject,
-        template.html,
-        template.text,
-        EMAIL_REMETENTE,
-        NOME_REMETENTE
-      );
-      
-      // Registrar cada protocolo
-      for (const demanda of protocolos) {
-        await registrarNotificacao(prisma, {
-          protocolo: demanda.protocolo,
-          secretaria: demanda.secretaria,
-          emailSecretaria,
-          tipoNotificacao: '15_dias',
-          dataVencimento: demanda.dataVencimento,
-          diasRestantes: demanda.diasRestantes,
-          messageId
-        });
-        
-        resultados.push({
-          protocolo: demanda.protocolo,
-          status: 'enviado',
-          tipo: '15_dias'
-        });
+      // Enviar para TODOS os emails da secretaria
+      let primeiroMessageId = null;
+      for (const emailSecretaria of emailsSecretaria) {
+        try {
+          const { messageId } = await sendEmail(
+            emailSecretaria,
+            template.subject,
+            template.html,
+            template.text,
+            EMAIL_REMETENTE,
+            NOME_REMETENTE
+          );
+          
+          if (!primeiroMessageId) {
+            primeiroMessageId = messageId;
+          }
+        } catch (errorEmail) {
+          logger.error('Erro ao enviar email para secretaria', {
+            email: emailSecretaria,
+            secretaria,
+            erro: errorEmail.message
+          });
+        }
       }
       
-      console.log(`✅ Email enviado para ${secretaria}: ${protocolos.length} protocolos (15 dias)`);
+      // Registrar cada protocolo (apenas uma vez, não por email)
+      if (primeiroMessageId) {
+        for (const demanda of protocolos) {
+          await registrarNotificacao(prisma, {
+            protocolo: demanda.protocolo,
+            secretaria: demanda.secretaria,
+            emailSecretaria: emailsSecretaria.join(', '), // Salvar todos os emails
+            tipoNotificacao: '15_dias',
+            dataVencimento: demanda.dataVencimento,
+            diasRestantes: demanda.diasRestantes,
+            messageId: primeiroMessageId
+          });
+          
+          resultados.push({
+            protocolo: demanda.protocolo,
+            status: 'enviado',
+            tipo: '15_dias'
+          });
+        }
+        
+        logger.info('Email de notificação (15 dias) enviado', {
+          secretaria,
+          emails: emailsSecretaria.length,
+          protocolos: protocolos.length
+        });
+      }
     } catch (error) {
-      console.error(`❌ Erro ao enviar notificação para ${secretaria}:`, error);
+      logger.errorWithContext('Erro ao enviar notificação para secretaria', error, {
+        secretaria,
+        tipoNotificacao: '15 dias'
+      });
       
       // Registrar erros
       for (const demanda of protocolos) {
         await registrarNotificacao(prisma, {
           protocolo: demanda.protocolo,
           secretaria: demanda.secretaria,
-          emailSecretaria: getEmailSecretaria(secretaria),
+          emailSecretaria: (await getEmailsSecretariaFromDB(secretaria, prisma)).join(', '),
           tipoNotificacao: '15_dias',
           dataVencimento: demanda.dataVencimento,
           diasRestantes: demanda.diasRestantes,
@@ -471,12 +465,12 @@ async function enviarResumoOuvidoriaGeral(porSecretaria, prisma) {
   const totalDemandas = Object.values(porSecretaria).reduce((sum, arr) => sum + arr.length, 0);
   
   if (totalDemandas === 0) {
-    console.log('📧 Nenhuma demanda vencendo hoje - resumo não será enviado');
+    logger.info('Nenhuma demanda vencendo hoje - resumo não será enviado');
     return null;
   }
   
   try {
-    console.log(`📧 Preparando resumo para Ouvidoria Geral: ${totalDemandas} demandas vencendo hoje`);
+    logger.info('Preparando resumo para Ouvidoria Geral', { totalDemandas });
     
     const template = await getTemplateResumoOuvidoriaGeral(porSecretaria, prisma);
     
@@ -489,11 +483,15 @@ async function enviarResumoOuvidoriaGeral(porSecretaria, prisma) {
       NOME_REMETENTE
     );
     
-    console.log(`✅ Resumo enviado para Ouvidoria Geral (${EMAIL_OUVIDORIA_GERAL}): ${totalDemandas} demandas`);
+    logger.info('Resumo enviado para Ouvidoria Geral', {
+      email: EMAIL_OUVIDORIA_GERAL,
+      totalDemandas,
+      messageId
+    });
     
     return { messageId, totalDemandas };
   } catch (error) {
-    console.error('❌ Erro ao enviar resumo para Ouvidoria Geral:', error);
+    logger.errorWithContext('Erro ao enviar resumo para Ouvidoria Geral', error);
     throw error;
   }
 }
@@ -502,10 +500,10 @@ async function enviarResumoOuvidoriaGeral(porSecretaria, prisma) {
  * Enviar notificações de vencimento (hoje) - agrupadas por secretaria
  */
 export async function enviarNotificacoesVencimento(prisma) {
-  console.log('📧 Buscando demandas para notificação de vencimento (hoje)...');
+  logger.info('Buscando demandas para notificação de vencimento (hoje)');
   
   const demandas = await buscarDemandasVencimentoHoje(prisma);
-  console.log(`📧 Encontradas ${demandas.length} demandas para notificar (vencimento hoje)`);
+  logger.info('Demandas encontradas para notificação (vencimento hoje)', { total: demandas.length });
   
   // Agrupar por secretaria
   const porSecretaria = {};
@@ -522,50 +520,75 @@ export async function enviarNotificacoesVencimento(prisma) {
   // Enviar um email por secretaria com todos os protocolos
   for (const [secretaria, protocolos] of Object.entries(porSecretaria)) {
     try {
-      const emailSecretaria = getEmailSecretaria(secretaria);
+      const emailsSecretaria = await getEmailsSecretariaFromDB(secretaria, prisma);
       const template = await getTemplateVencimento({
         secretaria,
         protocolos: protocolos
       }, prisma);
       
-      const { messageId } = await sendEmail(
-        emailSecretaria,
-        template.subject,
-        template.html,
-        template.text,
-        EMAIL_REMETENTE,
-        NOME_REMETENTE
-      );
-      
-      // Registrar cada protocolo
-      for (const demanda of protocolos) {
-        await registrarNotificacao(prisma, {
-          protocolo: demanda.protocolo,
-          secretaria: demanda.secretaria,
-          emailSecretaria,
-          tipoNotificacao: 'vencimento',
-          dataVencimento: demanda.dataVencimento,
-          diasRestantes: demanda.diasRestantes,
-          messageId
-        });
-        
-        resultados.push({
-          protocolo: demanda.protocolo,
-          status: 'enviado',
-          tipo: 'vencimento'
-        });
+      // Enviar para TODOS os emails da secretaria
+      let primeiroMessageId = null;
+      for (const emailSecretaria of emailsSecretaria) {
+        try {
+          const { messageId } = await sendEmail(
+            emailSecretaria,
+            template.subject,
+            template.html,
+            template.text,
+            EMAIL_REMETENTE,
+            NOME_REMETENTE
+          );
+          
+          if (!primeiroMessageId) {
+            primeiroMessageId = messageId;
+          }
+        } catch (errorEmail) {
+          logger.error('Erro ao enviar email para secretaria', {
+            email: emailSecretaria,
+            secretaria,
+            erro: errorEmail.message
+          });
+        }
       }
       
-      console.log(`✅ Email enviado para ${secretaria}: ${protocolos.length} protocolos (vencimento)`);
+      // Registrar cada protocolo (apenas uma vez, não por email)
+      if (primeiroMessageId) {
+        for (const demanda of protocolos) {
+          await registrarNotificacao(prisma, {
+            protocolo: demanda.protocolo,
+            secretaria: demanda.secretaria,
+            emailSecretaria: emailsSecretaria.join(', '), // Salvar todos os emails
+            tipoNotificacao: 'vencimento',
+            dataVencimento: demanda.dataVencimento,
+            diasRestantes: demanda.diasRestantes,
+            messageId: primeiroMessageId
+          });
+          
+          resultados.push({
+            protocolo: demanda.protocolo,
+            status: 'enviado',
+            tipo: 'vencimento'
+          });
+        }
+        
+        logger.info('Email de vencimento enviado', {
+          secretaria,
+          emails: emailsSecretaria.length,
+          protocolos: protocolos.length
+        });
+      }
     } catch (error) {
-      console.error(`❌ Erro ao enviar notificação para ${secretaria}:`, error);
+      logger.errorWithContext('Erro ao enviar notificação para secretaria', error, {
+        secretaria,
+        tipoNotificacao: 'vencimento'
+      });
       
       // Registrar erros
       for (const demanda of protocolos) {
         await registrarNotificacao(prisma, {
           protocolo: demanda.protocolo,
           secretaria: demanda.secretaria,
-          emailSecretaria: getEmailSecretaria(secretaria),
+          emailSecretaria: (await getEmailsSecretariaFromDB(secretaria, prisma)).join(', '),
           tipoNotificacao: 'vencimento',
           dataVencimento: demanda.dataVencimento,
           diasRestantes: demanda.diasRestantes,
@@ -588,7 +611,9 @@ export async function enviarNotificacoesVencimento(prisma) {
   try {
     await enviarResumoOuvidoriaGeral(porSecretaria, prisma);
   } catch (error) {
-    console.error('❌ Erro ao enviar resumo para Ouvidoria Geral (não bloqueia o processo):', error);
+    logger.warn('Erro ao enviar resumo para Ouvidoria Geral (não bloqueou processo)', {
+      erro: error.message
+    });
     // Não bloqueia o processo se o resumo falhar
   }
   
@@ -599,10 +624,10 @@ export async function enviarNotificacoesVencimento(prisma) {
  * Enviar notificações de 60 dias vencidas - agrupadas por secretaria
  */
 export async function enviarNotificacoes60Dias(prisma) {
-  console.log('📧 Buscando demandas para notificação de 60 dias vencidas...');
+  logger.info('Buscando demandas para notificação de 60 dias vencidas');
   
   const demandas = await buscarDemandas60DiasVencidas(prisma);
-  console.log(`📧 Encontradas ${demandas.length} demandas para notificar (60 dias vencidas)`);
+  logger.info('Demandas encontradas para notificação (60 dias vencidas)', { total: demandas.length });
   
   // Agrupar por secretaria
   const porSecretaria = {};
@@ -619,50 +644,75 @@ export async function enviarNotificacoes60Dias(prisma) {
   // Enviar um email por secretaria com todos os protocolos
   for (const [secretaria, protocolos] of Object.entries(porSecretaria)) {
     try {
-      const emailSecretaria = getEmailSecretaria(secretaria);
+      const emailsSecretaria = await getEmailsSecretariaFromDB(secretaria, prisma);
       const template = await getTemplate60Dias({
         secretaria,
         protocolos: protocolos
       }, prisma);
       
-      const { messageId } = await sendEmail(
-        emailSecretaria,
-        template.subject,
-        template.html,
-        template.text,
-        EMAIL_REMETENTE,
-        NOME_REMETENTE
-      );
-      
-      // Registrar cada protocolo
-      for (const demanda of protocolos) {
-        await registrarNotificacao(prisma, {
-          protocolo: demanda.protocolo,
-          secretaria: demanda.secretaria,
-          emailSecretaria,
-          tipoNotificacao: '60_dias_vencido',
-          dataVencimento: demanda.dataVencimento,
-          diasRestantes: demanda.diasRestantes,
-          messageId
-        });
-        
-        resultados.push({
-          protocolo: demanda.protocolo,
-          status: 'enviado',
-          tipo: '60_dias_vencido'
-        });
+      // Enviar para TODOS os emails da secretaria
+      let primeiroMessageId = null;
+      for (const emailSecretaria of emailsSecretaria) {
+        try {
+          const { messageId } = await sendEmail(
+            emailSecretaria,
+            template.subject,
+            template.html,
+            template.text,
+            EMAIL_REMETENTE,
+            NOME_REMETENTE
+          );
+          
+          if (!primeiroMessageId) {
+            primeiroMessageId = messageId;
+          }
+        } catch (errorEmail) {
+          logger.error('Erro ao enviar email para secretaria', {
+            email: emailSecretaria,
+            secretaria,
+            erro: errorEmail.message
+          });
+        }
       }
       
-      console.log(`✅ Email enviado para ${secretaria}: ${protocolos.length} protocolos (60 dias vencido)`);
+      // Registrar cada protocolo (apenas uma vez, não por email)
+      if (primeiroMessageId) {
+        for (const demanda of protocolos) {
+          await registrarNotificacao(prisma, {
+            protocolo: demanda.protocolo,
+            secretaria: demanda.secretaria,
+            emailSecretaria: emailsSecretaria.join(', '), // Salvar todos os emails
+            tipoNotificacao: '60_dias_vencido',
+            dataVencimento: demanda.dataVencimento,
+            diasRestantes: demanda.diasRestantes,
+            messageId: primeiroMessageId
+          });
+          
+          resultados.push({
+            protocolo: demanda.protocolo,
+            status: 'enviado',
+            tipo: '60_dias_vencido'
+          });
+        }
+        
+        logger.info('Email de notificação (60 dias vencido) enviado', {
+          secretaria,
+          emails: emailsSecretaria.length,
+          protocolos: protocolos.length
+        });
+      }
     } catch (error) {
-      console.error(`❌ Erro ao enviar notificação para ${secretaria}:`, error);
+      logger.errorWithContext('Erro ao enviar notificação para secretaria', error, {
+        secretaria,
+        tipoNotificacao: '60 dias'
+      });
       
       // Registrar erros
       for (const demanda of protocolos) {
         await registrarNotificacao(prisma, {
           protocolo: demanda.protocolo,
           secretaria: demanda.secretaria,
-          emailSecretaria: getEmailSecretaria(secretaria),
+          emailSecretaria: (await getEmailsSecretariaFromDB(secretaria, prisma)).join(', '),
           tipoNotificacao: '60_dias_vencido',
           dataVencimento: demanda.dataVencimento,
           diasRestantes: demanda.diasRestantes,
@@ -688,7 +738,8 @@ export async function enviarNotificacoes60Dias(prisma) {
  * Executar todas as notificações
  */
 export async function executarTodasNotificacoes(prisma) {
-  console.log('📧 Iniciando processo de notificações por email...');
+  logger.info('Iniciando processo de notificações por email');
+  const startTime = Date.now();
   
   const resultados = {
     '15_dias': [],
@@ -717,11 +768,16 @@ export async function executarTodasNotificacoes(prisma) {
     resultados.totalEnviados += notif60.filter(r => r.status === 'enviado').length;
     resultados.totalErros += notif60.filter(r => r.status === 'erro').length;
     
-    console.log(`✅ Processo de notificações concluído: ${resultados.totalEnviados} enviados, ${resultados.totalErros} erros`);
+    const duration = Date.now() - startTime;
+    logger.info('Processo de notificações concluído', {
+      totalEnviados: resultados.totalEnviados,
+      totalErros: resultados.totalErros,
+      duracao: `${duration}ms`
+    });
     
     return resultados;
   } catch (error) {
-    console.error('❌ Erro ao executar notificações:', error);
+    logger.errorWithContext('Erro ao executar notificações', error);
     throw error;
   }
 }

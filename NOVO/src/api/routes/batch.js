@@ -5,7 +5,7 @@
  * - POST /api/batch - Executar múltiplas requisições em uma chamada
  * - GET /api/batch/endpoints - Listar endpoints disponíveis
  * 
- * @param {PrismaClient} prisma - Cliente Prisma
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB
  * @returns {express.Router} Router configurado
  */
@@ -51,7 +51,7 @@ export default function batchRoutes(prisma, getMongoClient) {
    *   }
    * }
    */
-  router.post('/', (req, res) => batchController.batch(req, res, prisma, getMongoClient));
+  router.post('/', (req, res) => batchController.batch(req, res, null, getMongoClient)); // REFATORAÇÃO: prisma não usado mais
   
   /**
    * GET /api/batch/endpoints

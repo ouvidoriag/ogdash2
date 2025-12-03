@@ -49,8 +49,11 @@ async function loadOverview(forceRefresh = false) {
   }
   
   try {
-    // Verificar se há filtros ativos
+    // FILTROS DE CLIQUE DESABILITADOS: Não aplicar filtros de clique
+    // Filtros só funcionam através da página de filtros avançados
     let activeFilters = null;
+    // CÓDIGO DESABILITADO - Filtros de clique removidos
+    /*
     if (window.chartCommunication) {
       const globalFilters = window.chartCommunication.filters.filters || [];
       if (globalFilters.length > 0) {
@@ -60,11 +63,12 @@ async function loadOverview(forceRefresh = false) {
         }
       }
     }
+    */
     
     let dashboardData = {};
     
-    // Se houver filtros ativos, usar endpoint /api/filter e agregar localmente
-    if (activeFilters && activeFilters.length > 0) {
+    // FILTROS DE CLIQUE DESABILITADOS: Sempre usar dados sem filtros de clique
+    if (false && activeFilters && activeFilters.length > 0) {
       try {
         const filterRequest = {
           filters: activeFilters,
@@ -89,6 +93,23 @@ async function loadOverview(forceRefresh = false) {
         
         if (response.ok) {
           const filteredRows = await response.json();
+          
+          // Debug: verificar dados recebidos
+          if (window.Logger) {
+            window.Logger.debug('📊 loadOverview: Dados filtrados recebidos do /api/filter', {
+              totalRows: filteredRows?.length || 0,
+              sampleRow: filteredRows?.[0] ? {
+                keys: Object.keys(filteredRows[0]).slice(0, 10),
+                hasData: !!filteredRows[0].data,
+                hasPrioridade: !!(filteredRows[0].prioridade || filteredRows[0].Prioridade || filteredRows[0].data?.prioridade || filteredRows[0].data?.Prioridade)
+              } : null
+            });
+          }
+          
+          // Validar que filteredRows é um array
+          if (!Array.isArray(filteredRows)) {
+            throw new Error('Dados filtrados não são um array');
+          }
           
           // OTIMIZAÇÃO: Limitar quantidade de registros processados se houver muitos
           // Processar no máximo 50000 registros para manter performance
@@ -187,12 +208,7 @@ async function loadOverview(forceRefresh = false) {
     // Renderizar gráficos principais (inclui todos os gráficos organizados por seção)
     await renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit);
     
-    // OTIMIZAÇÃO: Carregar insights de IA em background (não bloqueia renderização)
-    loadAIInsights().catch(err => {
-      if (window.Logger) {
-        window.Logger.warn('Erro ao carregar insights de IA:', err);
-      }
-    });
+    // Insights de IA removidos
     
     if (window.Logger) {
       window.Logger.success('📊 loadOverview: Carregamento concluído');
@@ -265,78 +281,35 @@ async function renderKPIs(summary, dailyData, byMonth) {
   // INTERLIGAÇÃO: Adicionar handlers de clique nos KPIs
   // KPI Total: Limpar todos os filtros quando clicado
   if (kpiTotalContainer && window.chartCommunication) {
-    kpiTotalContainer.style.cursor = 'pointer';
-    kpiTotalContainer.classList.add('kpi-clickable', 'kpi-total');
-    kpiTotalContainer.title = 'Clique para limpar todos os filtros';
+    // FILTROS DE CLIQUE DESABILITADOS
+    // kpiTotalContainer.style.cursor = 'pointer'; removido
+    // kpiTotalContainer.classList.add('kpi-clickable', 'kpi-total'); removido
+    // kpiTotalContainer.title removido
     
-    kpiTotalContainer.onclick = () => {
-      if (window.chartCommunication) {
-        window.chartCommunication.clearFilters();
-        if (window.Logger) {
-          window.Logger.debug('KPI Total clicado: Limpando todos os filtros');
-        }
-      }
-    };
+    // FILTROS DE CLIQUE DESABILITADOS
+    // kpiTotalContainer.onclick removido
   }
   
   // KPI Últimos 7 dias: Filtrar por últimos 7 dias
   if (kpi7Container && window.chartCommunication) {
-    kpi7Container.style.cursor = 'pointer';
-    kpi7Container.classList.add('kpi-clickable', 'kpi-7days');
-    kpi7Container.title = 'Clique para filtrar pelos últimos 7 dias';
+    // FILTROS DE CLIQUE DESABILITADOS
+    // kpi7Container.style.cursor = 'pointer'; removido
+    // kpi7Container.classList.add('kpi-clickable', 'kpi-7days'); removido
+    // kpi7Container.title removido
     
-    kpi7Container.onclick = () => {
-      if (window.chartCommunication && dailyData && dailyData.length > 0) {
-        // Calcular data de 7 dias atrás
-        const today = new Date();
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 6);
-        const dateStr = sevenDaysAgo.toISOString().slice(0, 10);
-        const monthStr = dateStr.substring(0, 7); // YYYY-MM
-        
-        // Aplicar filtro por data (últimos 7 dias)
-        window.chartCommunication.applyFilter(
-          'Data',
-          monthStr,
-          'kpi7',
-          { toggle: true, operator: 'contains', clearPrevious: true }
-        );
-        
-        if (window.Logger) {
-          window.Logger.debug('KPI 7 dias clicado: Filtrando por últimos 7 dias');
-        }
-      }
-    };
+    // FILTROS DE CLIQUE DESABILITADOS
+    // kpi7Container.onclick removido
   }
   
   // KPI Últimos 30 dias: Filtrar por últimos 30 dias
   if (kpi30Container && window.chartCommunication) {
-    kpi30Container.style.cursor = 'pointer';
-    kpi30Container.classList.add('kpi-clickable', 'kpi-30days');
-    kpi30Container.title = 'Clique para filtrar pelos últimos 30 dias';
+    // FILTROS DE CLIQUE DESABILITADOS
+    // kpi30Container.style.cursor = 'pointer'; removido
+    // kpi30Container.classList.add('kpi-clickable', 'kpi-30days'); removido
+    // kpi30Container.title removido
     
-    kpi30Container.onclick = () => {
-      if (window.chartCommunication && dailyData && dailyData.length > 0) {
-        // Calcular data de 30 dias atrás
-        const today = new Date();
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(today.getDate() - 29);
-        const dateStr = thirtyDaysAgo.toISOString().slice(0, 10);
-        const monthStr = dateStr.substring(0, 7); // YYYY-MM
-        
-        // Aplicar filtro por data (últimos 30 dias)
-        window.chartCommunication.applyFilter(
-          'Data',
-          monthStr,
-          'kpi30',
-          { toggle: true, operator: 'contains', clearPrevious: true }
-        );
-        
-        if (window.Logger) {
-          window.Logger.debug('KPI 30 dias clicado: Filtrando por últimos 30 dias');
-        }
-      }
-    };
+    // FILTROS DE CLIQUE DESABILITADOS
+    // kpi30Container.onclick removido
   }
   
   // Atualizar estado visual dos KPIs baseado em filtros ativos
@@ -583,7 +556,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         colorIndex: 0,
         fill: true,
         tension: 0.4,
-        onClick: true, // Habilitar comunicação e filtros globais
+        onClick: false // FILTROS DE CLIQUE DESABILITADOS
         chartOptions: {
           plugins: {
             tooltip: {
@@ -670,7 +643,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     try {
       await window.chartFactory.createDoughnutChart('chartFunnelStatus', labels, values, {
         type: 'doughnut',
-        onClick: true, // Habilitar comunicação e filtros
+        onClick: false, // FILTROS DE CLIQUE DESABILITADOS // Habilitar comunicação e filtros
         legendContainer: 'legendFunnelStatus',
         chartOptions: {
           plugins: {
@@ -843,7 +816,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       
       await window.chartFactory.createBarChart('chartDailyDistribution', labels, values, {
         colorIndex: 0,
-        onClick: true, // Habilitar comunicação e filtros globais
+        onClick: false // FILTROS DE CLIQUE DESABILITADOS
         chartOptions: {
           plugins: {
             tooltip: {
@@ -975,7 +948,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       window.chartFactory.createBarChart('chartTopOrgaos', labels, values, {
         horizontal: true,
         colorIndex: 1,
-        onClick: true // Habilitar comunicação e filtros
+        onClick: false // FILTROS DE CLIQUE DESABILITADOS
       }).catch(error => {
         console.error('Erro ao criar chartTopOrgaos:', error);
         if (window.Logger) {
@@ -1022,7 +995,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       window.chartFactory.createBarChart('chartTopTemas', labels, values, {
         horizontal: true,
         colorIndex: 2,
-        onClick: true // Habilitar comunicação e filtros
+        onClick: false // FILTROS DE CLIQUE DESABILITADOS
       }).catch(error => {
         console.error('Erro ao criar chartTopTemas:', error);
         if (window.Logger) {
@@ -1091,7 +1064,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     try {
       await window.chartFactory.createDoughnutChart('chartTiposManifestacao', labels, values, {
         field: 'tipoDeManifestacao',
-        onClick: true,
+        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
         legendContainer: 'legendTiposManifestacao',
         chartOptions: {
           plugins: {
@@ -1141,7 +1114,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     
     distributionPromises.push(
       window.chartFactory.createDoughnutChart('chartCanais', labels, values, {
-        onClick: true,
+        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
         legendContainer: 'legendCanais'
       }).catch(error => {
         console.error('Erro ao criar chartCanais:', error);
@@ -1156,7 +1129,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     
     distributionPromises.push(
       window.chartFactory.createDoughnutChart('chartPrioridades', labels, values, {
-        onClick: true,
+        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
         legendContainer: 'legendPrioridades'
       }).catch(error => {
         console.error('Erro ao criar chartPrioridades:', error);
@@ -1174,7 +1147,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       window.chartFactory.createBarChart('chartUnidadesCadastro', labels, values, {
         horizontal: true,
         colorIndex: 3,
-        onClick: true
+        onClick: false // FILTROS DE CLIQUE DESABILITADOS
       }).catch(error => {
         console.error('Erro ao criar chartUnidadesCadastro:', error);
       })
@@ -1498,7 +1471,14 @@ function aggregateFilteredData(rows) {
   if (window.Logger) {
     window.Logger.debug('📊 aggregateFilteredData: Iniciando agregação', {
       totalRows: rows?.length || 0,
-      sampleRow: rows?.[0]
+      sampleRow: rows?.[0] ? {
+        id: rows[0].id || rows[0]._id,
+        keys: Object.keys(rows[0]).slice(0, 15),
+        hasData: !!rows[0].data,
+        dataKeys: rows[0].data ? Object.keys(rows[0].data).slice(0, 15) : [],
+        prioridade: rows[0].prioridade || rows[0].Prioridade || rows[0].data?.prioridade || rows[0].data?.Prioridade || 'N/A',
+        status: rows[0].status || rows[0].Status || rows[0].data?.status || rows[0].data?.Status || 'N/A'
+      } : null
     });
   }
   
@@ -1542,66 +1522,74 @@ function aggregateFilteredData(rows) {
   let last7Count = 0;
   let last30Count = 0;
   
+  // Helper para buscar campo em múltiplos locais (definido antes do loop)
+  const getFieldValue = (row, fieldName, variations = []) => {
+    const data = row.data || row;
+    
+    // Tentar no registro direto
+    if (row[fieldName] !== undefined && row[fieldName] !== null) {
+      return row[fieldName];
+    }
+    // Tentar no data
+    if (data && typeof data === 'object') {
+      if (data[fieldName] !== undefined && data[fieldName] !== null) {
+        return data[fieldName];
+      }
+      // Tentar variações
+      for (const variation of variations) {
+        if (data[variation] !== undefined && data[variation] !== null) {
+          return data[variation];
+        }
+      }
+    }
+    return null;
+  };
+  
   // OTIMIZAÇÃO: Processar todos os registros (já limitado a 50000 no loadOverview)
   for (const row of rows) {
     // Extrair dados - pode estar em row.data ou diretamente em row
     // Também verificar campos normalizados do banco
+    // FILTROS LOCAIS: Buscar dados em múltiplos locais para garantir compatibilidade
     const data = row.data || row;
     
     // Status - verificar múltiplos campos possíveis
-    const status = data.status || 
-                   data.status_demanda || 
-                   row.status || 
-                   row.status_demanda || 
-                   'N/A';
+    const status = getFieldValue(row, 'status', ['Status', 'status_demanda', 'StatusDemanda', 'statusDemanda']) || 'N/A';
     if (status && status !== 'N/A') {
       statusMap.set(status, (statusMap.get(status) || 0) + 1);
     }
     
-    // Tema
-    const theme = data.tema || row.tema || 'N/A';
+    // Tema - verificar múltiplos campos possíveis
+    const theme = getFieldValue(row, 'tema', ['Tema']) || 'N/A';
     if (theme && theme !== 'N/A') {
       themeMap.set(theme, (themeMap.get(theme) || 0) + 1);
     }
     
     // Órgãos
-    const organ = data.orgaos || 
-                  data.orgao || 
-                  row.orgaos || 
-                  row.orgao || 
-                  'N/A';
+    const organ = getFieldValue(row, 'orgaos', ['orgao', 'Orgaos', 'Orgao']) || 'N/A';
     if (organ && organ !== 'N/A') {
       organMap.set(organ, (organMap.get(organ) || 0) + 1);
     }
     
     // Tipo
-    const type = data.tipo || 
-                 data.tipo_de_manifestacao || 
-                 row.tipo || 
-                 row.tipo_de_manifestacao || 
-                 'N/A';
+    const type = getFieldValue(row, 'tipoDeManifestacao', ['tipo', 'Tipo', 'tipo_de_manifestacao', 'TipoDeManifestacao']) || 'N/A';
     if (type && type !== 'N/A') {
       typeMap.set(type, (typeMap.get(type) || 0) + 1);
     }
     
-    // Canal
-    const channel = data.canal || row.canal || 'N/A';
+    // Canal - verificar múltiplos campos possíveis
+    const channel = getFieldValue(row, 'canal', ['Canal']) || 'N/A';
     if (channel && channel !== 'N/A') {
       channelMap.set(channel, (channelMap.get(channel) || 0) + 1);
     }
     
-    // Prioridade
-    const priority = data.prioridade || row.prioridade || 'N/A';
+    // Prioridade - verificar múltiplos campos possíveis
+    const priority = getFieldValue(row, 'prioridade', ['Prioridade']) || 'N/A';
     if (priority && priority !== 'N/A') {
       priorityMap.set(priority, (priorityMap.get(priority) || 0) + 1);
     }
     
-    // Unidade
-    const unit = data.unidade_cadastro || 
-                 data.unidadeCadastro || 
-                 row.unidade_cadastro || 
-                 row.unidadeCadastro || 
-                 'N/A';
+    // Unidade - verificar múltiplos campos possíveis
+    const unit = getFieldValue(row, 'unidadeCadastro', ['unidade_cadastro', 'UnidadeCadastro', 'unidadeCadastro']) || 'N/A';
     if (unit && unit !== 'N/A') {
       unitMap.set(unit, (unitMap.get(unit) || 0) + 1);
     }
@@ -1784,6 +1772,15 @@ function aggregateFilteredData(rows) {
  * Escuta eventos do sistema de comunicação de gráficos para recarregar dados
  */
 function initOverviewFilterListeners() {
+  // FILTROS DE CLIQUE DESABILITADOS: Não escutar eventos de filtro
+  // Os filtros só funcionam através da página de filtros avançados
+  if (window.Logger) {
+    window.Logger.debug('⚠️ Listeners de filtro desabilitados (filtros de clique removidos)');
+  }
+  return;
+  
+  // CÓDIGO DESABILITADO - Mantido apenas para referência
+  /*
   if (!window.chartCommunication) {
     if (window.Logger) {
       window.Logger.warn('Sistema de comunicação de gráficos não disponível. Overview não será atualizado automaticamente.');
@@ -1793,80 +1790,19 @@ function initOverviewFilterListeners() {
   
   // Escutar evento de filtro aplicado
   window.chartCommunication.on('filter:applied', (data) => {
-    if (window.Logger) {
-      window.Logger.debug('Filtro aplicado, recarregando overview...', data);
-    }
-    
-    // Verificar se a página está visível
-    const pageMain = document.getElementById('page-main');
-    if (pageMain && pageMain.style.display !== 'none') {
-      // Invalidar cache do dataStore para forçar recarregamento
-      if (window.dataStore) {
-        window.dataStore.invalidate([
-          'dashboardData',
-          '/api/dashboard-data',
-          '/api/summary'
-        ]);
-      }
-      
-      // Recarregar overview com refresh forçado
-      // Usar debounce maior para evitar múltiplas atualizações simultâneas
-      clearTimeout(window.overviewUpdateTimeout);
-      window.overviewUpdateTimeout = setTimeout(() => {
-        loadOverview(true); // forceRefresh = true
-      }, 500); // Aumentado de 300ms para 500ms para dar mais tempo entre eventos
-    }
+    // ... código removido
   });
   
   // Escutar evento de filtro removido
   window.chartCommunication.on('filter:removed', (data) => {
-    if (window.Logger) {
-      window.Logger.debug('Filtro removido, recarregando overview...', data);
-    }
-    
-    const pageMain = document.getElementById('page-main');
-    if (pageMain && pageMain.style.display !== 'none') {
-      if (window.dataStore) {
-        window.dataStore.invalidate([
-          'dashboardData',
-          '/api/dashboard-data',
-          '/api/summary'
-        ]);
-      }
-      
-      clearTimeout(window.overviewUpdateTimeout);
-      window.overviewUpdateTimeout = setTimeout(() => {
-        loadOverview(true);
-      }, 300);
-    }
+    // ... código removido
   });
   
   // Escutar evento de filtros limpos
   window.chartCommunication.on('filter:cleared', () => {
-    if (window.Logger) {
-      window.Logger.debug('Filtros limpos, recarregando overview...');
-    }
-    
-    const pageMain = document.getElementById('page-main');
-    if (pageMain && pageMain.style.display !== 'none') {
-      if (window.dataStore) {
-        window.dataStore.invalidate([
-          'dashboardData',
-          '/api/dashboard-data',
-          '/api/summary'
-        ]);
-      }
-      
-      clearTimeout(window.overviewUpdateTimeout);
-      window.overviewUpdateTimeout = setTimeout(() => {
-        loadOverview(true);
-      }, 300);
-    }
+    // ... código removido
   });
-  
-  if (window.Logger) {
-    window.Logger.success('✅ Listeners de filtro para overview inicializados');
-  }
+  */
 }
 
 // Exportar função globalmente

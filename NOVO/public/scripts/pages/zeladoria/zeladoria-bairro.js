@@ -90,7 +90,7 @@ async function loadZeladoriaBairro() {
       horizontal: true,
       colorIndex: 3,
       field: 'bairro',
-      onClick: true,
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       legendContainer: 'zeladoria-bairro-legend'
     });
     
@@ -222,7 +222,7 @@ async function renderBairroMesChart(dataMes, topBairros) {
   // Criar gráfico de barras agrupadas
   await window.chartFactory?.createBarChart('zeladoria-bairro-mes-chart', labels, datasets, {
     colorIndex: 0,
-    onClick: true, // Habilitar comunicação e filtros globais ao clicar
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-bairro-mes-legend'
   });
 }

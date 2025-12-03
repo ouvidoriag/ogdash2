@@ -76,7 +76,7 @@ async function loadZeladoriaCanal() {
     // ========================================================================
     // Gráfico de rosca (doughnut) mostrando a proporção de cada canal
     await window.chartFactory?.createDoughnutChart('zeladoria-canal-chart', labels, values, {
-      onClick: true,
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       field: 'canal',
       colorIndex: 5,
       legendContainer: 'zeladoria-canal-legend'
@@ -165,7 +165,7 @@ async function renderCanalMesChart(dataMes, canais) {
   
   await window.chartFactory?.createBarChart('zeladoria-canal-mes-chart', labels, datasets, {
     colorIndex: 0,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-canal-mes-legend'
   });
 }

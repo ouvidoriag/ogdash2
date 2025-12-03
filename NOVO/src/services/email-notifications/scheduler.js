@@ -6,17 +6,20 @@
 import cron from 'node-cron';
 import { executarTodasNotificacoes } from './notificationService.js';
 
-let prisma = null;
 let tarefaAgendada = null;
 
 /**
  * Executar verificação de notificações
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 async function executarVerificacao() {
   console.log('⏰ Iniciando verificação agendada de notificações...');
   
   try {
-    const resultados = await executarTodasNotificacoes(prisma);
+    // REFATORAÇÃO: executarTodasNotificacoes não precisa mais de prisma
+    const resultados = await executarTodasNotificacoes(null);
     
     console.log('✅ Verificação concluída:', {
       totalEnviados: resultados.totalEnviados,
@@ -38,15 +41,13 @@ async function executarVerificacao() {
 /**
  * Iniciar scheduler
  * Executa verificações diárias às 8h da manhã
- * @param {PrismaClient} prismaClient - Instância do Prisma Client
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
+ * @param {*} prismaClient - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  */
 export function iniciarScheduler(prismaClient) {
-  if (!prismaClient) {
-    console.error('❌ Prisma Client não fornecido ao scheduler');
-    return;
-  }
-  
-  prisma = prismaClient;
+  // REFATORAÇÃO: prisma não é mais necessário, mas mantido para compatibilidade
   
   if (tarefaAgendada) {
     console.log('⚠️ Scheduler já está em execução');

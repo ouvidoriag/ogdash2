@@ -29,7 +29,7 @@ async function loadSecretaria() {
       horizontal: true,
       colorIndex: 0,
       label: 'Manifestações',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: false // FILTROS DE CLIQUE DESABILITADOS
     });
     
     // Renderizar ranking

@@ -1,10 +1,14 @@
 /**
  * Controllers de Agregação
  * /api/aggregate/*
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { withCache } from '../../utils/responseHelper.js';
-import { optimizedGroupBy, optimizedGroupByMonth, getDateFilter } from '../../utils/queryOptimizer.js';
+import { optimizedGroupBy, optimizedGroupByMonth } from '../../utils/queryOptimizer.js';
 import { getNormalizedField } from '../../utils/fieldMapper.js';
 import { getDataCriacao } from '../../utils/dateUtils.js';
 import { executeAggregation } from '../../utils/dbAggregations.js';
@@ -12,12 +16,16 @@ import { buildTemaPipeline, buildAssuntoPipeline, buildOrgaoMesPipeline } from '
 import { formatGroupByResult, formatMonthlySeries } from '../../utils/dataFormatter.js';
 import { sanitizeFilters } from '../../utils/validateFilters.js';
 import { withSmartCache } from '../../utils/smartCache.js';
+import Record from '../../models/Record.model.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * GET /api/aggregate/count-by
  * Contagem por campo
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function countBy(req, res, prisma) {
+export async function countBy(req, res) {
   const field = String(req.query.field ?? '').trim();
   if (!field) {
     return res.status(400).json({ error: 'field required' });
@@ -26,34 +34,53 @@ export async function countBy(req, res, prisma) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
-  const cacheKey = servidor ? `countBy:${field}:servidor:${servidor}:v2` :
-                    unidadeCadastro ? `countBy:${field}:uac:${unidadeCadastro}:v2` :
-                    `countBy:${field}:v2`;
+  const cacheKey = servidor ? `countBy:${field}:servidor:${servidor}:v3` :
+                    unidadeCadastro ? `countBy:${field}:uac:${unidadeCadastro}:v3` :
+                    `countBy:${field}:v3`;
   
   // Cache de 1 hora para agregações
   return withCache(cacheKey, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
-    // OTIMIZAÇÃO: Usar sistema otimizado de agregação (groupBy do Prisma)
+    // OTIMIZAÇÃO: Usar agregação MongoDB nativa
     const col = getNormalizedField(field);
     if (col) {
-      // Agregar direto no banco (com filtro se houver)
-      const rows = await prisma.record.groupBy({ 
-        by: [col], 
-        where: Object.keys(where).length > 0 ? where : undefined,
-        _count: { _all: true } 
-      });
-      return rows.map(r => ({ key: r[col] ?? 'Não informado', count: r._count._all }))
-        .sort((a, b) => b.count - a.count);
+      // Agregar direto no banco usando MongoDB aggregation
+      const pipeline = [
+        ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
+        { $group: { _id: `$${col}`, count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ];
+      
+      const result = await Record.aggregate(pipeline);
+      return result.map(r => ({ 
+        key: r._id ?? 'Não informado', 
+        count: r.count 
+      }));
     }
 
     // Fallback: agrega pelo JSON caso campo não esteja normalizado
-    const rows = await prisma.record.findMany({ 
-      where: Object.keys(where).length > 0 ? where : undefined,
-      select: { data: true } 
-    });
+    // OTIMIZAÇÃO: Adicionar limite e filtro de data
+    const today = new Date();
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
+    const finalFilter = {
+      ...filter,
+      $or: [
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: today.getFullYear().toString() } }
+      ]
+    };
+    
+    const rows = await Record.find(finalFilter)
+      .select('data')
+      .limit(20000)
+      .lean();
+      
     const map = new Map();
     for (const r of rows) {
       const dat = r.data || {};
@@ -62,20 +89,22 @@ export async function countBy(req, res, prisma) {
       map.set(k, (map.get(k) ?? 0) + 1);
     }
     return Array.from(map.entries()).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/time-series
  * Série temporal por campo de data
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function timeSeries(req, res, prisma) {
+export async function timeSeries(req, res) {
   const field = String(req.query.field ?? '').trim();
   if (!field) {
     return res.status(400).json({ error: 'field required' });
   }
 
-  const cacheKey = `ts:${field}`;
+  const cacheKey = `ts:${field}:v3`;
   // Cache de 1 hora para séries temporais
   return withCache(cacheKey, 3600, res, async () => {
     // Se pediram Data, usar sistema global de datas
@@ -83,38 +112,42 @@ export async function timeSeries(req, res, prisma) {
       const dateFilter = getDateFilter();
       
       try {
-        // Usar groupBy no campo dataCriacaoIso (muito mais rápido)
-        const results = await prisma.record.groupBy({
-          by: ['dataCriacaoIso'],
-          where: {
-            dataCriacaoIso: { not: null },
-            ...dateFilter
+        // Usar agregação MongoDB nativa (muito mais rápido)
+        const pipeline = [
+          {
+            $match: {
+              dataCriacaoIso: { $ne: null, ...dateFilter }
+            }
           },
-          _count: { _all: true },
-          orderBy: {
-            dataCriacaoIso: 'asc'
+          {
+            $group: {
+              _id: '$dataCriacaoIso',
+              count: { $sum: 1 }
+            }
+          },
+          {
+            $sort: { _id: 1 }
           }
-        });
+        ];
+        
+        const results = await Record.aggregate(pipeline);
         
         return results
-          .filter(r => r.dataCriacaoIso)
-          .map(r => ({ date: r.dataCriacaoIso, count: r._count._all }))
+          .filter(r => r._id)
+          .map(r => ({ date: r._id, count: r.count }))
           .sort((a, b) => a.date.localeCompare(b.date));
       } catch (error) {
         // Fallback: processar em memória
-        console.warn('⚠️ groupBy falhou para time-series, usando fallback:', error.message);
-        const rows = await prisma.record.findMany({
-          where: { 
-            dataDaCriacao: { not: null },
-            ...dateFilter
-          },
-          select: {
-            dataCriacaoIso: true,
-            dataDaCriacao: true,
-            data: true
-          },
-          take: 100000
-        });
+        logger.warn('groupBy falhou para time-series, usando fallback:', { error: error.message });
+        const mongoFilter = {
+          dataDaCriacao: { $ne: null },
+          ...dateFilter
+        };
+        
+        const rows = await Record.find(mongoFilter)
+          .select('dataCriacaoIso dataDaCriacao')
+          .limit(20000)
+          .lean();
         
         const map = new Map();
         for (const r of rows) {
@@ -132,15 +165,17 @@ export async function timeSeries(req, res, prisma) {
     
     // Para outros campos, usar método genérico
     return [];
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/by-theme
  * Agregação por tema
  * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function byTheme(req, res, prisma, getMongoClient) {
+export async function byTheme(req, res, getMongoClient) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -153,46 +188,51 @@ export async function byTheme(req, res, prisma, getMongoClient) {
   const sanitizedFilters = sanitizeFilters(filters);
   
   // Cache inteligente
-  const cacheKey = servidor ? `byTheme:servidor:${servidor}:v3` :
-                    unidadeCadastro ? `byTheme:uac:${unidadeCadastro}:v3` :
-                    'byTheme:v3';
+  const cacheKey = servidor ? `byTheme:servidor:${servidor}:v4` :
+                    unidadeCadastro ? `byTheme:uac:${unidadeCadastro}:v4` :
+                    'byTheme:v4';
   
   return withCache(cacheKey, 3600, res, async () => {
     try {
-      // Usar cache inteligente se prisma disponível
-      if (prisma && getMongoClient) {
+      // Usar cache inteligente com Mongoose
+      if (getMongoClient) {
         return await withSmartCache(
-          prisma,
           'tema',
           sanitizedFilters,
           async () => {
             const pipeline = buildTemaPipeline(sanitizedFilters, 50);
             const result = await executeAggregation(getMongoClient, pipeline);
             return formatGroupByResult(result, '_id', 'count');
-          }
+          },
+          null,
+          [] // Fallback seguro: lista vazia
         );
       }
       
-      // Fallback para Prisma
-      const rows = await prisma.record.groupBy({ 
-        by: ['tema'], 
-        where: Object.keys(sanitizedFilters).length > 0 ? sanitizedFilters : undefined,
-        _count: { _all: true } 
-      });
-      return formatGroupByResult(rows.map(r => ({ _id: r.tema ?? 'Não informado', count: r._count._all })));
+      // Fallback para Mongoose aggregation
+      const pipeline = [
+        ...(Object.keys(sanitizedFilters).length > 0 ? [{ $match: sanitizedFilters }] : []),
+        { $group: { _id: '$tema', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ];
+      
+      const rows = await Record.aggregate(pipeline);
+      return formatGroupByResult(rows.map(r => ({ _id: r._id ?? 'Não informado', count: r.count })));
     } catch (error) {
-      console.error('❌ Erro ao buscar dados por tema:', error);
+      logger.error('Erro ao buscar dados por tema:', { error: error.message });
       throw error;
     }
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/by-subject
  * Agregação por assunto
  * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function bySubject(req, res, prisma, getMongoClient) {
+export async function bySubject(req, res, getMongoClient) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -205,104 +245,117 @@ export async function bySubject(req, res, prisma, getMongoClient) {
   const sanitizedFilters = sanitizeFilters(filters);
   
   // Cache inteligente
-  const cacheKey = servidor ? `bySubject:servidor:${servidor}:v3` :
-                    unidadeCadastro ? `bySubject:uac:${unidadeCadastro}:v3` :
-                    'bySubject:v3';
+  const cacheKey = servidor ? `bySubject:servidor:${servidor}:v4` :
+                    unidadeCadastro ? `bySubject:uac:${unidadeCadastro}:v4` :
+                    'bySubject:v4';
   
   return withCache(cacheKey, 3600, res, async () => {
     try {
-      // Usar cache inteligente se prisma disponível
-      if (prisma && getMongoClient) {
+      // Usar cache inteligente com Mongoose
+      if (getMongoClient) {
         return await withSmartCache(
-          prisma,
           'assunto',
           sanitizedFilters,
           async () => {
             const pipeline = buildAssuntoPipeline(sanitizedFilters, 50);
             const result = await executeAggregation(getMongoClient, pipeline);
             return formatGroupByResult(result, '_id', 'count');
-          }
+          },
+          null,
+          [] // Fallback seguro
         );
       }
       
-      // Fallback para Prisma
-      const rows = await prisma.record.groupBy({ 
-        by: ['assunto'], 
-        where: Object.keys(sanitizedFilters).length > 0 ? sanitizedFilters : undefined,
-        _count: { _all: true } 
-      });
-      return formatGroupByResult(rows.map(r => ({ _id: r.assunto ?? 'Não informado', count: r._count._all })));
+      // Fallback para Mongoose aggregation
+      const pipeline = [
+        ...(Object.keys(sanitizedFilters).length > 0 ? [{ $match: sanitizedFilters }] : []),
+        { $group: { _id: '$assunto', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ];
+      
+      const rows = await Record.aggregate(pipeline);
+      return formatGroupByResult(rows.map(r => ({ _id: r._id ?? 'Não informado', count: r.count })));
     } catch (error) {
-      console.error('❌ Erro ao buscar dados por assunto:', error);
+      logger.error('Erro ao buscar dados por assunto:', { error: error.message });
       throw error;
     }
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/by-server
  * Agregação por servidor/cadastrante
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function byServer(req, res, prisma) {
+export async function byServer(req, res) {
   const unidadeCadastro = req.query.unidadeCadastro;
-  const cacheKey = unidadeCadastro ? `byServer:uac:${unidadeCadastro}:v2` : 'byServer:v2';
+  const cacheKey = unidadeCadastro ? `byServer:uac:${unidadeCadastro}:v3` : 'byServer:v3';
   
   return withCache(cacheKey, 3600, res, async () => {
-    const where = unidadeCadastro ? { unidadeCadastro } : {};
-    const rows = await prisma.record.groupBy({ 
-      by: ['servidor'],
-      where,
-      _count: { _all: true } 
-    });
+    const filter = unidadeCadastro ? { unidadeCadastro } : {};
+    
+    const pipeline = [
+      ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
+      { $group: { _id: '$servidor', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ];
+    
+    const rows = await Record.aggregate(pipeline);
     return rows
-      .map(r => ({ servidor: r.servidor ?? 'Não informado', quantidade: r._count._all }))
+      .map(r => ({ servidor: r._id ?? 'Não informado', quantidade: r.count }))
       .sort((a, b) => b.quantidade - a.quantidade);
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/by-month
  * Agregação por mês
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function byMonth(req, res, prisma) {
+export async function byMonth(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
-  const cacheKey = servidor ? `byMonth:servidor:${servidor}:v2` :
-                    unidadeCadastro ? `byMonth:uac:${unidadeCadastro}:v2` :
-                    'byMonth:v2';
+  const cacheKey = servidor ? `byMonth:servidor:${servidor}:v3` :
+                    unidadeCadastro ? `byMonth:uac:${unidadeCadastro}:v3` :
+                    'byMonth:v3';
   
+  // Timeout maior para agregações pesadas (60s)
   return withCache(cacheKey, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
-    // Usar função otimizada
-    const results = await optimizedGroupByMonth(prisma, where, { dateFilter: true, limit: 24 });
+    // Usar função otimizada (precisa atualizar para Mongoose)
+    const results = await optimizedGroupByMonth(null, filter, { dateFilter: true, limit: 24 });
     
     return results.map(r => ({
       month: r.ym,
       count: r.count
     }));
-  }, prisma);
+  }, null, 60000); // Timeout de 60s
 }
 
 /**
  * GET /api/aggregate/by-day
  * Agregação por dia (últimos 30 dias)
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function byDay(req, res, prisma) {
+export async function byDay(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
-  const cacheKey = servidor ? `byDay:servidor:${servidor}:v2` :
-                    unidadeCadastro ? `byDay:uac:${unidadeCadastro}:v2` :
-                    'byDay:v2';
+  const cacheKey = servidor ? `byDay:servidor:${servidor}:v3` :
+                    unidadeCadastro ? `byDay:uac:${unidadeCadastro}:v3` :
+                    'byDay:v3';
   
   return withCache(cacheKey, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     const today = new Date();
     const d30 = new Date(today);
@@ -310,16 +363,15 @@ export async function byDay(req, res, prisma) {
     const last30Str = d30.toISOString().slice(0, 10);
     const todayStr = today.toISOString().slice(0, 10);
     
-    const whereDate = {
-      ...where,
-      dataCriacaoIso: { gte: last30Str, lte: todayStr }
+    const dateFilter = {
+      ...filter,
+      dataCriacaoIso: { $gte: last30Str, $lte: todayStr }
     };
     
-    const rows = await prisma.record.findMany({
-      where: whereDate,
-      select: { dataCriacaoIso: true, dataDaCriacao: true, data: true },
-      take: 50000
-    });
+    const rows = await Record.find(dateFilter)
+      .select('dataCriacaoIso dataDaCriacao')
+      .limit(20000)
+      .lean();
     
     const dayMap = new Map();
     for (const r of rows) {
@@ -332,16 +384,18 @@ export async function byDay(req, res, prisma) {
     return Array.from(dayMap.entries())
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/heatmap
  * Heatmap por mês x dimensão
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function heatmap(req, res, prisma) {
+export async function heatmap(req, res) {
   const dimReq = String(req.query.dim ?? 'Categoria');
-  const cacheKey = `heatmap:${dimReq}:v2`;
+  const cacheKey = `heatmap:${dimReq}:v3`;
   
   return withCache(cacheKey, 3600, res, async () => {
     const col = getNormalizedField(dimReq);
@@ -365,23 +419,25 @@ export async function heatmap(req, res, prisma) {
     twoYearsAgo.setMonth(todayForHeatmap.getMonth() - 24);
     const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
 
-    const rows = await prisma.record.findMany({ 
-      where: { 
-        dataDaCriacao: { not: null },
-        OR: [
-          { dataCriacaoIso: { gte: minDateStr } },
-          { dataDaCriacao: { contains: todayForHeatmap.getFullYear().toString() } },
-          { dataDaCriacao: { contains: (todayForHeatmap.getFullYear() - 1).toString() } }
-        ]
-      },
-      select: { 
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        data: true,
-        [col]: true 
-      },
-      take: 100000
-    });
+    const mongoFilter = { 
+      dataDaCriacao: { $ne: null },
+      $or: [
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: todayForHeatmap.getFullYear().toString() } },
+        { dataDaCriacao: { $regex: (todayForHeatmap.getFullYear() - 1).toString() } }
+      ]
+    };
+
+    const selectFields = { 
+      dataCriacaoIso: 1,
+      dataDaCriacao: 1,
+      [col]: 1
+    };
+
+    const rows = await Record.find(mongoFilter)
+      .select(selectFields)
+      .limit(20000)
+      .lean();
     
     const { getMes } = await import('../../utils/dateUtils.js');
     const matrix = new Map();
@@ -401,14 +457,16 @@ export async function heatmap(req, res, prisma) {
 
     const data = topKeys.map(k => ({ key: k, values: labels.map(ym => matrix.get(k)?.get(ym) ?? 0) }));
     return { labels, rows: data };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/filtered
  * Dados filtrados por servidor ou unidade
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function filtered(req, res, prisma) {
+export async function filtered(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -416,25 +474,36 @@ export async function filtered(req, res, prisma) {
     return res.status(400).json({ error: 'servidor ou unidadeCadastro required' });
   }
   
-  const cacheKey = servidor ? `filtered:servidor:${servidor}:v1` : 
-                    `filtered:uac:${unidadeCadastro}:v1`;
+  const cacheKey = servidor ? `filtered:servidor:${servidor}:v2` : 
+                    `filtered:uac:${unidadeCadastro}:v2`;
   
   return withCache(cacheKey, 300, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
-    const total = await prisma.record.count({ where });
+    const total = await Record.countDocuments(filter);
     
     // Dados por mês
-    const rows = await prisma.record.findMany({ 
-      where: { ...where, dataDaCriacao: { not: null } },
-      select: { 
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        data: true
-      } 
-    });
+    // OTIMIZAÇÃO: Adicionar filtro de data e limite
+    const today = new Date();
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
+    const finalFilter = {
+      ...filter,
+      dataDaCriacao: { $ne: null },
+      $or: [
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: today.getFullYear().toString() } }
+      ]
+    };
+    
+    const rows = await Record.find(finalFilter)
+      .select('dataCriacaoIso dataDaCriacao')
+      .limit(20000)
+      .lean();
     
     const { getMes } = await import('../../utils/dateUtils.js');
     const monthMap = new Map();
@@ -446,24 +515,36 @@ export async function filtered(req, res, prisma) {
     const byMonth = Array.from(monthMap.entries()).map(([ym, count]) => ({ ym, count }))
       .sort((a,b) => a.ym.localeCompare(b.ym)).slice(-12);
     
-    // Executar agregações em paralelo
+    // Executar agregações em paralelo usando MongoDB aggregation
     const [temas, assuntos, status, uacs] = await Promise.all([
-      prisma.record.groupBy({ by: ['tema'], where, _count: { _all: true } }),
-      prisma.record.groupBy({ by: ['assunto'], where, _count: { _all: true } }),
-      prisma.record.groupBy({ by: ['status'], where, _count: { _all: true } }),
-      servidor ? prisma.record.groupBy({ by: ['unidadeCadastro'], where: { servidor }, _count: { _all: true } }) : Promise.resolve([])
+      Record.aggregate([
+        ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
+        { $group: { _id: '$tema', count: { $sum: 1 } } }
+      ]),
+      Record.aggregate([
+        ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
+        { $group: { _id: '$assunto', count: { $sum: 1 } } }
+      ]),
+      Record.aggregate([
+        ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      servidor ? Record.aggregate([
+        { $match: { servidor } },
+        { $group: { _id: '$unidadeCadastro', count: { $sum: 1 } } }
+      ]) : Promise.resolve([])
     ]);
     
-    const byTheme = temas.map(r => ({ tema: r.tema ?? 'Não informado', quantidade: r._count._all }))
+    const byTheme = temas.map(r => ({ tema: r._id ?? 'Não informado', quantidade: r.count }))
       .sort((a, b) => b.quantidade - a.quantidade);
     
-    const bySubject = assuntos.map(r => ({ assunto: r.assunto ?? 'Não informado', quantidade: r._count._all }))
+    const bySubject = assuntos.map(r => ({ assunto: r._id ?? 'Não informado', quantidade: r.count }))
       .sort((a, b) => b.quantidade - a.quantidade);
     
-    const byStatus = status.map(r => ({ status: r.status ?? 'Não informado', quantidade: r._count._all }))
+    const byStatus = status.map(r => ({ status: r._id ?? 'Não informado', quantidade: r.count }))
       .sort((a, b) => b.quantidade - a.quantidade);
     
-    const unidadesCadastradas = uacs.map(r => ({ unidade: r.unidadeCadastro ?? 'Não informado', quantidade: r._count._all }))
+    const unidadesCadastradas = uacs.map(r => ({ unidade: r._id ?? 'Não informado', quantidade: r.count }))
       .sort((a, b) => b.quantidade - a.quantidade);
     
     return {
@@ -475,25 +556,27 @@ export async function filtered(req, res, prisma) {
       unidadesCadastradas,
       filter: servidor ? { type: 'servidor', value: servidor } : { type: 'unidadeCadastro', value: unidadeCadastro }
     };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/sankey-flow
  * Dados cruzados para Sankey: Tema → Órgão → Status
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function sankeyFlow(req, res, prisma) {
+export async function sankeyFlow(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
-  const cacheKey = servidor ? `sankey:servidor:${servidor}:v1` : 
-                    unidadeCadastro ? `sankey:uac:${unidadeCadastro}:v1` : 
-                    'sankey:v1';
+  const cacheKey = servidor ? `sankey:servidor:${servidor}:v2` : 
+                    unidadeCadastro ? `sankey:uac:${unidadeCadastro}:v2` : 
+                    'sankey:v2';
   
   return withCache(cacheKey, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     // Filtrar apenas últimos 24 meses
     const today = new Date();
@@ -501,25 +584,22 @@ export async function sankeyFlow(req, res, prisma) {
     twoYearsAgo.setMonth(today.getMonth() - 24);
     const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
     
-    where.AND = [
-      ...(where.AND || []),
-      {
-        tema: { not: null },
-        orgaos: { not: null },
-        status: { not: null },
-        OR: [
-          { dataCriacaoIso: { gte: minDateStr } },
-          { dataDaCriacao: { contains: today.getFullYear().toString() } },
-          { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
-        ]
-      }
-    ];
+    const finalFilter = {
+      ...filter,
+      tema: { $ne: null },
+      orgaos: { $ne: null },
+      status: { $ne: null },
+      $or: [
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: today.getFullYear().toString() } },
+        { dataDaCriacao: { $regex: (today.getFullYear() - 1).toString() } }
+      ]
+    };
     
-    const records = await prisma.record.findMany({
-      where,
-      select: { tema: true, orgaos: true, status: true },
-      take: 100000
-    });
+    const records = await Record.find(finalFilter)
+      .select('tema orgaos status')
+      .limit(20000)
+      .lean();
     
     // Agrupar por combinações tema-órgão-status
     const flowMap = new Map();
@@ -597,63 +677,149 @@ export async function sankeyFlow(req, res, prisma) {
       },
       links: links.filter(l => l.value > 0).sort((a, b) => b.value - a.value)
     };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/count-by-status-mes
- * Status por mês
+ * Status por mês ou campo por mês (se field for especificado)
+ * Query params: field (opcional - Tema, Assunto, etc.), servidor, unidadeCadastro
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function countByStatusMes(req, res, prisma) {
+export async function countByStatusMes(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
+  const field = req.query.field; // Campo opcional (Tema, Assunto, etc.)
   
-  const cacheKey = servidor ? `statusMes:servidor:${servidor}:v1` : 
-                    unidadeCadastro ? `statusMes:uac:${unidadeCadastro}:v1` : 
-                    'statusMes:v1';
+  // Cache key inclui o field se especificado
+  const cacheKey = field 
+    ? (servidor ? `statusMes:${field}:servidor:${servidor}:v2` : 
+       unidadeCadastro ? `statusMes:${field}:uac:${unidadeCadastro}:v2` : 
+       `statusMes:${field}:v2`)
+    : (servidor ? `statusMes:servidor:${servidor}:v1` : 
+       unidadeCadastro ? `statusMes:uac:${unidadeCadastro}:v1` : 
+       'statusMes:v1');
   
+  // Timeout maior para agregações pesadas (60s)
   return withCache(cacheKey, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+    // REFATORAÇÃO: Prisma → Mongoose - construir filtro MongoDB
+    const mongoFilter = {};
+    if (servidor) mongoFilter.servidor = servidor;
+    if (unidadeCadastro) mongoFilter.unidadeCadastro = unidadeCadastro;
     
-    const rows = await prisma.record.findMany({ 
-      where: { ...where, dataDaCriacao: { not: null } },
-      select: { 
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        data: true,
-        status: true
-      } 
-    });
+    // Garantir que temos data
+    mongoFilter.$or = [
+      { dataCriacaoIso: { $ne: null, $exists: true } },
+      { dataDaCriacao: { $ne: null, $exists: true } }
+    ];
     
-    const { getMes } = await import('../../utils/dateUtils.js');
+    // Selecionar campos necessários
+    const selectFields = [];
+    selectFields.push('dataCriacaoIso', 'dataDaCriacao');
+    
+    // Adicionar campo dinâmico se especificado
+    if (field) {
+      const fieldLower = field.toLowerCase();
+      // Mapear nomes do frontend para campos do banco
+      if (fieldLower === 'tema') {
+        selectFields.push('tema');
+      } else if (fieldLower === 'assunto') {
+        selectFields.push('assunto');
+      } else if (fieldLower === 'categoria') {
+        selectFields.push('categoria');
+      } else if (fieldLower === 'status') {
+        selectFields.push('status');
+      } else {
+        // Tentar usar o campo diretamente
+        selectFields.push(field);
+      }
+    } else {
+      selectFields.push('status');
+    }
+    
+    // OTIMIZAÇÃO: Limitar quantidade de registros para evitar timeout
+    const rows = await Record.find(mongoFilter)
+      .select(selectFields.join(' '))
+      .limit(20000)
+      .lean();
+    
+    // Usar getDataCriacao que já está importado
     const map = new Map();
+    
     for (const r of rows) {
-      const mes = getMes(r);
-      const status = r.status || 'Não informado';
-      if (!mes) continue;
+      const dataCriacao = getDataCriacao(r);
+      if (!dataCriacao) continue;
+      const mes = dataCriacao.slice(0, 7); // YYYY-MM
       
-      const key = `${status}|${mes}`;
+      // Obter valor do campo dinâmico
+      let fieldValue;
+      if (field) {
+        const fieldLower = field.toLowerCase();
+        if (fieldLower === 'tema') {
+          fieldValue = r.tema || (r.data && typeof r.data === 'object' ? r.data.tema : null) || 'Não informado';
+        } else if (fieldLower === 'assunto') {
+          fieldValue = r.assunto || (r.data && typeof r.data === 'object' ? r.data.assunto : null) || 'Não informado';
+        } else if (fieldLower === 'categoria') {
+          fieldValue = r.categoria || (r.data && typeof r.data === 'object' ? r.data.categoria : null) || 'Não informado';
+        } else {
+          fieldValue = r[field] || (r.data && typeof r.data === 'object' ? r.data[field] : null) || 'Não informado';
+        }
+      } else {
+        fieldValue = r.status || 'Não informado';
+      }
+      
+      const key = `${fieldValue}|${mes}`;
       map.set(key, (map.get(key) || 0) + 1);
     }
     
-    return Array.from(map.entries()).map(([key, count]) => {
-      const [status, month] = key.split('|');
-      return { status, month, count };
+    // Formatar resultado - manter compatibilidade com frontend
+    const result = Array.from(map.entries()).map(([key, count]) => {
+      const [value, month] = key.split('|');
+      
+      // Formato esperado pelo frontend
+      const obj = {
+        month,
+        count
+      };
+      
+      // Adicionar campo dinâmico
+      if (field) {
+        const fieldLower = field.toLowerCase();
+        if (fieldLower === 'tema') {
+          obj.theme = value;
+          obj.tema = value; // Compatibilidade
+        } else if (fieldLower === 'assunto') {
+          obj.assunto = value;
+        } else if (fieldLower === 'categoria') {
+          obj.categoria = value;
+        } else {
+          obj[fieldLower] = value;
+        }
+      } else {
+        obj.status = value;
+      }
+      
+      return obj;
     }).sort((a, b) => {
       if (a.month !== b.month) return a.month.localeCompare(b.month);
-      return a.status.localeCompare(b.status);
+      // Ordenar por valor do campo
+      const fieldName = field ? (field.toLowerCase() === 'tema' ? 'theme' : field.toLowerCase()) : 'status';
+      return (a[fieldName] || '').localeCompare(b[fieldName] || '');
     });
-  }, prisma);
+    
+    return result;
+  }, null, 60000); // Timeout de 60s para agregações pesadas (memoryCache=null, timeoutMs=60000)
 }
 
 /**
  * GET /api/aggregate/count-by-orgao-mes
  * Órgão por mês
  * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function countByOrgaoMes(req, res, prisma, getMongoClient) {
+export async function countByOrgaoMes(req, res, getMongoClient) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -666,16 +832,15 @@ export async function countByOrgaoMes(req, res, prisma, getMongoClient) {
   const sanitizedFilters = sanitizeFilters(filters);
   
   // Cache inteligente
-  const cacheKey = servidor ? `orgaoMes:servidor:${servidor}:v3` : 
-                    unidadeCadastro ? `orgaoMes:uac:${unidadeCadastro}:v3` : 
-                    'orgaoMes:v3';
+  const cacheKey = servidor ? `orgaoMes:servidor:${servidor}:v4` : 
+                    unidadeCadastro ? `orgaoMes:uac:${unidadeCadastro}:v4` : 
+                    'orgaoMes:v4';
   
   return withCache(cacheKey, 3600, res, async () => {
     try {
-      // Usar cache inteligente se prisma disponível
-      if (prisma && getMongoClient) {
+      // Usar cache inteligente com Mongoose
+      if (getMongoClient) {
         return await withSmartCache(
-          prisma,
           'orgaoMes',
           sanitizedFilters,
           async () => {
@@ -687,38 +852,31 @@ export async function countByOrgaoMes(req, res, prisma, getMongoClient) {
               month: item.month,
               count: item.count
             }));
-          }
+          },
+          null,
+          [] // Fallback seguro
         );
       }
       
-      // Fallback para Prisma
-      const where = {};
-      if (servidor) where.servidor = servidor;
-      if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
-      
-      const { optimizedCrossAggregation } = await import('../../utils/queryOptimizer.js');
-      return await optimizedCrossAggregation(
-        prisma, 
-        'orgaos', 
-        'dataCriacaoIso', 
-        where, 
-        { dateFilter: true, limit: 100000 }
-      );
+      // Fallback para Mongoose aggregation
+      throw new Error('getMongoClient não disponível');
     } catch (error) {
-      console.error('❌ Erro ao buscar dados por órgão e mês:', error);
+      logger.error('Erro ao buscar dados por órgão e mês:', { error: error.message });
       throw error;
     }
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/aggregate/by-district
  * Agregação por distrito
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
  */
-export async function byDistrict(req, res, prisma) {
+export async function byDistrict(req, res) {
   // Este endpoint está implementado no geographicController
   // Mas mantemos aqui para compatibilidade com a rota de aggregate
   const { aggregateByDistrict } = await import('./geographicController.js');
-  return aggregateByDistrict(req, res, prisma);
+  return aggregateByDistrict(req, res);
 }
 

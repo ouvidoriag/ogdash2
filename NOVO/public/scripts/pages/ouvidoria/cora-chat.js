@@ -2,7 +2,7 @@
  * Página: Cora Chat
  * Interface de chat com assistente virtual
  * 
- * Baseado no sistema antigo, adaptado para o modelo novo
+ * Permite interação com assistente AI para análise de dados
  */
 
 let chatMessages = [];

@@ -90,7 +90,7 @@
     filters: [],
     activeField: null,
     activeValue: null,
-    persist: true,
+    persist: false, // FILTROS LOCAIS POR PÁGINA: Não persistir entre páginas
     _debounceTimer: null, // Timer para debounce
     _pendingFilter: null, // Filtro pendente durante debounce
     
@@ -135,43 +135,56 @@
     /**
      * Aplicar filtro imediatamente (sem debounce)
      * @private
+     * 
+     * CROSSFILTER MULTI-DIMENSIONAL (Power BI Style):
+     * - clearPrevious: false por padrão (permite múltiplos filtros simultâneos)
+     * - toggle: true por padrão (clicar novamente remove o filtro)
+     * - Suporta múltiplos filtros: Status + Tema + Órgão + etc.
      */
     _applyImmediate(field, value, chartId = null, options = {}) {
-      const { toggle = true, operator = 'eq', clearPrevious = true, debounce } = options;
+      // MUDANÇA: clearPrevious = false por padrão (sistema Power BI multi-dimensional)
+      const { toggle = true, operator = 'eq', clearPrevious = false, debounce } = options;
       
       if (window.Logger) {
         window.Logger.debug(`Aplicando filtro: ${field} = ${value}`, {
           filtrosAntes: this.filters.length,
           clearPrevious,
-          toggle
+          toggle,
+          modo: 'crossfilter-multi-dimensional'
         });
       }
       
-      // Verificar se já existe filtro para este campo e valor exato (ANTES de limpar)
+      // Verificar se já existe filtro para este campo e valor exato
       const existingIndex = this.filters.findIndex(f => f.field === field && f.value === value);
       const filterExists = existingIndex > -1;
       
-      // Se clearPrevious estiver habilitado (padrão), SEMPRE limpar todos os filtros anteriores
-      // NÃO emitir eventos filter:removed individuais para evitar múltiplos recarregamentos
-      // O evento filter:applied final será suficiente para atualizar tudo
+      // Se clearPrevious estiver habilitado, limpar todos os filtros anteriores
       if (clearPrevious && this.filters.length > 0) {
         if (window.Logger) {
-          window.Logger.debug(`Limpando ${this.filters.length} filtro(s) anterior(es) (sem emitir eventos individuais)`);
+          window.Logger.debug(`Limpando ${this.filters.length} filtro(s) anterior(es) (clearPrevious=true)`);
         }
-        
-        // Limpar todos os filtros anteriores sem emitir eventos
-        // Isso evita múltiplos recarregamentos desnecessários
         this.filters = [];
       }
       
-      // Se o filtro já existia e toggle está habilitado, não adicionar (comportamento de toggle)
+      // Se o filtro já existia e toggle está habilitado, remover (comportamento de toggle)
       if (filterExists && toggle) {
-        // Filtro foi removido ao limpar acima, então não adicionar novamente
-        if (window.Logger) {
-          window.Logger.debug(`Filtro já existia, removendo (toggle)`);
+        // Remover filtro existente
+        this.filters.splice(existingIndex, 1);
+        
+        // Atualizar activeField/activeValue se necessário
+        if (this.filters.length === 0) {
+          this.activeField = null;
+          this.activeValue = null;
+        } else {
+          // Manter o último filtro como ativo
+          const lastFilter = this.filters[this.filters.length - 1];
+          this.activeField = lastFilter.field;
+          this.activeValue = lastFilter.value;
         }
-        this.activeField = null;
-        this.activeValue = null;
+        
+        if (window.Logger) {
+          window.Logger.debug(`Filtro removido (toggle). Total de filtros: ${this.filters.length}`);
+        }
         
         // Persistir se habilitado
         if (this.persist) {
@@ -187,13 +200,18 @@
         // Notificar todos os gráficos registrados para se atualizarem
         this.notifyAllCharts();
         
-        // Emitir evento de filtros limpos (já que não há mais filtros)
-        eventBus.emit('filter:cleared', {});
-      } else {
-        // Adicionar novo filtro
+        // Emitir evento apropriado
+        if (this.filters.length === 0) {
+          eventBus.emit('filter:cleared', {});
+        } else {
+          eventBus.emit('filter:removed', { field, value, filters: [...this.filters] });
+        }
+      } else if (!filterExists) {
+        // Adicionar novo filtro (não existe ainda)
         this.filters.push({ field, value, operator, chartId });
         this.activeField = field;
         this.activeValue = value;
+        
         if (window.Logger) {
           window.Logger.debug(`Filtro adicionado. Total de filtros: ${this.filters.length}`);
         }
@@ -306,22 +324,28 @@
     
     /**
      * Carregar filtros do localStorage
-     * Por padrão, NÃO carrega filtros ao inicializar (para evitar filtros persistentes indesejados)
+     * FILTROS LOCAIS POR PÁGINA: Nunca carregar filtros salvos (sempre limpar)
      */
     load(restoreFilters = false) {
-      // Se restoreFilters for false (padrão), limpar filtros salvos e não restaurar
-      if (!restoreFilters) {
-        try {
-          // Limpar filtros do localStorage para evitar persistência indesejada
-          localStorage.removeItem('dashboardFilters');
-          if (window.Logger) {
-            window.Logger.debug('Filtros do localStorage limpos na inicialização');
-          }
-        } catch (e) {
-          // Ignorar erros
+      // FILTROS LOCAIS POR PÁGINA: Sempre limpar filtros ao inicializar
+      // Não restaurar filtros entre sessões ou páginas
+      try {
+        // Limpar filtros do localStorage para evitar persistência indesejada
+        localStorage.removeItem('dashboardFilters');
+        if (window.Logger) {
+          window.Logger.debug('🔄 Filtros do localStorage limpos (sistema local por página)');
         }
-        return;
+      } catch (e) {
+        // Ignorar erros
       }
+      
+      // Sempre limpar filtros na memória também
+      this.filters = [];
+      this.activeField = null;
+      this.activeValue = null;
+      
+      // Não restaurar mesmo se restoreFilters for true (filtros são locais por página)
+      return;
       
       // Se restoreFilters for true, carregar filtros salvos
       try {
@@ -330,17 +354,17 @@
           const data = JSON.parse(saved);
           const loadedFilters = data.filters || [];
           
-          // Se houver múltiplos filtros carregados, manter apenas o último (comportamento clearPrevious)
-          if (loadedFilters.length > 1) {
+          // CROSSFILTER: Manter todos os filtros carregados (sistema multi-dimensional)
+          if (loadedFilters.length > 0) {
             if (window.Logger) {
-              window.Logger.debug(`Carregados ${loadedFilters.length} filtros do localStorage, mantendo apenas o último`);
+              window.Logger.debug(`Carregados ${loadedFilters.length} filtro(s) do localStorage (crossfilter multi-dimensional)`);
             }
-            // Manter apenas o último filtro
-            this.filters = loadedFilters.slice(-1);
-            const lastFilter = this.filters[0];
+            // Manter todos os filtros (sistema Power BI)
+            this.filters = loadedFilters;
+            const lastFilter = this.filters[this.filters.length - 1];
             this.activeField = lastFilter?.field || null;
             this.activeValue = lastFilter?.value || null;
-          } else if (loadedFilters.length === 1) {
+          } else {
             this.filters = loadedFilters;
             this.activeField = data.activeField || null;
             this.activeValue = data.activeValue || null;
@@ -405,32 +429,43 @@
     
     /**
      * Atualizar indicador de filtros ativos
+     * CROSSFILTER MULTI-DIMENSIONAL: Mostra todos os filtros ativos com pills removíveis
      */
     updateFilterIndicator() {
+      // FILTROS DE CLIQUE DESABILITADOS: Não mostrar banner de filtros
+      // Ocultar banner se existir
       const indicator = document.getElementById('filterIndicator');
       if (indicator) {
-        if (this.filters.length > 0) {
-          // Mostrar qual filtro está ativo
-          const activeFilter = this.filters[this.filters.length - 1]; // Último filtro (o ativo)
-          const fieldLabel = this.getFieldLabel(activeFilter.field);
-          const valueLabel = activeFilter.value;
-          
-          indicator.innerHTML = `
-            <div class="bg-cyan-500/20 border border-cyan-500/50 rounded-lg px-4 py-2 flex items-center gap-2 shadow-lg backdrop-blur-sm">
-              <span class="text-cyan-300 text-sm font-semibold">Filtro ativo:</span>
-              <span class="text-cyan-100 text-sm">${fieldLabel} = ${valueLabel}</span>
-              <button onclick="window.chartCommunication?.clearFilters()" 
-                      class="ml-2 text-cyan-300 hover:text-cyan-100 transition-colors" 
-                      title="Remover filtro">
-                ✕
-              </button>
-            </div>
-          `;
-          indicator.classList.remove('hidden');
-        } else {
-          indicator.classList.add('hidden');
-        }
+        indicator.classList.add('hidden');
+        indicator.innerHTML = ''; // Limpar conteúdo
       }
+      return; // Retornar imediatamente sem atualizar
+    },
+    
+    /**
+     * Obter emoji para um campo (para melhor UX visual)
+     */
+    getFieldEmoji(field) {
+      const emojiMap = {
+        'Status': '📊',
+        'Tema': '🏷️',
+        'Assunto': '📝',
+        'Orgaos': '🏛️',
+        'Tipo': '📋',
+        'Canal': '📞',
+        'Prioridade': '⚡',
+        'Setor': '🏢',
+        'Categoria': '📂',
+        'Bairro': '📍',
+        'UAC': '🏘️',
+        'Responsavel': '👤',
+        'Secretaria': '🏛️',
+        'Unidade': '🏥',
+        'Data': '📅',
+        'Departamento': '🏢',
+        'Canal': '📞'
+      };
+      return emojiMap[field] || '🔍';
     },
     
     /**
@@ -489,27 +524,34 @@
     
     /**
      * Notificar todos os gráficos registrados para se atualizarem
-     * OTIMIZADO: Notifica TODOS os gráficos, KPIs e elementos interligados
+     * FILTROS LOCAIS POR PÁGINA: Só notifica gráficos da página visível
+     * OTIMIZADO: Notifica apenas gráficos da página atual
      */
     notifyAllCharts() {
       if (window.chartCommunication) {
-        const allCharts = window.chartCommunication.getAllCharts();
-        if (allCharts.length > 0 && window.Logger) {
-          window.Logger.debug(`Notificando ${allCharts.length} gráfico(s) para atualização`);
+        // FILTROS LOCAIS POR PÁGINA: Identificar página atual visível
+        const visiblePage = this.getCurrentVisiblePage();
+        
+        if (window.Logger) {
+          window.Logger.debug(`🔄 Notificando gráficos da página: ${visiblePage || 'todas'}`);
         }
         
         // Emitir evento para que gráficos reativos se atualizem
+        // Os listeners de página vão verificar se a página está visível antes de atualizar
         eventBus.emit('charts:update-requested', {
           filters: [...this.filters],
           activeField: this.activeField,
-          activeValue: this.activeValue
+          activeValue: this.activeValue,
+          pageId: visiblePage // Informar qual página está visível
         });
         
-        // INTERLIGAÇÃO: Atualizar estado visual de KPIs
-        if (typeof updateKPIsVisualState === 'function') {
-          updateKPIsVisualState();
-        } else if (window.updateKPIsVisualState) {
-          window.updateKPIsVisualState();
+        // INTERLIGAÇÃO: Atualizar estado visual de KPIs (só se a página estiver visível)
+        if (visiblePage) {
+          if (typeof updateKPIsVisualState === 'function') {
+            updateKPIsVisualState();
+          } else if (window.updateKPIsVisualState) {
+            window.updateKPIsVisualState();
+          }
         }
         
         // INTERLIGAÇÃO: Notificar gráficos Chart.js através de elementos canvas
@@ -517,7 +559,9 @@
         if (window.Chart && typeof window.Chart.getChart === 'function') {
           try {
             // Buscar todos os elementos canvas que podem ter gráficos
-            document.querySelectorAll('canvas[id]').forEach(canvas => {
+            // FILTROS LOCAIS: Só atualizar gráficos da página visível
+            const selector = visiblePage ? `#${visiblePage} canvas[id]` : 'canvas[id]';
+            document.querySelectorAll(selector).forEach(canvas => {
               try {
                 const chart = window.Chart.getChart(canvas);
                 if (chart && typeof chart.update === 'function') {
@@ -537,6 +581,25 @@
           }
         }
       }
+    },
+    
+    /**
+     * Obter página atual visível
+     * FILTROS LOCAIS POR PÁGINA: Identifica qual página está sendo exibida
+     * @returns {string|null} ID da página visível ou null
+     */
+    getCurrentVisiblePage() {
+      const pagesContainer = document.getElementById('pages');
+      if (!pagesContainer) return null;
+      
+      // Buscar seção visível
+      const visiblePage = Array.from(pagesContainer.children).find(page => {
+        if (page.tagName !== 'SECTION') return false;
+        const style = window.getComputedStyle(page);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      });
+      
+      return visiblePage ? visiblePage.id : null;
     }
   };
 
@@ -774,7 +837,7 @@
   
   /**
    * Criar listener genérico de filtros para uma página
-   * Todas as páginas devem usar esta função para escutar eventos de filtro
+   * FILTROS LOCAIS POR PÁGINA: Só atualiza se a página estiver visível
    * @param {string} pageId - ID da página (ex: 'page-tema')
    * @param {Function} reloadFunction - Função para recarregar dados da página
    * @param {number} debounceMs - Tempo de debounce em ms (padrão: 500)
@@ -792,8 +855,25 @@
     
     const handleFilterChange = () => {
       const page = document.getElementById(pageId);
+      
+      // FILTROS LOCAIS POR PÁGINA: Só atualizar se a página estiver visível
       if (!page || page.style.display === 'none') {
+        if (window.Logger) {
+          window.Logger.debug(`⏭️ Página ${pageId} não está visível, ignorando mudança de filtro`);
+        }
         return; // Página não está visível, não precisa atualizar
+      }
+      
+      // Verificar se a página está realmente visível (não apenas display !== 'none')
+      const isVisible = page.offsetParent !== null || 
+                        page.style.display === 'block' || 
+                        getComputedStyle(page).display !== 'none';
+      
+      if (!isVisible) {
+        if (window.Logger) {
+          window.Logger.debug(`⏭️ Página ${pageId} não está realmente visível, ignorando mudança de filtro`);
+        }
+        return;
       }
       
       // Invalidar cache do dataStore para forçar recarregamento
@@ -805,7 +885,7 @@
       clearTimeout(window[timeoutKey]);
       window[timeoutKey] = setTimeout(() => {
         if (window.Logger) {
-          window.Logger.debug(`Filtro mudou, recarregando ${pageId}...`);
+          window.Logger.debug(`🔄 Filtro mudou, recarregando ${pageId}...`);
         }
         reloadFunction(true); // forceRefresh = true
       }, debounceMs);
@@ -818,7 +898,7 @@
     window.chartCommunication.on('charts:update-requested', handleFilterChange);
     
     if (window.Logger) {
-      window.Logger.debug(`✅ Listener de filtro criado para ${pageId}`);
+      window.Logger.debug(`✅ Listener de filtro criado para ${pageId} (filtros locais por página)`);
     }
     
     // Retornar função para remover listeners (opcional)
@@ -836,8 +916,9 @@
   // ============================================
   
   /**
-   * Conectar automaticamente todas as páginas ao sistema de filtros globais
-   * Sistema Looker/Power BI: Todas as páginas se atualizam quando um filtro é aplicado
+   * Conectar automaticamente todas as páginas ao sistema de filtros
+   * FILTROS LOCAIS POR PÁGINA: Cada página só atualiza quando está visível
+   * Os listeners verificam se a página está visível antes de atualizar
    */
   function autoConnectAllPages() {
     if (!window.chartCommunication) {
@@ -867,6 +948,7 @@
       'page-cadastrante': window.loadCadastrante,
       'page-projecao-2026': window.loadProjecao2026,
       'page-vencimento': window.loadVencimento,
+      'page-notificacoes': window.loadNotificacoes,
       'page-zeladoria-overview': window.loadZeladoriaOverview,
       'page-zeladoria-status': window.loadZeladoriaStatus,
       'page-zeladoria-categoria': window.loadZeladoriaCategoria,
@@ -899,7 +981,7 @@
     });
     
     if (window.Logger) {
-      window.Logger.success(`✅ Sistema de interconexão global ativado - ${Object.keys(pageLoaders).length} páginas conectadas`);
+      window.Logger.success(`✅ Sistema de filtros locais por página ativado - ${Object.keys(pageLoaders).length} páginas conectadas`);
     }
   }
 
@@ -942,7 +1024,7 @@
       autoConnectAllPages
     };
     
-    // Compatibilidade com sistema antigo
+    // Expor globalmente para compatibilidade
     window.globalFilters = globalFilters;
     window.chartFieldMap = chartFieldMap;
     window.showClickFeedback = feedback.show.bind(feedback);

@@ -1,5 +1,22 @@
 # 🧹 Limpeza e Organização do Sistema
 
+**Última atualização**: 02/12/2025
+
+## ✅ LIMPEZA REALIZADA (02/12/2025)
+
+### Arquivos Removidos da Raiz: 34 arquivos
+- ✅ 30 arquivos de documentação obsoleta removidos
+- ✅ 3 planilhas antigas removidas
+- ✅ 1 arquivo compactado removido
+
+### Arquivos Removidos de docs/system/: 10 arquivos
+- ✅ 9 arquivos de documentação histórica removidos
+- ✅ 1 arquivo duplicado removido
+
+**Total removido**: 44 arquivos
+
+---
+
 ## 📋 Arquivos que PODEM ser removidos (não afetam o sistema)
 
 ### 📄 Documentação Antiga/Obsoleta (Raiz do projeto)

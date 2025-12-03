@@ -1,9 +1,15 @@
 /**
  * Controller de Autenticação
  * Gerencia login, logout e verificação de sessão
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import bcrypt from 'bcrypt';
+import User from '../../models/User.model.js';
+import logger from '../../utils/logger.js';
 
 /**
  * POST /api/auth/login
@@ -19,24 +25,12 @@ export async function login(req, res) {
         message: 'Usuário e senha são obrigatórios' 
       });
     }
-
-    if (!req.prisma) {
-      console.error('❌ Prisma não está disponível no request');
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Erro de configuração do servidor' 
-      });
-    }
-
-    const prisma = req.prisma;
     
     // Buscar usuário no banco
-    const user = await prisma.user.findUnique({
-      where: { username: username.toLowerCase() }
-    });
+    const user = await User.findByUsername(username.toLowerCase());
 
     if (!user) {
-      console.log(`⚠️ Tentativa de login com usuário inexistente: ${username.toLowerCase()}`);
+      logger.warn(`Tentativa de login com usuário inexistente: ${username.toLowerCase()}`);
       return res.status(401).json({ 
         success: false, 
         message: 'Usuário ou senha inválidos' 
@@ -47,7 +41,7 @@ export async function login(req, res) {
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
-      console.log(`⚠️ Senha incorreta para usuário: ${username.toLowerCase()}`);
+      logger.warn(`Senha incorreta para usuário: ${username.toLowerCase()}`);
       return res.status(401).json({ 
         success: false, 
         message: 'Usuário ou senha inválidos' 
@@ -55,7 +49,7 @@ export async function login(req, res) {
     }
 
     // Criar sessão
-    req.session.userId = user.id;
+    req.session.userId = user._id.toString();
     req.session.username = user.username;
     req.session.isAuthenticated = true;
 
@@ -63,26 +57,26 @@ export async function login(req, res) {
     // Isso garante que a sessão seja persistida antes do redirect
     req.session.save((err) => {
       if (err) {
-        console.error('❌ Erro ao salvar sessão:', err);
+        logger.error('Erro ao salvar sessão:', err);
         return res.status(500).json({ 
           success: false, 
           message: 'Erro ao criar sessão' 
         });
       }
 
-      console.log(`✅ Login realizado com sucesso: ${user.username} (sessão: ${req.sessionID})`);
+      logger.info(`Login realizado com sucesso: ${user.username} (sessão: ${req.sessionID})`);
 
       res.json({
         success: true,
         message: 'Login realizado com sucesso',
         user: {
-          id: user.id,
+          id: user._id.toString(),
           username: user.username
         }
       });
     });
   } catch (error) {
-    console.error('❌ Erro no login:', error);
+    logger.error('Erro no login:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Erro interno do servidor' 
@@ -98,7 +92,7 @@ export async function logout(req, res) {
   try {
     req.session.destroy((err) => {
       if (err) {
-        console.error('Erro ao destruir sessão:', err);
+        logger.error('Erro ao destruir sessão:', err);
         return res.status(500).json({ 
           success: false, 
           message: 'Erro ao fazer logout' 
@@ -112,7 +106,7 @@ export async function logout(req, res) {
       });
     });
   } catch (error) {
-    console.error('Erro no logout:', error);
+    logger.error('Erro no logout:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Erro interno do servidor' 
@@ -135,22 +129,9 @@ export async function getCurrentUser(req, res) {
       });
     }
 
-    if (!req.prisma) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Erro de configuração do servidor' 
-      });
-    }
-
-    const prisma = req.prisma;
-    const user = await prisma.user.findUnique({
-      where: { id: req.session.userId },
-      select: {
-        id: true,
-        username: true,
-        createdAt: true
-      }
-    });
+    const user = await User.findById(req.session.userId)
+      .select('_id username createdAt')
+      .lean();
 
     if (!user) {
       return res.status(404).json({ 
@@ -161,10 +142,14 @@ export async function getCurrentUser(req, res) {
 
     res.json({
       success: true,
-      user
+      user: {
+        id: user._id.toString(),
+        username: user.username,
+        createdAt: user.createdAt
+      }
     });
   } catch (error) {
-    console.error('Erro ao buscar usuário:', error);
+    logger.error('Erro ao buscar usuário:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Erro interno do servidor' 

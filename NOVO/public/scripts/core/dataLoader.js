@@ -11,13 +11,13 @@ const MAX_CONCURRENT_REQUESTS = 6; // Limite de requisições simultâneas
 
 // Timeouts adaptativos por tipo de endpoint
 const TIMEOUT_CONFIG = {
-  '/api/summary': 10000,              // 10s - rápido
+  '/api/summary': 10000,               // 10s - rápido
   '/api/distinct': 10000,              // 10s - rápido
   '/api/health': 5000,                 // 5s - muito rápido
-  '/api/dashboard-data': 45000,        // 45s - pesado
-  '/api/aggregate': 30000,             // 30s - médio
-  '/api/stats': 40000,                 // 40s - pesado
-  '/api/sla': 45000,                   // 45s - pesado
+  '/api/dashboard-data': 90000,        // 90s - muito pesado (usa agregações complexas)
+  '/api/aggregate': 60000,             // 60s - médio/pesado
+  '/api/stats': 60000,                 // 60s - pesado
+  '/api/sla': 90000,                   // 90s - muito pesado
   default: 30000                       // 30s - padrão
 };
 
@@ -199,35 +199,42 @@ window.dataLoader = {
           console.log(`   - Distritos: ${Object.keys(data.distritos).length}`);
         }
         
+        // Tratar casos em que o backend retorna dados vazios ou indefinidos
+        // para evitar que o frontend quebre com "undefined.value" ou estruturas inesperadas
+        let safeData = data;
+        if (safeData === null || safeData === undefined) {
+          safeData = fallback !== null ? fallback : null;
+        }
+
         if (window.dataStore) {
           const useDeepCopy = deepCopy !== false;
           
           if (endpoint === '/api/dashboard-data' || endpoint.includes('/api/dashboard-data')) {
-            window.dataStore.set('dashboardData', data, useDeepCopy);
-            if (data.manifestationsByMonth) {
-              window.dataStore.set('manifestationsByMonth', data.manifestationsByMonth, useDeepCopy);
-              window.dataStore.set('/api/aggregate/by-month', data.manifestationsByMonth, useDeepCopy);
+            window.dataStore.set('dashboardData', safeData, useDeepCopy);
+            if (safeData && safeData.manifestationsByMonth) {
+              window.dataStore.set('manifestationsByMonth', safeData.manifestationsByMonth, useDeepCopy);
+              window.dataStore.set('/api/aggregate/by-month', safeData.manifestationsByMonth, useDeepCopy);
             }
-            if (data.manifestationsByDay) {
-              window.dataStore.set('manifestationsByDay', data.manifestationsByDay, useDeepCopy);
-              window.dataStore.set('/api/aggregate/by-day', data.manifestationsByDay, useDeepCopy);
+            if (safeData && safeData.manifestationsByDay) {
+              window.dataStore.set('manifestationsByDay', safeData.manifestationsByDay, useDeepCopy);
+              window.dataStore.set('/api/aggregate/by-day', safeData.manifestationsByDay, useDeepCopy);
             }
-            if (data.manifestationsByStatus) {
-              window.dataStore.set('manifestationsByStatus', data.manifestationsByStatus, useDeepCopy);
+            if (safeData && safeData.manifestationsByStatus) {
+              window.dataStore.set('manifestationsByStatus', safeData.manifestationsByStatus, useDeepCopy);
             }
-            if (data.manifestationsByTheme) {
-              window.dataStore.set('manifestationsByTheme', data.manifestationsByTheme, useDeepCopy);
-              window.dataStore.set('/api/aggregate/by-theme', data.manifestationsByTheme, useDeepCopy);
+            if (safeData && safeData.manifestationsByTheme) {
+              window.dataStore.set('manifestationsByTheme', safeData.manifestationsByTheme, useDeepCopy);
+              window.dataStore.set('/api/aggregate/by-theme', safeData.manifestationsByTheme, useDeepCopy);
             }
-            if (data.manifestationsBySubject) {
-              window.dataStore.set('manifestationsBySubject', data.manifestationsBySubject, useDeepCopy);
-              window.dataStore.set('/api/aggregate/by-subject', data.manifestationsBySubject, useDeepCopy);
+            if (safeData && safeData.manifestationsBySubject) {
+              window.dataStore.set('manifestationsBySubject', safeData.manifestationsBySubject, useDeepCopy);
+              window.dataStore.set('/api/aggregate/by-subject', safeData.manifestationsBySubject, useDeepCopy);
             }
-            if (data.manifestationsByOrgan) {
-              window.dataStore.set('manifestationsByOrgan', data.manifestationsByOrgan, useDeepCopy);
+            if (safeData && safeData.manifestationsByOrgan) {
+              window.dataStore.set('manifestationsByOrgan', safeData.manifestationsByOrgan, useDeepCopy);
             }
           } else {
-            window.dataStore.set(endpoint, data, useDeepCopy);
+            window.dataStore.set(endpoint, safeData, useDeepCopy);
           }
           
           if (window.Logger) {
@@ -239,7 +246,7 @@ window.dataLoader = {
           window.Logger.success(`${endpoint}: ${count} itens`);
         }
         
-        return data;
+        return safeData;
       } catch (error) {
         // Backoff exponencial: delay aumenta exponencialmente a cada tentativa
         if (attempt < retries && (error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('503') || error.message?.includes('502'))) {

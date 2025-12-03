@@ -1,6 +1,9 @@
 /**
  * Rotas de Notificações por Email
- * @param {PrismaClient} prisma - Cliente Prisma para acesso ao banco
+ * 
+ * REFATORAÇÃO: Mongoose (sem prisma)
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import express from 'express';
@@ -17,7 +20,7 @@ import {
   testEmail
 } from '../controllers/notificationController.js';
 
-export default function notificationRoutes(prisma) {
+export default function notificationRoutes() {
   const router = express.Router();
 
 /**
@@ -29,15 +32,17 @@ router.get('/auth/status', getAuthStatus);
 
 /**
  * Rotas de execução
+ * REFATORAÇÃO: Mongoose (sem prisma)
  */
-router.post('/execute', (req, res) => executeNotifications(req, res, prisma));
-router.post('/scheduler/execute', (req, res) => executeSchedulerManual(req, res, prisma));
+router.post('/execute', (req, res) => executeNotifications(req, res));
+router.post('/scheduler/execute', (req, res) => executeSchedulerManual(req, res));
 
 /**
  * Rotas de consulta
+ * REFATORAÇÃO: Mongoose (sem prisma)
  */
-router.get('/history', (req, res) => getNotificationHistory(req, res, prisma));
-router.get('/stats', (req, res) => getNotificationStats(req, res, prisma));
+router.get('/history', (req, res) => getNotificationHistory(req, res));
+router.get('/stats', (req, res) => getNotificationStats(req, res));
 router.get('/config', getEmailConfig);
 router.get('/scheduler/status', getSchedulerStatus);
 

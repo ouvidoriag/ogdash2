@@ -16,6 +16,14 @@ from gspread_dataframe import set_with_dataframe
 import logging
 from typing import List, Dict
 
+# Importar funções de normalização do módulo compartilhado
+from utils.normalizacao import (
+    normalizar_nome_coluna,
+    _clean_whitespace,
+    _canon_txt,
+    _canon_txt_preserve_case
+)
+
 # ----------------------------
 # Logging (arquivo + console)
 # ----------------------------
@@ -178,39 +186,8 @@ except Exception as e:
 # ========================================================
 _BANNER("4) AUXILIARES (codificação, datas, lotes)")
 
-def _clean_whitespace(v) -> str:
-    """NOVA FUNÇÃO: Limpa apenas espaços extras (início, fim e múltiplos)
-       mas PRESERVA acentuação e capitalização."""
-    if v is None:
-        return ""
-    s = str(v).strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-def _canon_txt(v) -> str:
-    """
-    Função de canonização de texto: converte para string, remove acentos,
-    converte para minúsculas e limpa espaços.
-    """
-    if v is None: return ""
-    s = unicodedata.normalize("NFKD", str(v))
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    s = s.lower().strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-def _canon_txt_preserve_case(v) -> str:
-    """
-    NOVA VERSÃO: Canoniza texto (remove acentos, limpa espaços),
-    mas PRESERVA a capitalização original.
-    """
-    if v is None:
-        return ""
-    s = unicodedata.normalize("NFKD", str(v))
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    s = s.strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
+# Funções _clean_whitespace, _canon_txt e _canon_txt_preserve_case 
+# importadas de utils.normalizacao (módulo compartilhado)
 
 def _to_proper_case_pt(text: str) -> str:
     """

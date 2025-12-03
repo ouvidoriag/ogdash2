@@ -40,17 +40,44 @@ const OVERVIEW_FIELDS = [
 
 /**
  * Iniciar watcher de ChangeStream
- * @param {PrismaClient} prisma - Cliente Prisma
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB
  */
 export async function startChangeStreamWatcher(prisma, getMongoClient) {
   try {
     const client = await getMongoClient();
-    const dbName = process.env.DB_NAME || process.env.MONGODB_DB_NAME || 'dashboard';
+
+    // Garantir que o ChangeStream observa o MESMO banco usado pelo Prisma/Aggregations
+    let dbName =
+      process.env.DB_NAME ||
+      process.env.MONGODB_DB_NAME ||
+      null;
+
+    if (!dbName) {
+      const url = process.env.DATABASE_URL || process.env.MONGODB_ATLAS_URL || '';
+      try {
+        const withoutParams = url.split('?')[0] || '';
+        const parts = withoutParams.split('/');
+        const candidate = parts[parts.length - 1];
+        if (candidate && !candidate.startsWith('mongodb')) {
+          dbName = candidate;
+        }
+      } catch {
+        // Fallback silencioso
+      }
+    }
+
+    if (!dbName) {
+      dbName = 'dashboard';
+    }
+
     const db = client.db(dbName);
     const collection = db.collection('records');
     
-    console.log('👁️ Iniciando ChangeStream Watcher...');
+    console.log(`👁️ Iniciando ChangeStream Watcher no banco "${dbName}"...`);
     
     // Criar ChangeStream
     const changeStream = collection.watch(
@@ -66,7 +93,7 @@ export async function startChangeStreamWatcher(prisma, getMongoClient) {
     // Processar mudanças
     changeStream.on('change', async (change) => {
       try {
-        await handleChange(change, prisma);
+        await handleChange(change);
       } catch (error) {
         console.error('❌ Erro ao processar mudança:', error);
       }
@@ -96,11 +123,45 @@ export async function startChangeStreamWatcher(prisma, getMongoClient) {
   }
 }
 
+// Buffer global para debounce de invalidação de cache
+let pendingPatterns = new Set();
+let invalidateTimeoutId = null;
+const INVALIDATE_DEBOUNCE_MS = 1000;
+
+/**
+ * Executar invalidação de cache em lote (debounced)
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
+ */
+async function flushInvalidations(operationType, changedFields) {
+  const patterns = Array.from(pendingPatterns);
+  pendingPatterns.clear();
+  invalidateTimeoutId = null;
+
+  if (patterns.length === 0) return;
+
+  let totalInvalidated = 0;
+  for (const pattern of patterns) {
+    // REFATORAÇÃO: invalidateCachePattern não precisa mais de prisma
+    const invalidated = await invalidateCachePattern(pattern);
+    totalInvalidated += invalidated;
+  }
+
+  if (totalInvalidated > 0) {
+    console.log(`🔄 Cache invalidado (debounced): ${totalInvalidated} entradas (${operationType}: ${changedFields.join(', ')})`);
+  }
+}
+
 /**
  * Processar uma mudança do ChangeStream
+ * Usa debounce para evitar tempestade de invalidações
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
-async function handleChange(change, prisma) {
-  const { operationType, fullDocument, documentKey, updateDescription } = change;
+async function handleChange(change) {
+  const { operationType, fullDocument, updateDescription } = change;
   
   // Determinar campos que mudaram
   const changedFields = getChangedFields(operationType, fullDocument, updateDescription);
@@ -109,35 +170,30 @@ async function handleChange(change, prisma) {
     return; // Nenhum campo relevante mudou
   }
   
-  // Invalidar caches baseado nos campos que mudaram
-  const patternsToInvalidate = new Set();
-  
+  // Registrar padrões a invalidar no buffer global
   for (const field of changedFields) {
-    // Adicionar padrões específicos do campo
     if (FIELD_CACHE_PATTERNS[field]) {
       FIELD_CACHE_PATTERNS[field].forEach(pattern => {
-        patternsToInvalidate.add(pattern);
+        pendingPatterns.add(pattern);
       });
     }
     
-    // Se campo afeta overview, invalidar overview
     if (OVERVIEW_FIELDS.includes(field)) {
-      patternsToInvalidate.add('overview*');
-      patternsToInvalidate.add('dashboard*');
+      pendingPatterns.add('overview*');
+      pendingPatterns.add('dashboard*');
     }
   }
   
-  // Invalidar caches
-  let totalInvalidated = 0;
-  for (const pattern of patternsToInvalidate) {
-    const invalidated = await invalidateCachePattern(prisma, pattern);
-    totalInvalidated += invalidated;
+  // Agendar invalidação debounced
+  if (invalidateTimeoutId !== null) {
+    clearTimeout(invalidateTimeoutId);
   }
   
-  // Log apenas se invalidação ocorreu
-  if (totalInvalidated > 0) {
-    console.log(`🔄 Cache invalidado: ${totalInvalidated} entradas (${operationType}: ${changedFields.join(', ')})`);
-  }
+  invalidateTimeoutId = setTimeout(() => {
+    flushInvalidations(operationType, changedFields).catch(err => {
+      console.error('❌ Erro ao invalidar cache (debounced):', err);
+    });
+  }, INVALIDATE_DEBOUNCE_MS);
 }
 
 /**

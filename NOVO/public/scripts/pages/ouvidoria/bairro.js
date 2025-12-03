@@ -44,7 +44,7 @@ async function loadBairro(forceRefresh = false) {
       horizontal: true,
       colorIndex: 5,
       label: 'Manifestações',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: false // FILTROS DE CLIQUE DESABILITADOS
     });
     
     // Carregar dados mensais

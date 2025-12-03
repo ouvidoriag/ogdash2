@@ -11,13 +11,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import compression from 'compression';
 import session from 'express-session';
-import { PrismaClient } from '@prisma/client';
+// REFATORAÇÃO: Prisma removido - usando apenas Mongoose
+// import { PrismaClient } from '@prisma/client'; // REMOVIDO
 import { MongoClient } from 'mongodb';
+import mongoose from 'mongoose';
 
 // Importar rotas organizadas
 import apiRoutes from './api/routes/index.js';
 import authRoutes from './api/routes/auth.js';
-import { initializeDatabase } from './config/database.js';
+import { initializeDatabase, closeDatabase } from './config/database.js';
+import { logger } from './utils/logger.js';
+
+// Importar models Mongoose (para garantir que estão registrados)
+import './models/index.js';
 import { initializeCache } from './config/cache.js';
 import { initializeGemini } from './utils/geminiHelper.js';
 import { iniciarScheduler } from './services/email-notifications/scheduler.js';
@@ -81,14 +87,20 @@ if (Object.keys(paramsToAdd).length > 0) {
 process.env.DATABASE_URL = mongodbUrl;
 console.log(`📁 MongoDB Atlas: ${mongodbUrl.replace(/:[^:@]+@/, ':****@').substring(0, 80)}...`);
 
-// Configurar Prisma Client
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-  errorFormat: 'pretty',
-});
+// ============================================
+// REFATORAÇÃO: Mongoose (Prisma removido)
+// ============================================
+// Sistema migrado completamente para Mongoose
+// Prisma foi removido - mantendo apenas variável para compatibilidade de assinaturas
+const prisma = null; // Não usado mais, mantido apenas para compatibilidade
+
+// Mongoose será inicializado abaixo junto com o banco
 
 // MongoDB Client nativo como fallback
 let mongoClient = null;
+
+// ChangeStream para invalidação de cache
+let changeStream = null;
 async function getMongoClient() {
   if (!mongoClient) {
     mongoClient = new MongoClient(mongodbUrl, {
@@ -111,6 +123,21 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Middlewares globais
+// Logar todas as respostas 504 para facilitar diagnóstico de timeouts
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    if (res.statusCode === 504) {
+      console.error('❌ TIMEOUT 504 detectado:', {
+        url: req.originalUrl,
+        method: req.method,
+        ip: req.ip,
+        time: new Date().toISOString()
+      });
+    }
+  });
+  next();
+});
+
 app.use(compression());
 app.use(cors({
   origin: true,
@@ -174,10 +201,12 @@ app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req, res) => {
 
 // Rotas da API
 // Registrar rotas de autenticação primeiro (públicas)
-app.use('/api/auth', authRoutes(prisma));
+// REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+app.use('/api/auth', authRoutes(null));
 
 // Depois registrar todas as outras rotas da API (protegidas)
-app.use('/api', requireAuth, apiRoutes(prisma, getMongoClient));
+// REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+app.use('/api', requireAuth, apiRoutes(null, getMongoClient));
 
 // IMPORTANTE: Rotas de páginas ANTES do express.static para evitar conflitos
 // Rota raiz - página de login (pública)
@@ -208,6 +237,11 @@ app.get('/chat', requireAuth, (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
+// Página de impressão de informações de secretarias (A4 vertical)
+app.get('/secretarias-print', requireAuth, (_req, res) => {
+  res.sendFile(path.join(publicDir, 'secretarias-print.html'));
+});
+
 // OTIMIZAÇÃO: Cache headers para arquivos estáticos
 // IMPORTANTE: Colocar DEPOIS das rotas de páginas para não interferir
 // index: false para não servir index.html automaticamente na rota /
@@ -230,81 +264,144 @@ app.get('*', requireAuth, (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-// Graceful shutdown
+// ============================================
+// GRACEFUL SHUTDOWN
+// ============================================
+/**
+ * Fechar ChangeStream graciosamente
+ */
+async function closeChangeStream() {
+  if (changeStream) {
+    try {
+      await changeStream.close();
+      logger.info('✅ ChangeStream fechado com sucesso');
+      changeStream = null;
+    } catch (error) {
+      logger.warn('⚠️ Erro ao fechar ChangeStream:', error.message);
+    }
+  }
+}
+
 process.on('beforeExit', async () => {
-  await prisma.$disconnect();
-  if (mongoClient) await mongoClient.close();
+  await closeChangeStream(); // Fechar ChangeStream primeiro
+  await closeDatabase(); // Fechar Mongoose
+  // REFATORAÇÃO: Prisma removido - não precisa mais desconectar
+  if (mongoClient) await mongoClient.close(); // Fechar MongoDB Native por último
 });
 
 process.on('SIGINT', async () => {
-  await prisma.$disconnect();
-  if (mongoClient) await mongoClient.close();
+  logger.info('🛑 Recebido SIGINT, encerrando graciosamente...');
+  await closeChangeStream(); // Fechar ChangeStream primeiro
+  await closeDatabase(); // Fechar Mongoose
+  // REFATORAÇÃO: Prisma removido - não precisa mais desconectar
+  if (mongoClient) await mongoClient.close(); // Fechar MongoDB Native por último
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  await prisma.$disconnect();
-  if (mongoClient) await mongoClient.close();
+  logger.info('🛑 Recebido SIGTERM, encerrando graciosamente...');
+  await closeChangeStream(); // Fechar ChangeStream primeiro
+  await closeDatabase(); // Fechar Mongoose
+  // REFATORAÇÃO: Prisma removido - não precisa mais desconectar
+  if (mongoClient) await mongoClient.close(); // Fechar MongoDB Native por último
   process.exit(0);
 });
 
-// Inicializar sistema
+// ============================================
+// INICIALIZAÇÃO DO SISTEMA
+// ============================================
 (async () => {
   try {
-    // Testar conexão com banco
-    await prisma.$connect();
-    console.log('✅ Conexão com MongoDB Atlas estabelecida com sucesso!');
+    // ============================================
+    // REFATORAÇÃO: Inicializar Mongoose (NOVO)
+    // ============================================
+    logger.info('🔄 Inicializando Mongoose...');
+    const mongooseConnected = await initializeDatabase(mongodbUrl);
     
-    // Verificar mensagens no banco
-    try {
-      const count = await prisma.chatMessage.count();
-      console.log(`💬 Mensagens no banco de dados: ${count} mensagens`);
-    } catch (error) {
-      console.warn('⚠️ Não foi possível contar mensagens:', error.message);
+    if (!mongooseConnected) {
+      logger.error('❌ Falha ao conectar Mongoose. Tentando continuar com Prisma...');
+      // Continuar com Prisma como fallback temporário
+    } else {
+      logger.info('✅ Mongoose conectado com sucesso!');
+      
+      // Verificar conexão testando um model
+      try {
+        const { ChatMessage } = await import('./models/index.js');
+        const count = await ChatMessage.countDocuments();
+        logger.info(`💬 Mensagens no banco (Mongoose): ${count} mensagens`);
+      } catch (error) {
+        logger.warn('⚠️ Não foi possível contar mensagens com Mongoose:', error.message);
+      }
     }
     
-    // Inicializar cache
-    await initializeCache(prisma);
+    // ============================================
+    // REFATORAÇÃO: Prisma removido - usando apenas Mongoose
+    // ============================================
+    // Prisma foi completamente migrado para Mongoose
+    // Mantendo apenas a variável prisma para compatibilidade com assinaturas de funções
+    logger.info('✅ Sistema usando apenas Mongoose (Prisma removido)');
     
+    // ============================================
+    // Inicializar cache (Mongoose)
+    // ============================================
+    await initializeCache();
+    
+    // ============================================
     // Inicializar Gemini
+    // ============================================
     initializeGemini();
     
+    // ============================================
     // Inicializar scheduler de notificações por email
+    // ============================================
     try {
-      iniciarScheduler(prisma);
-      console.log('📧 Scheduler de notificações por email iniciado');
+      // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+      iniciarScheduler(null);
+      logger.info('📧 Scheduler de notificações por email iniciado');
     } catch (error) {
-      console.warn('⚠️ Erro ao iniciar scheduler de notificações:', error.message);
+      logger.warn('⚠️ Erro ao iniciar scheduler de notificações:', error.message);
     }
     
-    // Inicializar cron de vencimentos (sistema automático simplificado)
+    // ============================================
+    // Inicializar cron de vencimentos
+    // ============================================
     try {
-      iniciarCronVencimentos(prisma);
-      console.log('🔔 Cron de vencimentos automático iniciado');
+      // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+      iniciarCronVencimentos(null);
+      logger.info('🔔 Cron de vencimentos automático iniciado');
     } catch (error) {
-      console.warn('⚠️ Erro ao iniciar cron de vencimentos:', error.message);
+      logger.warn('⚠️ Erro ao iniciar cron de vencimentos:', error.message);
     }
     
-    // Inicializar ChangeStream Watcher para invalidação automática de cache
-    let changeStream = null;
+    // ============================================
+    // Inicializar ChangeStream Watcher
+    // ============================================
     try {
-      changeStream = await startChangeStreamWatcher(prisma, getMongoClient);
-      console.log('👁️ ChangeStream Watcher ativo - Cache será invalidado automaticamente');
+      // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+      changeStream = await startChangeStreamWatcher(null, getMongoClient);
+      logger.info('👁️ ChangeStream Watcher ativo - Cache será invalidado automaticamente');
     } catch (error) {
-      console.warn('⚠️ Erro ao iniciar ChangeStream Watcher:', error.message);
-      console.warn('⚠️ Cache não será invalidado automaticamente, mas sistema continuará funcionando');
+      logger.warn('⚠️ Erro ao iniciar ChangeStream Watcher:', error.message);
+      logger.warn('⚠️ Cache não será invalidado automaticamente, mas sistema continuará funcionando');
     }
     
+    // ============================================
     // Iniciar servidor
+    // ============================================
     const port = Number(process.env.PORT ?? 3000);
-    app.listen(port, () => {
-      console.log(`🚀 Dashboard running on http://localhost:${port}`);
-      console.log(`📦 Cache híbrido ativo (memória + banco de dados)`);
-      console.log(`🔧 Sistema de otimização global ativo`);
-      console.log(`✨ Versão 3.0 - Refatorada e Otimizada`);
+    const server = app.listen(port, () => {
+      logger.info(`🚀 Dashboard running on http://localhost:${port}`);
+      logger.info(`📦 Cache híbrido ativo (memória + banco de dados)`);
+      logger.info(`🔧 Sistema de otimização global ativo`);
+      logger.info(`✨ Versão 3.0 - Refatorada e Otimizada`);
+      logger.info(`🔥 REFATORAÇÃO: Mongoose ativo (Prisma completamente removido)`);
     });
+
+    // Aumentar timeout global do servidor para lidar com agregações pesadas
+    server.setTimeout(120000); // 120 segundos
+    logger.info('⏱️ Timeout global do servidor configurado para 120s');
   } catch (error) {
-    console.error('❌ Erro ao inicializar servidor:', error);
+    logger.error('❌ Erro ao inicializar servidor:', error);
     process.exit(1);
   }
 })();

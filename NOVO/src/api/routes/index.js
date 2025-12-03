@@ -12,7 +12,7 @@
  * - /api/secretarias, /api/distritos, etc. - Dados geográficos
  * - /api/colab/* - Integração com API do Colab
  * 
- * @param {PrismaClient} prisma - Cliente Prisma para acesso ao banco
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB nativo
  * @returns {express.Router} Router configurado com todas as rotas
  */
@@ -54,40 +54,48 @@ export default function apiRoutes(prisma, getMongoClient) {
   };
   
   // Rotas de agregação - Análises e agregações de dados
-  router.use('/aggregate', aggregateRoutes(prisma, getMongoClient));
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+  router.use('/aggregate', aggregateRoutes(null, getMongoClient));
   
   // Rotas de estatísticas - Métricas e análises estatísticas
-  router.use('/stats', statsRoutes(prisma, getMongoClient));
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+  router.use('/stats', statsRoutes(null, getMongoClient));
   
-  // Rotas de cache - Gerenciamento de cache híbrido
-  router.use('/cache', cacheRoutes(prisma));
+  // Rotas de cache - Gerenciamento de cache híbrido (Mongoose)
+  router.use('/cache', cacheRoutes());
   
   // Rotas de chat - Sistema de mensagens e chat
-  router.use('/chat', chatRoutes(prisma));
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+  router.use('/chat', chatRoutes(null));
   
   // Rotas de IA - Inteligência artificial e insights
-  router.use('/ai', aiRoutes(prisma, getMongoClient));
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+  router.use('/ai', aiRoutes(null, getMongoClient));
   
   // Rotas de dados gerais - Endpoints principais (summary, records, etc.)
-  router.use('/', dataRoutes(prisma, getMongoClient));
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+  router.use('/', dataRoutes(null, getMongoClient));
   
   // Rotas geográficas - Dados de secretarias, distritos, bairros, saúde
-  router.use('/', geographicRoutes(prisma));
+  router.use('/', geographicRoutes());
   
   // Rotas de Zeladoria - Dados de serviços de zeladoria
-  router.use('/zeladoria', zeladoriaRoutes(prisma, getMongoClient));
+  router.use('/zeladoria', zeladoriaRoutes());
   
   // Rotas de Notificações - Sistema de notificações por email
-  router.use('/notifications', notificationRoutes(prisma));
+  // REFATORAÇÃO: Mongoose (sem prisma)
+  router.use('/notifications', notificationRoutes());
   
   // Rotas de Colab - Integração com API do Colab
   router.use('/colab', colabRoutes());
   
   // Rotas de Batch - Requisições em lote
-  router.use('/batch', batchRoutes(prisma, getMongoClient));
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+  router.use('/batch', batchRoutes(null, getMongoClient));
   
   // Rotas de Métricas - Monitoramento do sistema
-  router.use('/metrics', metricsRoutes(prisma));
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
+  router.use('/metrics', metricsRoutes(null));
   
   // Log de carregamento das rotas (apenas em desenvolvimento)
   if (process.env.NODE_ENV === 'development') {

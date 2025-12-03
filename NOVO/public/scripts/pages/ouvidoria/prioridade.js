@@ -26,7 +26,7 @@ async function loadPrioridade(forceRefresh = false) {
     
     await window.chartFactory?.createDoughnutChart('chartPrioridade', labels, values, {
       type: 'doughnut',
-      onClick: true, // Habilitar comunicação e filtros
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       legendContainer: 'legendPrioridade'
     });
     

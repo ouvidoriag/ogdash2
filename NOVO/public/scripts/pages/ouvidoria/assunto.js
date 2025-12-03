@@ -127,7 +127,7 @@ async function renderAssuntoChart(dataAssuntos) {
     horizontal: true,
     colorIndex: 3,
     label: 'Manifestações',
-    onClick: true // Habilitar comunicação e filtros
+      onClick: false // FILTROS DE CLIQUE DESABILITADOS
   });
 }
 
@@ -155,7 +155,7 @@ async function renderStatusAssuntoChart(dataAssuntos) {
       
       await window.chartFactory?.createDoughnutChart('chartStatusAssunto', labels, values, {
         type: 'doughnut',
-        onClick: true, // Habilitar comunicação e filtros
+        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
         legendContainer: 'legendStatusAssunto'
       });
     }

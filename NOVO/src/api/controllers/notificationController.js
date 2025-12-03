@@ -1,6 +1,10 @@
 /**
  * Controller de Notificações por Email
  * Gerencia endpoints para notificações
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { 
@@ -17,6 +21,7 @@ import {
 } from '../../services/email-notifications/gmailService.js';
 import { getEmailSecretaria, SECRETARIAS_EMAILS } from '../../services/email-notifications/emailConfig.js';
 import { executarVerificacaoManual, getStatusScheduler } from '../../services/email-notifications/scheduler.js';
+import NotificacaoEmail from '../../models/NotificacaoEmail.model.js';
 
 /**
  * GET /api/notifications/auth/url
@@ -97,7 +102,7 @@ export async function getAuthStatus(req, res) {
  * POST /api/notifications/execute
  * Executar notificações manualmente
  */
-export async function executeNotifications(req, res, prisma) {
+export async function executeNotifications(req, res) {
   try {
     if (!isAuthorized()) {
       return res.status(403).json({
@@ -110,14 +115,16 @@ export async function executeNotifications(req, res, prisma) {
     
     let resultados;
     
+    // Os serviços de notificação ainda podem precisar de prisma temporariamente
+    // Mas vamos passar null e deixar que eles usem Mongoose diretamente
     if (tipo === '15_dias') {
-      resultados = await enviarNotificacoes15Dias(prisma);
+      resultados = await enviarNotificacoes15Dias(null);
     } else if (tipo === 'vencimento') {
-      resultados = await enviarNotificacoesVencimento(prisma);
+      resultados = await enviarNotificacoesVencimento(null);
     } else if (tipo === '60_dias') {
-      resultados = await enviarNotificacoes60Dias(prisma);
+      resultados = await enviarNotificacoes60Dias(null);
     } else {
-      resultados = await executarTodasNotificacoes(prisma);
+      resultados = await executarTodasNotificacoes(null);
     }
     
     res.json({
@@ -139,7 +146,7 @@ export async function executeNotifications(req, res, prisma) {
  * GET /api/notifications/history
  * Obter histórico de notificações
  */
-export async function getNotificationHistory(req, res, prisma) {
+export async function getNotificationHistory(req, res) {
   try {
     const { 
       protocolo, 
@@ -150,20 +157,19 @@ export async function getNotificationHistory(req, res, prisma) {
       offset = 0
     } = req.query;
     
-    const where = {};
-    if (protocolo) where.protocolo = protocolo;
-    if (secretaria) where.secretaria = { contains: secretaria, mode: 'insensitive' };
-    if (tipoNotificacao) where.tipoNotificacao = tipoNotificacao;
-    if (status) where.status = status;
+    const filter = {};
+    if (protocolo) filter.protocolo = protocolo;
+    if (secretaria) filter.secretaria = { $regex: secretaria, $options: 'i' };
+    if (tipoNotificacao) filter.tipoNotificacao = tipoNotificacao;
+    if (status) filter.status = status;
     
     const [notificacoes, total] = await Promise.all([
-      prisma.notificacaoEmail.findMany({
-        where,
-        orderBy: { enviadoEm: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset)
-      }),
-      prisma.notificacaoEmail.count({ where })
+      NotificacaoEmail.find(filter)
+        .sort({ enviadoEm: -1 })
+        .limit(parseInt(limit))
+        .skip(parseInt(offset))
+        .lean(),
+      NotificacaoEmail.countDocuments(filter)
     ]);
     
     res.json({
@@ -186,34 +192,31 @@ export async function getNotificationHistory(req, res, prisma) {
  * GET /api/notifications/stats
  * Obter estatísticas de notificações
  */
-export async function getNotificationStats(req, res, prisma) {
+export async function getNotificationStats(req, res) {
   try {
     const { periodo = 30 } = req.query; // Últimos N dias
     
     const dataLimite = new Date();
     dataLimite.setDate(dataLimite.getDate() - parseInt(periodo));
     
+    const matchFilter = { enviadoEm: { $gte: dataLimite } };
+    
     const [total, porTipo, porStatus, porSecretaria] = await Promise.all([
-      prisma.notificacaoEmail.count({
-        where: { enviadoEm: { gte: dataLimite } }
-      }),
-      prisma.notificacaoEmail.groupBy({
-        by: ['tipoNotificacao'],
-        where: { enviadoEm: { gte: dataLimite } },
-        _count: { _all: true }
-      }),
-      prisma.notificacaoEmail.groupBy({
-        by: ['status'],
-        where: { enviadoEm: { gte: dataLimite } },
-        _count: { _all: true }
-      }),
-      prisma.notificacaoEmail.groupBy({
-        by: ['secretaria'],
-        where: { enviadoEm: { gte: dataLimite } },
-        _count: { _all: true },
-        orderBy: { _count: { _all: 'desc' } },
-        take: 10
-      })
+      NotificacaoEmail.countDocuments(matchFilter),
+      NotificacaoEmail.aggregate([
+        { $match: matchFilter },
+        { $group: { _id: '$tipoNotificacao', quantidade: { $sum: 1 } } }
+      ]),
+      NotificacaoEmail.aggregate([
+        { $match: matchFilter },
+        { $group: { _id: '$status', quantidade: { $sum: 1 } } }
+      ]),
+      NotificacaoEmail.aggregate([
+        { $match: matchFilter },
+        { $group: { _id: '$secretaria', quantidade: { $sum: 1 } } },
+        { $sort: { quantidade: -1 } },
+        { $limit: 10 }
+      ])
     ]);
     
     res.json({
@@ -221,16 +224,16 @@ export async function getNotificationStats(req, res, prisma) {
       periodo: parseInt(periodo),
       total,
       porTipo: porTipo.map(item => ({
-        tipo: item.tipoNotificacao,
-        quantidade: item._count._all
+        tipo: item._id,
+        quantidade: item.quantidade
       })),
       porStatus: porStatus.map(item => ({
-        status: item.status,
-        quantidade: item._count._all
+        status: item._id,
+        quantidade: item.quantidade
       })),
       topSecretarias: porSecretaria.map(item => ({
-        secretaria: item.secretaria,
-        quantidade: item._count._all
+        secretaria: item._id,
+        quantidade: item.quantidade
       }))
     });
   } catch (error) {
@@ -288,7 +291,7 @@ export async function getSchedulerStatus(req, res) {
  * POST /api/notifications/scheduler/execute
  * Executar verificação manual do scheduler
  */
-export async function executeSchedulerManual(req, res, prisma) {
+export async function executeSchedulerManual(req, res) {
   try {
     if (!isAuthorized()) {
       return res.status(403).json({

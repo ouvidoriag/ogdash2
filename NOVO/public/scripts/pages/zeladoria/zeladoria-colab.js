@@ -61,7 +61,7 @@ async function loadZeladoriaOverview() {
         Object.values(statusCounts),
         { 
           type: 'doughnut',
-          onClick: true // Habilitar comunicação e filtros globais
+          onClick: false // FILTROS DE CLIQUE DESABILITADOS
         }
       );
     }
@@ -92,7 +92,7 @@ async function loadZeladoriaOverview() {
         { 
           horizontal: true, 
           colorIndex: 1,
-          onClick: true // Habilitar comunicação e filtros globais
+          onClick: false // FILTROS DE CLIQUE DESABILITADOS
         }
       );
     }

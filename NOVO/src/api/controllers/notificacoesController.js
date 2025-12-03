@@ -1,0 +1,860 @@
+/**
+ * Controller: Notificações de Email
+ * 
+ * Endpoints:
+ * - GET /api/notificacoes - Lista todas as notificações com filtros
+ * - GET /api/notificacoes/stats - Estatísticas de notificações
+ * - GET /api/notificacoes/ultima-execucao - Verifica última execução do cron
+ * - GET /api/notificacoes/vencimentos - Busca vencimentos (otimizado, apenas visualização)
+ * - POST /api/notificacoes/enviar-selecionados - Envia emails para secretarias selecionadas
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
+ */
+
+import { withCache, safeQuery } from '../../utils/responseHelper.js';
+import { getDataCriacao, isConcluido } from '../../utils/dateUtils.js';
+import NotificacaoEmail from '../../models/NotificacaoEmail.model.js';
+import Record from '../../models/Record.model.js';
+
+/**
+ * GET /api/notificacoes
+ * Lista todas as notificações com filtros opcionais
+ * 
+ * Query params:
+ * - tipo: '15_dias' | 'vencimento' | '30_dias_vencido' | '60_dias_vencido' | 'consolidacao_geral'
+ * - secretaria: Nome da secretaria
+ * - status: 'enviado' | 'erro' | 'pendente'
+ * - dataInicio: YYYY-MM-DD
+ * - dataFim: YYYY-MM-DD
+ * - limit: Número de resultados (padrão: 100)
+ * - page: Página (padrão: 1)
+ */
+export async function getNotificacoes(req, res) {
+  const cacheKey = 'notificacoes:list:v2';
+  const ttlSeconds = 60; // Cache de 1 minuto
+
+  return withCache(
+    cacheKey,
+    ttlSeconds,
+    res,
+    async () => {
+      const {
+        tipo,
+        secretaria,
+        status,
+        dataInicio,
+        dataFim,
+        limit = 100,
+        page = 1
+      } = req.query;
+
+      // Construir filtros
+      const filter = {};
+
+      if (tipo) {
+        filter.tipoNotificacao = tipo;
+      }
+
+      if (secretaria) {
+        filter.secretaria = { $regex: secretaria, $options: 'i' };
+      }
+
+      if (status) {
+        filter.status = status;
+      }
+
+      if (dataInicio || dataFim) {
+        filter.enviadoEm = {};
+        if (dataInicio) {
+          filter.enviadoEm.$gte = new Date(dataInicio + 'T00:00:00');
+        }
+        if (dataFim) {
+          filter.enviadoEm.$lte = new Date(dataFim + 'T23:59:59');
+        }
+      }
+
+      // Calcular paginação
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const limitNum = parseInt(limit);
+
+      // Buscar total
+      const total = await NotificacaoEmail.countDocuments(filter);
+
+      // Buscar notificações
+      const notificacoes = await NotificacaoEmail.find(filter)
+        .sort({ enviadoEm: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean();
+
+      return {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        notificacoes
+      };
+    }
+  );
+}
+
+/**
+ * GET /api/notificacoes/stats
+ * Estatísticas de notificações
+ */
+export async function getNotificacoesStats(req, res) {
+  const cacheKey = 'notificacoes:stats:v2';
+  const ttlSeconds = 300; // Cache de 5 minutos
+
+  return withCache(
+    cacheKey,
+    ttlSeconds,
+    res,
+    async () => {
+      // Total de notificações
+      const total = await NotificacaoEmail.countDocuments();
+
+      // Por status
+      const porStatus = await NotificacaoEmail.aggregate([
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]);
+
+      // Por tipo
+      const porTipo = await NotificacaoEmail.aggregate([
+        { $group: { _id: '$tipoNotificacao', count: { $sum: 1 } } }
+      ]);
+
+      // Por secretaria (top 10)
+      const porSecretaria = await NotificacaoEmail.aggregate([
+        { $group: { _id: '$secretaria', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]);
+
+      // Últimas 24 horas
+      const ultimas24h = new Date();
+      ultimas24h.setHours(ultimas24h.getHours() - 24);
+      const total24h = await NotificacaoEmail.countDocuments({
+        enviadoEm: { $gte: ultimas24h }
+      });
+
+      // Hoje
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const totalHoje = await NotificacaoEmail.countDocuments({
+        enviadoEm: { $gte: hoje }
+      });
+
+      // Última notificação
+      const ultimaNotificacao = await NotificacaoEmail.findOne({})
+        .sort({ enviadoEm: -1 })
+        .lean();
+
+      return {
+        total,
+        porStatus: porStatus.map(s => ({
+          status: s._id,
+          total: s.count
+        })),
+        porTipo: porTipo.map(t => ({
+          tipo: t._id,
+          total: t.count
+        })),
+        porSecretaria: porSecretaria.map(s => ({
+          secretaria: s._id,
+          total: s.count
+        })),
+        ultimas24h: total24h,
+        hoje: totalHoje,
+        ultimaNotificacao: ultimaNotificacao ? {
+          enviadoEm: ultimaNotificacao.enviadoEm,
+          tipo: ultimaNotificacao.tipoNotificacao,
+          secretaria: ultimaNotificacao.secretaria
+        } : null
+      };
+    }
+  );
+}
+
+/**
+ * GET /api/notificacoes/ultima-execucao
+ * Verifica última execução do cron e quantos emails foram enviados hoje
+ */
+export async function getUltimaExecucao(req, res) {
+  return safeQuery(res, async () => {
+    // Hoje
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    // Última notificação enviada
+    const ultimaNotificacao = await NotificacaoEmail.findOne({ status: 'enviado' })
+      .sort({ enviadoEm: -1 })
+      .lean();
+
+    // Notificações enviadas hoje
+    const hojeEnviadas = await NotificacaoEmail.countDocuments({
+      status: 'enviado',
+      enviadoEm: { $gte: hoje }
+    });
+
+    // Notificações com erro hoje
+    const hojeErros = await NotificacaoEmail.countDocuments({
+      status: 'erro',
+      enviadoEm: { $gte: hoje }
+    });
+
+    // Agrupar por tipo hoje
+    const porTipoHoje = await NotificacaoEmail.aggregate([
+      { $match: { status: 'enviado', enviadoEm: { $gte: hoje } } },
+      { $group: { _id: '$tipoNotificacao', count: { $sum: 1 } } }
+    ]);
+
+    // Agrupar por secretaria hoje
+    const porSecretariaHoje = await NotificacaoEmail.aggregate([
+      { $match: { status: 'enviado', enviadoEm: { $gte: hoje } } },
+      { $group: { _id: '$secretaria', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    return {
+      ultimaExecucao: ultimaNotificacao ? {
+        data: ultimaNotificacao.enviadoEm,
+        tipo: ultimaNotificacao.tipoNotificacao,
+        secretaria: ultimaNotificacao.secretaria,
+        protocolo: ultimaNotificacao.protocolo
+      } : null,
+      hoje: {
+        totalEnviados: hojeEnviadas,
+        totalErros: hojeErros,
+        porTipo: porTipoHoje.map(t => ({
+          tipo: t._id,
+          total: t.count
+        })),
+        porSecretaria: porSecretariaHoje.map(s => ({
+          secretaria: s._id,
+          total: s.count
+        }))
+      }
+    };
+  });
+}
+
+/**
+ * GET /api/notificacoes/vencimentos
+ * Busca vencimentos sem enviar emails (apenas para visualização)
+ * OTIMIZADO: Filtra por range de datas no banco, batch queries, cache de emails
+ * 
+ * Query params:
+ * - tipo: 'hoje' | '15' | '30' | '60' | 'geral' (padrão: 'hoje')
+ *   - 'hoje': Vencimentos hoje
+ *   - '15': Vencimentos em 15 dias
+ *   - '30': Vencimentos há 30+ dias
+ *   - '60': Vencimentos há 60+ dias
+ *   - 'geral': Consolidação geral (vencidos a partir de 30 dias)
+ */
+export async function buscarVencimentos(req, res) {
+  const { tipo = 'hoje' } = req.query;
+  
+  const cacheKey = `notificacoes:vencimentos:${tipo}:v2`;
+  const ttlSeconds = 300; // Cache de 5 minutos
+
+  return withCache(
+    cacheKey,
+    ttlSeconds,
+    res,
+    async () => {
+      // Importar funções necessárias
+      const { getEmailSecretaria } = await import('../../services/email-notifications/emailConfig.js');
+      
+      // Funções auxiliares
+      function getPrazoPorTipo(tipoDeManifestacao) {
+        if (!tipoDeManifestacao) return 30;
+        const tipo = String(tipoDeManifestacao).toLowerCase().trim();
+        if (tipo.includes('sic') || tipo.includes('pedido de informação') || 
+            tipo.includes('pedido de informacao') || tipo.includes('informação') || 
+            tipo.includes('informacao')) {
+          return 20;
+        }
+        return 30;
+      }
+      
+      function calcularDataVencimento(dataCriacao, prazo) {
+        if (!dataCriacao) return null;
+        const data = new Date(dataCriacao + 'T00:00:00');
+        if (isNaN(data.getTime())) return null;
+        data.setDate(data.getDate() + prazo);
+        return data.toISOString().slice(0, 10);
+      }
+      
+      function calcularDiasRestantes(dataVencimento, hoje) {
+        if (!dataVencimento) return null;
+        const venc = new Date(dataVencimento + 'T00:00:00');
+        if (isNaN(venc.getTime())) return null;
+        const diff = Math.ceil((venc - hoje) / (1000 * 60 * 60 * 24));
+        return diff;
+      }
+      
+      // Calcular dias alvo
+      let diasAlvo;
+      let tipoNotificacao;
+      if (tipo === 'hoje') {
+        diasAlvo = 0;
+        tipoNotificacao = 'vencimento';
+      } else if (tipo === '15') {
+        diasAlvo = 15;
+        tipoNotificacao = '15_dias';
+      } else if (tipo === '30') {
+        diasAlvo = -30;
+        tipoNotificacao = '30_dias_vencido';
+      } else if (tipo === '60') {
+        diasAlvo = -60;
+        tipoNotificacao = '60_dias_vencido';
+      } else if (tipo === 'geral') {
+        diasAlvo = -30; // Consolidação geral: a partir de 30 dias
+        tipoNotificacao = 'consolidacao_geral';
+      } else {
+        return res.status(400).json({ error: 'Tipo inválido. Use: hoje, 15, 30, 60 ou geral' });
+      }
+      
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      
+      const dataAlvo = new Date(hoje);
+      dataAlvo.setDate(hoje.getDate() + diasAlvo);
+      const dataAlvoStr = dataAlvo.toISOString().slice(0, 10);
+      
+      // OTIMIZAÇÃO 1: Calcular range de datas de criação para filtrar no banco
+      let dataCriacaoMin = null;
+      let dataCriacaoMax = null;
+      
+      if (diasAlvo === 0) {
+        // Vencimento hoje: buscar registros criados há 20-35 dias (SIC: 20, Ouvidoria: 30)
+        dataCriacaoMin = new Date(hoje);
+        dataCriacaoMin.setDate(hoje.getDate() - 35);
+        dataCriacaoMax = new Date(hoje);
+        dataCriacaoMax.setDate(hoje.getDate() - 15);
+      } else if (diasAlvo === 15) {
+        // Vencimento em 15 dias: buscar registros criados há 0-20 dias
+        dataCriacaoMin = new Date(hoje);
+        dataCriacaoMin.setDate(hoje.getDate() - 20);
+        dataCriacaoMax = new Date(hoje);
+      } else if (diasAlvo === -30) {
+        // Vencimento há 30 dias: buscar registros criados há 60-90 dias
+        dataCriacaoMin = new Date(hoje);
+        dataCriacaoMin.setDate(hoje.getDate() - 90);
+        dataCriacaoMax = new Date(hoje);
+        dataCriacaoMax.setDate(hoje.getDate() - 30);
+      } else if (diasAlvo === -60) {
+        // Vencimento há 60 dias: buscar registros criados há 90-125 dias
+        dataCriacaoMin = new Date(hoje);
+        dataCriacaoMin.setDate(hoje.getDate() - 125);
+        dataCriacaoMax = new Date(hoje);
+        dataCriacaoMax.setDate(hoje.getDate() - 85);
+      }
+      
+      // Construir filtro otimizado
+      const filter = {
+        $or: [
+          { dataCriacaoIso: { $ne: null } },
+          { dataDaCriacao: { $ne: null } }
+        ]
+      };
+      
+      // OTIMIZAÇÃO 2: Filtrar por range de datas no banco
+      if (dataCriacaoMin && dataCriacaoMax) {
+        const minStr = dataCriacaoMin.toISOString().slice(0, 10);
+        const maxStr = dataCriacaoMax.toISOString().slice(0, 10);
+        
+        filter.$and = [
+          {
+            $or: [
+              { dataCriacaoIso: { $gte: minStr, $lte: maxStr } },
+              { 
+                $and: [
+                  { dataDaCriacao: { $ne: null } },
+                  { 
+                    $or: [
+                      { dataDaCriacao: { $regex: dataCriacaoMin.getFullYear().toString() } },
+                      { dataDaCriacao: { $regex: dataCriacaoMax.getFullYear().toString() } }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ];
+      }
+      
+      // Buscar registros no range (muito mais rápido)
+      const records = await Record.find(filter)
+        .select('_id protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos status statusDemanda data')
+        .limit(20000)
+        .lean();
+      
+      // Processar protocolos
+      const protocolosEncontrados = [];
+      
+      for (const record of records) {
+        if (isConcluido(record)) continue;
+        
+        const dataCriacao = getDataCriacao(record);
+        if (!dataCriacao) continue;
+        
+        const tipoManifest = record.tipoDeManifestacao || 
+                            (record.data && typeof record.data === 'object' ? record.data.tipo_de_manifestacao : null) ||
+                            '';
+        
+        const prazo = getPrazoPorTipo(tipoManifest);
+        const dataVencimento = calcularDataVencimento(dataCriacao, prazo);
+        if (!dataVencimento) continue;
+        
+        // Para tipos de vencimento negativo (30, 60, geral), mostrar todos vencidos há X+ dias
+        // Para outros tipos, verificar data exata
+        if (tipo === '30' || tipo === '60' || tipo === 'geral') {
+          // Verificar se está vencido há X+ dias (dataVencimento <= dataAlvo)
+          if (dataVencimento > dataAlvoStr) continue;
+        } else {
+          // Para 'hoje' e '15', verificar data exata
+          if (dataVencimento !== dataAlvoStr) continue;
+        }
+        
+        const protocolo = record.protocolo || 
+                          (record.data && typeof record.data === 'object' ? record.data.protocolo : null) ||
+                          'N/A';
+        
+        const secretaria = record.orgaos || 
+                          (record.data && typeof record.data === 'object' ? record.data.orgaos : null) ||
+                          'N/A';
+        
+        const assunto = record.assunto || 
+                       (record.data && typeof record.data === 'object' ? record.data.assunto : null) ||
+                       '';
+        
+        protocolosEncontrados.push({
+          protocolo,
+          secretaria,
+          dataVencimento,
+          assunto,
+          tipoManifestacao: tipoManifest,
+          prazo
+        });
+      }
+      
+      // OTIMIZAÇÃO 3: Buscar notificações existentes em batch
+      const protocolosList = protocolosEncontrados.map(p => p.protocolo).filter(p => p !== 'N/A');
+      const notificacoesExistentes = protocolosList.length > 0 ? await NotificacaoEmail.find({
+        protocolo: { $in: protocolosList },
+        tipoNotificacao: tipoNotificacao,
+        status: 'enviado'
+      })
+      .select('protocolo')
+      .lean() : [];
+      
+      const protocolosJaNotificados = new Set(notificacoesExistentes.map(n => n.protocolo));
+      
+      // OTIMIZAÇÃO 4: Cache de emails (buscar do banco de uma vez)
+      const secretariasUnicas = [...new Set(protocolosEncontrados.map(p => p.secretaria))];
+      const SecretariaInfo = (await import('../../models/SecretariaInfo.model.js')).default;
+      const secretariasInfo = await SecretariaInfo.find({
+        name: { $in: secretariasUnicas }
+      })
+      .select('name email')
+      .lean();
+      
+      const emailsCache = new Map();
+      secretariasInfo.forEach(s => {
+        emailsCache.set(s.name, s.email);
+      });
+      
+      // Preencher cache com função para secretarias não encontradas
+      for (const secretaria of secretariasUnicas) {
+        if (!emailsCache.has(secretaria)) {
+          emailsCache.set(secretaria, getEmailSecretaria(secretaria));
+        }
+      }
+      
+      // Agrupar por secretaria
+      const porSecretaria = {};
+      
+      for (const prot of protocolosEncontrados) {
+        const jaNotificado = protocolosJaNotificados.has(prot.protocolo);
+        const diasRestantes = calcularDiasRestantes(prot.dataVencimento, hoje);
+        const emailSecretaria = emailsCache.get(prot.secretaria) || 'N/A';
+        
+        if (!porSecretaria[prot.secretaria]) {
+          porSecretaria[prot.secretaria] = {
+            secretaria: prot.secretaria,
+            email: emailSecretaria,
+            protocolos: []
+          };
+        }
+        
+        porSecretaria[prot.secretaria].protocolos.push({
+          protocolo: prot.protocolo,
+          dataVencimento: prot.dataVencimento,
+          diasRestantes,
+          assunto: prot.assunto,
+          tipoManifestacao: prot.tipoManifestacao,
+          prazo: prot.prazo,
+          jaNotificado
+        });
+      }
+      
+      // Converter para array
+      const emails = Object.values(porSecretaria);
+      
+      return {
+        tipo,
+        tipoNotificacao,
+        dataAlvo: dataAlvoStr,
+        totalSecretarias: emails.length,
+        totalProtocolos: emails.reduce((sum, e) => sum + e.protocolos.length, 0),
+        emails: emails.map(e => ({
+          ...e,
+          totalProtocolos: e.protocolos.length,
+          jaNotificados: e.protocolos.filter(p => p.jaNotificado).length,
+          naoNotificados: e.protocolos.filter(p => !p.jaNotificado).length
+        }))
+      };
+    }
+  );
+}
+
+/**
+ * POST /api/notificacoes/enviar-selecionados
+ * Envia emails para as secretarias selecionadas
+ * OTIMIZADO: Batch de registros, processamento paralelo limitado
+ * 
+ * Body: {
+ *   tipo: 'hoje' | '15' | '30' | '60' | 'geral',
+ *   secretarias: ['Secretaria 1', 'Secretaria 2', ...]
+ * }
+ */
+export async function enviarSelecionados(req, res) {
+  return safeQuery(res, async () => {
+    const { tipo, secretarias } = req.body;
+    
+    if (!tipo || !Array.isArray(secretarias) || secretarias.length === 0) {
+      return res.status(400).json({ 
+        error: 'Tipo e lista de secretarias são obrigatórios' 
+      });
+    }
+    
+    // Importar funções necessárias
+    const { sendEmail } = await import('../../services/email-notifications/gmailService.js');
+    const { 
+      getEmailSecretaria, 
+      EMAIL_REMETENTE, 
+      NOME_REMETENTE,
+      getTemplate15Dias,
+      getTemplateVencimento,
+      getTemplate30Dias,
+      getTemplate60Dias,
+      getTemplateConsolidacaoGeral
+    } = await import('../../services/email-notifications/emailConfig.js');
+    
+    // Funções auxiliares
+    function getPrazoPorTipo(tipoDeManifestacao) {
+      if (!tipoDeManifestacao) return 30;
+      const tipo = String(tipoDeManifestacao).toLowerCase().trim();
+      if (tipo.includes('sic') || tipo.includes('pedido de informação') || 
+          tipo.includes('pedido de informacao') || tipo.includes('informação') || 
+          tipo.includes('informacao')) {
+        return 20;
+      }
+      return 30;
+    }
+    
+    function calcularDataVencimento(dataCriacao, prazo) {
+      if (!dataCriacao) return null;
+      const data = new Date(dataCriacao + 'T00:00:00');
+      if (isNaN(data.getTime())) return null;
+      data.setDate(data.getDate() + prazo);
+      return data.toISOString().slice(0, 10);
+    }
+    
+    function calcularDiasRestantes(dataVencimento, hoje) {
+      if (!dataVencimento) return null;
+      const venc = new Date(dataVencimento + 'T00:00:00');
+      if (isNaN(venc.getTime())) return null;
+      const diff = Math.ceil((venc - hoje) / (1000 * 60 * 60 * 24));
+      return diff;
+    }
+    
+    // Calcular dias alvo e template
+    let diasAlvo;
+    let tipoNotificacao;
+    let getTemplate;
+    
+    if (tipo === 'hoje') {
+      diasAlvo = 0;
+      tipoNotificacao = 'vencimento';
+      getTemplate = getTemplateVencimento;
+    } else if (tipo === '15') {
+      diasAlvo = 15;
+      tipoNotificacao = '15_dias';
+      getTemplate = getTemplate15Dias;
+    } else if (tipo === '30') {
+      diasAlvo = -30;
+      tipoNotificacao = '30_dias_vencido';
+      getTemplate = getTemplate30Dias;
+    } else if (tipo === '60') {
+      diasAlvo = -60;
+      tipoNotificacao = '60_dias_vencido';
+      getTemplate = getTemplate60Dias;
+    } else if (tipo === 'geral') {
+      diasAlvo = -30; // Consolidação geral: a partir de 30 dias
+      tipoNotificacao = 'consolidacao_geral';
+      getTemplate = getTemplateConsolidacaoGeral;
+    } else {
+      return res.status(400).json({ error: 'Tipo inválido. Use: hoje, 15, 30, 60 ou geral' });
+    }
+    
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    
+    const dataAlvo = new Date(hoje);
+    dataAlvo.setDate(hoje.getDate() + diasAlvo);
+    const dataAlvoStr = dataAlvo.toISOString().slice(0, 10);
+    
+    // OTIMIZAÇÃO: Filtrar por range de datas e secretarias no banco
+    let dataCriacaoMin = null;
+    let dataCriacaoMax = null;
+    
+    if (diasAlvo === 0) {
+      dataCriacaoMin = new Date(hoje);
+      dataCriacaoMin.setDate(hoje.getDate() - 35);
+      dataCriacaoMax = new Date(hoje);
+      dataCriacaoMax.setDate(hoje.getDate() - 15);
+    } else if (diasAlvo === 15) {
+      dataCriacaoMin = new Date(hoje);
+      dataCriacaoMin.setDate(hoje.getDate() - 20);
+      dataCriacaoMax = new Date(hoje);
+    } else if (diasAlvo === -30) {
+      dataCriacaoMin = new Date(hoje);
+      dataCriacaoMin.setDate(hoje.getDate() - 90);
+      dataCriacaoMax = new Date(hoje);
+      dataCriacaoMax.setDate(hoje.getDate() - 30);
+    } else if (diasAlvo === -60) {
+      dataCriacaoMin = new Date(hoje);
+      dataCriacaoMin.setDate(hoje.getDate() - 125);
+      dataCriacaoMax = new Date(hoje);
+      dataCriacaoMax.setDate(hoje.getDate() - 85);
+    }
+    
+    const filter = {
+      $or: [
+        { dataCriacaoIso: { $ne: null } },
+        { dataDaCriacao: { $ne: null } }
+      ],
+      orgaos: { $in: secretarias }
+    };
+    
+    if (dataCriacaoMin && dataCriacaoMax) {
+      const minStr = dataCriacaoMin.toISOString().slice(0, 10);
+      const maxStr = dataCriacaoMax.toISOString().slice(0, 10);
+      
+      filter.$and = [
+        {
+          $or: [
+            { dataCriacaoIso: { $gte: minStr, $lte: maxStr } },
+            { 
+              $and: [
+                { dataDaCriacao: { $ne: null } },
+                { 
+                  $or: [
+                    { dataDaCriacao: { $regex: dataCriacaoMin.getFullYear().toString() } },
+                    { dataDaCriacao: { $regex: dataCriacaoMax.getFullYear().toString() } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ];
+    }
+    
+    // Buscar protocolos para as secretarias selecionadas
+    const records = await Record.find(filter)
+      .select('_id protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos status statusDemanda data')
+      .lean();
+    
+    const resultados = {
+      enviados: 0,
+      erros: 0,
+      detalhes: []
+    };
+    
+    // Agrupar por secretaria
+    const porSecretaria = {};
+    
+    for (const record of records) {
+      if (isConcluido(record)) continue;
+      
+      const dataCriacao = getDataCriacao(record);
+      if (!dataCriacao) continue;
+      
+      const tipoManifest = record.tipoDeManifestacao || 
+                          (record.data && typeof record.data === 'object' ? record.data.tipo_de_manifestacao : null) ||
+                          '';
+      
+      const prazo = getPrazoPorTipo(tipoManifest);
+      const dataVencimento = calcularDataVencimento(dataCriacao, prazo);
+      if (!dataVencimento) continue;
+      
+      // Para tipos de vencimento negativo (30, 60, geral), mostrar todos vencidos há X+ dias
+      // Para outros tipos, verificar data exata
+      if (tipo === '30' || tipo === '60' || tipo === 'geral') {
+        // Verificar se está vencido há X+ dias (dataVencimento <= dataAlvo)
+        if (dataVencimento > dataAlvoStr) continue;
+      } else {
+        // Para 'hoje' e '15', verificar data exata
+        if (dataVencimento !== dataAlvoStr) continue;
+      }
+      
+      const protocolo = record.protocolo || 
+                        (record.data && typeof record.data === 'object' ? record.data.protocolo : null) ||
+                        'N/A';
+      
+      const secretaria = record.orgaos || 
+                        (record.data && typeof record.data === 'object' ? record.data.orgaos : null) ||
+                        'N/A';
+      
+      if (!secretarias.includes(secretaria)) continue;
+      
+      const assunto = record.assunto || 
+                     (record.data && typeof record.data === 'object' ? record.data.assunto : null) ||
+                     '';
+      
+      const diasRestantes = calcularDiasRestantes(dataVencimento, hoje);
+      
+      if (!porSecretaria[secretaria]) {
+        porSecretaria[secretaria] = [];
+      }
+      
+      porSecretaria[secretaria].push({
+        protocolo,
+        dataVencimento,
+        diasRestantes,
+        assunto,
+        tipoManifestacao: tipoManifest
+      });
+    }
+    
+    // OTIMIZAÇÃO: Cache de emails (buscar do banco de uma vez)
+    const SecretariaInfo = (await import('../../models/SecretariaInfo.model.js')).default;
+    const secretariasInfo = await SecretariaInfo.find({
+      name: { $in: secretarias }
+    })
+    .select('name email')
+    .lean();
+    
+    const emailsCache = new Map();
+    secretariasInfo.forEach(s => {
+      emailsCache.set(s.name, s.email);
+    });
+    
+    // Preencher com função para secretarias não encontradas
+    for (const secretaria of secretarias) {
+      if (!emailsCache.has(secretaria)) {
+        emailsCache.set(secretaria, getEmailSecretaria(secretaria));
+      }
+    }
+    
+    // Enviar emails (processamento paralelo limitado)
+    const BATCH_SIZE = 5; // Limitar a 5 emails por vez
+    const promises = [];
+    
+    for (const [secretaria, protocolos] of Object.entries(porSecretaria)) {
+      if (protocolos.length === 0) continue;
+      
+      promises.push(
+        (async () => {
+          const emailSecretaria = emailsCache.get(secretaria);
+          if (!emailSecretaria) {
+            resultados.erros++;
+            resultados.detalhes.push({
+              secretaria,
+              status: 'erro',
+              motivo: 'Email não encontrado'
+            });
+            return;
+          }
+          
+          try {
+            const template = await getTemplate({
+              secretaria,
+              protocolos: protocolos
+            });
+            
+            const { messageId } = await sendEmail(
+              emailSecretaria,
+              template.subject,
+              template.html,
+              template.text,
+              EMAIL_REMETENTE,
+              NOME_REMETENTE
+            );
+            
+            // OTIMIZAÇÃO: Batch insert de notificações
+            await NotificacaoEmail.insertMany(
+              protocolos.map(prot => ({
+                protocolo: prot.protocolo,
+                secretaria: secretaria,
+                emailSecretaria: emailSecretaria,
+                tipoNotificacao: tipoNotificacao,
+                dataVencimento: prot.dataVencimento,
+                diasRestantes: prot.diasRestantes,
+                messageId: messageId,
+                status: 'enviado',
+                enviadoEm: new Date()
+              }))
+            );
+            
+            resultados.enviados++;
+            resultados.detalhes.push({
+              secretaria,
+              email: emailSecretaria,
+              protocolos: protocolos.length,
+              status: 'enviado',
+              messageId
+            });
+          } catch (error) {
+            resultados.erros++;
+            resultados.detalhes.push({
+              secretaria,
+              email: emailSecretaria,
+              status: 'erro',
+              motivo: error.message
+            });
+            
+            // Batch insert de erros
+            await NotificacaoEmail.insertMany(
+              protocolos.map(prot => ({
+                protocolo: prot.protocolo,
+                secretaria: secretaria,
+                emailSecretaria: emailSecretaria,
+                tipoNotificacao: tipoNotificacao,
+                dataVencimento: prot.dataVencimento,
+                diasRestantes: prot.diasRestantes,
+                status: 'erro',
+                mensagemErro: error.message,
+                enviadoEm: new Date()
+              }))
+            );
+          }
+        })()
+      );
+    }
+    
+    // Executar em batches paralelos
+    for (let i = 0; i < promises.length; i += BATCH_SIZE) {
+      await Promise.all(promises.slice(i, i + BATCH_SIZE));
+    }
+    
+    return resultados;
+  });
+}
+

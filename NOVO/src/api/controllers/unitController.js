@@ -1,31 +1,35 @@
 /**
  * Controller para /api/unit/:unitName
  * Dados filtrados por unidade (UAC ou Responsável)
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { withCache } from '../../utils/responseHelper.js';
+import Record from '../../models/Record.model.js';
 
 /**
  * GET /api/unit/:unitName
  */
-export async function getUnit(req, res, prisma) {
+export async function getUnit(req, res) {
   const unitName = decodeURIComponent(req.params.unitName);
-  const key = `unit:${unitName}:v2`;
+  const key = `unit:${unitName}:v3`;
   
   return withCache(key, 3600, res, async () => {
     // Buscar registros que contenham o nome em qualquer um dos campos indexados
-    const allRecords = await prisma.record.findMany({
-      where: {
-        OR: [
-          { unidadeCadastro: { contains: unitName } },
-          { responsavel: { contains: unitName } },
-          { orgaos: { contains: unitName } },
-          { unidadeSaude: { contains: unitName } }
-        ]
-      },
-      select: { assunto: true, tipoDeManifestacao: true, unidadeCadastro: true, responsavel: true, orgaos: true, unidadeSaude: true },
-      take: 5000
-    });
+    const allRecords = await Record.find({
+      $or: [
+        { unidadeCadastro: { $regex: unitName, $options: 'i' } },
+        { responsavel: { $regex: unitName, $options: 'i' } },
+        { orgaos: { $regex: unitName, $options: 'i' } },
+        { unidadeSaude: { $regex: unitName, $options: 'i' } }
+      ]
+    })
+    .select('assunto tipoDeManifestacao unidadeCadastro responsavel orgaos unidadeSaude')
+    .limit(5000)
+    .lean();
     
     // Filtrar em memória para case-insensitive
     const searchLower = unitName.toLowerCase();
@@ -62,6 +66,6 @@ export async function getUnit(req, res, prisma) {
       .sort((a, b) => b.quantidade - a.quantidade);
     
     return { assuntos, tipos };
-  }, prisma);
+  });
 }
 

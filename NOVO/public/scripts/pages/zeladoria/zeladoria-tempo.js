@@ -142,7 +142,7 @@ async function renderTempoMesChart(timeSeries) {
   await window.chartFactory?.createLineChart('zeladoria-tempo-mes-chart', labels, tempoMedio, {
     colorIndex: 6,
     label: 'Tempo Médio (dias)',
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-tempo-mes-legend'
   });
 }

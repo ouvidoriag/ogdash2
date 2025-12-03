@@ -28,7 +28,7 @@ async function loadUAC(forceRefresh = false) {
       horizontal: true,
       colorIndex: 6,
       label: 'Manifestações',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: false // FILTROS DE CLIQUE DESABILITADOS
     });
     
     // Renderizar ranking

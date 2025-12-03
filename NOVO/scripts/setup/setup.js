@@ -54,14 +54,83 @@ console.log(`📁 Schema do Prisma: ${schemaPath}`);
 // 1. Gerar Prisma Client
 console.log('1️⃣ Gerando Prisma Client...');
 
+// Função para verificar se o Prisma Client já está gerado
+function isPrismaClientGenerated() {
+  const prismaClientPath = path.join(projectRoot, 'node_modules', '.prisma', 'client', 'index.js');
+  const queryEnginePath = path.join(projectRoot, 'node_modules', '.prisma', 'client');
+  
+  // Verificar se o index.js existe
+  if (!fs.existsSync(prismaClientPath)) {
+    return false;
+  }
+  
+  // Verificar se há algum query_engine (pode variar por plataforma)
+  try {
+    const files = fs.readdirSync(queryEnginePath);
+    const hasQueryEngine = files.some(file => 
+      file.includes('query_engine') || file.includes('libquery_engine')
+    );
+    return hasQueryEngine;
+  } catch {
+    return false;
+  }
+}
+
+// Função para tentar fechar processos Node.js no Windows (apenas se necessário)
+async function tryKillNodeProcesses() {
+  if (os.platform() !== 'win32') {
+    return false;
+  }
+  
+  try {
+    // Verificar se há processos Node.js rodando (exceto o atual)
+    const result = await execAsync('tasklist /FI "IMAGENAME eq node.exe" /FO CSV');
+    const lines = result.stdout.split('\n').filter(line => line.trim());
+    const nodeProcesses = lines.length - 1; // -1 porque a primeira linha é o cabeçalho
+    
+    if (nodeProcesses > 1) { // Mais de 1 porque o processo atual conta
+      console.log('   Fechando outros processos Node.js...');
+      try {
+        execSync('taskkill /F /IM node.exe /FI "PID ne %PID%"', { 
+          stdio: 'ignore',
+          shell: true 
+        });
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2s
+        return true;
+      } catch {
+        // Ignorar erro se não conseguir fechar
+        return false;
+      }
+    }
+  } catch {
+    // Ignorar erro
+  }
+  
+  return false;
+}
+
 // Função para tentar gerar o Prisma Client com retry
-async function generatePrismaClient(maxRetries = 3, delay = 2000) {
+async function generatePrismaClient(maxRetries = 3, delay = 3000) {
+  // Verificar se já está gerado
+  if (isPrismaClientGenerated()) {
+    console.log('✅ Prisma Client já está gerado. Pulando geração...');
+    return true;
+  }
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 1) {
         console.log(`   Tentativa ${attempt}/${maxRetries}...`);
-        // Aguardar um pouco antes de tentar novamente
-        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Na segunda tentativa, tentar fechar processos Node.js no Windows
+        if (attempt === 2 && os.platform() === 'win32') {
+          await tryKillNodeProcesses();
+        }
+        
+        // Aguardar um pouco mais antes de tentar novamente
+        const waitTime = delay * attempt; // Aumentar o tempo a cada tentativa
+        console.log(`   Aguardando ${waitTime/1000}s antes de tentar novamente...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       }
       
       // Usar --schema para garantir que encontre o schema
@@ -82,9 +151,15 @@ async function generatePrismaClient(maxRetries = 3, delay = 2000) {
       // Se for erro de permissão (EPERM), tentar novamente
       if (errorMsg.includes('EPERM') || errorMsg.includes('operation not permitted')) {
         if (attempt < maxRetries) {
-          console.warn(`⚠️ Erro de permissão detectado. Tentando novamente em ${delay/1000}s...`);
+          console.warn(`⚠️ Erro de permissão detectado (EPERM).`);
           continue;
         } else {
+          // Verificar se foi gerado mesmo com erro
+          if (isPrismaClientGenerated()) {
+            console.log('✅ Prisma Client foi gerado apesar do erro!');
+            return true;
+          }
+          
           console.error('❌ Erro ao gerar Prisma Client após múltiplas tentativas:');
           console.error('   Este erro geralmente ocorre quando:');
           console.error('   1. Outro processo Node.js está usando o arquivo');
@@ -92,10 +167,11 @@ async function generatePrismaClient(maxRetries = 3, delay = 2000) {
           console.error('   3. Permissões insuficientes');
           console.error('');
           console.error('💡 Soluções:');
-          console.error('   1. Feche todos os processos Node.js (taskkill /F /IM node.exe)');
-          console.error('   2. Execute o terminal como Administrador');
-          console.error('   3. Adicione a pasta node_modules ao antivírus como exceção');
-          console.error('   4. Tente executar manualmente: npx prisma generate');
+          console.error('   1. Execute: npm run fix:prisma (fecha processos e regenera)');
+          console.error('   2. Feche todos os processos Node.js manualmente');
+          console.error('   3. Execute o terminal como Administrador');
+          console.error('   4. Adicione a pasta node_modules ao antivírus como exceção');
+          console.error('   5. Tente executar manualmente: cd NOVO && npx prisma generate');
           console.error('');
           console.error('⚠️ Continuando mesmo com erro (o Prisma pode já estar gerado)...');
           return false; // Não encerrar o processo, apenas avisar
@@ -106,6 +182,11 @@ async function generatePrismaClient(maxRetries = 3, delay = 2000) {
         if (attempt < maxRetries) {
           continue;
         } else {
+          // Verificar se foi gerado mesmo com erro
+          if (isPrismaClientGenerated()) {
+            console.log('✅ Prisma Client foi gerado apesar do erro!');
+            return true;
+          }
           console.error('⚠️ Continuando mesmo com erro...');
           return false;
         }

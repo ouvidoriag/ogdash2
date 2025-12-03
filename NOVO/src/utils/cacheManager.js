@@ -1,6 +1,6 @@
 /**
  * Sistema de Cache Universal Persistente
- * Copiado do sistema antigo e otimizado
+ * Gerencia cache em arquivo para persistência entre reinicializações
  */
 
 import fs from 'fs';

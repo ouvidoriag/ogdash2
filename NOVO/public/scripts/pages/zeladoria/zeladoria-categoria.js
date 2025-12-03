@@ -81,7 +81,7 @@ async function loadZeladoriaCategoria() {
       horizontal: true,
       colorIndex: 1,
       field: 'categoria',
-      onClick: true,
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       legendContainer: 'zeladoria-categoria-legend'
     });
     
@@ -195,7 +195,7 @@ async function renderCategoriaMesChart(dataMes, topCategorias) {
   
   await window.chartFactory?.createBarChart('zeladoria-categoria-mes-chart', labels, datasets, {
     colorIndex: 0,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-categoria-mes-legend'
   });
 }
@@ -245,7 +245,7 @@ async function renderCategoriaDepartamentoChart(data) {
   
   await window.chartFactory?.createBarChart('zeladoria-categoria-dept-chart', departamentos, datasets, {
     colorIndex: 2,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-categoria-dept-legend'
   });
 }

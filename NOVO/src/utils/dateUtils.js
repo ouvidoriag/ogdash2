@@ -215,6 +215,13 @@ export function getTempoResolucaoEmDias(record, incluirZero = true) {
  * @param {string[]|null} meses - Array de meses no formato YYYY-MM
  * @returns {Object} - Objeto where atualizado
  */
+/**
+ * Filtra registros por mês(es) usando dataDaCriacao
+ * @param {Object} where - Objeto where do Prisma (DEPRECATED - usar addMesFilterMongo)
+ * @param {string[]|null} meses - Array de meses no formato YYYY-MM
+ * @returns {Object} - Objeto where atualizado
+ * @deprecated Use addMesFilterMongo para MongoDB
+ */
 export function addMesFilter(where, meses) {
   if (meses && meses.length > 0) {
     const monthFilters = meses.map(month => {
@@ -239,5 +246,40 @@ export function addMesFilter(where, meses) {
     }
   }
   return where;
+}
+
+/**
+ * Adiciona filtro de mês(es) para MongoDB
+ * @param {Object} filter - Objeto filter do MongoDB
+ * @param {string[]|null} meses - Array de meses no formato YYYY-MM ou MM/YYYY
+ * @returns {Object} - Objeto filter atualizado com $or para meses
+ */
+export function addMesFilterMongo(filter, meses) {
+  if (meses && meses.length > 0) {
+    const monthFilters = meses.map(month => {
+      // Se já está em formato YYYY-MM, usar diretamente
+      if (/^\d{4}-\d{2}$/.test(month)) return month;
+      // Se está em formato MM/YYYY, converter
+      const match = month.match(/^(\d{2})\/(\d{4})$/);
+      if (match) return `${match[2]}-${match[1]}`;
+      return month;
+    });
+    
+    // Criar filtro OR para qualquer um dos meses usando regex
+    const monthOrFilters = monthFilters.map(month => ({
+      dataDaCriacao: { $regex: `^${month}`, $options: 'i' }
+    }));
+    
+    // Se já existe $or, combinar com AND
+    if (filter.$or) {
+      filter.$and = [
+        ...(filter.$and || []),
+        { $or: monthOrFilters }
+      ];
+    } else {
+      filter.$or = monthOrFilters;
+    }
+  }
+  return filter;
 }
 

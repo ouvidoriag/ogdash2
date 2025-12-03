@@ -147,6 +147,7 @@ function getPageLoader(page) {
     'orgao-mes': 'loadOrgaoMes',
     'tempo-medio': 'loadTempoMedio',
     'vencimento': 'loadVencimento',
+    'notificacoes': 'loadNotificacoes',
     'filtros-avancados': 'loadFiltrosAvancados',
     'tema': 'loadTema',
     'assunto': 'loadAssunto',
@@ -204,6 +205,17 @@ function getPageLoader(page) {
 
 async function loadSection(page) {
   if (!page) return;
+  
+  // FILTROS LOCAIS POR PÁGINA: Limpar filtros ao trocar de página
+  if (window.chartCommunication && window.chartCommunication.filters) {
+    const currentFilters = window.chartCommunication.filters.filters || [];
+    if (currentFilters.length > 0) {
+      if (window.Logger) {
+        window.Logger.debug(`🔄 Limpando ${currentFilters.length} filtro(s) ao trocar para página: ${page}`);
+      }
+      window.chartCommunication.clearFilters();
+    }
+  }
   
   const loader = getPageLoader(page);
   

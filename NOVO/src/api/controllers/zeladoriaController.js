@@ -1,54 +1,56 @@
 /**
  * Controllers de Zeladoria
  * /api/zeladoria/*
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { withCache } from '../../utils/responseHelper.js';
+import Zeladoria from '../../models/Zeladoria.model.js';
 
 /**
  * GET /api/zeladoria/summary
  * Resumo geral de dados de Zeladoria
  */
-export async function summary(req, res, prisma) {
-  const cacheKey = 'zeladoria:summary:v1';
+export async function summary(req, res) {
+  const cacheKey = 'zeladoria:summary:v2';
   return withCache(cacheKey, 3600, res, async () => {
-    const total = await prisma.zeladoria.count();
+    const total = await Zeladoria.countDocuments();
     
-    const statusCount = await prisma.zeladoria.groupBy({
-      by: ['status'],
-      _count: true
-    });
-    
-    const categoriaCount = await prisma.zeladoria.groupBy({
-      by: ['categoria'],
-      _count: true
-    });
-    
-    const departamentoCount = await prisma.zeladoria.groupBy({
-      by: ['departamento'],
-      _count: true
-    });
+    const [statusCount, categoriaCount, departamentoCount] = await Promise.all([
+      Zeladoria.aggregate([
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      Zeladoria.aggregate([
+        { $group: { _id: '$categoria', count: { $sum: 1 } } }
+      ]),
+      Zeladoria.aggregate([
+        { $group: { _id: '$departamento', count: { $sum: 1 } } }
+      ])
+    ]);
     
     return {
       total,
-      porStatus: statusCount.map(s => ({ key: s.status || 'Não informado', count: s._count })),
-      porCategoria: categoriaCount.map(c => ({ key: c.categoria || 'Não informado', count: c._count })),
-      porDepartamento: departamentoCount.map(d => ({ key: d.departamento || 'Não informado', count: d._count }))
+      porStatus: statusCount.map(s => ({ key: s._id || 'Não informado', count: s.count })),
+      porCategoria: categoriaCount.map(c => ({ key: c._id || 'Não informado', count: c.count })),
+      porDepartamento: departamentoCount.map(d => ({ key: d._id || 'Não informado', count: d.count }))
     };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/count-by
  * Contagem por campo
  */
-export async function countBy(req, res, prisma) {
+export async function countBy(req, res) {
   const field = String(req.query.field ?? '').trim();
   if (!field) {
     return res.status(400).json({ error: 'field required' });
   }
   
-  const cacheKey = `zeladoria:countBy:${field}:v1`;
+  const cacheKey = `zeladoria:countBy:${field}:v2`;
   return withCache(cacheKey, 3600, res, async () => {
     // Mapear campo para coluna normalizada
     const fieldMap = {
@@ -64,19 +66,19 @@ export async function countBy(req, res, prisma) {
     const col = fieldMap[field.toLowerCase()] || field.toLowerCase();
     
     try {
-      const rows = await prisma.zeladoria.groupBy({
-        by: [col],
-        _count: true
-      });
+      const rows = await Zeladoria.aggregate([
+        { $group: { _id: `$${col}`, count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]);
       
       return rows
-        .map(r => ({ key: r[col] || 'Não informado', count: r._count }))
+        .map(r => ({ key: r._id || 'Não informado', count: r.count }))
         .sort((a, b) => b.count - a.count);
     } catch (error) {
       // Fallback: agrega pelo JSON
-      const rows = await prisma.zeladoria.findMany({
-        select: { data: true }
-      });
+      const rows = await Zeladoria.find({})
+        .select('data')
+        .lean();
       
       const map = new Map();
       for (const r of rows) {
@@ -90,24 +92,21 @@ export async function countBy(req, res, prisma) {
         .map(([key, count]) => ({ key, count }))
         .sort((a, b) => b.count - a.count);
     }
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/by-month
  * Agregação por mês
  */
-export async function byMonth(req, res, prisma) {
-  const cacheKey = 'zeladoria:byMonth:v1';
+export async function byMonth(req, res) {
+  const cacheKey = 'zeladoria:byMonth:v2';
   return withCache(cacheKey, 3600, res, async () => {
-    const rows = await prisma.zeladoria.findMany({
-      where: {
-        dataCriacaoIso: { not: null }
-      },
-      select: {
-        dataCriacaoIso: true
-      }
-    });
+    const rows = await Zeladoria.find({
+      dataCriacaoIso: { $ne: null }
+    })
+    .select('dataCriacaoIso')
+    .lean();
     
     const map = new Map();
     for (const r of rows) {
@@ -120,32 +119,29 @@ export async function byMonth(req, res, prisma) {
     return Array.from(map.entries())
       .map(([month, count]) => ({ month, count }))
       .sort((a, b) => a.month.localeCompare(b.month));
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/time-series
  * Série temporal
  */
-export async function timeSeries(req, res, prisma) {
+export async function timeSeries(req, res) {
   const startDate = req.query.startDate;
   const endDate = req.query.endDate;
   
-  const cacheKey = `zeladoria:timeSeries:${startDate || 'all'}:${endDate || 'all'}:v1`;
+  const cacheKey = `zeladoria:timeSeries:${startDate || 'all'}:${endDate || 'all'}:v2`;
   return withCache(cacheKey, 3600, res, async () => {
-    const where = {
-      dataCriacaoIso: { not: null }
+    const filter = {
+      dataCriacaoIso: { $ne: null }
     };
     
-    if (startDate) where.dataCriacaoIso = { ...where.dataCriacaoIso, gte: startDate };
-    if (endDate) where.dataCriacaoIso = { ...where.dataCriacaoIso, lte: endDate };
+    if (startDate) filter.dataCriacaoIso.$gte = startDate;
+    if (endDate) filter.dataCriacaoIso.$lte = endDate;
     
-    const rows = await prisma.zeladoria.findMany({
-      where,
-      select: {
-        dataCriacaoIso: true
-      }
-    });
+    const rows = await Zeladoria.find(filter)
+      .select('dataCriacaoIso')
+      .lean();
     
     const map = new Map();
     for (const r of rows) {
@@ -157,14 +153,14 @@ export async function timeSeries(req, res, prisma) {
     return Array.from(map.entries())
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/records
  * Lista de registros com paginação
  */
-export async function records(req, res, prisma) {
+export async function records(req, res) {
   const page = parseInt(req.query.page || '1', 10);
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 100);
   const skip = (page - 1) * limit;
@@ -173,21 +169,20 @@ export async function records(req, res, prisma) {
   const categoria = req.query.categoria;
   const departamento = req.query.departamento;
   
-  const where = {};
-  if (status) where.status = status;
-  if (categoria) where.categoria = categoria;
-  if (departamento) where.departamento = departamento;
+  const filter = {};
+  if (status) filter.status = status;
+  if (categoria) filter.categoria = categoria;
+  if (departamento) filter.departamento = departamento;
   
-  const cacheKey = `zeladoria:records:${JSON.stringify(where)}:${page}:${limit}:v1`;
+  const cacheKey = `zeladoria:records:${JSON.stringify(filter)}:${page}:${limit}:v2`;
   return withCache(cacheKey, 300, res, async () => {
     const [data, total] = await Promise.all([
-      prisma.zeladoria.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.zeladoria.count({ where })
+      Zeladoria.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Zeladoria.countDocuments(filter)
     ]);
     
     return {
@@ -199,33 +194,31 @@ export async function records(req, res, prisma) {
         totalPages: Math.ceil(total / limit)
       }
     };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/stats
  * Estatísticas gerais
  */
-export async function stats(req, res, prisma) {
-  const cacheKey = 'zeladoria:stats:v1';
+export async function stats(req, res) {
+  const cacheKey = 'zeladoria:stats:v2';
   return withCache(cacheKey, 3600, res, async () => {
-    const total = await prisma.zeladoria.count();
-    const fechados = await prisma.zeladoria.count({ where: { status: 'FECHADO' } });
-    const abertos = await prisma.zeladoria.count({ where: { status: { in: ['ABERTO', 'NOVO', 'ATENDIMENTO'] } } });
-    const comApoios = await prisma.zeladoria.count({ where: { apoios: { gt: 0 } } });
+    const [total, fechados, abertos, comApoios] = await Promise.all([
+      Zeladoria.countDocuments(),
+      Zeladoria.countDocuments({ status: 'FECHADO' }),
+      Zeladoria.countDocuments({ status: { $in: ['ABERTO', 'NOVO', 'ATENDIMENTO'] } }),
+      Zeladoria.countDocuments({ apoios: { $gt: 0 } })
+    ]);
     
     // Tempo médio de resolução (apenas fechados com datas)
-    const fechadosComDatas = await prisma.zeladoria.findMany({
-      where: {
-        status: 'FECHADO',
-        dataCriacaoIso: { not: null },
-        dataConclusaoIso: { not: null }
-      },
-      select: {
-        dataCriacaoIso: true,
-        dataConclusaoIso: true
-      }
-    });
+    const fechadosComDatas = await Zeladoria.find({
+      status: 'FECHADO',
+      dataCriacaoIso: { $ne: null },
+      dataConclusaoIso: { $ne: null }
+    })
+    .select('dataCriacaoIso dataConclusaoIso')
+    .lean();
     
     let tempoMedio = 0;
     if (fechadosComDatas.length > 0) {
@@ -248,25 +241,21 @@ export async function stats(req, res, prisma) {
       tempoMedioResolucao: tempoMedio,
       taxaResolucao: total > 0 ? Math.round((fechados / total) * 100) : 0
     };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/by-status-month
  * Status por mês
  */
-export async function byStatusMonth(req, res, prisma) {
-  const cacheKey = 'zeladoria:byStatusMonth:v1';
+export async function byStatusMonth(req, res) {
+  const cacheKey = 'zeladoria:byStatusMonth:v2';
   return withCache(cacheKey, 3600, res, async () => {
-    const rows = await prisma.zeladoria.findMany({
-      where: {
-        dataCriacaoIso: { not: null }
-      },
-      select: {
-        status: true,
-        dataCriacaoIso: true
-      }
-    });
+    const rows = await Zeladoria.find({
+      dataCriacaoIso: { $ne: null }
+    })
+    .select('status dataCriacaoIso')
+    .lean();
     
     const map = new Map();
     for (const r of rows) {
@@ -285,55 +274,47 @@ export async function byStatusMonth(req, res, prisma) {
     }
     
     return result;
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/by-categoria-departamento
  * Categoria por Departamento
  */
-export async function byCategoriaDepartamento(req, res, prisma) {
-  const cacheKey = 'zeladoria:byCategoriaDepartamento:v1';
+export async function byCategoriaDepartamento(req, res) {
+  const cacheKey = 'zeladoria:byCategoriaDepartamento:v2';
   return withCache(cacheKey, 3600, res, async () => {
-    const rows = await prisma.zeladoria.groupBy({
-      by: ['categoria', 'departamento'],
-      _count: true
-    });
+    const rows = await Zeladoria.aggregate([
+      { $group: { _id: { categoria: '$categoria', departamento: '$departamento' }, count: { $sum: 1 } } }
+    ]);
     
     const result = {};
     for (const r of rows) {
-      const categoria = r.categoria || 'Não informado';
-      const departamento = r.departamento || 'Não informado';
+      const categoria = r._id.categoria || 'Não informado';
+      const departamento = r._id.departamento || 'Não informado';
       
       if (!result[categoria]) result[categoria] = {};
-      result[categoria][departamento] = r._count;
+      result[categoria][departamento] = r.count;
     }
     
     return result;
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/zeladoria/geographic
  * Dados geográficos (bairros com coordenadas)
  */
-export async function geographic(req, res, prisma) {
-  const cacheKey = 'zeladoria:geographic:v1';
+export async function geographic(req, res) {
+  const cacheKey = 'zeladoria:geographic:v2';
   return withCache(cacheKey, 3600, res, async () => {
-    const rows = await prisma.zeladoria.findMany({
-      where: {
-        latitude: { not: null },
-        longitude: { not: null },
-        bairro: { not: null }
-      },
-      select: {
-        bairro: true,
-        latitude: true,
-        longitude: true,
-        categoria: true,
-        status: true
-      }
-    });
+    const rows = await Zeladoria.find({
+      latitude: { $ne: null },
+      longitude: { $ne: null },
+      bairro: { $ne: null }
+    })
+    .select('bairro latitude longitude categoria status')
+    .lean();
     
     // Agrupar por bairro
     const map = new Map();
@@ -357,6 +338,6 @@ export async function geographic(req, res, prisma) {
     }
     
     return Array.from(map.values());
-  }, prisma);
+  });
 }
 

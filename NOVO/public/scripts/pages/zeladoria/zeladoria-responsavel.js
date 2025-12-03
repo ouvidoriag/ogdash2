@@ -67,7 +67,7 @@ async function loadZeladoriaResponsavel() {
       horizontal: true,
       colorIndex: 4,
       field: 'responsavel',
-      onClick: true,
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       legendContainer: 'zeladoria-responsavel-legend'
     });
     
@@ -131,7 +131,7 @@ async function renderResponsavelMesChart(dataMes, topResponsaveis) {
   
   await window.chartFactory?.createBarChart('zeladoria-responsavel-mes-chart', labels, datasets, {
     colorIndex: 0,
-    onClick: true, // Habilitar comunicação e filtros globais
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-responsavel-mes-legend'
   });
 }

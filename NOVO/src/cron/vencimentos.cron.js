@@ -10,14 +10,18 @@ import cron from 'node-cron';
 import { getDataCriacao, isConcluido } from '../utils/dateUtils.js';
 import { sendEmail } from '../services/email-notifications/gmailService.js';
 import { 
-  getEmailSecretaria, 
+  getEmailsSecretariaFromDB, 
   EMAIL_REMETENTE, 
   NOME_REMETENTE,
   getTemplate15Dias,
   getTemplateVencimento,
   getTemplate60Dias
 } from '../services/email-notifications/emailConfig.js';
+import NotificacaoEmail from '../models/NotificacaoEmail.model.js';
+import Record from '../models/Record.model.js';
 
+// REFATORAÇÃO: Prisma removido - sistema migrado para Mongoose
+// Variável mantida apenas para compatibilidade de assinaturas
 let prisma = null;
 
 /**
@@ -67,15 +71,16 @@ function calcularDiasRestantes(dataVencimento, hoje) {
 
 /**
  * Verificar se já foi notificado
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 async function jaFoiNotificado(protocolo, tipoNotificacao) {
-  const notificacao = await prisma.notificacaoEmail.findFirst({
-    where: {
-      protocolo: protocolo,
-      tipoNotificacao: tipoNotificacao,
-      status: 'enviado'
-    }
-  });
+  const notificacao = await NotificacaoEmail.findOne({
+    protocolo: protocolo,
+    tipoNotificacao: tipoNotificacao,
+    status: 'enviado'
+  }).lean();
   
   return !!notificacao;
 }
@@ -97,18 +102,17 @@ async function registrarNotificacao(dados) {
   } = dados;
   
   try {
-    await prisma.notificacaoEmail.create({
-      data: {
-        protocolo,
-        secretaria,
-        emailSecretaria,
-        tipoNotificacao,
-        dataVencimento,
-        diasRestantes,
-        messageId,
-        status,
-        mensagemErro
-      }
+    // REFATORAÇÃO: Prisma → Mongoose
+    await NotificacaoEmail.create({
+      protocolo,
+      secretaria,
+      emailSecretaria,
+      tipoNotificacao,
+      dataVencimento,
+      diasRestantes,
+      messageId,
+      status,
+      mensagemErro
     });
   } catch (error) {
     console.error('❌ Erro ao registrar notificação:', error);
@@ -134,27 +138,15 @@ async function processarVencimentos(diasAlvo, tipoNotificacao, getTemplate) {
   console.log(`📧 Verificando vencimentos para ${tipoNotificacao} (data alvo: ${dataAlvoStr})...`);
   
   // Buscar todas as demandas não concluídas
-  const records = await prisma.record.findMany({
-    where: {
-      OR: [
-        { dataCriacaoIso: { not: null } },
-        { dataDaCriacao: { not: null } }
-      ]
-    },
-    select: {
-      id: true,
-      protocolo: true,
-      dataCriacaoIso: true,
-      dataDaCriacao: true,
-      tipoDeManifestacao: true,
-      tema: true,
-      assunto: true,
-      orgaos: true,
-      status: true,
-      statusDemanda: true,
-      data: true
-    }
-  });
+  // REFATORAÇÃO: Prisma → Mongoose
+  const records = await Record.find({
+    $or: [
+      { dataCriacaoIso: { $ne: null, $exists: true } },
+      { dataDaCriacao: { $ne: null, $exists: true } }
+    ]
+  })
+  .select('protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos status statusDemanda data')
+  .lean();
   
   // Coletar protocolos por secretaria
   const porSecretaria = {};
@@ -175,7 +167,15 @@ async function processarVencimentos(diasAlvo, tipoNotificacao, getTemplate) {
     if (!dataVencimento) continue;
     
     // Verificar se corresponde à data alvo
-    if (dataVencimento !== dataAlvoStr) continue;
+    // Para 60+ dias vencido (diasAlvo < 0), mostrar todos vencidos há 60+ dias
+    // Para outros tipos, verificar data exata
+    if (diasAlvo < 0) {
+      // Verificar se está vencido há 60+ dias (dataVencimento <= dataAlvo)
+      if (dataVencimento > dataAlvoStr) continue;
+    } else {
+      // Para 'hoje' e '15', verificar data exata
+      if (dataVencimento !== dataAlvoStr) continue;
+    }
     
     const protocolo = record.protocolo || 
                       (record.data && typeof record.data === 'object' ? record.data.protocolo : null) ||
@@ -217,8 +217,9 @@ async function processarVencimentos(diasAlvo, tipoNotificacao, getTemplate) {
   // Enviar um email por secretaria com todos os protocolos
   for (const [secretaria, protocolos] of Object.entries(porSecretaria)) {
     try {
-      // Obter email da secretaria
-      const emailSecretaria = getEmailSecretaria(secretaria);
+      // Obter TODOS os emails da secretaria
+      // REFATORAÇÃO: Prisma → Mongoose (prisma não é mais usado)
+      const emailsSecretaria = await getEmailsSecretariaFromDB(secretaria, null);
       
       // Obter template com todos os protocolos
       const template = await getTemplate({
@@ -226,31 +227,48 @@ async function processarVencimentos(diasAlvo, tipoNotificacao, getTemplate) {
         protocolos: protocolos
       }, prisma);
       
-      // Enviar email usando o serviço Gmail
-      const { messageId } = await sendEmail(
-        emailSecretaria,
-        template.subject,
-        template.html,
-        template.text,
-        EMAIL_REMETENTE,
-        NOME_REMETENTE
-      );
-      
-      // Registrar cada protocolo
-      for (const protocoloData of protocolos) {
-        await registrarNotificacao({
-          protocolo: protocoloData.protocolo,
-          secretaria: protocoloData.secretaria,
-          emailSecretaria,
-          tipoNotificacao,
-          dataVencimento: protocoloData.dataVencimento,
-          diasRestantes: protocoloData.diasRestantes,
-          messageId
-        });
+      // Enviar para TODOS os emails da secretaria
+      let primeiroMessageId = null;
+      for (const emailSecretaria of emailsSecretaria) {
+        try {
+          // Enviar email usando o serviço Gmail
+          const { messageId } = await sendEmail(
+            emailSecretaria,
+            template.subject,
+            template.html,
+            template.text,
+            EMAIL_REMETENTE,
+            NOME_REMETENTE
+          );
+          
+          if (!primeiroMessageId) {
+            primeiroMessageId = messageId;
+          }
+          
+          console.log(`✅ Email enviado para ${secretaria} → ${emailSecretaria}`);
+        } catch (errorEmail) {
+          console.error(`❌ Erro ao enviar para ${emailSecretaria}:`, errorEmail.message);
+        }
       }
       
-      enviados += protocolos.length;
-      console.log(`✅ Email enviado para ${secretaria}: ${protocolos.length} protocolos (${tipoNotificacao})`);
+      // Registrar cada protocolo (apenas uma vez, não por email)
+      if (primeiroMessageId) {
+        for (const protocoloData of protocolos) {
+          await registrarNotificacao({
+            protocolo: protocoloData.protocolo,
+            secretaria: protocoloData.secretaria,
+            emailSecretaria: emailsSecretaria.join(', '), // Salvar todos os emails
+            tipoNotificacao,
+            dataVencimento: protocoloData.dataVencimento,
+            diasRestantes: protocoloData.diasRestantes,
+            messageId: primeiroMessageId
+          });
+        }
+        enviados += protocolos.length;
+        console.log(`✅ ${protocolos.length} protocolos enviados para ${secretaria} (${emailsSecretaria.length} email(s))`);
+      } else {
+        erros += protocolos.length;
+      }
       
     } catch (error) {
       erros += protocolos.length;
@@ -337,12 +355,8 @@ async function executarVerificacaoVencimentos() {
  * Executa diariamente às 08:00
  */
 export function iniciarCronVencimentos(prismaClient) {
-  if (!prismaClient) {
-    console.error('❌ Prisma Client não fornecido');
-    return;
-  }
-  
-  prisma = prismaClient;
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não é mais necessário)
+  // Mantido para compatibilidade, mas não usado
   
   // Executar diariamente às 16:00
   // Formato: segundo minuto hora dia mês dia-da-semana
@@ -361,11 +375,8 @@ export function iniciarCronVencimentos(prismaClient) {
  * Executar verificação manualmente (para testes)
  */
 export async function executarVerificacaoManual(prismaClient) {
-  if (!prismaClient) {
-    throw new Error('Prisma Client não fornecido');
-  }
-  
-  prisma = prismaClient;
+  // REFATORAÇÃO: Prisma → Mongoose (prisma não é mais necessário)
+  // Mantido para compatibilidade, mas não usado
   return await executarVerificacaoVencimentos();
 }
 

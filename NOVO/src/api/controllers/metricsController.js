@@ -120,13 +120,14 @@ function calculatePercentiles(durations, percentiles = [50, 75, 90, 95, 99]) {
  * GET /api/metrics
  * Retornar métricas do sistema
  */
-export async function getMetrics(req, res, prisma) {
+export async function getMetrics(req, res) {
   try {
     const uptime = Date.now() - runtimeMetrics.startTime;
     const uptimeHours = (uptime / (1000 * 60 * 60)).toFixed(2);
     
     // Estatísticas de cache
-    const cacheStats = await getCacheStats(prisma);
+    // REFATORAÇÃO: Prisma → Mongoose (getCacheStats não precisa mais de prisma)
+    const cacheStats = await getCacheStats();
     const cacheHitRate = runtimeMetrics.cacheHits + runtimeMetrics.cacheMisses > 0
       ? ((runtimeMetrics.cacheHits / (runtimeMetrics.cacheHits + runtimeMetrics.cacheMisses)) * 100).toFixed(2)
       : 0;

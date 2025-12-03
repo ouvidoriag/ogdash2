@@ -1,22 +1,27 @@
 /**
  * Configuração e inicialização do sistema de cache
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import cacheManager from '../utils/cacheManager.js';
 import { buildUniversalCache, scheduleDailyUpdate } from '../utils/cacheBuilder.js';
+import { logger } from '../utils/logger.js';
 
-export async function initializeCache(prisma) {
+export async function initializeCache() {
   try {
     // Carregar cache persistente
     cacheManager.loadCache();
     
     // Inicializar cache universal e agendar atualizações diárias
-    scheduleDailyUpdate(prisma);
+    scheduleDailyUpdate();
     
-    console.log('✅ Sistema de cache universal inicializado');
+    logger.info('Sistema de cache universal inicializado');
     return true;
   } catch (error) {
-    console.warn('⚠️ Erro ao inicializar cache universal:', error.message);
+    logger.warn('Erro ao inicializar cache universal:', { error: error.message });
     return false;
   }
 }

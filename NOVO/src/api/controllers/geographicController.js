@@ -1,14 +1,20 @@
 /**
  * Controllers Geográficos
  * Secretarias, Distritos, Bairros, Unidades de Saúde, Saúde
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { safeQuery } from '../../utils/responseHelper.js';
 import { withCache } from '../../utils/responseHelper.js';
 import { detectDistrictByAddress, mapAddressesToDistricts, getMappingStats } from '../../utils/districtMapper.js';
+import logger from '../../utils/logger.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import Record from '../../models/Record.model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,15 +38,16 @@ function loadSecretariasDistritos() {
       path.join(__dirname, '../../../../NOVO/data', 'secretarias-distritos.json') // Fallback
     ];
     
-    console.log('🔍 loadSecretariasDistritos: Procurando arquivo...');
-    console.log(`   projectRoot: ${projectRoot}`);
-    console.log(`   __dirname: ${__dirname}`);
-    console.log(`   process.cwd(): ${process.cwd()}`);
+    logger.debug('Procurando secretarias-distritos.json', {
+      projectRoot,
+      __dirname,
+      cwd: process.cwd()
+    });
     
     let dataPath = null;
     for (const possiblePath of possiblePaths) {
       const exists = fs.existsSync(possiblePath);
-      console.log(`   ${exists ? '✅' : '❌'} ${possiblePath}`);
+      logger.debug(`Testando caminho: ${possiblePath}`, { exists });
       if (exists) {
         dataPath = possiblePath;
         break;
@@ -48,43 +55,42 @@ function loadSecretariasDistritos() {
     }
     
     if (!dataPath) {
-      console.error('❌ Arquivo secretarias-distritos.json não encontrado em nenhum dos caminhos!');
-      console.error('   Caminhos tentados:', possiblePaths);
+      logger.error('Arquivo secretarias-distritos.json não encontrado', {
+        caminhosTestados: possiblePaths.length
+      });
       return { secretarias: [], distritos: {}, estatisticas: {} };
     }
     
-    console.log(`📂 Arquivo encontrado: ${dataPath}`);
+    logger.info('Arquivo secretarias-distritos.json encontrado', { path: dataPath });
     const fileContent = fs.readFileSync(dataPath, 'utf8');
     const data = JSON.parse(fileContent);
     
     // Validar estrutura
     if (!data || typeof data !== 'object') {
-      console.error('❌ Dados inválidos: não é um objeto');
+      logger.error('Dados de secretarias-distritos inválidos', { tipo: typeof data });
       return { secretarias: [], distritos: {}, estatisticas: {} };
     }
     
     const distritosCount = data.distritos && typeof data.distritos === 'object' ? Object.keys(data.distritos).length : 0;
     const secretariasCount = Array.isArray(data.secretarias) ? data.secretarias.length : 0;
     
-    console.log(`✅ Dados carregados de: ${dataPath}`);
-    console.log(`   - Distritos: ${distritosCount}`);
-    console.log(`   - Secretarias: ${secretariasCount}`);
-    console.log(`   - Estatísticas: ${data.estatisticas ? 'Sim' : 'Não'}`);
+    logger.info('Dados de secretarias-distritos carregados', {
+      distritos: distritosCount,
+      secretarias: secretariasCount,
+      temEstatisticas: !!data.estatisticas
+    });
     
     if (distritosCount === 0) {
-      console.error('⚠️ AVISO: Nenhum distrito encontrado nos dados!');
-      console.error('   Estrutura do objeto:', Object.keys(data));
-      if (data.distritos) {
-        console.error('   Tipo de distritos:', typeof data.distritos);
-        console.error('   É array?', Array.isArray(data.distritos));
-      }
+      logger.warn('Nenhum distrito encontrado nos dados', {
+        estrutura: Object.keys(data),
+        tipoDistritos: typeof data.distritos,
+        isArray: Array.isArray(data.distritos)
+      });
     }
     
     return data;
   } catch (error) {
-    console.error('❌ Erro ao carregar secretarias-distritos.json:', error);
-    console.error('   Mensagem:', error.message);
-    console.error('   Stack:', error.stack);
+    logger.errorWithContext('Erro ao carregar secretarias-distritos.json', error);
     return { secretarias: [], distritos: {}, estatisticas: {} };
   }
 }
@@ -111,7 +117,9 @@ function loadUnidadesSaude() {
     }
     
     if (!dataPath) {
-      console.error('❌ Arquivo unidades-saude.json não encontrado em nenhum dos caminhos!');
+      logger.error('Arquivo unidades-saude.json não encontrado', {
+        caminhosTestados: possiblePaths.length
+      });
       return { unidades: [], estatisticas: {} };
     }
     
@@ -119,16 +127,16 @@ function loadUnidadesSaude() {
     
     // Validar estrutura
     if (!data || typeof data !== 'object') {
-      console.error('❌ Dados inválidos: não é um objeto');
+      logger.error('Dados de unidades-saude inválidos', { tipo: typeof data });
       return { unidades: [], estatisticas: {} };
     }
     
     const unidadesCount = Array.isArray(data.unidades) ? data.unidades.length : 0;
-    console.log(`✅ Dados de unidades de saúde carregados: ${unidadesCount} unidades`);
+    logger.info('Dados de unidades de saúde carregados', { unidades: unidadesCount });
     
     return data;
   } catch (error) {
-    console.error('❌ Erro ao carregar unidades-saude.json:', error);
+    logger.errorWithContext('Erro ao carregar unidades-saude.json', error);
     return { unidades: [], estatisticas: {} };
   }
 }
@@ -137,7 +145,7 @@ function loadUnidadesSaude() {
  * GET /api/secretarias
  * Listar todas secretarias
  */
-export async function getSecretarias(req, res, prisma) {
+export async function getSecretarias(req, res) {
   return safeQuery(res, async () => {
     const data = loadSecretariasDistritos();
     return {
@@ -151,7 +159,7 @@ export async function getSecretarias(req, res, prisma) {
  * GET /api/secretarias/:district
  * Secretarias por distrito
  */
-export async function getSecretariasByDistrict(req, res, prisma) {
+export async function getSecretariasByDistrict(req, res) {
   return safeQuery(res, async () => {
     const { district } = req.params;
     const data = loadSecretariasDistritos();
@@ -166,15 +174,14 @@ export async function getSecretariasByDistrict(req, res, prisma) {
  * GET /api/distritos
  * Listar todos distritos
  */
-export async function getDistritos(req, res, prisma) {
+export async function getDistritos(req, res) {
   return safeQuery(res, async () => {
-    console.log('📊 getDistritos: Iniciando...');
+    logger.info('Iniciando busca de distritos');
     const data = loadSecretariasDistritos();
     
     // Validar estrutura dos dados
     if (!data || typeof data !== 'object') {
-      console.error('❌ getDistritos: dados inválidos ou não é objeto');
-      console.error('   Tipo recebido:', typeof data);
+      logger.error('Dados de distritos inválidos', { tipo: typeof data });
       return {
         distritos: {},
         estatisticas: {}
@@ -189,23 +196,22 @@ export async function getDistritos(req, res, prisma) {
       ? data.estatisticas 
       : {};
     
-    // Log para debug
-    console.log('📊 getDistritos: Dados processados');
-    console.log(`   - Distritos disponíveis: ${Object.keys(distritos).length}`);
-    console.log(`   - Estatísticas:`, Object.keys(estatisticas).length > 0 ? 'Sim' : 'Não');
-    if (Object.keys(distritos).length > 0) {
-      console.log(`   - Nomes dos distritos:`, Object.keys(distritos).slice(0, 3).join(', '), '...');
-    }
+    const distritosCount = Object.keys(distritos).length;
+    
+    logger.debug('Dados de distritos processados', {
+      distritosDisponiveis: distritosCount,
+      temEstatisticas: Object.keys(estatisticas).length > 0,
+      primeirosDistritos: distritosCount > 0 ? Object.keys(distritos).slice(0, 3) : []
+    });
     
     // Validar que temos pelo menos um distrito
-    if (Object.keys(distritos).length === 0) {
-      console.error('❌ getDistritos: Nenhum distrito encontrado nos dados!');
-      console.error('   Estrutura do data:', Object.keys(data));
-      console.error('   Tipo de data.distritos:', typeof data.distritos);
-      console.error('   É array?', Array.isArray(data.distritos));
-      if (data.distritos) {
-        console.error('   Conteúdo de data.distritos:', JSON.stringify(data.distritos).substring(0, 200));
-      }
+    if (distritosCount === 0) {
+      logger.error('Nenhum distrito encontrado nos dados', {
+        estruturaData: Object.keys(data),
+        tipoDistritos: typeof data.distritos,
+        isArray: Array.isArray(data.distritos),
+        preview: data.distritos ? JSON.stringify(data.distritos).substring(0, 200) : null
+      });
     }
     
     const result = {
@@ -213,7 +219,7 @@ export async function getDistritos(req, res, prisma) {
       estatisticas: estatisticas
     };
     
-    console.log(`✅ getDistritos: Retornando ${Object.keys(distritos).length} distritos`);
+    logger.info('Distritos carregados com sucesso', { total: distritosCount });
     return result;
   });
 }
@@ -222,7 +228,7 @@ export async function getDistritos(req, res, prisma) {
  * GET /api/distritos/:code
  * Distrito por código
  */
-export async function getDistritoByCode(req, res, prisma) {
+export async function getDistritoByCode(req, res) {
   return safeQuery(res, async () => {
     const { code } = req.params;
     const data = loadSecretariasDistritos();
@@ -245,7 +251,7 @@ export async function getDistritoByCode(req, res, prisma) {
  * GET /api/bairros
  * Listar bairros (com filtro opcional por distrito)
  */
-export async function getBairros(req, res, prisma) {
+export async function getBairros(req, res) {
   return safeQuery(res, async () => {
     const { distrito } = req.query;
     const data = loadSecretariasDistritos();
@@ -272,7 +278,7 @@ export async function getBairros(req, res, prisma) {
  * GET /api/unidades-saude
  * Listar unidades de saúde (com filtros)
  */
-export async function getUnidadesSaude(req, res, prisma) {
+export async function getUnidadesSaude(req, res) {
   return safeQuery(res, async () => {
     const { distrito, tipo, bairro } = req.query;
     const data = loadUnidadesSaude();
@@ -316,7 +322,7 @@ export async function getUnidadesSaude(req, res, prisma) {
  * GET /api/unidades-saude/por-distrito
  * Agrupar unidades por distrito
  */
-export async function getUnidadesSaudeByDistrito(req, res, prisma) {
+export async function getUnidadesSaudeByDistrito(req, res) {
   return safeQuery(res, async () => {
     const data = loadUnidadesSaude();
     
@@ -352,7 +358,7 @@ export async function getUnidadesSaudeByDistrito(req, res, prisma) {
  * GET /api/unidades-saude/por-bairro
  * Agrupar unidades por bairro
  */
-export async function getUnidadesSaudeByBairro(req, res, prisma) {
+export async function getUnidadesSaudeByBairro(req, res) {
   return safeQuery(res, async () => {
     const { distrito } = req.query;
     const data = loadUnidadesSaude();
@@ -397,7 +403,7 @@ export async function getUnidadesSaudeByBairro(req, res, prisma) {
  * GET /api/unidades-saude/por-tipo
  * Agrupar unidades por tipo
  */
-export async function getUnidadesSaudeByTipo(req, res, prisma) {
+export async function getUnidadesSaudeByTipo(req, res) {
   return safeQuery(res, async () => {
     const data = loadUnidadesSaude();
     
@@ -432,23 +438,17 @@ export async function getUnidadesSaudeByTipo(req, res, prisma) {
  * GET /api/aggregate/by-district
  * Agregação por distrito
  */
-export async function aggregateByDistrict(req, res, prisma) {
-  return withCache('aggregate-by-district', 300, res, async () => {
+export async function aggregateByDistrict(req, res) {
+  return withCache('aggregate-by-district:v2', 300, res, async () => {
     try {
       const data = loadSecretariasDistritos();
       const distritosData = data.distritos;
       
       // Buscar registros com endereço
-      const allRecords = await prisma.record.findMany({
-        select: {
-          endereco: true,
-          data: true,
-          statusDemanda: true,
-          tipoDeManifestacao: true,
-          dataCriacaoIso: true
-        },
-        take: 100000
-      });
+      const allRecords = await Record.find({})
+        .select('endereco data statusDemanda tipoDeManifestacao dataCriacaoIso')
+        .limit(20000)
+        .lean();
       
       // Filtrar apenas registros que têm algum endereço/bairro
       const records = allRecords.filter(record => {
@@ -526,7 +526,7 @@ export async function aggregateByDistrict(req, res, prisma) {
       });
       
       // Converter para array
-      return Object.values(distritosMap).map(d => ({
+      const result = Object.values(distritosMap).map(d => ({
         distrito: d.nome,
         code: d.code,
         total: d.count,
@@ -534,18 +534,26 @@ export async function aggregateByDistrict(req, res, prisma) {
         porTipo: d.porTipo,
         porMes: d.porMes
       }));
+      
+      logger.info('Agregação por distrito concluída', {
+        distritos: result.length,
+        mapeados,
+        naoMapeados
+      });
+      
+      return result;
     } catch (error) {
-      console.error('❌ Erro ao agregar por distrito:', error);
+      logger.errorWithContext('Erro ao agregar por distrito', error);
       throw error;
     }
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/distritos/:code/stats
  * Estatísticas de distrito
  */
-export async function getDistritoStats(req, res, prisma) {
+export async function getDistritoStats(req, res) {
   return safeQuery(res, async () => {
     const { code } = req.params;
     const data = loadSecretariasDistritos();
@@ -563,15 +571,14 @@ export async function getDistritoStats(req, res, prisma) {
     const [nome, info] = distrito;
     
     // Buscar manifestações dos bairros deste distrito
-    const allRecords = await prisma.record.findMany({
-      where: {
-        OR: [
-          { endereco: { not: null } },
-          { data: { path: ['endereco'], not: null } },
-          { data: { path: ['Bairro'], not: null } }
-        ]
-      }
-    });
+    const allRecords = await Record.find({
+      $or: [
+        { endereco: { $ne: null } },
+        { 'data.endereco': { $ne: null } },
+        { 'data.Bairro': { $ne: null } }
+      ]
+    })
+    .lean();
     
     // Filtrar por bairros do distrito usando biblioteca de mapeamento
     const records = allRecords.filter(record => {
@@ -644,7 +651,7 @@ export async function getDistritoStats(req, res, prisma) {
  * GET /api/debug/district-mapping
  * Testar mapeamento de endereços
  */
-export async function debugDistrictMapping(req, res, prisma) {
+export async function debugDistrictMapping(req, res) {
   return safeQuery(res, async () => {
     const { endereco } = req.query;
     if (!endereco) {
@@ -666,7 +673,7 @@ export async function debugDistrictMapping(req, res, prisma) {
  * POST /api/debug/district-mapping-batch
  * Testar mapeamento em lote
  */
-export async function debugDistrictMappingBatch(req, res, prisma) {
+export async function debugDistrictMappingBatch(req, res) {
   return safeQuery(res, async () => {
     const { enderecos } = req.body;
     if (!Array.isArray(enderecos)) {
@@ -683,8 +690,8 @@ export async function debugDistrictMappingBatch(req, res, prisma) {
  * GET /api/saude/manifestacoes
  * Manifestações relacionadas a saúde
  */
-export async function getSaudeManifestacoes(req, res, prisma) {
-  const cacheKey = 'saude-manifestacoes:v1';
+export async function getSaudeManifestacoes(req, res) {
+  const cacheKey = 'saude-manifestacoes:v2';
   return withCache(cacheKey, 300, res, async () => {
     // Palavras-chave relacionadas a saúde
     const keywords = [
@@ -699,38 +706,22 @@ export async function getSaudeManifestacoes(req, res, prisma) {
     ];
     
     // Buscar registros que contenham palavras-chave relacionadas a saúde
-    const allRecords = await prisma.record.findMany({
-      where: {
-        OR: [
-          { tema: { contains: 'Saúde' } },
-          { tema: { contains: 'Saude' } },
-          { assunto: { contains: 'Saúde' } },
-          { assunto: { contains: 'Saude' } },
-          { orgaos: { contains: 'Saúde' } },
-          { orgaos: { contains: 'Saude' } },
-          { unidadeSaude: { not: null } },
-          { unidadeCadastro: { contains: 'Saúde' } },
-          { unidadeCadastro: { contains: 'Saude' } },
-          { unidadeCadastro: { contains: 'UPA' } },
-          { unidadeCadastro: { contains: 'UPH' } },
-          { unidadeCadastro: { contains: 'Hospital' } },
-          { unidadeCadastro: { contains: 'CAPS' } }
-        ]
-      },
-      select: {
-        tema: true,
-        assunto: true,
-        tipoDeManifestacao: true,
-        statusDemanda: true,
-        dataCriacaoIso: true,
-        endereco: true,
-        orgaos: true,
-        unidadeSaude: true,
-        unidadeCadastro: true,
-        data: true
-      },
-      take: 50000
-    });
+    const allRecords = await Record.find({
+      $or: [
+        { tema: { $regex: 'Saúde', $options: 'i' } },
+        { assunto: { $regex: 'Saúde', $options: 'i' } },
+        { orgaos: { $regex: 'Saúde', $options: 'i' } },
+        { unidadeSaude: { $ne: null } },
+        { unidadeCadastro: { $regex: 'Saúde', $options: 'i' } },
+        { unidadeCadastro: { $regex: 'UPA', $options: 'i' } },
+        { unidadeCadastro: { $regex: 'UPH', $options: 'i' } },
+        { unidadeCadastro: { $regex: 'Hospital', $options: 'i' } },
+        { unidadeCadastro: { $regex: 'CAPS', $options: 'i' } }
+      ]
+    })
+    .select('tema assunto tipoDeManifestacao statusDemanda dataCriacaoIso endereco orgaos unidadeSaude unidadeCadastro data')
+    .limit(20000)
+    .lean();
     
     // Filtrar em memória para case-insensitive e múltiplas palavras-chave
     const records = allRecords.filter(r => {
@@ -748,37 +739,27 @@ export async function getSaudeManifestacoes(req, res, prisma) {
       total: records.length,
       records: records.slice(0, 1000) // Retornar apenas primeiros 1000 para resposta
     };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/saude/por-distrito
  * Saúde por distrito
  */
-export async function getSaudePorDistrito(req, res, prisma) {
-  const cacheKey = 'saude-por-distrito:v1';
+export async function getSaudePorDistrito(req, res) {
+  const cacheKey = 'saude-por-distrito:v2';
   return withCache(cacheKey, 300, res, async () => {
     // Buscar manifestações de saúde
-    const allRecords = await prisma.record.findMany({
-      where: {
-        OR: [
-          { tema: { contains: 'Saúde' } },
-          { tema: { contains: 'Saude' } },
-          { orgaos: { contains: 'Saúde' } },
-          { orgaos: { contains: 'Saude' } },
-          { unidadeSaude: { not: null } }
-        ]
-      },
-      select: {
-        endereco: true,
-        data: true,
-        tema: true,
-        assunto: true,
-        tipoDeManifestacao: true,
-        statusDemanda: true
-      },
-      take: 50000
-    });
+    const allRecords = await Record.find({
+      $or: [
+        { tema: { $regex: 'Saúde', $options: 'i' } },
+        { orgaos: { $regex: 'Saúde', $options: 'i' } },
+        { unidadeSaude: { $ne: null } }
+      ]
+    })
+    .select('endereco data tema assunto tipoDeManifestacao statusDemanda')
+    .limit(20000)
+    .lean();
     
     // Agrupar por distrito
     const porDistrito = {};
@@ -813,32 +794,25 @@ export async function getSaudePorDistrito(req, res, prisma) {
     });
     
     return { porDistrito };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/saude/por-tema
  * Saúde por tema
  */
-export async function getSaudePorTema(req, res, prisma) {
-  const cacheKey = 'saude-por-tema:v1';
+export async function getSaudePorTema(req, res) {
+  const cacheKey = 'saude-por-tema:v2';
   return withCache(cacheKey, 300, res, async () => {
-    const records = await prisma.record.findMany({
-      where: {
-        OR: [
-          { tema: { contains: 'Saúde' } },
-          { tema: { contains: 'Saude' } },
-          { orgaos: { contains: 'Saúde' } },
-          { orgaos: { contains: 'Saude' } }
-        ]
-      },
-      select: {
-        tema: true,
-        assunto: true,
-        tipoDeManifestacao: true
-      },
-      take: 50000
-    });
+    const records = await Record.find({
+      $or: [
+        { tema: { $regex: 'Saúde', $options: 'i' } },
+        { orgaos: { $regex: 'Saúde', $options: 'i' } }
+      ]
+    })
+    .select('tema assunto tipoDeManifestacao')
+    .limit(20000)
+    .lean();
     
     const porTema = {};
     records.forEach(record => {
@@ -861,36 +835,28 @@ export async function getSaudePorTema(req, res, prisma) {
     });
     
     return { porTema };
-  }, prisma);
+  });
 }
 
 /**
  * GET /api/saude/por-unidade
  * Saúde por unidade
  */
-export async function getSaudePorUnidade(req, res, prisma) {
-  const cacheKey = 'saude-por-unidade:v1';
+export async function getSaudePorUnidade(req, res) {
+  const cacheKey = 'saude-por-unidade:v2';
   return withCache(cacheKey, 300, res, async () => {
-    const records = await prisma.record.findMany({
-      where: {
-        OR: [
-          { unidadeSaude: { not: null } },
-          { unidadeCadastro: { contains: 'Saúde' } },
-          { unidadeCadastro: { contains: 'Saude' } },
-          { unidadeCadastro: { contains: 'UPA' } },
-          { unidadeCadastro: { contains: 'UPH' } },
-          { unidadeCadastro: { contains: 'Hospital' } }
-        ]
-      },
-      select: {
-        unidadeSaude: true,
-        unidadeCadastro: true,
-        tema: true,
-        assunto: true,
-        tipoDeManifestacao: true
-      },
-      take: 50000
-    });
+    const records = await Record.find({
+      $or: [
+        { unidadeSaude: { $ne: null } },
+        { unidadeCadastro: { $regex: 'Saúde', $options: 'i' } },
+        { unidadeCadastro: { $regex: 'UPA', $options: 'i' } },
+        { unidadeCadastro: { $regex: 'UPH', $options: 'i' } },
+        { unidadeCadastro: { $regex: 'Hospital', $options: 'i' } }
+      ]
+    })
+    .select('unidadeSaude unidadeCadastro tema assunto tipoDeManifestacao')
+    .limit(20000)
+    .lean();
     
     const porUnidade = {};
     records.forEach(record => {
@@ -916,6 +882,6 @@ export async function getSaudePorUnidade(req, res, prisma) {
     });
     
     return { porUnidade };
-  }, prisma);
+  });
 }
 

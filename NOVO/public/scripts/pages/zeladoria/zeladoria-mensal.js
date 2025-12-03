@@ -79,7 +79,7 @@ async function loadZeladoriaMensal() {
     // Gráfico de linha mostrando a evolução temporal
     await window.chartFactory?.createLineChart('zeladoria-mensal-chart', labels, values, {
       colorIndex: 0,
-      onClick: true, // Habilitar comunicação e filtros globais
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       label: 'Ocorrências',
       legendContainer: 'zeladoria-mensal-legend'
     });
@@ -154,7 +154,7 @@ async function renderMensalStatusChart(statusMesData, labels) {
   
   await window.chartFactory?.createBarChart('zeladoria-mensal-status-chart', labels, datasets, {
     colorIndex: 0,
-    onClick: true,
+    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
     legendContainer: 'zeladoria-mensal-status-legend'
   });
 }

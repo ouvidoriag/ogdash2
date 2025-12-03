@@ -26,12 +26,39 @@ import { withSmartCache } from './smartCache.js';
 export async function executeAggregation(getMongoClient, pipeline, collection = 'records', options = {}) {
   try {
     const client = await getMongoClient();
-    const dbName = process.env.DB_NAME || process.env.MONGODB_DB_NAME || 'dashboard';
+
+    // Inferir nome do banco a partir da connection string se não houver DB_NAME explícito
+    let dbName =
+      process.env.DB_NAME ||
+      process.env.MONGODB_DB_NAME ||
+      null;
+
+    if (!dbName) {
+      const url = process.env.DATABASE_URL || process.env.MONGODB_ATLAS_URL || '';
+      try {
+        // Extrair nome do banco da connection string: mongodb+srv://user:pass@host/dbName?params
+        const withoutParams = url.split('?')[0] || '';
+        const parts = withoutParams.split('/');
+        const candidate = parts[parts.length - 1];
+        if (candidate && !candidate.startsWith('mongodb')) {
+          dbName = candidate;
+        }
+      } catch {
+        // Fallback silencioso
+      }
+    }
+
+    // Fallback final caso não consiga inferir
+    if (!dbName) {
+      dbName = 'dashboard';
+    }
+
     const db = client.db(dbName);
     
     const defaultOptions = {
       allowDiskUse: pipeline.length > 10 || options.allowDiskUse === true,
-      maxTimeMS: 60000, // 60 segundos máximo
+      // Aumentar maxTimeMS para ficar alinhado com o timeout global do servidor (120s)
+      maxTimeMS: 110000,
       ...options
     };
     
@@ -43,7 +70,7 @@ export async function executeAggregation(getMongoClient, pipeline, collection = 
     
     // Log de performance apenas se demorar mais que 1s
     if (duration > 1000) {
-      console.log(`⏱️ Agregação executada em ${duration}ms (${collection})`);
+      console.log(`⏱️ Agregação executada em ${duration}ms (db=${dbName}, collection=${collection})`);
     }
     
     return result;
@@ -165,12 +192,17 @@ export function formatOverviewData(facetResult = {}) {
 
 /**
  * Obter dados de overview usando pipeline otimizado com cache inteligente
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
+ * 
  * @param {Function} getMongoClient - Função para obter cliente MongoDB
  * @param {Object} filters - Filtros a aplicar
- * @param {PrismaClient} prisma - Cliente Prisma para cache (opcional)
+ * @param {boolean} useCache - Usar cache inteligente (padrão: true)
  * @returns {Promise<Object>} Dados formatados para dashboard
  */
-export async function getOverviewData(getMongoClient, filters = {}, prisma = null) {
+export async function getOverviewData(getMongoClient, filters = {}, useCache = true) {
   // Validar filtros
   let sanitized = {};
   try {
@@ -181,11 +213,10 @@ export async function getOverviewData(getMongoClient, filters = {}, prisma = nul
     sanitized = {};
   }
   
-  // Se prisma disponível, usar cache inteligente
-  if (prisma) {
+  // Usar cache inteligente se habilitado
+  if (useCache) {
     try {
       return await withSmartCache(
-        prisma,
         'overview',
         sanitized,
         async () => {
@@ -193,7 +224,10 @@ export async function getOverviewData(getMongoClient, filters = {}, prisma = nul
           const result = await executeAggregation(getMongoClient, pipeline);
           const facetResult = result[0] || {};
           return formatOverviewData(facetResult);
-        }
+        },
+        null,
+        // Fallback: overview vazio porém bem formatado
+        formatOverviewData({})
       );
     } catch (cacheError) {
       console.error('❌ Erro no cache inteligente, executando sem cache:', cacheError.message);

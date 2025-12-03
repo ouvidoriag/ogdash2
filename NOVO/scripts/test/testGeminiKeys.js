@@ -23,7 +23,7 @@ async function testKey(key, index) {
   console.log(`   Tamanho: ${key.length} caracteres`);
   
   try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${key}`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
     
     const payload = {
       contents: [

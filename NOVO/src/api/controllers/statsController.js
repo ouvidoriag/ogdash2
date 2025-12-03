@@ -1,17 +1,23 @@
 /**
  * Controllers de Estatísticas
  * /api/stats/*
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { withCache } from '../../utils/responseHelper.js';
 import { getDateFilter } from '../../utils/queryOptimizer.js';
-import { getDataCriacao, getTempoResolucaoEmDias, isConcluido, addMesFilter } from '../../utils/dateUtils.js';
+import { getDataCriacao, getTempoResolucaoEmDias, isConcluido, addMesFilterMongo } from '../../utils/dateUtils.js';
+import Record from '../../models/Record.model.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * GET /api/stats/average-time
  * Tempo médio de atendimento por órgão/unidade
  */
-export async function averageTime(req, res, prisma) {
+export async function averageTime(req, res) {
   const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
   const apenasConcluidos = req.query.apenasConcluidos === 'true';
   const incluirZero = req.query.incluirZero !== 'false';
@@ -28,10 +34,11 @@ export async function averageTime(req, res, prisma) {
       : 'avgTime';
   const key = `${keyBase}${mesesKey}:v3`;
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  // Cache de 5 horas para estatísticas pesadas (average-time)
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     // Filtrar apenas últimos 24 meses por padrão
     const today = new Date();
@@ -41,39 +48,23 @@ export async function averageTime(req, res, prisma) {
     
     // Construir filtro de data baseado nos meses selecionados
     if (meses && meses.length > 0) {
-      addMesFilter(where, meses);
+      addMesFilterMongo(filter, meses);
     } else {
       // Se não há filtro de meses, adicionar filtro de últimos 24 meses
-      where.AND = [
-        ...(where.AND || []),
-        {
-          OR: [
-            { dataCriacaoIso: { gte: minDateStr } },
-            { dataDaCriacao: { contains: today.getFullYear().toString() } },
-            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
-          ]
-        }
+      filter.$or = [
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: today.getFullYear().toString() } },
+        { dataDaCriacao: { $regex: (today.getFullYear() - 1).toString() } }
       ];
     }
     
+    filter.dataDaCriacao = { $ne: null };
+    
     // Buscar apenas registros com dados necessários (limitar para evitar timeout)
-    const rows = await prisma.record.findMany({
-      where: {
-        ...where,
-        dataDaCriacao: { not: null },
-      },
-      select: {
-        orgaos: true,
-        responsavel: true,
-        unidadeCadastro: true,
-        tempoDeResolucaoEmDias: true,
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true
-      },
-      take: 50000 // Reduzir de 100000 para 50000 para melhor performance
-    });
+    const rows = await Record.find(filter)
+      .select('orgaos responsavel unidadeCadastro tempoDeResolucaoEmDias dataCriacaoIso dataDaCriacao dataConclusaoIso dataDaConclusao')
+      .limit(20000)
+      .lean();
     
     // Agrupar por órgão/unidade e calcular média
     const map = new Map();
@@ -107,14 +98,14 @@ export async function averageTime(req, res, prisma) {
       .sort((a, b) => b.dias - a.dias);
     
     return result;
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
  * GET /api/stats/average-time/by-day
  * Tempo médio por dia (últimos 30 dias)
  */
-export async function averageTimeByDay(req, res, prisma) {
+export async function averageTimeByDay(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
@@ -126,10 +117,11 @@ export async function averageTimeByDay(req, res, prisma) {
               meses ? `avgTimeByDay:meses:${meses.sort().join(',')}:v4` :
               'avgTimeByDay:v4';
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  // Cache de 5 horas para estatísticas diárias
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     // Filtrar apenas últimos 24 meses
     const todayForFilter = new Date();
@@ -137,32 +129,18 @@ export async function averageTimeByDay(req, res, prisma) {
     twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
     const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
     
-    where.AND = [
-      ...(where.AND || []),
-      {
-        OR: [
-          { dataCriacaoIso: { gte: minDateStr } },
-          { dataDaCriacao: { contains: todayForFilter.getFullYear().toString() } },
-          { dataDaCriacao: { contains: (todayForFilter.getFullYear() - 1).toString() } }
-        ]
-      }
+    filter.$or = [
+      { dataCriacaoIso: { $gte: minDateStr } },
+      { dataDaCriacao: { $regex: todayForFilter.getFullYear().toString() } },
+      { dataDaCriacao: { $regex: (todayForFilter.getFullYear() - 1).toString() } }
     ];
     
-    const rows = await prisma.record.findMany({
-      where: {
-        ...where,
-        dataDaCriacao: { not: null }
-      },
-      select: {
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        tempoDeResolucaoEmDias: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true,
-        data: true
-      },
-      take: 50000 // Reduzir para melhor performance e evitar timeout
-    });
+    filter.dataDaCriacao = { $ne: null };
+    
+    const rows = await Record.find(filter)
+      .select('dataCriacaoIso dataDaCriacao tempoDeResolucaoEmDias dataConclusaoIso dataDaConclusao')
+      .limit(20000)
+      .lean();
     
     const map = new Map();
     const today = new Date();
@@ -203,14 +181,14 @@ export async function averageTimeByDay(req, res, prisma) {
     }
     
     return result;
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
  * GET /api/stats/average-time/by-week
  * Tempo médio por semana (últimas 12 semanas)
  */
-export async function averageTimeByWeek(req, res, prisma) {
+export async function averageTimeByWeek(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
@@ -222,10 +200,11 @@ export async function averageTimeByWeek(req, res, prisma) {
               meses ? `avgTimeByWeek:meses:${meses.sort().join(',')}:v4` :
               'avgTimeByWeek:v4';
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  // Cache de 5 horas para estatísticas semanais
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     // Filtrar apenas últimos 24 meses
     const todayForFilter = new Date();
@@ -233,32 +212,18 @@ export async function averageTimeByWeek(req, res, prisma) {
     twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
     const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
     
-    where.AND = [
-      ...(where.AND || []),
-      {
-        OR: [
-          { dataCriacaoIso: { gte: minDateStr } },
-          { dataDaCriacao: { contains: todayForFilter.getFullYear().toString() } },
-          { dataDaCriacao: { contains: (todayForFilter.getFullYear() - 1).toString() } }
-        ]
-      }
+    filter.$or = [
+      { dataCriacaoIso: { $gte: minDateStr } },
+      { dataDaCriacao: { $regex: todayForFilter.getFullYear().toString() } },
+      { dataDaCriacao: { $regex: (todayForFilter.getFullYear() - 1).toString() } }
     ];
     
-    const rows = await prisma.record.findMany({
-      where: {
-        ...where,
-        dataDaCriacao: { not: null }
-      },
-      select: {
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        tempoDeResolucaoEmDias: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true,
-        data: true
-      },
-      take: 50000 // Reduzir para melhor performance e evitar timeout
-    });
+    filter.dataDaCriacao = { $ne: null };
+    
+    const rows = await Record.find(filter)
+      .select('dataCriacaoIso dataDaCriacao tempoDeResolucaoEmDias dataConclusaoIso dataDaConclusao')
+      .limit(20000)
+      .lean();
     
     // Função para obter semana ISO (YYYY-Www) - implementação simplificada e robusta
     function getISOWeek(dateStr) {
@@ -331,7 +296,7 @@ export async function averageTimeByWeek(req, res, prisma) {
       
       const week = getISOWeek(dataCriacao);
       if (!week) {
-        console.warn('⚠️ Semana ISO não calculada para data:', dataCriacao);
+        logger.warn('Semana ISO não calculada para data:', { dataCriacao });
         continue;
       }
       
@@ -342,7 +307,7 @@ export async function averageTimeByWeek(req, res, prisma) {
       processedCount++;
     }
     
-    console.log(`📊 averageTimeByWeek: Processados ${processedCount} registros válidos de ${rows.length} totais. Semanas encontradas: ${map.size}`);
+    logger.debug(`averageTimeByWeek: Processados ${processedCount} registros válidos de ${rows.length} totais. Semanas encontradas: ${map.size}`);
     
     // Gerar últimas 12 semanas (garantir que todas as semanas apareçam)
     const result = [];
@@ -368,7 +333,7 @@ export async function averageTimeByWeek(req, res, prisma) {
     
     // Log para debug
     if (weeks.length === 0) {
-      console.warn('⚠️ averageTimeByWeek: Nenhuma semana encontrada. Total de registros processados:', rows.length);
+      logger.warn('averageTimeByWeek: Nenhuma semana encontrada', { totalProcessed: rows.length });
     }
     
     // Criar resultado com todas as semanas
@@ -385,17 +350,20 @@ export async function averageTimeByWeek(req, res, prisma) {
     }
     
     // Log final para debug
-    console.log(`✅ averageTimeByWeek: Retornando ${result.length} semanas. Primeira: ${result[0]?.week}, Última: ${result[result.length - 1]?.week}`);
+    logger.debug(`averageTimeByWeek: Retornando ${result.length} semanas`, { 
+      primeira: result[0]?.week, 
+      ultima: result[result.length - 1]?.week 
+    });
     
     return result;
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
  * GET /api/stats/average-time/by-month
  * Tempo médio por mês
  */
-export async function averageTimeByMonth(req, res, prisma) {
+export async function averageTimeByMonth(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   const apenasConcluidos = req.query.apenasConcluidos === 'true';
@@ -405,26 +373,18 @@ export async function averageTimeByMonth(req, res, prisma) {
               unidadeCadastro ? `avgTimeByMonth:uac:${unidadeCadastro}:v3` :
               'avgTimeByMonth:v3';
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  // Cache de 5 horas para estatísticas mensais
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
-    const rows = await prisma.record.findMany({
-      where: {
-        ...where,
-        dataDaCriacao: { not: null }
-      },
-      select: {
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        tempoDeResolucaoEmDias: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true,
-        data: true
-      },
-      take: 50000 // Reduzir para melhor performance e evitar timeout
-    });
+    filter.dataDaCriacao = { $ne: null };
+    
+    const rows = await Record.find(filter)
+      .select('dataCriacaoIso dataDaCriacao tempoDeResolucaoEmDias dataConclusaoIso dataDaConclusao')
+      .limit(20000)
+      .lean();
     
     const map = new Map();
     for (const r of rows) {
@@ -452,14 +412,14 @@ export async function averageTimeByMonth(req, res, prisma) {
         quantidade: stats.total
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
  * GET /api/stats/average-time/stats
  * Estatísticas gerais de tempo (média, mediana, min, max)
  */
-export async function averageTimeStats(req, res, prisma) {
+export async function averageTimeStats(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
@@ -476,30 +436,22 @@ export async function averageTimeStats(req, res, prisma) {
       : 'avgTimeStats';
   const key = `${keyBase}${mesesKey}:v2`;
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  // Cache de 5 horas para estatísticas agregadas
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     if (meses && meses.length > 0) {
-      addMesFilter(where, meses);
+      addMesFilterMongo(filter, meses);
     }
     
-    const rows = await prisma.record.findMany({
-      where: {
-        ...where,
-        dataDaCriacao: { not: null }
-      },
-      select: {
-        tempoDeResolucaoEmDias: true,
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true,
-        data: true
-      },
-      take: 50000
-    });
+    filter.dataDaCriacao = { $ne: null };
+    
+    const rows = await Record.find(filter)
+      .select('tempoDeResolucaoEmDias dataCriacaoIso dataDaCriacao dataConclusaoIso dataDaConclusao')
+      .limit(20000)
+      .lean();
     
     const days = [];
     for (const r of rows) {
@@ -530,43 +482,34 @@ export async function averageTimeStats(req, res, prisma) {
       maximo,
       total: days.length
     };
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
  * GET /api/stats/average-time/by-unit
  * Tempo médio por unidade de cadastro
  */
-export async function averageTimeByUnit(req, res, prisma) {
+export async function averageTimeByUnit(req, res) {
   const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
   const apenasConcluidos = req.query.apenasConcluidos === 'true';
   const incluirZero = req.query.incluirZero !== 'false';
   
   const key = meses ? `avgTimeByUnit:meses:${meses.sort().join(',')}:v2` : 'avgTimeByUnit:v2';
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
+  // Cache de 5 horas para estatísticas por unidade
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
     if (meses && meses.length > 0) {
-      addMesFilter(where, meses);
+      addMesFilterMongo(filter, meses);
     }
     
-    const rows = await prisma.record.findMany({
-      where: {
-        ...where,
-        dataDaCriacao: { not: null },
-        unidadeCadastro: { not: null }
-      },
-      select: {
-        unidadeCadastro: true,
-        tempoDeResolucaoEmDias: true,
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true,
-        data: true
-      },
-      take: 50000 // Reduzir para melhor performance e evitar timeout
-    });
+    filter.dataDaCriacao = { $ne: null };
+    filter.unidadeCadastro = { $ne: null };
+    
+    const rows = await Record.find(filter)
+      .select('unidadeCadastro tempoDeResolucaoEmDias dataCriacaoIso dataDaCriacao dataConclusaoIso dataDaConclusao')
+      .limit(20000)
+      .lean();
     
     const map = new Map();
     for (const r of rows) {
@@ -595,43 +538,49 @@ export async function averageTimeByUnit(req, res, prisma) {
       }))
       .filter(item => item.dias > 0)
       .sort((a, b) => b.dias - a.dias);
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
  * GET /api/stats/average-time/by-month-unit
  * Tempo médio por mês e unidade
  */
-export async function averageTimeByMonthUnit(req, res, prisma) {
+export async function averageTimeByMonthUnit(req, res) {
   const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
   const apenasConcluidos = req.query.apenasConcluidos === 'true';
   const incluirZero = req.query.incluirZero !== 'false';
   
   const key = meses ? `avgTimeByMonthUnit:meses:${meses.sort().join(',')}:v2` : 'avgTimeByMonthUnit:v2';
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
+  // Cache de 5 horas para estatísticas por mês/unidade
+  return withCache(key, 18000, res, async () => {
+    // Construir filtro MongoDB diretamente
+    const filter = {
+      dataDaCriacao: { $ne: null },
+      unidadeCadastro: { $ne: null }
+    };
+    
+    // Adicionar filtros de mês se existirem
     if (meses && meses.length > 0) {
-      addMesFilter(where, meses);
+      const monthFilters = meses.map(month => {
+        // Se já está em formato YYYY-MM, usar diretamente
+        if (/^\d{4}-\d{2}$/.test(month)) return month;
+        // Se está em formato MM/YYYY, converter
+        const match = month.match(/^(\d{2})\/(\d{4})$/);
+        if (match) return `${match[2]}-${match[1]}`;
+        return month;
+      });
+      
+      // Criar filtro OR para qualquer um dos meses usando regex
+      filter.$or = monthFilters.map(month => ({
+        dataDaCriacao: { $regex: `^${month}`, $options: 'i' }
+      }));
     }
     
-    const rows = await prisma.record.findMany({
-      where: {
-        ...where,
-        dataDaCriacao: { not: null },
-        unidadeCadastro: { not: null }
-      },
-      select: {
-        unidadeCadastro: true,
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        tempoDeResolucaoEmDias: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true,
-        data: true
-      },
-      take: 50000
-    });
+    const rows = await Record.find(filter)
+      .select('unidadeCadastro dataCriacaoIso dataDaCriacao tempoDeResolucaoEmDias dataConclusaoIso dataDaConclusao')
+      .limit(20000) // OTIMIZAÇÃO: Reduzido de 50000 para 20000 para melhor performance
+      .lean();
     
     const map = new Map();
     for (const r of rows) {
@@ -668,7 +617,7 @@ export async function averageTimeByMonthUnit(req, res, prisma) {
         if (a.month !== b.month) return a.month.localeCompare(b.month);
         return a.unit.localeCompare(b.unit);
       });
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 
 /**
@@ -676,7 +625,7 @@ export async function averageTimeByMonthUnit(req, res, prisma) {
  * Visão geral de status (percentuais)
  * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
  */
-export async function statusOverview(req, res, prisma, getMongoClient) {
+export async function statusOverview(req, res, getMongoClient) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   
@@ -684,12 +633,13 @@ export async function statusOverview(req, res, prisma, getMongoClient) {
               unidadeCadastro ? `statusOverview:uac:${unidadeCadastro}:v2` :
               'statusOverview:v2';
   
-  return withCache(key, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  // Cache de 5 horas para visão geral de status
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
-    const total = await prisma.record.count({ where });
+    const total = await Record.countDocuments(filter);
     
     // Construir filtros para pipeline
     const filters = {};
@@ -697,7 +647,7 @@ export async function statusOverview(req, res, prisma, getMongoClient) {
     if (unidadeCadastro) filters.unidadeCadastro = unidadeCadastro;
     
     try {
-      // Tentar usar pipeline MongoDB nativo se disponível
+      // Usar pipeline MongoDB nativo com Mongoose
       let statusGroups;
       if (getMongoClient) {
         const { executeAggregation } = await import('../../utils/dbAggregations.js');
@@ -709,26 +659,28 @@ export async function statusOverview(req, res, prisma, getMongoClient) {
         const sanitizedFilters = sanitizeFilters(filters);
         
         statusGroups = await withSmartCache(
-          prisma,
           'status',
           sanitizedFilters,
           async () => {
             const pipeline = buildStatusPipeline(sanitizedFilters);
             const result = await executeAggregation(getMongoClient, pipeline);
             return formatGroupByResult(result, '_id', 'count');
-          }
+          },
+          null,
+          [] // Fallback seguro
         );
       } else {
-        // Fallback para Prisma
-        const rows = await prisma.record.groupBy({
-          by: ['status'],
-          where: Object.keys(where).length > 0 ? where : undefined,
-          _count: { _all: true }
-        });
+        // Fallback para Mongoose aggregation
+        const pipeline = [
+          ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
+          { $group: { _id: '$status', count: { $sum: 1 } } }
+        ];
+        
+        const rows = await Record.aggregate(pipeline);
         statusGroups = rows.map(r => ({ 
-          key: r.status ?? 'Não informado', 
-          count: r._count._all,
-          _id: r.status ?? 'Não informado'
+          key: r._id ?? 'Não informado', 
+          count: r.count,
+          _id: r._id ?? 'Não informado'
         }));
       }
       
@@ -766,10 +718,9 @@ export async function statusOverview(req, res, prisma, getMongoClient) {
       };
     } catch (error) {
       // Fallback
-      const allRecords = await prisma.record.findMany({ 
-        where: Object.keys(where).length > 0 ? where : undefined,
-        select: { status: true, statusDemanda: true }
-      });
+      const allRecords = await Record.find(Object.keys(filter).length > 0 ? filter : {})
+        .select('status statusDemanda')
+        .lean();
       
       let concluidas = 0;
       let emAtendimento = 0;
@@ -804,6 +755,6 @@ export async function statusOverview(req, res, prisma, getMongoClient) {
         }
       };
     }
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 

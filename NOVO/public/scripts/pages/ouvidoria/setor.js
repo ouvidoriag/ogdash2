@@ -28,7 +28,7 @@ async function loadSetor() {
       horizontal: true,
       colorIndex: 1,
       label: 'Manifestações',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: false // FILTROS DE CLIQUE DESABILITADOS
     });
     
     // Renderizar ranking

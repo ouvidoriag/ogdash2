@@ -9,11 +9,8 @@ import { requireAuth } from '../middleware/authMiddleware.js';
 export default function authRoutes(prisma) {
   const router = express.Router();
 
-  // Injetar prisma no request para os controllers
-  router.use((req, res, next) => {
-    req.prisma = prisma;
-    next();
-  });
+  // REFATORAÇÃO: Prisma → Mongoose (controllers já migrados, não precisam mais de prisma)
+  // router.use removido - controllers não usam mais req.prisma
 
   // POST /api/auth/login
   router.post('/login', login);

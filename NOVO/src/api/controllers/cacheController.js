@@ -1,6 +1,10 @@
 /**
  * Controllers de Cache
  * /api/cache/*
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { safeQuery } from '../../utils/responseHelper.js';
@@ -10,9 +14,9 @@ import { getCacheStats, cleanExpiredCache, clearAllDbCache } from '../../utils/d
  * GET /api/cache/status
  * Status do cache
  */
-export async function getCacheStatus(req, res, prisma) {
+export async function getCacheStatus(req, res) {
   return safeQuery(res, async () => {
-    const stats = await getCacheStats(prisma);
+    const stats = await getCacheStats();
     return {
       memory: { keys: 0, hits: 0, misses: 0, ksize: 0, vsize: 0 },
       database: stats
@@ -24,10 +28,9 @@ export async function getCacheStatus(req, res, prisma) {
  * POST /api/cache/rebuild
  * Reconstruir cache universal
  */
-export async function rebuildCache(req, res, prisma) {
+export async function rebuildCache(req, res) {
   return safeQuery(res, async () => {
     // TODO: Implementar reconstrução do cache universal
-    console.log('🔄 Reconstruindo cache universal manualmente...');
     return {
       success: true,
       message: 'Cache universal reconstruído',
@@ -40,9 +43,9 @@ export async function rebuildCache(req, res, prisma) {
  * POST /api/cache/clean-expired
  * Limpar cache expirado
  */
-export async function cleanExpired(req, res, prisma) {
+export async function cleanExpired(req, res) {
   return safeQuery(res, async () => {
-    const count = await cleanExpiredCache(prisma);
+    const count = await cleanExpiredCache();
     return {
       success: true,
       message: `${count} entradas de cache expiradas removidas`,
@@ -55,9 +58,9 @@ export async function cleanExpired(req, res, prisma) {
  * POST /api/cache/clear-all
  * Limpar todo o cache
  */
-export async function clearAll(req, res, prisma) {
+export async function clearAll(req, res) {
   return safeQuery(res, async () => {
-    const count = await clearAllDbCache(prisma);
+    const count = await clearAllDbCache();
     return {
       success: true,
       message: `Todo o cache foi limpo: ${count} entradas removidas`,
@@ -70,7 +73,7 @@ export async function clearAll(req, res, prisma) {
  * POST /api/cache/clear
  * Limpar cache em memória (compatibilidade)
  */
-export async function clearMemory(req, res, prisma) {
+export async function clearMemory(req, res) {
   return safeQuery(res, async () => {
     // Cache em memória não está implementado no novo sistema
     // Usar clear-all para limpar cache do banco
@@ -86,7 +89,7 @@ export async function clearMemory(req, res, prisma) {
  * GET /api/cache/universal
  * Cache universal (desabilitado por padrão)
  */
-export async function getUniversal(req, res, prisma) {
+export async function getUniversal(req, res) {
   return safeQuery(res, async () => {
     // Por enquanto, cache universal está desabilitado
     // Pode ser implementado no futuro se necessário

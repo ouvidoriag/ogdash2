@@ -28,7 +28,7 @@ async function loadResponsavel() {
       horizontal: true,
       colorIndex: 7,
       label: 'Manifestações',
-      onClick: true // Habilitar comunicação e filtros
+      onClick: false // FILTROS DE CLIQUE DESABILITADOS
     });
     
     // Renderizar ranking

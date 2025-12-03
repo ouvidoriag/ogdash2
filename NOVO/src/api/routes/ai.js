@@ -5,7 +5,7 @@
  * Endpoints:
  * - GET /api/ai/insights - Gerar insights com IA
  * 
- * @param {PrismaClient} prisma - Cliente Prisma
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB
  * @returns {express.Router} Router configurado
  */
@@ -26,7 +26,7 @@ export default function aiRoutes(prisma, getMongoClient) {
    * - patterns: Padrões detectados nos dados
    * - geradoPorIA: Boolean indicando se foi gerado por IA ou fallback
    */
-  router.get('/insights', (req, res) => getInsights(req, res, prisma));
+  router.get('/insights', (req, res) => getInsights(req, res)); // REFATORAÇÃO: prisma removido
   
   return router;
 }

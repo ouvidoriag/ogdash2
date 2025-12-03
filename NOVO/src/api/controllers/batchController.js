@@ -88,8 +88,11 @@ const ENDPOINT_PIPELINES = {
 
 /**
  * Executar uma requisição individual
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
-async function executeRequest(name, filters, getMongoClient, prisma) {
+async function executeRequest(name, filters, getMongoClient) {
   const endpointConfig = ENDPOINT_PIPELINES[name];
   
   if (!endpointConfig) {
@@ -101,27 +104,20 @@ async function executeRequest(name, filters, getMongoClient, prisma) {
   
   // Caso especial: overview usa getOverviewData
   if (endpointConfig.useOverviewData) {
-    return await getOverviewData(getMongoClient, sanitizedFilters, prisma);
+    // REFATORAÇÃO: getOverviewData não precisa mais de prisma
+    return await getOverviewData(getMongoClient, sanitizedFilters);
   }
   
-  // Usar cache inteligente se disponível
-  if (prisma) {
-    return await withSmartCache(
-      prisma,
-      endpointConfig.cacheKey,
-      sanitizedFilters,
-      async () => {
-        const pipeline = endpointConfig.pipeline(sanitizedFilters);
-        const result = await executeAggregation(getMongoClient, pipeline);
-        return endpointConfig.formatter(result);
-      }
-    );
-  }
-  
-  // Sem cache, executar diretamente
-  const pipeline = endpointConfig.pipeline(sanitizedFilters);
-  const result = await executeAggregation(getMongoClient, pipeline);
-  return endpointConfig.formatter(result);
+  // Usar cache inteligente (não precisa mais de prisma)
+  return await withSmartCache(
+    endpointConfig.cacheKey,
+    sanitizedFilters,
+    async () => {
+      const pipeline = endpointConfig.pipeline(sanitizedFilters);
+      const result = await executeAggregation(getMongoClient, pipeline);
+      return endpointConfig.formatter(result);
+    }
+  );
 }
 
 /**
@@ -152,6 +148,7 @@ function groupRequests(requests) {
  * Executar múltiplas requisições em uma única chamada
  */
 export async function batch(req, res, prisma, getMongoClient) {
+  // REFATORAÇÃO: prisma não é mais usado (sistema migrado para Mongoose)
   try {
     const { requests, options = {} } = req.body;
     
@@ -190,7 +187,7 @@ export async function batch(req, res, prisma, getMongoClient) {
       const promises = requests.map(async (reqItem, index) => {
         try {
           const result = await Promise.race([
-            executeRequest(reqItem.name, reqItem.filters || {}, getMongoClient, prisma),
+            executeRequest(reqItem.name, reqItem.filters || {}, getMongoClient),
             new Promise((_, reject) => 
               setTimeout(() => reject(new Error('Timeout')), timeout)
             )
@@ -227,7 +224,7 @@ export async function batch(req, res, prisma, getMongoClient) {
         const reqItem = requests[i];
         try {
           const result = await Promise.race([
-            executeRequest(reqItem.name, reqItem.filters || {}, getMongoClient, prisma),
+            executeRequest(reqItem.name, reqItem.filters || {}, getMongoClient),
             new Promise((_, reject) => 
               setTimeout(() => reject(new Error('Timeout')), timeout)
             )

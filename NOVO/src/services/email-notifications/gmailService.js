@@ -136,13 +136,35 @@ function initGmail() {
 }
 
 /**
+ * Codificar assunto do email usando RFC 2047 (para suportar emojis e caracteres especiais)
+ * @param {string} subject - Assunto do email
+ * @returns {string} - Assunto codificado
+ */
+function encodeSubject(subject) {
+  // Verificar se contém caracteres não-ASCII (incluindo emojis)
+  const hasNonAscii = /[^\x00-\x7F]/.test(subject);
+  
+  if (!hasNonAscii) {
+    // Se só tem ASCII, retornar como está
+    return subject;
+  }
+  
+  // Codificar usando Base64 (RFC 2047)
+  const encoded = Buffer.from(subject, 'utf8').toString('base64');
+  return `=?UTF-8?B?${encoded}?=`;
+}
+
+/**
  * Criar mensagem MIME para envio
  */
 function createMessage(to, subject, htmlBody, textBody, fromEmail, fromName) {
+  // Codificar assunto para suportar emojis e caracteres especiais
+  const encodedSubject = encodeSubject(subject);
+  
   const message = [
     `From: ${fromName} <${fromEmail}>`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodedSubject}`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/alternative; boundary="boundary123"`,
     ``,

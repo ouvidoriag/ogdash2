@@ -6,7 +6,7 @@
  * - GET /api/chat/messages - Listar mensagens do chat
  * - POST /api/chat/messages - Criar nova mensagem
  * 
- * @param {PrismaClient} prisma - Cliente Prisma
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @returns {express.Router} Router configurado
  */
 
@@ -21,14 +21,14 @@ export default function chatRoutes(prisma) {
    * Listar todas as mensagens do chat
    * Query params: limit (opcional, padrão: 500)
    */
-  router.get('/messages', (req, res) => chatController.getMessages(req, res, prisma));
+  router.get('/messages', (req, res) => chatController.getMessages(req, res)); // REFATORAÇÃO: prisma removido
   
   /**
    * POST /api/chat/messages
    * Criar nova mensagem no chat
    * Body: { text: string, sender: 'user' | 'assistant' }
    */
-  router.post('/messages', (req, res) => chatController.createMessage(req, res, prisma));
+  router.post('/messages', (req, res) => chatController.createMessage(req, res)); // REFATORAÇÃO: prisma removido
   
   return router;
 }

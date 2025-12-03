@@ -2,10 +2,16 @@
  * Controller de Vencimento
  * /api/vencimento
  * Busca protocolos próximos de vencer ou já vencidos
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
+import logger from '../../utils/logger.js';
 import { withCache } from '../../utils/responseHelper.js';
 import { getDataCriacao, isConcluido } from '../../utils/dateUtils.js';
+import Record from '../../models/Record.model.js';
 
 /**
  * Determina o prazo baseado no tipo de manifestação
@@ -92,7 +98,7 @@ function calcularDiasRestantes(dataVencimento, hoje) {
  *   - unidadeCadastro: filtro opcional
  *   - prazo: número customizado de dias para o prazo (sobrescreve o padrão)
  */
-export async function getVencimento(req, res, prisma) {
+export async function getVencimento(req, res) {
   const filtro = req.query.filtro || 'vencidos'; // Default: vencidos
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
@@ -101,7 +107,7 @@ export async function getVencimento(req, res, prisma) {
   const prazoCustomizado = req.query.prazo ? parseInt(req.query.prazo) : null; // Prazo customizado em dias
   
   // Debug: log dos parâmetros recebidos
-  console.log('⏰ /api/vencimento - Parâmetros recebidos:', {
+  logger.debug('Parâmetros de vencimento recebidos', {
     filtro,
     mes,
     secretaria,
@@ -112,86 +118,76 @@ export async function getVencimento(req, res, prisma) {
   
   const key = `vencimento:${filtro}:${mes || ''}:${prazoCustomizado || ''}:${servidor || ''}:${unidadeCadastro || ''}:${secretaria || ''}:v3`;
   
-  // Cache de 5 minutos
+  // Cache de 5 horas (dados de vencimento mudam a cada ~5h)
   // Timeout de 60s para endpoint pesado (processa muitos registros em memória)
-  return withCache(key, 300, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
-    
-    // Inicializar where.AND se necessário
-    if (!where.AND) {
-      where.AND = [];
-    }
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     // NOTA: Filtro de secretaria será aplicado em memória após buscar os registros
     // para garantir case-insensitive e correspondência parcial correta
     const secretariaFiltro = secretaria && secretaria.trim() !== '' ? secretaria.trim() : null;
     if (secretariaFiltro) {
-      console.log('⏰ Filtro de secretaria será aplicado em memória:', secretariaFiltro);
+      logger.debug('Filtro de secretaria será aplicado em memória', { secretariaFiltro });
     }
     
     // Filtrar por mês se fornecido
     if (mes && mes.trim() !== '' && mes !== 'todos' && /^\d{4}-\d{2}$/.test(mes.trim())) {
       const mesTrimmed = mes.trim();
       // Usar múltiplas estratégias para garantir que funcione com diferentes formatos de data
-      where.AND.push({
-        OR: [
-          // Para dataCriacaoIso (formato ISO: YYYY-MM-DD)
-          { dataCriacaoIso: { startsWith: mesTrimmed } },
-          // Para dataDaCriacao (pode ter vários formatos)
-          { dataDaCriacao: { startsWith: mesTrimmed } },
-          // Também verificar se contém o mês (para formatos como DD/MM/YYYY ou outros)
-          { dataDaCriacao: { contains: `-${mesTrimmed.substring(5)}-` } }, // Contém -MM-
-          { dataDaCriacao: { contains: mesTrimmed } } // Contém YYYY-MM
-        ]
-      });
-      console.log('⏰ Filtro de mês aplicado:', mesTrimmed);
-      console.log('⏰ Where clause após adicionar filtro de mês:', JSON.stringify(where, null, 2));
+      filter.$or = [
+        // Para dataCriacaoIso (formato ISO: YYYY-MM-DD)
+        { dataCriacaoIso: { $regex: `^${mesTrimmed}` } },
+        // Para dataDaCriacao (pode ter vários formatos)
+        { dataDaCriacao: { $regex: `^${mesTrimmed}` } },
+        // Também verificar se contém o mês (para formatos como DD/MM/YYYY ou outros)
+        { dataDaCriacao: { $regex: `-${mesTrimmed.substring(5)}-` } }, // Contém -MM-
+        { dataDaCriacao: { $regex: mesTrimmed } } // Contém YYYY-MM
+      ];
+      logger.debug('Filtro de mês aplicado', { mes: mesTrimmed, filter });
     } else if (mes && mes.trim() !== '') {
-      console.log('⏰ AVISO: Mês fornecido mas formato inválido:', mes);
+      logger.warn('Mês fornecido mas formato inválido', { mes });
     }
     
     // Filtrar apenas registros com data de criação (necessário para calcular vencimento)
     // A verificação de se está concluído será feita pela função isConcluido() no loop
     // para garantir consistência com o resto do sistema
-    where.AND.push({
-      OR: [
-        { dataCriacaoIso: { not: null } },
-        { dataDaCriacao: { not: null } }
-      ]
-    });
+    if (!filter.$or) {
+      filter.$or = [];
+    }
+    filter.$or.push(
+      { dataCriacaoIso: { $ne: null } },
+      { dataDaCriacao: { $ne: null } }
+    );
     
-    // Remover where.AND se estiver vazio (Prisma não aceita array vazio)
-    if (where.AND && where.AND.length === 0) {
-      delete where.AND;
+    // OTIMIZAÇÃO CRÍTICA: Adicionar filtro de data (últimos 24 meses) para reduzir volume
+    const today = new Date();
+    const twoYearsAgo = new Date(today);
+    twoYearsAgo.setMonth(today.getMonth() - 24);
+    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+    
+    // Adicionar filtro de data se não houver filtro de mês específico
+    if (!mes || mes.trim() === '' || mes === 'todos' || !/^\d{4}-\d{2}$/.test(mes.trim())) {
+      if (!filter.$or) filter.$or = [];
+      filter.$or.push(
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: today.getFullYear().toString() } },
+        { dataDaCriacao: { $regex: (today.getFullYear() - 1).toString() } }
+      );
     }
     
-    // Debug: log do where clause
-    console.log('⏰ Where clause:', JSON.stringify(where, null, 2));
+    // Debug: log do filter
+    logger.debug('Filter construído', { filter });
     
-    // Buscar TODOS os registros (sem limite)
-    const rows = await prisma.record.findMany({
-      where,
-      select: {
-        id: true,
-        protocolo: true,
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        tipoDeManifestacao: true,
-        tema: true,
-        assunto: true,
-        orgaos: true,
-        unidadeCadastro: true,
-        status: true,
-        statusDemanda: true,
-        responsavel: true,
-        data: true
-      }
-      // REMOVIDO: take: 10000 - Agora busca TODOS os registros
-    });
+    // OTIMIZAÇÃO CRÍTICA: Limitar a 20000 registros máximo para evitar sobrecarga
+    // Se precisar de mais, implementar paginação ou usar agregações MongoDB
+    const rows = await Record.find(filter)
+      .select('_id protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos unidadeCadastro status statusDemanda responsavel')
+      .limit(20000)
+      .lean();
     
-    console.log(`⏰ Registros encontrados no banco (antes dos filtros em memória): ${rows.length}`);
+    logger.info('Registros encontrados no banco', { total: rows.length });
     
     // Aplicar filtros em memória na ordem correta
     let rowsFiltrados = rows;
@@ -207,7 +203,11 @@ export async function getVencimento(req, res, prisma) {
         const mesData = dataCriacao.substring(0, 7); // YYYY-MM
         return mesData === mesFiltro;
       });
-      console.log(`⏰ Filtro de mês em memória: ${antesFiltroMes} -> ${rowsFiltrados.length} registros (mês: ${mesFiltro})`);
+      logger.debug('Filtro de mês aplicado em memória', {
+        antes: antesFiltroMes,
+        depois: rowsFiltrados.length,
+        mes: mesFiltro
+      });
       
       // Log de alguns exemplos de datas para debug
       if (rowsFiltrados.length > 0) {
@@ -220,7 +220,7 @@ export async function getVencimento(req, res, prisma) {
             mesExtraido: dataCriacao ? dataCriacao.substring(0, 7) : null
           };
         });
-        console.log('⏰ Exemplos de datas dos registros após filtro de mês:', exemplosDatas);
+        logger.debug('Exemplos de datas após filtro de mês', { exemplosDatas });
       } else if (rows.length > 0) {
         // Se não encontrou nada, mostrar exemplos do que existe no banco
         const exemplosDatas = rows.slice(0, 10).map(r => {
@@ -232,7 +232,7 @@ export async function getVencimento(req, res, prisma) {
             mesExtraido: dataCriacao ? dataCriacao.substring(0, 7) : null
           };
         });
-        console.log('⏰ Exemplos de datas dos registros antes do filtro de mês (para debug):', exemplosDatas);
+        logger.debug('Exemplos de datas antes do filtro de mês', { exemplosDatas });
       }
     }
     
@@ -240,8 +240,11 @@ export async function getVencimento(req, res, prisma) {
     // 2. Depois aplicar filtro de secretaria em memória (case-insensitive)
     if (secretariaFiltro) {
       const secretariaLower = secretariaFiltro.toLowerCase();
-      console.log(`⏰ Aplicando filtro de secretaria em memória: "${secretariaFiltro}" (lowercase: "${secretariaLower}")`);
-      console.log(`⏰ Total de registros antes do filtro de secretaria: ${rowsFiltrados.length}`);
+      logger.debug('Aplicando filtro de secretaria em memória', {
+        secretaria: secretariaFiltro,
+        lowercase: secretariaLower,
+        totalAntes: rowsFiltrados.length
+      });
       
       rowsFiltrados = rowsFiltrados.filter(row => {
         const orgaos = (row.orgaos || '').toLowerCase();
@@ -252,18 +255,23 @@ export async function getVencimento(req, res, prisma) {
         return match;
       });
       
-      console.log(`⏰ Registros após filtro de secretaria "${secretariaFiltro}": ${rowsFiltrados.length}`);
+      logger.debug('Registros após filtro de secretaria', {
+        secretaria: secretariaFiltro,
+        total: rowsFiltrados.length
+      });
       
       // Log de alguns exemplos de orgaos encontrados para debug
       if (rowsFiltrados.length > 0) {
         const exemplosOrgaos = [...new Set(rowsFiltrados.slice(0, 5).map(r => r.orgaos).filter(Boolean))];
-        console.log('⏰ Exemplos de orgaos encontrados:', exemplosOrgaos);
+        logger.debug('Exemplos de órgãos encontrados', { exemplosOrgaos });
       } else if (rows.length > 0) {
         // Se não encontrou nada, mostrar exemplos do que existe no banco
         const exemplosOrgaos = [...new Set(rows.slice(0, 20).map(r => r.orgaos).filter(Boolean))];
-        console.log('⏰ Exemplos de orgaos no banco (para debug):', exemplosOrgaos);
-        console.log('⏰ Procurando por:', secretariaFiltro);
-        console.log('⏰ Procurando por (lowercase):', secretariaLower);
+        logger.debug('Debug filtro de secretaria', {
+          exemplosOrgaos,
+          procurandoPor: secretariaFiltro,
+          lowercase: secretariaLower
+        });
         
         // Verificar se há correspondências parciais
         const matchesParciais = rows.filter(row => {
@@ -272,9 +280,11 @@ export async function getVencimento(req, res, prisma) {
                  secretariaLower.includes(orgaos.substring(0, 10));
         });
         if (matchesParciais.length > 0) {
-          console.log(`⏰ Encontrados ${matchesParciais.length} registros com correspondência parcial`);
           const exemplosParciais = [...new Set(matchesParciais.slice(0, 5).map(r => r.orgaos).filter(Boolean))];
-          console.log('⏰ Exemplos de correspondências parciais:', exemplosParciais);
+          logger.debug('Correspondências parciais encontradas', {
+            total: matchesParciais.length,
+            exemplos: exemplosParciais
+          });
         }
       }
     }
@@ -378,6 +388,6 @@ export async function getVencimento(req, res, prisma) {
       filtro,
       protocolos
     };
-  }, prisma, null, 60000); // Timeout de 60s para endpoint pesado
+  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 

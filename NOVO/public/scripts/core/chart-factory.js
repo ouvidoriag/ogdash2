@@ -404,14 +404,15 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       });
     }
     
-    // Adicionar handler de clique (padrão: true, a menos que explicitamente desabilitado)
-    // PADRÃO: Todos os gráficos são interativos por padrão (sistema Looker/Power BI)
-    const shouldEnableClick = options.onClick !== false; // true por padrão, false apenas se explicitamente desabilitado
+    // FILTROS DE CLIQUE DESABILITADOS: Por padrão, gráficos NÃO são interativos
+    // Para habilitar, passar explicitamente onClick: true
+    const shouldEnableClick = options.onClick === true; // false por padrão, true apenas se explicitamente habilitado
     
     if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
       chart.canvas.classList.add('chart-clickable');
       
+      // CROSSFILTER: Clique esquerdo aplica filtro
       chart.canvas.onclick = (evt) => {
         try {
           // Usar a API correta do Chart.js 4.x
@@ -446,6 +447,7 @@ async function createBarChart(canvasId, labels, values, options = {}) {
             }
             
             // Aplicar filtro se mapeamento existir
+            // CROSSFILTER MULTI-DIMENSIONAL: clearPrevious = false por padrão
             if (window.chartCommunication) {
               const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
               if (fieldMapping && fieldMapping.field) {
@@ -453,7 +455,7 @@ async function createBarChart(canvasId, labels, values, options = {}) {
                   fieldMapping.field,
                   label,
                   canvasId,
-                  { toggle: true, operator: fieldMapping.op, clearPrevious: true }
+                  { toggle: true, operator: fieldMapping.op, clearPrevious: options.clearPrevious !== undefined ? options.clearPrevious : false }
                 );
               }
             }
@@ -463,6 +465,18 @@ async function createBarChart(canvasId, labels, values, options = {}) {
             window.Logger.error(`Erro ao processar clique no gráfico ${canvasId}:`, error);
           }
         }
+      };
+      
+      // CROSSFILTER: Clique direito limpa TODOS os filtros (Power BI style)
+      chart.canvas.oncontextmenu = (evt) => {
+        evt.preventDefault(); // Prevenir menu de contexto padrão
+        if (window.chartCommunication) {
+          window.chartCommunication.clearFilters();
+          if (window.Logger) {
+            window.Logger.debug(`Clique direito no gráfico ${canvasId}: Todos os filtros limpos`);
+          }
+        }
+        return false;
       };
     }
     
@@ -566,9 +580,9 @@ async function createLineChart(canvasId, labels, values, options = {}) {
       });
     }
     
-    // Adicionar handler de clique (padrão: true, a menos que explicitamente desabilitado)
-    // PADRÃO: Todos os gráficos são interativos por padrão (sistema Looker/Power BI)
-    const shouldEnableClick = options.onClick !== false; // true por padrão, false apenas se explicitamente desabilitado
+    // FILTROS DE CLIQUE DESABILITADOS: Por padrão, gráficos NÃO são interativos
+    // Para habilitar, passar explicitamente onClick: true
+    const shouldEnableClick = options.onClick === true; // false por padrão, true apenas se explicitamente habilitado
     
     if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
@@ -615,7 +629,7 @@ async function createLineChart(canvasId, labels, values, options = {}) {
                   fieldMapping.field,
                   label,
                   canvasId,
-                  { toggle: true, operator: fieldMapping.op, clearPrevious: true }
+                  { toggle: true, operator: fieldMapping.op, clearPrevious: options.clearPrevious !== undefined ? options.clearPrevious : false }
                 );
               }
             }
@@ -625,6 +639,18 @@ async function createLineChart(canvasId, labels, values, options = {}) {
             window.Logger.error(`Erro ao processar clique no gráfico ${canvasId}:`, error);
           }
         }
+      };
+      
+      // CROSSFILTER: Clique direito limpa TODOS os filtros (Power BI style)
+      chart.canvas.oncontextmenu = (evt) => {
+        evt.preventDefault(); // Prevenir menu de contexto padrão
+        if (window.chartCommunication) {
+          window.chartCommunication.clearFilters();
+          if (window.Logger) {
+            window.Logger.debug(`Clique direito no gráfico ${canvasId}: Todos os filtros limpos`);
+          }
+        }
+        return false;
       };
     }
     
@@ -745,9 +771,9 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
       });
     }
     
-    // Adicionar handler de clique (padrão: true, a menos que explicitamente desabilitado)
-    // PADRÃO: Todos os gráficos são interativos por padrão (sistema Looker/Power BI)
-    const shouldEnableClick = options.onClick !== false; // true por padrão, false apenas se explicitamente desabilitado
+    // FILTROS DE CLIQUE DESABILITADOS: Por padrão, gráficos NÃO são interativos
+    // Para habilitar, passar explicitamente onClick: true
+    const shouldEnableClick = options.onClick === true; // false por padrão, true apenas se explicitamente habilitado
     
     if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
@@ -787,6 +813,7 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
             }
             
             // Aplicar filtro se mapeamento existir
+            // CROSSFILTER MULTI-DIMENSIONAL: clearPrevious = false por padrão
             if (window.chartCommunication) {
               const fieldMapping = window.chartCommunication.getFieldMapping(canvasId);
               if (fieldMapping && fieldMapping.field) {
@@ -794,7 +821,7 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
                   fieldMapping.field,
                   label,
                   canvasId,
-                  { toggle: true, operator: fieldMapping.op, clearPrevious: true }
+                  { toggle: true, operator: fieldMapping.op, clearPrevious: options.clearPrevious !== undefined ? options.clearPrevious : false }
                 );
               }
             }
@@ -804,6 +831,18 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
             window.Logger.error(`Erro ao processar clique no gráfico ${canvasId}:`, error);
           }
         }
+      };
+      
+      // CROSSFILTER: Clique direito limpa TODOS os filtros (Power BI style)
+      chart.canvas.oncontextmenu = (evt) => {
+        evt.preventDefault(); // Prevenir menu de contexto padrão
+        if (window.chartCommunication) {
+          window.chartCommunication.clearFilters();
+          if (window.Logger) {
+            window.Logger.debug(`Clique direito no gráfico ${canvasId}: Todos os filtros limpos`);
+          }
+        }
+        return false;
       };
     }
     

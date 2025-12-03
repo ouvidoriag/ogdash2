@@ -46,7 +46,7 @@ async function loadStatusPage(forceRefresh = false) {
       
       await window.chartFactory?.createDoughnutChart('chartStatusPage', labels, values, {
         type: 'doughnut',
-        onClick: true, // Habilitar comunicação e filtros
+        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
         legendContainer: 'legendStatusPage'
       });
     }

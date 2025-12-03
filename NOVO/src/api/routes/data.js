@@ -15,7 +15,7 @@
  * - POST /api/chat/reindex - Reindexar contexto do chat
  * - GET /api/export/database - Exportar dados do banco
  * 
- * @param {PrismaClient} prisma - Cliente Prisma
+ * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB
  * @returns {express.Router} Router configurado
  */
@@ -30,6 +30,8 @@ import { getComplaints } from '../controllers/complaintsController.js';
 import { slaSummary } from '../controllers/slaController.js';
 import { filterRecords } from '../controllers/filterController.js';
 import { getVencimento } from '../controllers/vencimentoController.js';
+import { getSecretariasInfo, getSecretariaInfoById } from '../controllers/secretariaInfoController.js';
+import { getNotificacoes, getNotificacoesStats, getUltimaExecucao, buscarVencimentos, enviarSelecionados } from '../controllers/notificacoesController.js';
 import { getMetaAliases, reindexChat, exportDatabase } from '../controllers/utilsController.js';
 
 export default function dataRoutes(prisma, getMongoClient) {
@@ -39,56 +41,113 @@ export default function dataRoutes(prisma, getMongoClient) {
    * GET /api/summary
    * Resumo geral com KPIs principais
    * Query params: servidor, unidadeCadastro
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/summary', (req, res) => getSummary(req, res, prisma));
+  router.get('/summary', (req, res) => getSummary(req, res));
   
   /**
    * GET /api/dashboard-data
    * Dados completos para dashboard (agregações otimizadas com MongoDB Native)
    * Query params: servidor, unidadeCadastro
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/dashboard-data', (req, res) => getDashboardData(req, res, prisma, getMongoClient));
+  router.get('/dashboard-data', (req, res) => getDashboardData(req, res, getMongoClient));
   
   /**
    * GET /api/records
    * Lista paginada de registros
    * Query params: page, limit, servidor, unidadeCadastro
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/records', (req, res) => getRecords(req, res, prisma));
+  router.get('/records', (req, res) => getRecords(req, res));
   
   /**
    * GET /api/distinct
    * Valores distintos de um campo
    * Query params: field, servidor, unidadeCadastro
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/distinct', (req, res) => getDistinct(req, res, prisma));
+  router.get('/distinct', (req, res) => getDistinct(req, res));
   
   /**
    * GET /api/unit/:unitName
    * Dados de uma unidade específica (UAC, Responsável, Órgãos, Unidade de Saúde)
    * Params: unitName - Nome da unidade
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/unit/:unitName', (req, res) => getUnit(req, res, prisma));
+  router.get('/unit/:unitName', (req, res) => getUnit(req, res));
   
   /**
    * GET /api/complaints-denunciations
    * Reclamações e denúncias agregadas
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/complaints-denunciations', (req, res) => getComplaints(req, res, prisma));
+  router.get('/complaints-denunciations', (req, res) => getComplaints(req, res));
   
   /**
    * GET /api/sla/summary
    * Resumo de SLA (concluídos, verde claro 0-30, amarelo 31-60, vermelho 61+)
    * Query params: servidor, unidadeCadastro, meses
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/sla/summary', (req, res) => slaSummary(req, res, prisma));
+  router.get('/sla/summary', (req, res) => slaSummary(req, res));
   
   /**
    * GET /api/vencimento
    * Protocolos próximos de vencer ou já vencidos
    * Query params: filtro (vencidos, 3, 7, 15, 30), servidor, unidadeCadastro
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/vencimento', (req, res) => getVencimento(req, res, prisma));
+  router.get('/vencimento', (req, res) => getVencimento(req, res));
+  
+  /**
+   * GET /api/secretarias-info
+   * Lista informações de contato das secretarias (planilha Dados e emails.xlsx)
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/secretarias-info', (req, res) => getSecretariasInfo(req, res));
+
+  /**
+   * GET /api/secretarias-info/:id
+   * Detalhes de uma secretaria específica
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/secretarias-info/:id', (req, res) => getSecretariaInfoById(req, res));
+
+  /**
+   * GET /api/notificacoes
+   * Lista notificações de email enviadas com filtros
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/notificacoes', (req, res) => getNotificacoes(req, res));
+
+  /**
+   * GET /api/notificacoes/stats
+   * Estatísticas de notificações
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/notificacoes/stats', (req, res) => getNotificacoesStats(req, res));
+
+  /**
+   * GET /api/notificacoes/ultima-execucao
+   * Verifica última execução do cron
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/notificacoes/ultima-execucao', (req, res) => getUltimaExecucao(req, res));
+
+  /**
+   * GET /api/notificacoes/vencimentos
+   * Busca vencimentos sem enviar (apenas visualização, otimizado)
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/notificacoes/vencimentos', (req, res) => buscarVencimentos(req, res));
+
+  /**
+   * POST /api/notificacoes/enviar-selecionados
+   * Envia emails para secretarias selecionadas
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.post('/notificacoes/enviar-selecionados', (req, res) => enviarSelecionados(req, res));
   
   /**
    * POST /api/filter
@@ -99,26 +158,30 @@ export default function dataRoutes(prisma, getMongoClient) {
    * POST /api/filter
    * Filtro dinâmico de registros (otimizado com MongoDB Native)
    * Query params opcionais: cursor, pageSize (para paginação)
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.post('/filter', (req, res) => filterRecords(req, res, prisma, getMongoClient));
+  router.post('/filter', (req, res) => filterRecords(req, res, getMongoClient));
   
   /**
    * GET /api/meta/aliases
    * Metadados e aliases de campos do sistema
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/meta/aliases', (req, res) => getMetaAliases(req, res, prisma));
+  router.get('/meta/aliases', (req, res) => getMetaAliases(req, res));
   
   /**
    * POST /api/chat/reindex
    * Reindexar contexto do chat para busca semântica
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.post('/chat/reindex', (req, res) => reindexChat(req, res, prisma));
+  router.post('/chat/reindex', (req, res) => reindexChat(req, res));
   
   /**
    * GET /api/export/database
    * Exportar dados do banco de dados
+   * REFATORAÇÃO: Mongoose (sem prisma)
    */
-  router.get('/export/database', (req, res) => exportDatabase(req, res, prisma));
+  router.get('/export/database', (req, res) => exportDatabase(req, res));
   
   return router;
 }

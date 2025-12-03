@@ -1,16 +1,22 @@
 /**
  * Controller de SLA
  * /api/sla/summary
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { withCache } from '../../utils/responseHelper.js';
-import { getDataCriacao, isConcluido, getTempoResolucaoEmDias, addMesFilter } from '../../utils/dateUtils.js';
+import { getDataCriacao, isConcluido, getTempoResolucaoEmDias, addMesFilterMongo } from '../../utils/dateUtils.js';
+import Record from '../../models/Record.model.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * GET /api/sla/summary
  * Resumo de SLA: concluídos, verde claro (0-30), amarelo (31-60), vermelho (61+)
  */
-export async function slaSummary(req, res, prisma) {
+export async function slaSummary(req, res) {
   const servidor = req.query.servidor;
   const unidadeCadastro = req.query.unidadeCadastro;
   const meses = req.query.meses ? (Array.isArray(req.query.meses) ? req.query.meses : [req.query.meses]) : null;
@@ -20,14 +26,15 @@ export async function slaSummary(req, res, prisma) {
               meses ? `sla:meses:${meses.sort().join(',')}:v4` :
               'sla:v4';
   
-  // Cache de 1 hora
-  return withCache(key, 3600, res, async () => {
-    const where = {};
-    if (servidor) where.servidor = servidor;
-    if (unidadeCadastro) where.unidadeCadastro = unidadeCadastro;
+  // Cache de 5 horas (dados de SLA seguem o mesmo ritmo de atualização)
+  // Timeout de 90s para evitar 504 em cálculos pesados (alinhado com dataLoader)
+  return withCache(key, 18000, res, async () => {
+    const filter = {};
+    if (servidor) filter.servidor = servidor;
+    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
     // Adicionar filtro de meses se fornecido
-    addMesFilter(where, meses);
+    addMesFilterMongo(filter, meses);
     
     const today = new Date();
     
@@ -38,45 +45,28 @@ export async function slaSummary(req, res, prisma) {
     
     // Adicionar filtro de data se não houver filtro de meses
     if (!meses || meses.length === 0) {
-      where.AND = [
-        ...(where.AND || []),
-        {
-          OR: [
-            { dataCriacaoIso: { gte: minDateStr } },
-            { dataDaCriacao: { contains: today.getFullYear().toString() } },
-            { dataDaCriacao: { contains: (today.getFullYear() - 1).toString() } }
-          ]
-        }
-      ];
+      if (!filter.$or) filter.$or = [];
+      filter.$or.push(
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: today.getFullYear().toString() } },
+        { dataDaCriacao: { $regex: (today.getFullYear() - 1).toString() } }
+      );
     }
     
     // OTIMIZAÇÃO: Adicionar filtro de dataCriacaoIso para reduzir volume
     // Buscar apenas registros dos últimos 24 meses (já filtrado acima)
-    const whereWithDate = {
-      ...where,
-      OR: [
-        { dataCriacaoIso: { gte: minDateStr } },
-        { dataDaCriacao: { not: null } }
-      ]
-    };
+    if (!filter.$or) filter.$or = [];
+    filter.$or.push(
+      { dataCriacaoIso: { $gte: minDateStr } },
+      { dataDaCriacao: { $ne: null } }
+    );
     
     // Buscar campos necessários usando sistema global de datas
     // OTIMIZADO: Reduzir take e usar filtros mais específicos
-    const rows = await prisma.record.findMany({ 
-      where: whereWithDate,
-      select: { 
-        dataCriacaoIso: true,
-        dataDaCriacao: true,
-        dataConclusaoIso: true,
-        dataDaConclusao: true,
-        tempoDeResolucaoEmDias: true,
-        status: true,
-        statusDemanda: true,
-        tipoDeManifestacao: true,
-        data: true
-      },
-      take: 50000 // OTIMIZADO: Reduzido de 100000 para 50000 (filtro de data já reduz volume)
-    });
+    const rows = await Record.find(filter)
+      .select('dataCriacaoIso dataDaCriacao dataConclusaoIso dataDaConclusao tempoDeResolucaoEmDias status statusDemanda tipoDeManifestacao')
+      .limit(20000)
+      .lean();
     
     // Buckets: concluídos (verde escuro), verde claro (0-30), amarelo (31-60), vermelho (61+)
     const buckets = { 
@@ -121,6 +111,6 @@ export async function slaSummary(req, res, prisma) {
     }
 
     return buckets;
-  }, prisma);
+  }, null, 90000); // Timeout de 90s (alinhado com dataLoader)
 }
 

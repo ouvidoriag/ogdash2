@@ -2,58 +2,88 @@
  * Controller de Filtros
  * POST /api/filter
  * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
+ * 
  * OTIMIZAÇÃO: Usa MongoDB Native para queries mais eficientes
  * Suporta paginação cursor-based opcional
  */
 
 import { getNormalizedField } from '../../utils/fieldMapper.js';
 import { paginateWithCursor } from '../../utils/cursorPagination.js';
+import Record from '../../models/Record.model.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * POST /api/filter
  * Filtro dinâmico de registros
  * @param {Object} req - Request object
  * @param {Object} res - Response object
- * @param {PrismaClient} prisma - Cliente Prisma (fallback)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB nativo
  */
-export async function filterRecords(req, res, prisma, getMongoClient) {
+export async function filterRecords(req, res, getMongoClient) {
   try {
     const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
     const originalUrl = req.body?.originalUrl || '';
     
     // Se não há filtros, retornar vazio
     if (filters.length === 0) {
-      console.warn('⚠️ /api/filter: Chamado SEM filtros! Retornando array vazio.');
+      logger.warn('/api/filter: Chamado SEM filtros! Retornando array vazio.');
       return res.json([]);
     }
     
     // Debug: log dos filtros recebidos
-    console.log('🔍 /api/filter: Filtros recebidos:', JSON.stringify(filters, null, 2));
+    logger.debug('/api/filter: Filtros recebidos', { filters });
     
-    // Construir where clause otimizado
-    const whereClause = {};
+    // Construir filtro MongoDB otimizado
+    const mongoFilter = {};
     const needsInMemoryFilter = [];
-    const fieldsNeeded = new Set(['id', 'data']);
+    const fieldsNeeded = new Set(['_id', 'data']);
     
-    // Separar filtros que podem usar where clause
+    // Separar filtros que podem usar $match do MongoDB
     for (const f of filters) {
       const col = getNormalizedField(f.field);
       
-      // Se o campo está normalizado no schema, tentar usar where clause
+      // Se o campo está normalizado no schema, tentar usar $match
       if (col && f.op === 'eq') {
         // Tentar filtrar pelo campo normalizado
-        whereClause[col] = f.value;
+        mongoFilter[col] = f.value;
         fieldsNeeded.add(col);
       } else if (col && f.op === 'contains') {
-        // Para campos de data, usar startsWith se o valor for no formato YYYY-MM
+        // Para campos de data, usar regex se o valor for no formato YYYY-MM
         if ((col === 'dataDaCriacao' || col === 'dataCriacaoIso') && /^\d{4}-\d{2}$/.test(f.value)) {
-          // Filtro por mês: usar startsWith para melhor performance
-          whereClause[col] = { startsWith: f.value };
+          // Filtro por mês: usar regex para melhor performance
+          mongoFilter[col] = { $regex: `^${f.value}`, $options: 'i' };
         } else {
-          whereClause[col] = { contains: f.value };
+          mongoFilter[col] = { $regex: f.value, $options: 'i' };
         }
         fieldsNeeded.add(col);
+      } else if (col && (f.op === 'gte' || f.op === 'lte' || f.op === 'gt' || f.op === 'lt')) {
+        // Operadores de comparação para campos de data
+        if (col === 'dataCriacaoIso' || col === 'dataDaCriacao' || col === 'dataConclusaoIso') {
+          // Inicializar objeto de filtro de data se não existir
+          if (!mongoFilter[col]) {
+            mongoFilter[col] = {};
+          }
+          
+          // Converter operador para formato MongoDB
+          if (f.op === 'gte') {
+            mongoFilter[col].$gte = f.value;
+          } else if (f.op === 'lte') {
+            mongoFilter[col].$lte = f.value;
+          } else if (f.op === 'gt') {
+            mongoFilter[col].$gt = f.value;
+          } else if (f.op === 'lt') {
+            mongoFilter[col].$lt = f.value;
+          }
+          
+          fieldsNeeded.add(col);
+        } else {
+          // Campo não é de data, filtrar em memória
+          needsInMemoryFilter.push(f);
+          if (col) fieldsNeeded.add(col);
+        }
       } else {
         // Campo não normalizado ou operação não suportada - filtrar em memória
         needsInMemoryFilter.push(f);
@@ -61,10 +91,9 @@ export async function filterRecords(req, res, prisma, getMongoClient) {
       }
     }
     
-    // Buscar apenas campos necessários e limitar resultados
-    const selectFields = Object.fromEntries(Array.from(fieldsNeeded).map(f => [f, true]));
-    const finalSelect = Object.keys(selectFields).length > 1 ? selectFields : undefined;
-    const whereCondition = Object.keys(whereClause).length > 0 ? whereClause : undefined;
+    // Buscar apenas campos necessários
+    const selectFields = Array.from(fieldsNeeded).join(' ');
+    const hasFilter = Object.keys(mongoFilter).length > 0;
     
     // OTIMIZAÇÃO: Verificar se deve usar paginação cursor-based
     const usePagination = req.query.cursor !== undefined || req.query.pageSize !== undefined;
@@ -76,26 +105,9 @@ export async function filterRecords(req, res, prisma, getMongoClient) {
     // Se usar paginação cursor-based e getMongoClient disponível
     if (usePagination && getMongoClient) {
       try {
-        // Converter whereClause do Prisma para formato MongoDB $match
-        const mongoMatch = {};
-        for (const [key, value] of Object.entries(whereClause)) {
-          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-            // Converter operadores Prisma para MongoDB
-            if (value.startsWith) {
-              mongoMatch[key] = { $regex: `^${value.startsWith}`, $options: 'i' };
-            } else if (value.contains) {
-              mongoMatch[key] = { $regex: value.contains, $options: 'i' };
-            } else {
-              mongoMatch[key] = value;
-            }
-          } else {
-            mongoMatch[key] = value;
-          }
-        }
-        
         const paginationResult = await paginateWithCursor(
           getMongoClient,
-          mongoMatch,
+          mongoFilter,
           pageSize,
           cursor
         );
@@ -116,12 +128,12 @@ export async function filterRecords(req, res, prisma, getMongoClient) {
           totalReturned: paginationResult.totalReturned
         });
       } catch (mongoError) {
-        console.warn('⚠️ Erro ao usar MongoDB Native, usando fallback Prisma:', mongoError.message);
-        // Continuar com Prisma como fallback
+        logger.warn('Erro ao usar MongoDB Native, usando fallback Mongoose:', { error: mongoError.message });
+        // Continuar com Mongoose como fallback
       }
     }
     
-    // Fallback: usar Prisma (compatibilidade)
+    // Usar Mongoose diretamente
     const hasFilters = filters.length > 0;
     
     let limitValue;
@@ -129,25 +141,23 @@ export async function filterRecords(req, res, prisma, getMongoClient) {
       limitValue = 10000;
     } else {
       limitValue = undefined; // Sem limite quando há filtros
-      console.log('🔍 /api/filter: Há filtros ativos, removendo limite de registros');
+      logger.debug('/api/filter: Há filtros ativos, removendo limite de registros');
     }
     
-    const queryOptions = {
-      where: whereCondition,
-      ...(finalSelect ? { select: finalSelect } : {}),
-      ...(limitValue !== undefined ? { take: limitValue } : {})
-    };
-    
-    // Timeout de 8 segundos
+    // OTIMIZAÇÃO: Timeout aumentado para 30s (padrão) para queries complexas
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Query timeout após 8 segundos')), 8000)
+      setTimeout(() => reject(new Error('Query timeout após 30 segundos')), 30000)
     );
     
     try {
-      allRows = await Promise.race([prisma.record.findMany(queryOptions), timeoutPromise]);
+      let query = Record.find(hasFilter ? mongoFilter : {});
+      if (selectFields) query = query.select(selectFields);
+      if (limitValue !== undefined) query = query.limit(limitValue);
+      
+      allRows = await Promise.race([query.lean(), timeoutPromise]);
     } catch (queryError) {
-      if (queryError.message?.includes('timeout') || queryError.code === 'P2010') {
-        console.warn('⚠️ Timeout ou erro de conexão, retornando array vazio');
+      if (queryError.message?.includes('timeout')) {
+        logger.warn('Timeout ou erro de conexão, retornando array vazio');
         return res.json([]);
       }
       throw queryError;
@@ -192,18 +202,67 @@ export async function filterRecords(req, res, prisma, getMongoClient) {
             }
           }
           
-          // Normalizar valores para comparação (case-insensitive, sem espaços extras)
-          const valueStr = `${value}`.trim().toLowerCase();
-          const filterStr = `${f.value}`.trim().toLowerCase();
-          
           // Aplicar operação de filtro
           if (f.op === 'eq') {
+            // Comparação exata (case-insensitive)
+            const valueStr = `${value}`.trim().toLowerCase();
+            const filterStr = `${f.value}`.trim().toLowerCase();
             if (valueStr !== filterStr) {
               return false; // Não corresponde, excluir registro
             }
           } else if (f.op === 'contains') {
+            // Contém (case-insensitive)
+            const valueStr = `${value}`.trim().toLowerCase();
+            const filterStr = `${f.value}`.trim().toLowerCase();
             if (!valueStr.includes(filterStr)) {
               return false; // Não contém, excluir registro
+            }
+          } else if (f.op === 'gte' || f.op === 'lte' || f.op === 'gt' || f.op === 'lt') {
+            // Operadores de comparação para datas
+            // Tentar obter data do campo normalizado ou do JSON
+            let dateValue = null;
+            
+            // 1. Tentar campo normalizado direto
+            if (col && (col === 'dataCriacaoIso' || col === 'dataDaCriacao' || col === 'dataConclusaoIso')) {
+              if (r[col]) {
+                dateValue = new Date(r[col]);
+              }
+            }
+            
+            // 2. Tentar no JSON
+            if (!dateValue && r.data && typeof r.data === 'object') {
+              const dateFields = [
+                'dataCriacaoIso', 'dataDaCriacao', 'dataConclusaoIso',
+                'Data', 'data_da_criacao', 'data_da_conclusao'
+              ];
+              for (const fieldName of dateFields) {
+                if (r.data[fieldName]) {
+                  dateValue = new Date(r.data[fieldName]);
+                  if (!isNaN(dateValue.getTime())) break;
+                }
+              }
+            }
+            
+            // Se não encontrou data válida, pular este filtro
+            if (!dateValue || isNaN(dateValue.getTime())) {
+              continue; // Pular este filtro, não excluir o registro
+            }
+            
+            // Converter valor do filtro para data
+            const filterDate = new Date(f.value);
+            if (isNaN(filterDate.getTime())) {
+              continue; // Data inválida no filtro, pular
+            }
+            
+            // Aplicar comparação
+            if (f.op === 'gte' && dateValue < filterDate) {
+              return false; // Data é menor que o mínimo, excluir
+            } else if (f.op === 'lte' && dateValue > filterDate) {
+              return false; // Data é maior que o máximo, excluir
+            } else if (f.op === 'gt' && dateValue <= filterDate) {
+              return false; // Data é menor ou igual, excluir
+            } else if (f.op === 'lt' && dateValue >= filterDate) {
+              return false; // Data é maior ou igual, excluir
             }
           }
         }
@@ -214,31 +273,23 @@ export async function filterRecords(req, res, prisma, getMongoClient) {
     const result = filtered.map(r => ({ ...r, data: r.data || {} }));
     
     // Debug: log do resultado
-    console.log(`✅ /api/filter: Retornando ${result.length} registro(s) de ${allRows.length} total após filtros`);
+    logger.debug(`/api/filter: Retornando ${result.length} registro(s) de ${allRows.length} total após filtros`);
     if (result.length > 0 && result.length < allRows.length) {
       // Se houve filtragem, mostrar amostra
       const sample = result[0];
-      console.log('🔍 /api/filter: Primeiro registro filtrado:', {
-        id: sample.id,
+      logger.debug('/api/filter: Primeiro registro filtrado', {
+        id: sample.id || sample._id,
         canal: sample.canal || sample.data?.Canal || sample.data?.canal,
         tipo: sample.tipoDeManifestacao || sample.data?.Tipo || sample.data?.tipo
       });
     } else if (result.length === allRows.length && filters.length > 0) {
       // AVISO: Filtros não foram aplicados corretamente
-      console.warn('⚠️ /api/filter: ATENÇÃO - Filtros não reduziram o resultado!');
-      console.warn('⚠️ Filtros aplicados:', JSON.stringify(filters, null, 2));
-      const sample = allRows[0];
-      console.warn('⚠️ Primeiro registro (não filtrado):', {
-        id: sample.id,
-        canal: sample.canal || sample.data?.Canal || sample.data?.canal,
-        tipo: sample.tipoDeManifestacao || sample.data?.Tipo || sample.data?.tipo,
-        dataKeys: sample.data ? Object.keys(sample.data).slice(0, 10) : []
-      });
+      logger.warn('/api/filter: ATENÇÃO - Filtros não reduziram o resultado!', { filters });
     }
     
     return res.json(result);
   } catch (error) {
-    console.error('❌ Erro no endpoint /api/filter:', error);
+    logger.error('Erro no endpoint /api/filter:', { error: error.message, stack: error.stack });
     return res.status(500).json({ 
       error: error.message || 'Erro ao processar filtros', 
       data: [],

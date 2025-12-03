@@ -2,7 +2,7 @@
  * Sistema de Legenda Interativa para Gráficos
  * Permite marcar/desmarcar datasets em gráficos de linha múltipla
  * 
- * Baseado no sistema antigo, mas mais robusto e modular
+ * Sistema modular e robusto para controle de visibilidade de datasets
  */
 
 /**

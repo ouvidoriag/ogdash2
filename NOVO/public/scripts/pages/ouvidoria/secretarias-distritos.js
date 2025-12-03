@@ -221,7 +221,7 @@ async function renderSecretariasDistritosChart(secretariasPorDistrito) {
     await window.chartFactory?.createBarChart('chartSecretariasDistritos', distritoLabels, distritoValues, {
       colorIndex: 9,
       label: 'Quantidade de Secretarias',
-      onClick: true, // Habilitar comunicação e filtros
+      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       chartOptions: {
         scales: {
           x: { ticks: { maxRotation: 45, minRotation: 45 } }

@@ -4,9 +4,15 @@
  * Sistema de cache baseado em chaves derivadas de filtros
  * TTL configurável por tipo de endpoint
  * Integração com AggregationCache do banco de dados
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import crypto from 'crypto';
+import AggregationCache from '../models/AggregationCache.model.js';
+import { logger } from './logger.js';
 
 /**
  * TTL por tipo de endpoint (em segundos)
@@ -68,18 +74,13 @@ export function getTTL(endpoint) {
 
 /**
  * Obter cache de agregação do banco
- * @param {PrismaClient} prisma - Cliente Prisma
+ * 
  * @param {string} key - Chave do cache
  * @returns {Promise<Object|null>} Dados em cache ou null
  */
-export async function getCachedAggregation(prisma, key) {
+export async function getCachedAggregation(key) {
   try {
-    const cached = await prisma.aggregationCache.findFirst({
-      where: {
-        key,
-        expiresAt: { gt: new Date() }
-      }
-    });
+    const cached = await AggregationCache.findByKey(key);
     
     if (cached && cached.data) {
       return cached.data;
@@ -87,66 +88,65 @@ export async function getCachedAggregation(prisma, key) {
     
     return null;
   } catch (error) {
-    console.error('❌ Erro ao buscar cache:', error);
+    logger.warn('Erro ao buscar cache:', { error: error.message, key });
     return null;
   }
 }
 
 /**
  * Armazenar agregação no cache do banco
- * @param {PrismaClient} prisma - Cliente Prisma
+ * 
  * @param {string} key - Chave do cache
  * @param {Object} data - Dados para cachear
  * @param {number} ttlSeconds - TTL em segundos
  * @returns {Promise<void>}
  */
-export async function setCachedAggregation(prisma, key, data, ttlSeconds) {
+export async function setCachedAggregation(key, data, ttlSeconds) {
   try {
-    const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-    
-    await prisma.aggregationCache.upsert({
-      where: { key },
-      create: {
-        key,
-        data,
-        expiresAt
-      },
-      update: {
-        data,
-        expiresAt
-      }
-    });
+    await AggregationCache.setCache(key, data, ttlSeconds);
   } catch (error) {
-    console.error('❌ Erro ao armazenar cache:', error);
+    logger.warn('Erro ao armazenar cache:', { error: error.message, key });
     // Não lançar erro - cache é opcional
   }
 }
 
 /**
  * Executar função com cache inteligente
- * @param {PrismaClient} prisma - Cliente Prisma
+ * 
  * @param {string} endpoint - Tipo de endpoint
  * @param {Object} filters - Filtros aplicados
  * @param {Function} fn - Função para executar se cache não existir
  * @param {number} customTTL - TTL customizado (opcional)
- * @returns {Promise<Object>} Dados (do cache ou da função)
+ * @param {*} fallback - Valor de fallback em caso de erro (opcional)
+ * @returns {Promise<Object>} Dados (do cache, da função ou do fallback)
  */
-export async function withSmartCache(prisma, endpoint, filters, fn, customTTL = null) {
+export async function withSmartCache(endpoint, filters, fn, customTTL = null, fallback = null) {
   const cacheKey = generateCacheKey(endpoint, filters);
   const ttl = customTTL || getTTL(endpoint);
   
   // Tentar obter do cache
-  const cached = await getCachedAggregation(prisma, cacheKey);
+  const cached = await getCachedAggregation(cacheKey);
   if (cached) {
     return cached;
   }
   
-  // Executar função
-  const data = await fn();
+  // Executar função com proteção de erro
+  let data;
+  try {
+    data = await fn();
+  } catch (error) {
+    logger.error(`Erro em withSmartCache (${endpoint}):`, { error: error.message, endpoint });
+    // Se um fallback foi fornecido, retornar fallback em vez de propagar erro
+    if (fallback !== null && fallback !== undefined) {
+      return fallback;
+    }
+    // Caso contrário, rethrow para que o caller trate
+    throw error;
+  }
   
   // Armazenar no cache (não bloquear se falhar)
-  setCachedAggregation(prisma, cacheKey, data, ttl).catch(err => {
-    console.warn('⚠️ Erro ao cachear (não crítico):', err.message);
+  setCachedAggregation(cacheKey, data, ttl).catch(err => {
+    logger.warn('Erro ao cachear (não crítico):', { error: err.message, key: cacheKey });
   });
   
   return data;
@@ -154,62 +154,53 @@ export async function withSmartCache(prisma, endpoint, filters, fn, customTTL = 
 
 /**
  * Invalidar cache por padrão
- * @param {PrismaClient} prisma - Cliente Prisma
+ * 
  * @param {string} pattern - Padrão de chave (ex: 'overview:*')
  * @returns {Promise<number>} Número de registros removidos
  */
-export async function invalidateCachePattern(prisma, pattern) {
+export async function invalidateCachePattern(pattern) {
   try {
     // MongoDB não suporta LIKE diretamente, usar regex
     const regexPattern = pattern.replace('*', '.*');
+    const searchPattern = pattern.replace('*', '');
     
-    const result = await prisma.aggregationCache.deleteMany({
-      where: {
-        key: {
-          contains: pattern.replace('*', '')
-        }
-      }
+    const result = await AggregationCache.deleteMany({
+      key: { $regex: regexPattern, $options: 'i' }
     });
     
-    return result.count || 0;
+    return result.deletedCount || 0;
   } catch (error) {
-    console.error('❌ Erro ao invalidar cache:', error);
+    logger.warn('Erro ao invalidar cache:', { error: error.message, pattern });
     return 0;
   }
 }
 
 /**
  * Limpar cache expirado
- * @param {PrismaClient} prisma - Cliente Prisma
+ * 
  * @returns {Promise<number>} Número de registros removidos
  */
-export async function cleanExpiredCache(prisma) {
+export async function cleanExpiredCache() {
   try {
-    const result = await prisma.aggregationCache.deleteMany({
-      where: {
-        expiresAt: { lt: new Date() }
-      }
-    });
-    
-    return result.count || 0;
+    const result = await AggregationCache.deleteExpired();
+    return result.deletedCount || 0;
   } catch (error) {
-    console.error('❌ Erro ao limpar cache expirado:', error);
+    logger.warn('Erro ao limpar cache expirado:', { error: error.message });
     return 0;
   }
 }
 
 /**
  * Obter estatísticas de cache
- * @param {PrismaClient} prisma - Cliente Prisma
+ * 
  * @returns {Promise<Object>} Estatísticas do cache
  */
-export async function getCacheStats(prisma) {
+export async function getCacheStats() {
   try {
-    const total = await prisma.aggregationCache.count();
-    const expired = await prisma.aggregationCache.count({
-      where: {
-        expiresAt: { lt: new Date() }
-      }
+    const total = await AggregationCache.countDocuments();
+    const now = new Date();
+    const expired = await AggregationCache.countDocuments({
+      expiresAt: { $lt: now }
     });
     const active = total - expired;
     
@@ -220,7 +211,7 @@ export async function getCacheStats(prisma) {
       hitRate: 0 // Seria calculado com métricas de uso
     };
   } catch (error) {
-    console.error('❌ Erro ao obter estatísticas de cache:', error);
+    logger.warn('Erro ao obter estatísticas de cache:', { error: error.message });
     return { total: 0, active: 0, expired: 0, hitRate: 0 };
   }
 }

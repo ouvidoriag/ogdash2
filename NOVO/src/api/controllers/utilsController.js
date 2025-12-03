@@ -9,7 +9,7 @@ import { safeQuery } from '../../utils/responseHelper.js';
  * GET /api/meta/aliases
  * Metadados e aliases de campos
  */
-export async function getMetaAliases(req, res, prisma) {
+export async function getMetaAliases(req, res) {
   return safeQuery(res, async () => {
     return {
       aliases: {
@@ -33,7 +33,7 @@ export async function getMetaAliases(req, res, prisma) {
  * POST /api/chat/reindex
  * Reindexar contexto do chat
  */
-export async function reindexChat(req, res, prisma) {
+export async function reindexChat(req, res) {
   return safeQuery(res, async () => {
     // TODO: Implementar reindexação de contexto
     // Por enquanto, retornar sucesso
@@ -50,11 +50,12 @@ export async function reindexChat(req, res, prisma) {
  * GET /api/export/database
  * Exportar banco de dados
  */
-export async function exportDatabase(req, res, prisma) {
+export async function exportDatabase(req, res) {
   return safeQuery(res, async () => {
     // TODO: Implementar exportação completa
     // Por enquanto, retornar estrutura básica
-    const total = await prisma.record.count();
+    const Record = (await import('../../models/Record.model.js')).default;
+    const total = await Record.countDocuments();
     
     return {
       ok: true,

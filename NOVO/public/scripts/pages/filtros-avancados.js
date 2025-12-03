@@ -334,17 +334,6 @@ function collectFilters() {
     });
   }
   
-  // Verificado
-  const verificadoCheck = document.getElementById('filtroVerificadoCheck')?.checked;
-  const verificado = document.getElementById('filtroVerificado')?.value?.trim();
-  if (verificadoCheck && verificado) {
-    filtros.push({
-      field: 'verificado',
-      op: 'eq',
-      value: verificado
-    });
-  }
-  
   // Unidade/Cadastro
   const unidadeCadastro = document.getElementById('filtroUnidadeCadastro')?.value?.trim();
   if (unidadeCadastro) {
@@ -415,14 +404,28 @@ function collectFilters() {
     });
   }
   
-  // Data da Criação
-  const dataCriacao = document.getElementById('filtroDataCriacao')?.value?.trim();
-  if (dataCriacao) {
-    // Converter para formato YYYY-MM-DD se necessário
+  // Período da Criação (Data Inicial e Final)
+  const dataCriacaoInicial = document.getElementById('filtroDataCriacaoInicial')?.value?.trim();
+  const dataCriacaoFinal = document.getElementById('filtroDataCriacaoFinal')?.value?.trim();
+  
+  if (dataCriacaoInicial) {
+    // Filtro de data inicial (maior ou igual)
+    // Formato: YYYY-MM-DD (será comparado como início do dia)
     filtros.push({
-      field: 'Data',
-      op: 'contains',
-      value: dataCriacao.substring(0, 7) // YYYY-MM para buscar por mês
+      field: 'dataCriacaoIso',
+      op: 'gte',
+      value: dataCriacaoInicial
+    });
+  }
+  
+  if (dataCriacaoFinal) {
+    // Filtro de data final (menor ou igual)
+    // Adicionar 23:59:59 para incluir o dia inteiro
+    const dataFinalCompleta = dataCriacaoFinal + 'T23:59:59.999Z';
+    filtros.push({
+      field: 'dataCriacaoIso',
+      op: 'lte',
+      value: dataFinalCompleta
     });
   }
   
@@ -703,8 +706,6 @@ function clearAllFilters() {
   // Limpar todos os campos
   document.getElementById('filtroProtocolo').value = '';
   document.getElementById('filtroStatusDemanda').value = '';
-  document.getElementById('filtroVerificadoCheck').checked = false;
-  document.getElementById('filtroVerificado').value = '';
   document.getElementById('filtroUnidadeCadastro').value = '';
   document.getElementById('filtroCanal').value = '';
   document.getElementById('filtroServidor').value = '';
@@ -712,7 +713,8 @@ function clearAllFilters() {
   document.getElementById('filtroTema').value = '';
   document.getElementById('filtroPrioridade').value = '';
   document.getElementById('filtroUnidadeSaude').value = '';
-  document.getElementById('filtroDataCriacao').value = '';
+  document.getElementById('filtroDataCriacaoInicial').value = '';
+  document.getElementById('filtroDataCriacaoFinal').value = '';
   document.getElementById('filtroAssunto').value = '';
   document.getElementById('filtroResponsavel').value = '';
   document.getElementById('filtroStatus').value = '';

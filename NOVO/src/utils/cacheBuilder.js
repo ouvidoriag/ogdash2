@@ -1,15 +1,21 @@
 /**
  * Sistema de construção e atualização do cache universal
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
-export async function buildUniversalCache(prisma) {
+import { logger } from './logger.js';
+
+export async function buildUniversalCache() {
   // TODO: Implementar construção do cache universal
-  console.log('📊 Construindo cache universal...');
+  logger.info('Construindo cache universal...');
   return {};
 }
 
-export function scheduleDailyUpdate(prisma) {
+export function scheduleDailyUpdate() {
   // TODO: Implementar agendamento de atualização diária
-  console.log('⏰ Próxima atualização do cache agendada para: 07:00');
+  logger.info('Próxima atualização do cache agendada para: 07:00');
 }
 

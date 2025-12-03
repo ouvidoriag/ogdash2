@@ -2,21 +2,47 @@
 
 ## 🎯 Acesso Rápido
 
-### 📚 Documentação
-- [README.md](../README.md) - Documentação principal
-- [MAPEAMENTO_COMPLETO_SISTEMA.md](./MAPEAMENTO_COMPLETO_SISTEMA.md) - Mapeamento detalhado
-- [ORGANIZACAO_ARQUIVOS.md](./ORGANIZACAO_ARQUIVOS.md) - Organização de arquivos
+### 🔥 Refatoração Prisma → Mongoose (CONCLUÍDA)
+- **[../ESTADO_ATUAL_SISTEMA.md](../ESTADO_ATUAL_SISTEMA.md)** ⭐⭐⭐ - **ESTADO ATUAL** (Leia primeiro!)
+- **[../MIGRACAO_COMPLETA_PRISMA_MONGOOSE.md](../MIGRACAO_COMPLETA_PRISMA_MONGOOSE.md)** ⭐⭐⭐ - Migração completa realizada
+- **[../RESUMO_MIGRACAO_FINAL.md](../RESUMO_MIGRACAO_FINAL.md)** - Resumo final da migração
+
+### 📚 Documentação do Sistema
+- [README.md](../../README.md) - Documentação principal
+- [ESTRUTURA_FINAL_OTIMIZADA.md](./ESTRUTURA_FINAL_OTIMIZADA.md) - Estrutura do sistema
 - [LIMPEZA_ARQUIVOS.md](./LIMPEZA_ARQUIVOS.md) - Guia de limpeza
+- [SISTEMAS_CACHE.md](./SISTEMAS_CACHE.md) - Guia de sistemas de cache
+- [DATEUTILS_DIFERENCAS.md](./DATEUTILS_DIFERENCAS.md) - Análise de dateUtils
+- [COMPARACAO_SISTEMAS_ANTIGO_NOVO.md](./COMPARACAO_SISTEMAS_ANTIGO_NOVO.md) - Comparação com sistema antigo
+
+### 🗺️ Mapeamentos do Sistema (Gerados Automaticamente)
+- [../../maps/SISTEMA_ULTRA_DETALHADO.md](../../maps/SISTEMA_ULTRA_DETALHADO.md) ⭐ - Mapeamento ultra detalhado (RECOMENDADO)
+- [../../maps/SISTEMA_DETALHADO_MAPEADO.md](../../maps/SISTEMA_DETALHADO_MAPEADO.md) - Mapeamento detalhado
+- [../../maps/SISTEMA_COMPLETO_MAPEADO.md](../../maps/SISTEMA_COMPLETO_MAPEADO.md) - Mapeamento básico
+- [../../maps/INDICE_EXECUTIVO.md](../../maps/INDICE_EXECUTIVO.md) - Índice executivo do mapeamento
+
+### 📊 Análises e Relatórios
+- [../../maps/RESUMO_EXECUTIVO_GERAL.md](../../maps/RESUMO_EXECUTIVO_GERAL.md) ⭐⭐⭐ - **RESUMO EXECUTIVO** (Ver primeiro!)
+- [../../maps/INDICE_MAPS.md](../../maps/INDICE_MAPS.md) - Índice da pasta maps/
+- [../../maps/RELATORIO_FALHAS_DUPLICACOES_LIXOS.md](../../maps/RELATORIO_FALHAS_DUPLICACOES_LIXOS.md) - Relatório completo
+- [../../maps/ANALISE_PROBLEMAS_OTIMIZACOES.md](../../maps/ANALISE_PROBLEMAS_OTIMIZACOES.md) - Análise de problemas
+- [../../maps/OTIMIZACOES_FINAIS.md](../../maps/OTIMIZACOES_FINAIS.md) - Otimizações implementadas
+
+### 🔧 Sistema de Logging
+- [GUIA_LOGGING.md](./GUIA_LOGGING.md) - Como usar o logger Winston
+- [../../maps/PROGRESSO_LOGGING.md](../../maps/PROGRESSO_LOGGING.md) - Progresso da migração
+- [../../maps/RESUMO_FINAL_FASE2_LOGGING.md](../../maps/RESUMO_FINAL_FASE2_LOGGING.md) - Resumo final de logging
 
 ### 🔧 Setup
-- [GOOGLE_SHEETS_SETUP.md](./GOOGLE_SHEETS_SETUP.md) - Setup Google Sheets
-- [PIPELINE_SETUP.md](./PIPELINE_SETUP.md) - Setup Pipeline Python
-- [SETUP_GMAIL.md](./SETUP_GMAIL.md) - Setup Gmail
+- [../setup/GOOGLE_SHEETS_SETUP.md](../setup/GOOGLE_SHEETS_SETUP.md) - Setup Google Sheets
+- [../setup/PIPELINE_SETUP.md](../setup/PIPELINE_SETUP.md) - Setup Pipeline Python
+- [../setup/SETUP_GMAIL.md](../setup/SETUP_GMAIL.md) - Setup Gmail
 
-### 🧪 Testes e Verificação
-- [VERIFICACAO_PAGINAS_COMPLETA.md](./VERIFICACAO_PAGINAS_COMPLETA.md) - Verificação de páginas
-- [ANALISE_SCRIPTS_SERVIDOR.md](./ANALISE_SCRIPTS_SERVIDOR.md) - Análise de scripts
-- [RESUMO_ORGANIZACAO.md](./RESUMO_ORGANIZACAO.md) - Resumo da organização
+### 🧪 Troubleshooting
+- [../troubleshooting/TROUBLESHOOTING_GMAIL.md](../troubleshooting/TROUBLESHOOTING_GMAIL.md) - Troubleshooting Gmail
+- [../troubleshooting/TESTE_EMAIL.md](../troubleshooting/TESTE_EMAIL.md) - Testes de email
+- [../troubleshooting/ANALISE_USO_API_GEMINI.md](../troubleshooting/ANALISE_USO_API_GEMINI.md) - Análise API Gemini
+- [../troubleshooting/GEMINI_QUOTA.md](../troubleshooting/GEMINI_QUOTA.md) - Quota Gemini
 
 ## 📊 Resumo do Sistema
 
@@ -149,5 +175,27 @@ npm run prisma:studio    # Abre Prisma Studio
 
 ---
 
-**Última atualização:** 2025-11-27
+---
+
+## 📝 Notas
+
+- **Mapeamentos**: Gerados automaticamente pelos scripts em `maps/`
+- **Documentação Manual**: Mantida em `docs/system/`
+- **Análises**: Documentos de análise em `maps/`
+- **Logging**: Sistema Winston criado em `src/utils/logger.js`
+
+---
+
+## 🎯 STATUS DO SISTEMA
+
+- ✅ **Fase 1 - Limpeza**: 100% Completa (49 arquivos removidos)
+- ✅ **Fase 2 - Otimização**: 100% Completa (Winston + 103 logs migrados)
+- ✅ **Fase 3 - Migração Prisma → Mongoose**: 100% Completa (9 arquivos migrados)
+- ✅ **Sistema**: Pronto para produção
+- ✅ **Documentação**: Atualizada e organizada
+
+---
+
+**Última atualização:** 03/12/2025  
+**Status:** ✅ Sistema 100% migrado para Mongoose - Pronto para produção
 

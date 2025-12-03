@@ -2,23 +2,29 @@
  * Controllers de Chat
  * /api/chat/*
  * 
- * Baseado no sistema antigo, adaptado para o modelo novo
+ * Gerencia conversas com assistente virtual usando Gemini AI
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 03/12/2025
+ * CÉREBRO X-3
  */
 
 import { safeQuery } from '../../utils/responseHelper.js';
 import { getCurrentGeminiKey, rotateToNextKey, resetToFirstKey, hasGeminiKeys, getGeminiKeysCount } from '../../utils/geminiHelper.js';
+import ChatMessage from '../../models/ChatMessage.model.js';
 
 /**
  * GET /api/chat/messages
  * Listar mensagens do chat
  */
-export async function getMessages(req, res, prisma) {
+export async function getMessages(req, res) {
+  // REFATORAÇÃO: sistema migrado para Mongoose
   return safeQuery(res, async () => {
     const limit = Number(req.query.limit ?? 500);
-    const messages = await prisma.chatMessage.findMany({
-      take: limit,
-      orderBy: { createdAt: 'desc' }
-    });
+    const messages = await ChatMessage.find({})
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
     
     return messages.map(m => ({
       id: m.id,
@@ -33,7 +39,8 @@ export async function getMessages(req, res, prisma) {
  * POST /api/chat/messages
  * Criar nova mensagem e obter resposta da IA
  */
-export async function createMessage(req, res, prisma) {
+export async function createMessage(req, res) {
+  // REFATORAÇÃO: sistema migrado para Mongoose
   return safeQuery(res, async () => {
     const { text, sender = 'user' } = req.body;
     
@@ -42,11 +49,9 @@ export async function createMessage(req, res, prisma) {
     }
     
     // Salvar mensagem do usuário
-    const message = await prisma.chatMessage.create({
-      data: {
-        text: text.trim(),
-        sender: sender
-      }
+    const message = await ChatMessage.create({
+      text: text.trim(),
+      sender: sender
     });
     
     // Se for mensagem do usuário, gerar resposta da Cora via Gemini
@@ -56,7 +61,7 @@ export async function createMessage(req, res, prisma) {
       console.log('📝 Texto recebido:', text);
       
       // Buscar dados básicos do banco
-      const dadosReais = await fetchRelevantData(text, prisma);
+      const dadosReais = await fetchRelevantData(text);
       const dadosFormatados = formatDataForGemini(dadosReais, text);
       
       const systemPrompt = [
@@ -102,7 +107,7 @@ export async function createMessage(req, res, prisma) {
           tentativas++;
           
           try {
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
             
             const payload = {
               system_instruction: {
@@ -200,7 +205,7 @@ export async function createMessage(req, res, prisma) {
         } else if (userText.includes('dados') || userText.includes('estatística') || userText.includes('gráfico') || userText.includes('total') || userText.includes('quantas') || userText.includes('quantos')) {
           // Buscar dados básicos se não foram buscados ainda
           if (!dadosFormatados || dadosFormatados.trim().length === 0) {
-            const dadosBasicos = await fetchRelevantData(text, prisma);
+            const dadosBasicos = await fetchRelevantData(text);
             const dadosFormatadosBasicos = formatDataForGemini(dadosBasicos, text);
             if (dadosFormatadosBasicos && dadosFormatadosBasicos.trim().length > 0) {
               response = `📊 **Dados da Ouvidoria:**\n\n${dadosFormatadosBasicos}\n\n💡 *Resposta baseada em dados reais do banco.*`;
@@ -220,12 +225,10 @@ export async function createMessage(req, res, prisma) {
     
     // Salvar resposta da IA se houver
     if (response && sender === 'user') {
-    await prisma.chatMessage.create({
-      data: {
+      await ChatMessage.create({
         text: response,
         sender: 'cora'
-      }
-    });
+      });
     }
     
     return {
@@ -243,68 +246,70 @@ export async function createMessage(req, res, prisma) {
 /**
  * Buscar dados relevantes do banco baseado na pergunta
  */
-async function fetchRelevantData(userText, prisma) {
+async function fetchRelevantData(userText) {
   const text = userText.toLowerCase();
   const dados = {};
   
   try {
+    const Record = (await import('../../models/Record.model.js')).default;
+    
     // Sempre buscar estatísticas gerais
-    const total = await prisma.record.count();
-    const porStatus = await prisma.record.groupBy({
-      by: ['status'],
-      _count: { _all: true }
-    });
+    const total = await Record.countDocuments();
+    const porStatus = await Record.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
     
     dados.estatisticasGerais = {
       total,
       porStatus: porStatus
-        .map(s => ({ status: s.status || 'Não informado', count: s._count._all }))
+        .map(s => ({ status: s._id || 'Não informado', count: s.count }))
         .sort((a, b) => b.count - a.count)
-        .slice(0, 10)
     };
     
     // Buscar top órgãos se mencionar
     if (text.includes('secretaria') || text.includes('órgão') || text.includes('orgao')) {
-      const topOrgaos = await prisma.record.groupBy({
-        by: ['orgaos'],
-        _count: { _all: true }
-      });
-      dados.topOrgaos = topOrgaos
-        .sort((a, b) => b._count._all - a._count._all)
-        .slice(0, 10);
+      const topOrgaos = await Record.aggregate([
+        { $match: { orgaos: { $ne: null } } },
+        { $group: { _id: '$orgaos', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]);
+      dados.topOrgaos = topOrgaos.map(o => ({ orgaos: o._id, _count: { _all: o.count } }));
     }
     
     // Buscar top temas se mencionar
     if (text.includes('tema') || text.includes('categoria')) {
-      const topTemas = await prisma.record.groupBy({
-        by: ['tema'],
-        _count: { _all: true }
-      });
-      dados.topTemas = topTemas
-        .sort((a, b) => b._count._all - a._count._all)
-        .slice(0, 10);
+      const topTemas = await Record.aggregate([
+        { $match: { tema: { $ne: null } } },
+        { $group: { _id: '$tema', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]);
+      dados.topTemas = topTemas.map(t => ({ tema: t._id, _count: { _all: t.count } }));
     }
     
     // Buscar top assuntos se mencionar
     if (text.includes('assunto')) {
-      const topAssuntos = await prisma.record.groupBy({
-        by: ['assunto'],
-        _count: { _all: true }
-      });
-      dados.topAssuntos = topAssuntos
-        .sort((a, b) => b._count._all - a._count._all)
-        .slice(0, 10);
+      const topAssuntos = await Record.aggregate([
+        { $match: { assunto: { $ne: null } } },
+        { $group: { _id: '$assunto', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]);
+      dados.topAssuntos = topAssuntos.map(a => ({ assunto: a._id, _count: { _all: a.count } }));
     }
     
     // Buscar tipos de manifestação se mencionar
     if (text.includes('reclama') || text.includes('elogio') || text.includes('denúncia') || text.includes('tipo')) {
-      const topTipos = await prisma.record.groupBy({
-        by: ['tipoDeManifestacao'],
-        _count: { _all: true }
-      });
-      dados.topTiposManifestacao = topTipos
-        .sort((a, b) => b._count._all - a._count._all)
-        .slice(0, 10);
+      const topTipos = await Record.aggregate([
+        { $match: { tipoDeManifestacao: { $ne: null } } },
+        { $group: { _id: '$tipoDeManifestacao', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]);
+      dados.topTiposManifestacao = topTipos.map(t => ({ tipoDeManifestacao: t._id, _count: { _all: t.count } }));
     }
   } catch (error) {
     console.error('❌ Erro ao buscar dados relevantes:', error);

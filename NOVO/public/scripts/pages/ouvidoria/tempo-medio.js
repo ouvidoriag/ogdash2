@@ -297,7 +297,7 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '') {
           horizontal: true,
           colorIndex: 0,
           label: 'Tempo Médio (dias)',
-          onClick: true // Habilitar comunicação e filtros globais
+          onClick: false // FILTROS DE CLIQUE DESABILITADOS
         });
         
         // Renderizar ranking
@@ -331,7 +331,7 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '') {
           colorIndex: 0,
           fill: true,
           tension: 0.4,
-          onClick: true // Habilitar comunicação e filtros globais
+          onClick: false // FILTROS DE CLIQUE DESABILITADOS
         });
       }
     }
@@ -397,7 +397,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
           colorIndex: 0,
           fill: true,
           tension: 0.4,
-          onClick: true // Habilitar comunicação e filtros globais
+          onClick: false // FILTROS DE CLIQUE DESABILITADOS
         });
       }
     }
@@ -433,7 +433,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
         await window.chartFactory?.createLineChart('chartTempoMedioSemana', labels, values, {
           label: 'Tempo Médio (dias)',
           colorIndex: 1,
-          onClick: true, // Habilitar comunicação e filtros globais
+          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
           fill: true,
           tension: 0.4
         });
@@ -474,7 +474,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
           horizontal: true,
           colorIndex: 2,
           label: 'Tempo Médio (dias)',
-          onClick: true // Habilitar comunicação e filtros globais
+          onClick: false // FILTROS DE CLIQUE DESABILITADOS
         });
       }
     }
@@ -517,7 +517,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
         await window.chartFactory?.createLineChart('chartTempoMedioUnidadeMes', labels, datasets, {
           fill: false,
           tension: 0.4,
-          onClick: true, // Habilitar comunicação e filtros globais
+          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
           legendContainer: 'legendTempoMedioUnidadeMes'
         });
       }
