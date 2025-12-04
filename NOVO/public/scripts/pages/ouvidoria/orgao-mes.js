@@ -10,6 +10,7 @@ let currentOrgaosData = [];
 let sortAscending = false;
 let searchTerm = '';
 let filterOptionsLoaded = false; // Flag para evitar carregar opções múltiplas vezes
+let isSyncingFilters = false; // Flag para evitar loops infinitos na sincronização
 
 /**
  * Extrair valor de um campo de um registro
@@ -150,6 +151,9 @@ async function loadOrgaoMes(forceRefresh = false) {
   if (!page || page.style.display === 'none') {
     return Promise.resolve();
   }
+  
+  // Resetar flag quando a página é carregada para garantir que os filtros sejam populados
+  filterOptionsLoaded = false;
   
   try {
     // Coletar filtros da página (mês e status)
@@ -317,9 +321,32 @@ async function loadOrgaoMes(forceRefresh = false) {
     updateKPIs(dataOrgaos, dataMensal);
     
     // POPULAR FILTROS COM OS DADOS JÁ CARREGADOS
-    // Usar os dados de dataMensal que já foram carregados
-        // Carregar opções de filtros após dados serem carregados
-        await loadFilterOptions(forceRefresh);
+    // Carregar opções de filtros após dados serem carregados
+    // Usar setTimeout para garantir que o DOM está atualizado e a página está visível
+    // CORREÇÃO: Sempre tentar carregar opções, mesmo que já tenham sido carregadas antes
+    setTimeout(() => {
+      const pageCheck = document.getElementById('page-orgao-mes');
+      if (pageCheck && pageCheck.style.display !== 'none') {
+        console.log('🔄 Carregando opções de filtros após carregamento dos dados...');
+        // Sempre forçar refresh se a flag não estiver marcada
+        loadFilterOptions(!filterOptionsLoaded || forceRefresh).catch(error => {
+          console.error('❌ Erro ao carregar opções de filtros:', error);
+          if (window.Logger) {
+            window.Logger.warn('Erro ao carregar opções de filtros:', error);
+          }
+        });
+      } else {
+        console.warn('⚠️ Página não está visível, tentando novamente em 500ms...');
+        setTimeout(() => {
+          const pageCheck2 = document.getElementById('page-orgao-mes');
+          if (pageCheck2 && pageCheck2.style.display !== 'none') {
+            loadFilterOptions(!filterOptionsLoaded || forceRefresh).catch(error => {
+              console.error('❌ Erro ao carregar opções de filtros (segunda tentativa):', error);
+            });
+          }
+        }, 500);
+      }
+    }, 200);
     
     // Atualizar info mensal
     const infoMensal = document.getElementById('infoMensal');
@@ -553,6 +580,7 @@ function updateKPIs(dataOrgaos, dataMensal) {
 /**
  * Inicializar listeners de filtro para a página OrgaoMes
  * Usa o sistema global de filtros para atualização automática
+ * REFATORADO: Integração completa com sistema global de filtros
  */
 function initOrgaoMesFilterListeners() {
   // Conectar ao sistema global de filtros
@@ -576,10 +604,40 @@ function initOrgaoMesFilterListeners() {
     });
   }
   
-  // Listeners para filtros da página (mês e status)
+  // Listeners para filtros da página (mês e status) - INTEGRADO COM SISTEMA GLOBAL
   const filtroMes = document.getElementById('filtroMesOrgaoMes');
   if (filtroMes) {
     filtroMes.addEventListener('change', () => {
+      // Evitar loop infinito se estiver sincronizando
+      if (isSyncingFilters) {
+        return;
+      }
+      
+      const mesValue = filtroMes.value?.trim();
+      
+      // Remover filtro de mês anterior se existir
+      if (window.chartCommunication && window.chartCommunication.filters) {
+        const existingMesFilter = window.chartCommunication.filters.filters.find(
+          f => {
+            const field = f.field?.toLowerCase() || '';
+            return field === 'data' || field === 'datacriacaoiso' || field === 'datacriacao' || field === 'datadacriacao';
+          }
+        );
+        if (existingMesFilter) {
+          window.chartCommunication.filters.remove(existingMesFilter.field, existingMesFilter.value);
+        }
+        
+        // Aplicar novo filtro de mês no sistema global se houver valor
+        if (mesValue) {
+          window.chartCommunication.filters.apply('Data', mesValue, null, {
+            operator: 'contains',
+            toggle: false,
+            clearPrevious: false
+          });
+        }
+      }
+      
+      // Recarregar dados da página
       loadOrgaoMes(true);
     });
   }
@@ -587,22 +645,82 @@ function initOrgaoMesFilterListeners() {
   const filtroStatus = document.getElementById('filtroStatusOrgaoMes');
   if (filtroStatus) {
     filtroStatus.addEventListener('change', () => {
+      // Evitar loop infinito se estiver sincronizando
+      if (isSyncingFilters) {
+        return;
+      }
+      
+      const statusValue = filtroStatus.value?.trim();
+      
+      // Remover filtro de status anterior se existir
+      if (window.chartCommunication && window.chartCommunication.filters) {
+        const existingStatusFilter = window.chartCommunication.filters.filters.find(
+          f => {
+            const field = f.field?.toLowerCase() || '';
+            return field === 'status' || field === 'statusdemanda';
+          }
+        );
+        if (existingStatusFilter) {
+          window.chartCommunication.filters.remove(existingStatusFilter.field, existingStatusFilter.value);
+        }
+        
+        // Aplicar novo filtro de status no sistema global se houver valor
+        if (statusValue) {
+          window.chartCommunication.filters.apply('Status', statusValue, null, {
+            operator: 'eq',
+            toggle: false,
+            clearPrevious: false
+          });
+        }
+      }
+      
+      // Recarregar dados da página
       loadOrgaoMes(true);
     });
   }
   
+  // Sincronizar filtros globais com os selects quando filtros forem aplicados externamente
+  if (window.chartCommunication && window.chartCommunication.on) {
+    window.chartCommunication.on('filter:applied', syncGlobalFiltersToPageFilters);
+    window.chartCommunication.on('filter:removed', syncGlobalFiltersToPageFilters);
+    window.chartCommunication.on('filter:cleared', syncGlobalFiltersToPageFilters);
+  }
+  
   // Carregar opções de filtros quando a página é inicializada
-  // Usar a mesma abordagem dos filtros avançados: só carregar se ainda não foram carregadas
-  if (!filterOptionsLoaded) {
-    // Aguardar um pouco para garantir que o DOM está pronto
-    setTimeout(() => {
-      loadFilterOptions(false).catch(error => {
+  // CORREÇÃO: Sempre forçar carregamento na inicialização, mesmo que já tenha sido carregado antes
+  // Isso garante que as opções estejam sempre atualizadas quando a página é exibida
+  setTimeout(() => {
+    const pageCheck = document.getElementById('page-orgao-mes');
+    if (pageCheck && pageCheck.style.display !== 'none') {
+      console.log('🔄 Carregando opções de filtros na inicialização (forçado)...');
+      // Forçar refresh na inicialização para garantir que as opções sejam carregadas
+      loadFilterOptions(true).then(() => {
+        // Após carregar opções, sincronizar filtros globais com os selects
+        syncGlobalFiltersToPageFilters();
+      }).catch(error => {
+        console.error('❌ Erro ao carregar opções na inicialização:', error);
         if (window.Logger) {
           window.Logger.warn('Erro ao carregar opções na inicialização:', error);
         }
       });
-    }, 300);
-  }
+    } else {
+      console.log('⏳ Página não está visível ainda, aguardando...');
+      // Tentar novamente após um delay maior
+      setTimeout(() => {
+        const pageCheck2 = document.getElementById('page-orgao-mes');
+        if (pageCheck2 && pageCheck2.style.display !== 'none') {
+          console.log('🔄 Tentando carregar opções novamente (forçado)...');
+          // Forçar refresh na segunda tentativa também
+          loadFilterOptions(true).then(() => {
+            // Após carregar opções, sincronizar filtros globais com os selects
+            syncGlobalFiltersToPageFilters();
+          }).catch(error => {
+            console.error('❌ Erro ao carregar opções na segunda tentativa:', error);
+          });
+        }
+      }, 1000);
+    }
+  }, 500);
 }
 
 /**
@@ -619,31 +737,171 @@ function toggleSortOrgaos() {
 
 /**
  * Coletar filtros da página (mês e status)
+ * REFATORADO: Integrado com sistema global de filtros
  */
 function collectPageFilters() {
   const filters = [];
   
-  // Filtro por mês
-  const mes = document.getElementById('filtroMesOrgaoMes')?.value?.trim();
-  if (mes) {
+  // Priorizar filtros do sistema global, mas também considerar filtros dos selects da página
+  let mesValue = null;
+  let statusValue = null;
+  
+  // Verificar se há filtros globais ativos
+  if (window.chartCommunication && window.chartCommunication.filters) {
+    const globalFilters = window.chartCommunication.filters.filters || [];
+    
+    // Buscar filtro de mês/data nos filtros globais
+    const mesFilter = globalFilters.find(f => 
+      f.field === 'Data' || f.field === 'dataCriacaoIso' || f.field === 'dataCriacao'
+    );
+    if (mesFilter) {
+      mesValue = mesFilter.value;
+    }
+    
+    // Buscar filtro de status nos filtros globais
+    const statusFilter = globalFilters.find(f => 
+      f.field === 'Status' || f.field === 'StatusDemanda'
+    );
+    if (statusFilter) {
+      statusValue = statusFilter.value;
+    }
+  }
+  
+  // Se não houver filtros globais, usar valores dos selects da página
+  if (!mesValue) {
+    mesValue = document.getElementById('filtroMesOrgaoMes')?.value?.trim();
+  }
+  
+  if (!statusValue) {
+    statusValue = document.getElementById('filtroStatusOrgaoMes')?.value?.trim();
+  }
+  
+  // Adicionar filtro de mês se houver valor
+  if (mesValue) {
     filters.push({
       field: 'Data',
       op: 'contains',
-      value: mes // Formato YYYY-MM
+      value: mesValue // Formato YYYY-MM
     });
   }
   
-  // Filtro por status
-  const status = document.getElementById('filtroStatusOrgaoMes')?.value?.trim();
-  if (status) {
+  // Adicionar filtro de status se houver valor
+  if (statusValue) {
     filters.push({
       field: 'Status',
       op: 'eq',
-      value: status
+      value: statusValue
     });
   }
   
   return filters;
+}
+
+/**
+ * Sincronizar filtros globais com os selects da página
+ * Quando um filtro global é aplicado externamente, atualiza os selects
+ * REFATORADO: Melhor tratamento de campos e valores, com proteção contra loops
+ */
+function syncGlobalFiltersToPageFilters() {
+  // Evitar loops infinitos
+  if (isSyncingFilters) {
+    return;
+  }
+  
+  if (!window.chartCommunication || !window.chartCommunication.filters) {
+    return;
+  }
+  
+  // Verificar se a página está visível
+  const page = document.getElementById('page-orgao-mes');
+  if (!page || page.style.display === 'none') {
+    return;
+  }
+  
+  isSyncingFilters = true;
+  
+  try {
+    const globalFilters = window.chartCommunication.filters.filters || [];
+    const filtroMes = document.getElementById('filtroMesOrgaoMes');
+    const filtroStatus = document.getElementById('filtroStatusOrgaoMes');
+    
+    // Sincronizar filtro de mês
+    if (filtroMes) {
+      // Buscar filtro de mês/data nos filtros globais
+      // O campo pode ser 'Data', 'dataCriacaoIso', 'dataCriacao', 'dataDaCriacao'
+      const mesFilter = globalFilters.find(f => {
+        const field = f.field?.toLowerCase() || '';
+        return field === 'data' || 
+               field === 'datacriacaoiso' || 
+               field === 'datacriacao' ||
+               field === 'datadacriacao';
+      });
+      
+      if (mesFilter && mesFilter.value) {
+        // O valor pode estar no formato YYYY-MM ou YYYY-MM-DD
+        // Extrair apenas YYYY-MM se necessário
+        let mesValue = mesFilter.value;
+        if (mesValue.length > 7) {
+          mesValue = mesValue.substring(0, 7); // Pegar apenas YYYY-MM
+        }
+        
+        // Verificar se o valor existe nas opções do select
+        const optionExists = Array.from(filtroMes.options).some(opt => opt.value === mesValue);
+        if (optionExists) {
+          // Evitar loop infinito: só atualizar se o valor for diferente
+          if (filtroMes.value !== mesValue) {
+            filtroMes.value = mesValue;
+            if (window.Logger) {
+              window.Logger.debug(`Sincronizado filtro de mês: ${mesValue}`);
+            }
+          }
+        } else if (window.Logger) {
+          window.Logger.debug(`Filtro de mês ${mesValue} não encontrado nas opções do select`);
+        }
+      } else {
+        // Se não houver filtro global de mês, limpar o select apenas se houver valor
+        if (filtroMes.value) {
+          filtroMes.value = '';
+        }
+      }
+    }
+    
+    // Sincronizar filtro de status
+    if (filtroStatus) {
+      // Buscar filtro de status nos filtros globais
+      // O campo pode ser 'Status', 'StatusDemanda', 'status', 'statusdemanda'
+      const statusFilter = globalFilters.find(f => {
+        const field = f.field?.toLowerCase() || '';
+        return field === 'status' || field === 'statusdemanda';
+      });
+      
+      if (statusFilter && statusFilter.value) {
+        // Verificar se o valor existe nas opções do select
+        const optionExists = Array.from(filtroStatus.options).some(opt => opt.value === statusFilter.value);
+        if (optionExists) {
+          // Evitar loop infinito: só atualizar se o valor for diferente
+          if (filtroStatus.value !== statusFilter.value) {
+            filtroStatus.value = statusFilter.value;
+            if (window.Logger) {
+              window.Logger.debug(`Sincronizado filtro de status: ${statusFilter.value}`);
+            }
+          }
+        } else if (window.Logger) {
+          window.Logger.debug(`Filtro de status ${statusFilter.value} não encontrado nas opções do select`);
+        }
+      } else {
+        // Se não houver filtro global de status, limpar o select apenas se houver valor
+        if (filtroStatus.value) {
+          filtroStatus.value = '';
+        }
+      }
+    }
+  } finally {
+    // Sempre liberar a flag, mesmo em caso de erro
+    setTimeout(() => {
+      isSyncingFilters = false;
+    }, 100);
+  }
 }
 
 /**
@@ -748,6 +1006,14 @@ async function loadMonths() {
  * Popular select com opções (igual aos filtros avançados)
  */
 function populateSelect(selectElement, options) {
+  console.log('🔧 populateSelect chamado:', {
+    selectElement: !!selectElement,
+    selectId: selectElement?.id,
+    optionsType: Array.isArray(options) ? 'array' : typeof options,
+    optionsLength: Array.isArray(options) ? options.length : 'N/A',
+    optionsSample: Array.isArray(options) && options.length > 0 ? options.slice(0, 3) : options
+  });
+  
   if (!selectElement) {
     if (window.Logger) {
       window.Logger.warn('⚠️ populateSelect: selectElement é null ou undefined');
@@ -756,11 +1022,19 @@ function populateSelect(selectElement, options) {
     return;
   }
   
-  if (!Array.isArray(options) || options.length === 0) {
+  if (!Array.isArray(options)) {
+    console.error('❌ populateSelect: options não é um array!', { type: typeof options, value: options });
     if (window.Logger) {
-      window.Logger.warn('⚠️ populateSelect: options é vazio ou não é array', options);
+      window.Logger.warn('⚠️ populateSelect: options não é array', options);
     }
-    console.warn('⚠️ populateSelect: Nenhuma opção para adicionar', options);
+    return;
+  }
+  
+  if (options.length === 0) {
+    console.warn('⚠️ populateSelect: options é um array vazio');
+    if (window.Logger) {
+      window.Logger.warn('⚠️ populateSelect: options é vazio', options);
+    }
     return;
   }
   
@@ -846,7 +1120,7 @@ function populateSelect(selectElement, options) {
  */
 async function loadFilterOptions(forceRefresh = false) {
   if (window.Logger) {
-    window.Logger.debug('🔍 Carregando opções de filtros (mês e status)...');
+    window.Logger.debug('🔍 Carregando opções de filtros (mês e status)...', { forceRefresh });
   }
   
   const selectMes = document.getElementById('filtroMesOrgaoMes');
@@ -856,17 +1130,67 @@ async function loadFilterOptions(forceRefresh = false) {
     if (window.Logger) {
       window.Logger.warn('⚠️ Selects não encontrados, tentando novamente em 500ms...');
     }
+    console.warn('⚠️ Selects não encontrados:', { selectMes: !!selectMes, selectStatus: !!selectStatus });
     setTimeout(() => loadFilterOptions(forceRefresh), 500);
     return;
   }
   
+  // Verificar se os selects já têm opções válidas (exceto a primeira "Todos")
+  const mesHasOptions = selectMes.children.length > 1;
+  const statusHasOptions = selectStatus.children.length > 1;
+  
+  // Verificar se as opções existentes são válidas (têm valores não vazios)
+  const mesOptionsValid = mesHasOptions && Array.from(selectMes.options).slice(1).some(opt => opt.value && opt.value.trim() !== '');
+  const statusOptionsValid = statusHasOptions && Array.from(selectStatus.options).slice(1).some(opt => opt.value && opt.value.trim() !== '');
+  
+  // CORREÇÃO: Sempre carregar se não houver opções válidas, mesmo sem forceRefresh
+  // Isso garante que as opções sejam carregadas na primeira vez que a página é exibida
+  if (!forceRefresh && mesOptionsValid && statusOptionsValid) {
+    console.log('🔍 Opções já carregadas e válidas, pulando recarregamento...', {
+      mesCount: selectMes.children.length - 1,
+      statusCount: selectStatus.children.length - 1
+    });
+    if (window.Logger) {
+      window.Logger.debug('🔍 Opções já carregadas e válidas, pulando...');
+    }
+    // MAS: Se a flag filterOptionsLoaded for false, ainda assim carregar (primeira vez)
+    if (filterOptionsLoaded) {
+      return;
+    }
+    // Se não foi carregado ainda, continuar para carregar
+    console.log('🔄 Flag filterOptionsLoaded é false, forçando carregamento mesmo com opções existentes...');
+  }
+  
+  // Se chegou aqui, precisa carregar (ou recarregar)
+  console.log('🔍 Carregando opções de filtros...', {
+    forceRefresh,
+    mesHasOptions,
+    statusHasOptions,
+    mesOptionsValid,
+    statusOptionsValid,
+    filterOptionsLoaded
+  });
+  
   // Verificar se a página está visível (igual aos filtros avançados)
   const page = document.getElementById('page-orgao-mes');
-  if (page && page.style.display === 'none') {
+  if (!page) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Página page-orgao-mes não encontrada');
+    }
+    return;
+  }
+  
+  if (page.style.display === 'none') {
     if (window.Logger) {
       window.Logger.debug('🔍 Página não visível, aguardando...');
     }
-    setTimeout(() => loadFilterOptions(forceRefresh), 500);
+    // Tentar novamente após um delay maior para garantir que a página foi exibida
+    setTimeout(() => {
+      const pageCheck = document.getElementById('page-orgao-mes');
+      if (pageCheck && pageCheck.style.display !== 'none') {
+        loadFilterOptions(forceRefresh);
+      }
+    }, 1000);
     return;
   }
   
@@ -900,29 +1224,47 @@ async function loadFilterOptions(forceRefresh = false) {
   }
   
   // Carregar meses e status em paralelo
+  console.log('🚀 Iniciando carregamento de meses e status...');
   const loadPromises = [
     loadMonths().then(meses => {
-      console.log('📅 Meses recebidos:', meses);
-      if (meses && meses.length > 0) {
+      console.log('📅 Meses recebidos do endpoint:', meses);
+      console.log('📅 Tipo:', Array.isArray(meses) ? 'array' : typeof meses);
+      console.log('📅 Quantidade:', meses?.length || 0);
+      
+      if (meses && Array.isArray(meses) && meses.length > 0) {
         console.log(`📅 Populando select com ${meses.length} meses...`);
+        console.log('📅 Primeiros 5 meses:', meses.slice(0, 5));
+        
+        // Verificar estado do select antes de popular
+        const beforeCount = selectMes.children.length;
+        console.log('📅 Select antes de popular:', beforeCount, 'opções');
+        
         populateSelect(selectMes, meses);
+        
+        // Verificar estado do select depois de popular
+        const afterCount = selectMes.children.length;
+        const optionCount = afterCount - 1; // -1 para "Todos os meses"
+        console.log(`📅 Select depois de popular: ${afterCount} opções (${optionCount} meses + 1 "Todos")`);
+        
         if (window.Logger) {
           window.Logger.success(`✅ ${meses.length} meses carregados e populados no select`);
         }
+        
         // Verificar se realmente foram adicionados
-        const optionCount = selectMes.children.length - 1; // -1 para "Todos os meses"
-        console.log(`📅 Verificação: ${meses.length} meses carregados, ${optionCount} opções no select`);
         if (optionCount !== meses.length) {
           console.error(`❌ DISCREPÂNCIA: ${meses.length} meses carregados, mas ${optionCount} opções no select!`);
-          console.error('❌ Select HTML:', selectMes.outerHTML.substring(0, 500));
+          console.error('❌ Select HTML (primeiros 500 chars):', selectMes.outerHTML.substring(0, 500));
+          console.error('❌ Opções no select:', Array.from(selectMes.options).map(o => ({ value: o.value, text: o.textContent })));
           if (window.Logger) {
             window.Logger.warn(`⚠️ Discrepância: ${meses.length} meses carregados, mas ${optionCount} opções no select`);
           }
         } else {
           console.log('✅ Meses populados corretamente!');
+          console.log('✅ Opções no select:', Array.from(selectMes.options).slice(0, 5).map(o => o.textContent));
         }
       } else {
-        console.warn('⚠️ Nenhum mês retornado');
+        console.warn('⚠️ Nenhum mês retornado ou array vazio');
+        console.warn('⚠️ Dados recebidos:', meses);
         if (window.Logger) {
           window.Logger.warn('⚠️ Nenhum mês retornado');
         }
@@ -930,6 +1272,7 @@ async function loadFilterOptions(forceRefresh = false) {
       return { success: true, type: 'meses', count: meses?.length || 0 };
     }).catch(error => {
       console.error('❌ Erro ao carregar meses:', error);
+      console.error('❌ Stack:', error.stack);
       if (window.Logger) {
         window.Logger.warn('❌ Erro ao carregar meses:', error);
       }
@@ -937,52 +1280,129 @@ async function loadFilterOptions(forceRefresh = false) {
     }),
     
     loadDistinctValues('Status').then(status => {
-      console.log('🏷️ Status recebidos:', status);
-      if (status && status.length > 0) {
+      console.log('🏷️ Status recebidos do endpoint:', status);
+      console.log('🏷️ Tipo:', Array.isArray(status) ? 'array' : typeof status);
+      console.log('🏷️ Quantidade:', status?.length || 0);
+      
+      if (status && Array.isArray(status) && status.length > 0) {
         console.log(`🏷️ Populando select com ${status.length} status...`);
+        console.log('🏷️ Primeiros 5 status:', status.slice(0, 5));
+        
+        // Verificar estado do select antes de popular
+        const beforeCount = selectStatus.children.length;
+        console.log('🏷️ Select antes de popular:', beforeCount, 'opções');
+        
         populateSelect(selectStatus, status);
+        
+        // Verificar estado do select depois de popular
+        const afterCount = selectStatus.children.length;
+        const optionCount = afterCount - 1; // -1 para "Todos os status"
+        console.log(`🏷️ Select depois de popular: ${afterCount} opções (${optionCount} status + 1 "Todos")`);
+        
         if (window.Logger) {
           window.Logger.success(`✅ ${status.length} status carregados e populados no select`);
         }
+        
         // Verificar se realmente foram adicionados
-        const optionCount = selectStatus.children.length - 1; // -1 para "Todos os status"
-        console.log(`🏷️ Verificação: ${status.length} status carregados, ${optionCount} opções no select`);
         if (optionCount !== status.length) {
           console.error(`❌ DISCREPÂNCIA: ${status.length} status carregados, mas ${optionCount} opções no select!`);
-          console.error('❌ Select HTML:', selectStatus.outerHTML.substring(0, 500));
+          console.error('❌ Select HTML (primeiros 500 chars):', selectStatus.outerHTML.substring(0, 500));
+          console.error('❌ Opções no select:', Array.from(selectStatus.options).map(o => ({ value: o.value, text: o.textContent })));
           if (window.Logger) {
             window.Logger.warn(`⚠️ Discrepância: ${status.length} status carregados, mas ${optionCount} opções no select`);
           }
         } else {
           console.log('✅ Status populados corretamente!');
+          console.log('✅ Opções no select:', Array.from(selectStatus.options).slice(0, 5).map(o => o.textContent));
         }
+        
+        return { success: true, type: 'status', count: status.length };
       } else {
-        console.warn('⚠️ Nenhum status retornado');
-        if (window.Logger) {
-          window.Logger.warn('⚠️ Nenhum status retornado');
-        }
+        console.warn('⚠️ Nenhum status retornado, tentando StatusDemanda...');
+        console.warn('⚠️ Dados recebidos:', status);
+        // Tentar StatusDemanda como fallback
+        return loadDistinctValues('StatusDemanda').then(statusDemanda => {
+          console.log('🏷️ StatusDemanda recebidos:', statusDemanda);
+          if (statusDemanda && Array.isArray(statusDemanda) && statusDemanda.length > 0) {
+            console.log(`🏷️ Populando select com ${statusDemanda.length} statusDemanda...`);
+            populateSelect(selectStatus, statusDemanda);
+            if (window.Logger) {
+              window.Logger.success(`✅ ${statusDemanda.length} statusDemanda carregados e populados no select`);
+            }
+            return { success: true, type: 'statusDemanda', count: statusDemanda.length };
+          } else {
+            console.warn('⚠️ Nenhum statusDemanda retornado');
+            if (window.Logger) {
+              window.Logger.warn('⚠️ Nenhum status retornado (nem Status nem StatusDemanda)');
+            }
+            return { success: false, type: 'status', error: 'Nenhum status encontrado' };
+          }
+        });
       }
-      return { success: true, type: 'status', count: status?.length || 0 };
     }).catch(error => {
       console.error('❌ Erro ao carregar status:', error);
+      console.error('❌ Stack:', error.stack);
       if (window.Logger) {
         window.Logger.warn('❌ Erro ao carregar status:', error);
       }
-      return { success: false, type: 'status', error: error.message };
+      // Tentar StatusDemanda como fallback em caso de erro
+      return loadDistinctValues('StatusDemanda').then(statusDemanda => {
+        if (statusDemanda && Array.isArray(statusDemanda) && statusDemanda.length > 0) {
+          console.log('🏷️ Usando StatusDemanda como fallback:', statusDemanda.length);
+          populateSelect(selectStatus, statusDemanda);
+          return { success: true, type: 'statusDemanda', count: statusDemanda.length };
+        }
+        return { success: false, type: 'status', error: error.message };
+      }).catch(fallbackError => {
+        console.error('❌ Erro ao carregar StatusDemanda também:', fallbackError);
+        return { success: false, type: 'status', error: error.message };
+      });
     })
   ];
   
   // Usar allSettled para não bloquear se uma falhar
+  console.log('⏳ Aguardando carregamento de meses e status...');
   const results = await Promise.allSettled(loadPromises);
   
+  console.log('📊 Resultados do carregamento:', results);
+  
+  const successful = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+  const mesesCount = results[0]?.status === 'fulfilled' ? results[0].value?.count || 0 : 0;
+  const statusCount = results[1]?.status === 'fulfilled' ? results[1].value?.count || 0 : 0;
+  
+  console.log(`✅ Carregamento concluído: ${successful}/2 sucesso (${mesesCount} meses, ${statusCount} status)`);
+  console.log('📊 Estado final dos selects:');
+  console.log('  selectMes.children.length:', selectMes.children.length);
+  console.log('  selectStatus.children.length:', selectStatus.children.length);
+  
   if (window.Logger) {
-    const successful = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
-    const mesesCount = results[0]?.status === 'fulfilled' ? results[0].value?.count || 0 : 0;
-    const statusCount = results[1]?.status === 'fulfilled' ? results[1].value?.count || 0 : 0;
     window.Logger.debug(`🔍 Carregamento concluído: ${successful}/2 sucesso (${mesesCount} meses, ${statusCount} status)`);
   }
   
-  filterOptionsLoaded = true;
+  // Marcar como carregado apenas se ambos tiverem sucesso E tiverem opções válidas
+  const mesHasValidOptions = selectMes.children.length > 1;
+  const statusHasValidOptions = selectStatus.children.length > 1;
+  
+  if (successful === 2 && mesesCount > 0 && statusCount > 0 && mesHasValidOptions && statusHasValidOptions) {
+    filterOptionsLoaded = true;
+    console.log('✅ Filtros carregados com sucesso!', {
+      meses: mesesCount,
+      status: statusCount,
+      mesOptions: selectMes.children.length,
+      statusOptions: selectStatus.children.length
+    });
+  } else {
+    console.warn('⚠️ Filtros não foram totalmente carregados', {
+      successful,
+      mesesCount,
+      statusCount,
+      mesHasValidOptions,
+      statusHasValidOptions,
+      mesOptions: selectMes.children.length,
+      statusOptions: selectStatus.children.length
+    });
+    filterOptionsLoaded = false; // Permitir tentar novamente
+  }
 }
 
 // Exportar funções globais
@@ -993,6 +1413,50 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initOrgaoMesFilterListeners);
 } else {
   initOrgaoMesFilterListeners();
+}
+
+// CORREÇÃO: Observer para detectar quando a página é exibida e carregar opções
+// Isso garante que as opções sejam carregadas sempre que a página for mostrada
+if (typeof MutationObserver !== 'undefined') {
+  const pageElement = document.getElementById('page-orgao-mes');
+  if (pageElement) {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+          const target = mutation.target;
+          const isVisible = target.style.display !== 'none';
+          
+          if (isVisible) {
+            // Página foi exibida, verificar se precisa carregar opções
+            const selectMes = document.getElementById('filtroMesOrgaoMes');
+            const selectStatus = document.getElementById('filtroStatusOrgaoMes');
+            
+            const mesHasOptions = selectMes && selectMes.children.length > 1;
+            const statusHasOptions = selectStatus && selectStatus.children.length > 1;
+            
+            if (!mesHasOptions || !statusHasOptions) {
+              console.log('🔄 Página exibida sem opções nos filtros, carregando...');
+              // Aguardar um pouco para garantir que o DOM está pronto
+              setTimeout(() => {
+                loadFilterOptions(true).catch(error => {
+                  console.error('❌ Erro ao carregar opções via observer:', error);
+                });
+              }, 300);
+            }
+          }
+        }
+      });
+    });
+    
+    observer.observe(pageElement, {
+      attributes: true,
+      attributeFilter: ['style']
+    });
+    
+    if (window.Logger) {
+      window.Logger.debug('✅ Observer de visibilidade da página configurado para OrgaoMes');
+    }
+  }
 }
 
 window.loadOrgaoMes = loadOrgaoMes;
