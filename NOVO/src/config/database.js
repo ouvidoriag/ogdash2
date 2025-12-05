@@ -39,6 +39,21 @@ export async function initializeDatabase(connectionString) {
     // Conectar ao MongoDB
     await mongoose.connect(connectionString, options);
     
+    // CRÍTICO: Aguardar conexão estar realmente estabelecida
+    // mongoose.connect() pode retornar antes da conexão estar totalmente pronta
+    // Verificar readyState e aguardar se necessário
+    let attempts = 0;
+    const maxAttempts = 50; // 5 segundos (50 * 100ms)
+    
+    while (mongoose.connection.readyState !== 1 && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('Timeout: Conexão Mongoose não estabelecida após 5 segundos');
+    }
+    
     logger.info('✅ Mongoose conectado ao MongoDB Atlas com sucesso');
     
     // Configurar listeners de eventos

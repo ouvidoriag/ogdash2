@@ -11,10 +11,37 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Resolver caminho do arquivo de configuração
+ * Tenta múltiplos caminhos possíveis para funcionar tanto no servidor quanto nos scripts
+ */
+function resolveConfigPath(filename) {
+  // Tentar caminho relativo ao módulo (servidor)
+  const modulePath = path.join(__dirname, '../../..', 'config', filename);
+  if (fs.existsSync(modulePath)) {
+    return modulePath;
+  }
+  
+  // Tentar caminho relativo ao diretório de trabalho atual (scripts)
+  const cwdPath = path.join(process.cwd(), 'config', filename);
+  if (fs.existsSync(cwdPath)) {
+    return cwdPath;
+  }
+  
+  // Tentar caminho relativo ao NOVO (se executado da raiz)
+  const novoPath = path.join(process.cwd(), 'NOVO', 'config', filename);
+  if (fs.existsSync(novoPath)) {
+    return novoPath;
+  }
+  
+  // Se não encontrou, retornar o caminho padrão (relativo ao módulo)
+  return modulePath;
+}
+
 // Configuração OAuth2
 const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
-const TOKEN_PATH = path.join(__dirname, '../../..', 'config', 'gmail-token.json');
-const CREDENTIALS_PATH = path.join(__dirname, '../../..', 'config', 'gmail-credentials.json');
+const TOKEN_PATH = resolveConfigPath('gmail-token.json');
+const CREDENTIALS_PATH = resolveConfigPath('gmail-credentials.json');
 
 let oauth2Client = null;
 let gmail = null;
@@ -25,6 +52,9 @@ let gmail = null;
 function loadCredentials() {
   try {
     if (!fs.existsSync(CREDENTIALS_PATH)) {
+      console.error('❌ Arquivo de credenciais não encontrado em:', CREDENTIALS_PATH);
+      console.error('💡 Verifique se o arquivo config/gmail-credentials.json existe');
+      console.error('💡 Diretório de trabalho atual:', process.cwd());
       throw new Error(`Arquivo de credenciais não encontrado: ${CREDENTIALS_PATH}`);
     }
     
@@ -51,12 +81,20 @@ function loadToken() {
   try {
     if (fs.existsSync(TOKEN_PATH)) {
       const token = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
+      
+      // Verificar se o token tem refresh_token
+      if (!token.refresh_token) {
+        console.warn('⚠️ Token não possui refresh_token. Pode ser necessário reautorizar.');
+      }
+      
       oauth2Client.setCredentials(token);
       return token;
     }
+    
     return null;
   } catch (error) {
     console.error('❌ Erro ao carregar token:', error);
+    console.error('💡 Caminho do token:', TOKEN_PATH);
     return null;
   }
 }
@@ -105,7 +143,7 @@ export async function authorize(code) {
 }
 
 /**
- * Inicializar cliente Gmail
+ * Inicializar cliente Gmail com renovação automática de token
  */
 function initGmail() {
   if (gmail) return gmail;
@@ -120,12 +158,25 @@ function initGmail() {
     
     auth.setCredentials(token);
     
-    // Verificar se o token expirou e renovar se necessário
+    // Configurar renovação automática de token
     auth.on('tokens', (tokens) => {
       if (tokens.refresh_token) {
-        saveToken({ ...token, ...tokens });
+        // Salvar novo refresh token se fornecido
+        const updatedToken = { ...token, ...tokens };
+        saveToken(updatedToken);
+      } else if (tokens.access_token) {
+        // Atualizar apenas o access token
+        const updatedToken = { ...token, access_token: tokens.access_token, expiry_date: tokens.expiry_date };
+        saveToken(updatedToken);
       }
     });
+    
+    // Forçar renovação se o token estiver próximo de expirar
+    if (token.expiry_date && token.expiry_date <= Date.now() + 60000) {
+      auth.refreshAccessToken().catch(err => {
+        console.error('❌ Erro ao renovar token:', err);
+      });
+    }
     
     gmail = google.gmail({ version: 'v1', auth });
     return gmail;
@@ -189,7 +240,7 @@ function createMessage(to, subject, htmlBody, textBody, fromEmail, fromName) {
 }
 
 /**
- * Enviar email
+ * Enviar email com tratamento de erros de autenticação
  * @param {string} to - Email do destinatário
  * @param {string} subject - Assunto do email
  * @param {string} htmlBody - Corpo HTML do email
@@ -200,7 +251,8 @@ function createMessage(to, subject, htmlBody, textBody, fromEmail, fromName) {
  */
 export async function sendEmail(to, subject, htmlBody, textBody, fromEmail = null, fromName = null) {
   try {
-    const gmailClient = initGmail();
+    // Resetar cliente Gmail para forçar reinicialização se houver erro de auth
+    let gmailClient = initGmail();
     
     // Usar configurações padrão se não fornecidas
     const emailRemetente = fromEmail || process.env.EMAIL_REMETENTE || 'ouvidoria@duquedecaxias.rj.gov.br';
@@ -227,6 +279,28 @@ export async function sendEmail(to, subject, htmlBody, textBody, fromEmail = nul
       threadId: response.data.threadId
     };
   } catch (error) {
+    // Tratar erro de autenticação (invalid_grant)
+    if (error.code === 400 && error.message && error.message.includes('invalid_grant')) {
+      console.error('❌ Erro de autenticação (invalid_grant): Token expirado ou revogado');
+      console.error('   Solução: Execute a autorização novamente usando: npm run gmail:auth');
+      
+      // Resetar cliente Gmail para forçar nova inicialização na próxima tentativa
+      gmail = null;
+      
+      throw new Error('Token OAuth expirado ou revogado. É necessário reautorizar o serviço Gmail. Execute: npm run gmail:auth');
+    }
+    
+    // Tratar outros erros de autenticação
+    if (error.code === 401 || (error.response && error.response.status === 401)) {
+      console.error('❌ Erro de autenticação (401): Token inválido');
+      console.error('   Solução: Execute a autorização novamente usando: npm run gmail:auth');
+      
+      // Resetar cliente Gmail
+      gmail = null;
+      
+      throw new Error('Token OAuth inválido. É necessário reautorizar o serviço Gmail. Execute: npm run gmail:auth');
+    }
+    
     console.error('❌ Erro ao enviar email:', error);
     throw error;
   }

@@ -28,6 +28,10 @@
     "fix:prisma": "node scripts/maintenance/fix-prisma.js",
     "map:system": "node scripts/maintenance/mapear-sistema.js",
     "import:zeladoria": "node scripts/data/importZeladoria.js",
+    "import:esic": "node scripts/data/importEsic.js",
+    "import:esic:limpo": "node scripts/data/importEsicLimpo.js",
+    "analisar:esic": "node scripts/data/analisarDuplicatasEsic.js",
+    "test:esic": "node scripts/test/testEsicEndpoints.js",
     "test:pages": "node scripts/test/run-page-tests.js",
     "test:all": "node scripts/test/test-all-pages.js",
     "gmail:auth": "node scripts/email/autorizar-gmail.js",
@@ -37,7 +41,16 @@
     "docs:generate": "node scripts/generate-api-docs.js",
     "docs:json": "node scripts/generate-api-docs.js --format json",
     "docs:swagger": "node scripts/generate-api-docs.js --format swagger",
-    "analyze:architecture": "node scripts/analyze-architecture.js"
+    "analyze:architecture": "node scripts/analyze-architecture.js",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "typecheck": "tsc --noEmit",
+    "build:ts": "tsc --project tsconfig.build.json",
+    "build:ts:clean": "npm run clean:build && npm run build:ts",
+    "watch:ts": "tsc --project tsconfig.build.json --watch",
+    "clean:build": "node -e \"const fs=require('fs');const path=require('path');function rmDir(dir){if(fs.existsSync(dir)){fs.readdirSync(dir).forEach(f=>{const p=path.join(dir,f);if(fs.lstatSync(p).isDirectory())rmDir(p);else if(f.endsWith('.js')&&fs.existsSync(p.replace('.js','.ts')))fs.unlinkSync(p);});}}\" && rmDir public/scripts/core/chart-communication && rmDir public/scripts/core",
+    "build": "npm run build:ts && echo '✅ Build TypeScript concluído'"
   },
   "keywords": [
     "ouvidoria",
@@ -68,6 +81,13 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "puppeteer": "^24.31.0"
+    "@types/express": "^4.17.25",
+    "@types/node": "^20.19.25",
+    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/ui": "^1.6.1",
+    "jsdom": "^24.1.3",
+    "puppeteer": "^24.31.0",
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
   }
 }

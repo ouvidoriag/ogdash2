@@ -49,26 +49,13 @@ async function loadOverview(forceRefresh = false) {
   }
   
   try {
-    // FILTROS DE CLIQUE DESABILITADOS: Não aplicar filtros de clique
+    // FILTROS DE CLIQUE COMPLETAMENTE DESABILITADOS
+    // O overview SEMPRE carrega dados completos, sem filtros
     // Filtros só funcionam através da página de filtros avançados
-    let activeFilters = null;
-    // CÓDIGO DESABILITADO - Filtros de clique removidos
-    /*
-    if (window.chartCommunication) {
-      const globalFilters = window.chartCommunication.filters.filters || [];
-      if (globalFilters.length > 0) {
-        activeFilters = globalFilters;
-        if (window.Logger) {
-          window.Logger.debug(`📊 loadOverview: ${activeFilters.length} filtro(s) ativo(s)`, activeFilters);
-        }
-      }
-    }
-    */
-    
     let dashboardData = {};
     
-    // FILTROS DE CLIQUE DESABILITADOS: Sempre usar dados sem filtros de clique
-    if (false && activeFilters && activeFilters.length > 0) {
+    // SEMPRE carregar dados sem filtros (código de filtros removido completamente)
+    if (false) {
       try {
         const filterRequest = {
           filters: activeFilters,
@@ -204,9 +191,17 @@ async function loadOverview(forceRefresh = false) {
     // OTIMIZAÇÃO: Renderizar KPIs primeiro (mais rápido, feedback imediato)
     await renderKPIs(summary, byDay, byMonth);
     
-    // OTIMIZAÇÃO: Renderizar gráficos principais em paralelo quando possível
-    // Renderizar gráficos principais (inclui todos os gráficos organizados por seção)
-    await renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit);
+    // OTIMIZAÇÃO: Ocultar indicador de carregamento após KPIs (feedback mais rápido)
+    const loadingIndicator = document.getElementById('overview-loading');
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'none';
+    }
+    
+    // OTIMIZAÇÃO: Renderizar gráficos principais de forma incremental (não bloqueia UI)
+    // Usar requestAnimationFrame para não bloquear a thread principal
+    requestAnimationFrame(async () => {
+      await renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit, forceRefresh);
+    });
     
     // Insights de IA removidos
     
@@ -214,11 +209,7 @@ async function loadOverview(forceRefresh = false) {
       window.Logger.success('📊 loadOverview: Carregamento concluído');
     }
     
-    // OTIMIZAÇÃO: Ocultar indicador de carregamento
-    const loadingIndicator = document.getElementById('overview-loading');
-    if (loadingIndicator) {
-      loadingIndicator.style.display = 'none';
-    }
+    // Indicador já foi ocultado após renderizar KPIs
   } catch (error) {
     if (window.Logger) {
       window.Logger.error('Erro ao carregar overview:', error);
@@ -423,6 +414,105 @@ async function renderSparkline(canvasId, data) {
   });
 }
 
+// ============================================
+// FUNÇÕES AUXILIARES PADRONIZADAS (ESCOPO GLOBAL)
+// ============================================
+
+/**
+ * Função auxiliar para obter cor por índice
+ */
+function getColorForIndex(idx) {
+  const colors = [
+    '#22d3ee', '#a78bfa', '#34d399', '#fbbf24', 
+    '#fb7185', '#60a5fa', '#f472b6', '#84cc16'
+  ];
+  return colors[idx % colors.length];
+}
+
+/**
+ * Função auxiliar padronizada para tooltip de gráficos de pizza
+ */
+function getStandardDoughnutTooltip() {
+  return {
+    callbacks: {
+      label: function(context) {
+        const label = context.label || '';
+        const value = context.parsed || 0;
+        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+        const percent = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+        return `${label}: ${value.toLocaleString('pt-BR')} (${percent}%)`;
+      }
+    }
+  };
+}
+
+// Garantir que a função esteja disponível no escopo global
+window.getStandardDoughnutTooltip = getStandardDoughnutTooltip;
+
+/**
+ * Função auxiliar padronizada para renderizar info box de gráficos de pizza
+ */
+function renderStandardDoughnutInfoBox(infoBoxId, dataWithPercent, config = {}) {
+  const infoBox = document.getElementById(infoBoxId);
+  if (!infoBox || !dataWithPercent || dataWithPercent.length === 0) return;
+  
+  const topItem = dataWithPercent[0];
+  const label = topItem.label || topItem.status || topItem.type || topItem.channel || topItem.priority || 'N/A';
+  const count = topItem.count || topItem.value || 0;
+  const percent = topItem.percent || '0.0';
+  const totalLabel = config.totalLabel || 'Total';
+  const itemLabel = config.itemLabel || 'item';
+  
+  const color = topItem.color || getColorForIndex(0);
+  
+  infoBox.innerHTML = `
+    <div class="text-xs text-slate-400 mb-1">${config.mostCommonLabel || 'Mais comum'}</div>
+    <div class="text-sm font-bold" style="color: ${color}">${label}</div>
+    <div class="text-xs text-slate-500 mt-1">${count.toLocaleString('pt-BR')} (${percent}%)</div>
+    <div class="text-xs text-slate-400 mt-2">${totalLabel} de ${itemLabel}: ${dataWithPercent.length}</div>
+  `;
+}
+
+/**
+ * Função auxiliar padronizada para renderizar legenda de gráficos de pizza
+ */
+function renderStandardDoughnutLegend(legendContainerId, dataWithPercent, colorGetter = null) {
+  const legendContainer = document.getElementById(legendContainerId);
+  if (!legendContainer || !dataWithPercent || dataWithPercent.length === 0) return;
+  
+  legendContainer.innerHTML = dataWithPercent.map((item, idx) => {
+    const label = item.label || item.status || item.type || item.channel || item.priority || 'N/A';
+    const count = item.count || item.value || 0;
+    const percent = item.percent || '0.0';
+    
+    // Obter cor: usar colorGetter se fornecido, senão usar getColorForIndex
+    let color;
+    if (colorGetter && typeof colorGetter === 'function') {
+      color = colorGetter(idx, item);
+    } else if (item.color) {
+      color = item.color;
+    } else {
+      color = getColorForIndex(idx);
+    }
+    
+    return `
+      <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
+        <div class="flex items-center gap-2">
+          <div class="w-3 h-3 rounded-full" style="background-color: ${color}"></div>
+          <span class="text-sm text-slate-300">${label}</span>
+        </div>
+        <div class="text-right">
+          <div class="text-sm font-bold" style="color: ${color}">${count.toLocaleString('pt-BR')}</div>
+          <div class="text-xs text-slate-400">${percent}%</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Garantir que a função esteja disponível no escopo global
+window.renderStandardDoughnutLegend = renderStandardDoughnutLegend;
+
 /**
  * Renderizar gráficos principais
  * 
@@ -431,13 +521,24 @@ async function renderSparkline(canvasId, data) {
  * 2. Status e SLA: Funil por Status + SLA
  * 3. Rankings: Top Órgãos + Top Temas + Top Unidades
  * 4. Distribuições: Tipos + Canais + Prioridades
+ * 
+ * OTIMIZAÇÃO: Renderização incremental com lazy loading
  */
-async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit) {
+async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit, forceRefresh = false) {
   // Verificar se chartFactory está disponível
   if (!window.chartFactory) {
     console.error('❌ chartFactory não está disponível!');
     if (window.Logger) {
       window.Logger.error('chartFactory não está disponível');
+    }
+    return;
+  }
+  
+  // OTIMIZAÇÃO: Verificar se a página ainda está visível antes de renderizar
+  const pageMain = document.getElementById('page-main');
+  if (!pageMain || pageMain.style.display === 'none') {
+    if (window.Logger) {
+      window.Logger.debug('📊 renderMainCharts: Página não visível, cancelando renderização');
     }
     return;
   }
@@ -479,9 +580,15 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     });
   }
   
+  // OTIMIZAÇÃO: Renderizar gráficos críticos primeiro (visíveis acima da dobra)
+  // Usar Promise.all para renderizar em paralelo os gráficos principais
+  
   // ============================================
   // SEÇÃO 2: ANÁLISE TEMPORAL
   // ============================================
+  
+  // OTIMIZAÇÃO: Renderizar gráficos principais em paralelo (não bloqueiam uns aos outros)
+  const criticalChartsPromises = [];
   
   // Gráfico de tendência mensal
   if (byMonth && Array.isArray(byMonth) && byMonth.length > 0) {
@@ -550,38 +657,43 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       window.Logger.debug('📊 Renderizando chartTrend:', { labels: labels.length, values: values.length, peaks: topPeaks.length });
     }
     
-    try {
-      await window.chartFactory.createLineChart('chartTrend', labels, values, {
-        label: 'Manifestações',
-        colorIndex: 0,
-        fill: true,
-        tension: 0.4,
-        onClick: false // FILTROS DE CLIQUE DESABILITADOS
-        chartOptions: {
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `${context.dataset.label}: ${context.parsed.y.toLocaleString('pt-BR')}`;
+    // OTIMIZAÇÃO: Adicionar à lista de promises para renderização paralela
+    criticalChartsPromises.push(
+      (async () => {
+        try {
+          await window.chartFactory.createLineChart('chartTrend', labels, values, {
+            label: 'Manifestações',
+            colorIndex: 0,
+            fill: true,
+            tension: 0.4,
+            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+            chartOptions: {
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    label: function(context) {
+                      return `${context.dataset.label}: ${context.parsed.y.toLocaleString('pt-BR')}`;
+                    }
+                  }
                 }
               }
             }
+          });
+          
+          // Adicionar anotações de picos após o gráfico ser renderizado
+          if (topPeaks.length > 0) {
+            setTimeout(() => {
+              addPeakAnnotations('chartTrend', topPeaks, labels, values);
+            }, 500);
+          }
+        } catch (error) {
+          console.error('Erro ao criar chartTrend:', error);
+          if (window.Logger) {
+            window.Logger.error('Erro ao criar chartTrend:', error);
           }
         }
-      });
-      
-      // Adicionar anotações de picos após o gráfico ser renderizado
-      if (topPeaks.length > 0) {
-        setTimeout(() => {
-          addPeakAnnotations('chartTrend', topPeaks, labels, values);
-        }, 500);
-      }
-    } catch (error) {
-      console.error('Erro ao criar chartTrend:', error);
-      if (window.Logger) {
-        window.Logger.error('Erro ao criar chartTrend:', error);
-      }
-    }
+      })()
+    );
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Sem dados mensais para chartTrend');
@@ -596,15 +708,6 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       ctx.textAlign = 'center';
       ctx.fillText('Sem dados disponíveis', canvas.width / 2, canvas.height / 2);
     }
-  }
-  
-  // Função auxiliar para obter cor por índice
-  function getColorForIndex(idx) {
-    const colors = [
-      '#22d3ee', '#a78bfa', '#34d399', '#fbbf24', 
-      '#fb7185', '#60a5fa', '#f472b6', '#84cc16'
-    ];
-    return colors[idx % colors.length];
   }
   
   // ============================================
@@ -625,65 +728,54 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       percent: totalStatus > 0 ? ((s.count || 0) / totalStatus * 100).toFixed(1) : '0.0'
     }));
     
-    // Atualizar informações no HTML
-    const statusInfoEl = document.getElementById('statusInfo');
-    if (statusInfoEl) {
-      const topStatus = statusWithPercent[0];
-      statusInfoEl.innerHTML = `
-        <div class="text-xs text-slate-400 mb-1">Status mais comum</div>
-        <div class="text-sm font-bold text-violet-300">${topStatus.status}</div>
-        <div class="text-xs text-slate-500 mt-1">${topStatus.count.toLocaleString('pt-BR')} (${topStatus.percent}%)</div>
-      `;
-    }
+    // Atualizar informações no HTML (padronizado)
+    renderStandardDoughnutInfoBox('statusInfo', statusWithPercent.map(s => ({
+      label: s.status,
+      count: s.count,
+      percent: s.percent
+    })), {
+      mostCommonLabel: 'Status mais comum',
+      totalLabel: 'Total',
+      itemLabel: 'status'
+    });
     
     if (window.Logger) {
       window.Logger.debug('📊 Renderizando chartFunnelStatus:', { labels: labels.length, values: values.length });
     }
     
-    try {
-      await window.chartFactory.createDoughnutChart('chartFunnelStatus', labels, values, {
-        type: 'doughnut',
-        onClick: false, // FILTROS DE CLIQUE DESABILITADOS // Habilitar comunicação e filtros
-        legendContainer: 'legendFunnelStatus',
-        chartOptions: {
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const label = context.label || '';
-                  const value = context.parsed || 0;
-                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                  const percent = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-                  return `${label}: ${value.toLocaleString('pt-BR')} (${percent}%)`;
-                }
+    // OTIMIZAÇÃO: Adicionar à lista de promises para renderização paralela
+    criticalChartsPromises.push(
+      (async () => {
+        try {
+          await window.chartFactory.createDoughnutChart('chartFunnelStatus', labels, values, {
+            type: 'doughnut',
+            field: 'Status', // Campo para cores consistentes
+            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+            legendContainer: 'legendFunnelStatus',
+            chartOptions: {
+              plugins: {
+                legend: {
+                  display: false // Desabilitar legenda padrão (usamos legenda customizada abaixo)
+                },
+                tooltip: getStandardDoughnutTooltip()
               }
             }
+          });
+          
+          // Adicionar informações detalhadas na legenda (padronizado)
+          renderStandardDoughnutLegend('legendFunnelStatus', statusWithPercent.map(s => ({
+            label: s.status,
+            count: s.count,
+            percent: s.percent
+          })));
+        } catch (error) {
+          console.error('Erro ao criar chartFunnelStatus:', error);
+          if (window.Logger) {
+            window.Logger.error('Erro ao criar chartFunnelStatus:', error);
           }
         }
-      });
-      
-      // Adicionar informações detalhadas na legenda
-      const legendContainer = document.getElementById('legendFunnelStatus');
-      if (legendContainer) {
-        legendContainer.innerHTML = statusWithPercent.map((s, idx) => `
-          <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
-            <div class="flex items-center gap-2">
-              <div class="w-3 h-3 rounded-full" style="background-color: ${getColorForIndex(idx)}"></div>
-              <span class="text-sm text-slate-300">${s.status}</span>
-            </div>
-            <div class="text-right">
-              <div class="text-sm font-bold text-cyan-300">${s.count.toLocaleString('pt-BR')}</div>
-              <div class="text-xs text-slate-400">${s.percent}%</div>
-            </div>
-          </div>
-        `).join('');
-      }
-    } catch (error) {
-      console.error('Erro ao criar chartFunnelStatus:', error);
-      if (window.Logger) {
-        window.Logger.error('Erro ao criar chartFunnelStatus:', error);
-      }
-    }
+      })()
+    );
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Sem dados de status para chartFunnelStatus');
@@ -814,31 +906,34 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         total: total
       });
       
-      await window.chartFactory.createBarChart('chartDailyDistribution', labels, values, {
-        colorIndex: 0,
-        onClick: false // FILTROS DE CLIQUE DESABILITADOS
-        chartOptions: {
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `${context.parsed.y.toLocaleString('pt-BR')} manifestações`;
+      // OTIMIZAÇÃO: Adicionar à lista de promises para renderização paralela
+      criticalChartsPromises.push(
+        window.chartFactory.createBarChart('chartDailyDistribution', labels, values, {
+          colorIndex: 0,
+          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+          chartOptions: {
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return `${context.parsed.y.toLocaleString('pt-BR')} manifestações`;
+                  }
                 }
               }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                callback: function(value) {
-                  return value.toLocaleString('pt-BR');
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: function(value) {
+                    return value.toLocaleString('pt-BR');
+                  }
                 }
               }
             }
           }
-        }
-      });
+        })
+      );
       
       if (window.Logger) {
         window.Logger.success('✅ Gráfico de distribuição diária criado com sucesso');
@@ -849,6 +944,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       if (window.Logger) {
         window.Logger.error('Erro ao criar chartDailyDistribution:', error);
       }
+      // Adicionar promise rejeitada para não quebrar Promise.all
+      criticalChartsPromises.push(Promise.resolve());
     }
   } else {
     if (window.Logger) {
@@ -867,65 +964,73 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     }
   }
   
+  // OTIMIZAÇÃO: Aguardar gráficos críticos primeiro (feedback visual mais rápido)
+  if (criticalChartsPromises.length > 0) {
+    await Promise.allSettled(criticalChartsPromises);
+    if (window.Logger) {
+      window.Logger.debug('📊 Gráficos críticos renderizados');
+    }
+  }
+  
   // Carregar e renderizar SLA (parte da seção Status e SLA)
-  // IMPORTANTE: SLA também deve ser filtrado quando há filtros ativos
-  try {
-    let slaData = null;
-    
-    // Verificar se há filtros ativos
-    if (window.chartCommunication) {
-      const globalFilters = window.chartCommunication.filters.filters || [];
-      if (globalFilters.length > 0) {
-        // Se houver filtros, buscar dados filtrados e calcular SLA localmente
-        try {
-          const filterRequest = {
-            filters: globalFilters,
-            originalUrl: window.location.pathname
-          };
-          
-          const response = await fetch('/api/filter', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            credentials: 'include', // Enviar cookies de sessão
-            body: JSON.stringify(filterRequest)
-          });
-          
-          if (response.ok) {
-            const filteredRows = await response.json();
-            // Calcular SLA dos dados filtrados
-            slaData = calculateSLAFromRows(filteredRows);
-            if (window.Logger) {
-              window.Logger.debug('📊 SLA calculado a partir de dados filtrados:', slaData);
+  // OTIMIZAÇÃO: Carregar SLA em paralelo com outros gráficos secundários
+  const slaPromise = (async () => {
+    try {
+      let slaData = null;
+      
+      // Verificar se há filtros ativos
+      if (window.chartCommunication) {
+        const globalFilters = window.chartCommunication.filters.filters || [];
+        if (globalFilters.length > 0) {
+          // Se houver filtros, buscar dados filtrados e calcular SLA localmente
+          try {
+            const filterRequest = {
+              filters: globalFilters,
+              originalUrl: window.location.pathname
+            };
+            
+            const response = await fetch('/api/filter', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              credentials: 'include', // Enviar cookies de sessão
+              body: JSON.stringify(filterRequest)
+            });
+            
+            if (response.ok) {
+              const filteredRows = await response.json();
+              // Calcular SLA dos dados filtrados
+              slaData = calculateSLAFromRows(filteredRows);
+              if (window.Logger) {
+                window.Logger.debug('📊 SLA calculado a partir de dados filtrados:', slaData);
+              }
             }
-          }
-        } catch (filterError) {
-          if (window.Logger) {
-            window.Logger.warn('Erro ao calcular SLA com filtros, usando dados sem filtro:', filterError);
+          } catch (filterError) {
+            if (window.Logger) {
+              window.Logger.warn('Erro ao calcular SLA com filtros, usando dados sem filtro:', filterError);
+            }
           }
         }
       }
+      
+      // Se não há filtros ou houve erro, usar endpoint normal
+      if (!slaData) {
+        slaData = await window.dataLoader?.load('/api/sla/summary', {
+          useDataStore: !forceRefresh,
+          ttl: 5 * 60 * 1000
+        });
+      }
+      
+      if (slaData) {
+        await renderSLAChart(slaData);
+      }
+    } catch (error) {
+      if (window.Logger) {
+        window.Logger.warn('Erro ao carregar dados de SLA:', error);
+      }
     }
-    
-    // Se não há filtros ou houve erro, usar endpoint normal
-    if (!slaData) {
-      // Verificar se forceRefresh foi passado (pode não estar no escopo)
-      const shouldRefresh = typeof forceRefresh !== 'undefined' ? forceRefresh : false;
-      slaData = await window.dataLoader?.load('/api/sla/summary', {
-        useDataStore: !shouldRefresh,
-        ttl: 5 * 60 * 1000
-      });
-    }
-    
-    if (slaData) {
-      await renderSLAChart(slaData);
-    }
-  } catch (error) {
-    if (window.Logger) {
-      window.Logger.warn('Erro ao carregar dados de SLA:', error);
-    }
-  }
+  })();
   
   // ============================================
   // SEÇÃO 4: RANKINGS E TOP PERFORMERS
@@ -936,7 +1041,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   
   // Top órgãos (se disponível)
   if (byOrgan && Array.isArray(byOrgan) && byOrgan.length > 0) {
-    const topOrgaos = byOrgan.slice(0, 20);
+    const topOrgaos = byOrgan.slice(0, 10); // Top 10 principais
     const labels = topOrgaos.map(o => o.organ || o._id || 'N/A');
     const values = topOrgaos.map(o => o.count || 0);
     
@@ -983,7 +1088,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   
   // Top temas (se disponível)
   if (byTheme && Array.isArray(byTheme) && byTheme.length > 0) {
-    const topTemas = byTheme.slice(0, 20);
+    const topTemas = byTheme.slice(0, 10); // Top 10 principais
     const labels = topTemas.map(t => t.theme || t._id || 'N/A');
     const values = topTemas.map(t => t.count || 0);
     
@@ -1027,9 +1132,13 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     }
   }
   
-  // Aguardar todos os gráficos de ranking em paralelo
-  if (rankingPromises.length > 0) {
-    await Promise.all(rankingPromises);
+  // OTIMIZAÇÃO: Aguardar gráficos de ranking e SLA em paralelo
+  const secondaryPromises = [...rankingPromises, slaPromise];
+  if (secondaryPromises.length > 0) {
+    await Promise.allSettled(secondaryPromises);
+    if (window.Logger) {
+      window.Logger.debug('📊 Gráficos secundários renderizados');
+    }
   }
   
   // ============================================
@@ -1049,17 +1158,16 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       percent: total > 0 ? ((t.count || 0) / total * 100).toFixed(1) : '0.0'
     }));
     
-    // Atualizar informações no HTML
-    const tiposInfoEl = document.getElementById('tiposInfo');
-    if (tiposInfoEl) {
-      const topTipo = tiposWithPercent[0];
-      tiposInfoEl.innerHTML = `
-        <div class="text-xs text-slate-400 mb-1">Tipo mais comum</div>
-        <div class="text-sm font-bold text-pink-300">${topTipo.type}</div>
-        <div class="text-xs text-slate-500 mt-1">${topTipo.count.toLocaleString('pt-BR')} (${topTipo.percent}%)</div>
-        <div class="text-xs text-slate-400 mt-2">Total de tipos: ${tiposWithPercent.length}</div>
-      `;
-    }
+    // Atualizar informações no HTML (padronizado)
+    renderStandardDoughnutInfoBox('tiposInfo', tiposWithPercent.map(t => ({
+      label: t.type,
+      count: t.count,
+      percent: t.percent
+    })), {
+      mostCommonLabel: 'Tipo mais comum',
+      totalLabel: 'Total de tipos',
+      itemLabel: 'tipos'
+    });
     
     try {
       await window.chartFactory.createDoughnutChart('chartTiposManifestacao', labels, values, {
@@ -1068,36 +1176,20 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         legendContainer: 'legendTiposManifestacao',
         chartOptions: {
           plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const label = context.label || '';
-                  const value = context.parsed || 0;
-                  const percent = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-                  return `${label}: ${value.toLocaleString('pt-BR')} (${percent}%)`;
-                }
-              }
-            }
+            legend: {
+              display: false // Desabilitar legenda padrão (usamos legenda customizada abaixo)
+            },
+            tooltip: getStandardDoughnutTooltip()
           }
         }
       });
       
-      // Adicionar informações detalhadas na legenda
-      const legendContainer = document.getElementById('legendTiposManifestacao');
-      if (legendContainer) {
-        legendContainer.innerHTML = tiposWithPercent.map((t, idx) => `
-          <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
-            <div class="flex items-center gap-2">
-              <div class="w-3 h-3 rounded-full" style="background-color: ${getColorForIndex(idx)}"></div>
-              <span class="text-sm text-slate-300">${t.type}</span>
-            </div>
-            <div class="text-right">
-              <div class="text-sm font-bold text-pink-300">${t.count.toLocaleString('pt-BR')}</div>
-              <div class="text-xs text-slate-400">${t.percent}%</div>
-            </div>
-          </div>
-        `).join('');
-      }
+      // Adicionar informações detalhadas na legenda (padronizado)
+      renderStandardDoughnutLegend('legendTiposManifestacao', tiposWithPercent.map(t => ({
+        label: t.type,
+        count: t.count,
+        percent: t.percent
+      })));
     } catch (error) {
       console.error('Erro ao criar chartTiposManifestacao:', error);
     }
@@ -1111,14 +1203,43 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     const topCanais = byChannel.slice(0, 8); // Top 8 canais
     const labels = topCanais.map(c => c.channel || 'N/A');
     const values = topCanais.map(c => c.count || 0);
+    const totalCanais = values.reduce((sum, v) => sum + v, 0);
+    
+    // Calcular percentuais para legenda
+    const canaisWithPercent = topCanais.map((c, idx) => ({
+      label: c.channel || 'N/A',
+      count: c.count || 0,
+      percent: totalCanais > 0 ? ((c.count || 0) / totalCanais * 100).toFixed(1) : '0.0'
+    }));
     
     distributionPromises.push(
-      window.chartFactory.createDoughnutChart('chartCanais', labels, values, {
-        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-        legendContainer: 'legendCanais'
-      }).catch(error => {
-        console.error('Erro ao criar chartCanais:', error);
-      })
+      (async () => {
+        try {
+          await window.chartFactory.createDoughnutChart('chartCanais', labels, values, {
+            field: 'Canal', // Campo para detecção automática de cores consistentes
+            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+            legendContainer: 'legendCanais',
+            chartOptions: {
+              plugins: {
+                legend: {
+                  display: false // Desabilitar legenda padrão (usamos legenda customizada abaixo)
+                },
+                tooltip: getStandardDoughnutTooltip()
+              }
+            }
+          });
+          
+          // Adicionar informações detalhadas na legenda (padronizado)
+          renderStandardDoughnutInfoBox('canaisInfo', canaisWithPercent, {
+            mostCommonLabel: 'Canal mais comum',
+            totalLabel: 'Total de canais',
+            itemLabel: 'canais'
+          });
+          renderStandardDoughnutLegend('legendCanais', canaisWithPercent);
+        } catch (error) {
+          console.error('Erro ao criar chartCanais:', error);
+        }
+      })()
     );
   }
   
@@ -1126,20 +1247,49 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   if (byPriority && byPriority.length > 0) {
     const labels = byPriority.map(p => p.priority || 'N/A');
     const values = byPriority.map(p => p.count || 0);
+    const totalPrioridades = values.reduce((sum, v) => sum + v, 0);
+    
+    // Calcular percentuais para legenda
+    const prioridadesWithPercent = byPriority.map((p, idx) => ({
+      label: p.priority || 'N/A',
+      count: p.count || 0,
+      percent: totalPrioridades > 0 ? ((p.count || 0) / totalPrioridades * 100).toFixed(1) : '0.0'
+    }));
     
     distributionPromises.push(
-      window.chartFactory.createDoughnutChart('chartPrioridades', labels, values, {
-        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-        legendContainer: 'legendPrioridades'
-      }).catch(error => {
-        console.error('Erro ao criar chartPrioridades:', error);
-      })
+      (async () => {
+        try {
+          await window.chartFactory.createDoughnutChart('chartPrioridades', labels, values, {
+            field: 'Prioridade', // Campo para detecção automática de cores consistentes
+            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+            legendContainer: 'legendPrioridades',
+            chartOptions: {
+              plugins: {
+                legend: {
+                  display: false // Desabilitar legenda padrão (usamos legenda customizada abaixo)
+                },
+                tooltip: getStandardDoughnutTooltip()
+              }
+            }
+          });
+          
+          // Adicionar informações detalhadas na legenda (padronizado)
+          renderStandardDoughnutInfoBox('prioridadesInfo', prioridadesWithPercent, {
+            mostCommonLabel: 'Prioridade mais comum',
+            totalLabel: 'Total de prioridades',
+            itemLabel: 'prioridades'
+          });
+          renderStandardDoughnutLegend('legendPrioridades', prioridadesWithPercent);
+        } catch (error) {
+          console.error('Erro ao criar chartPrioridades:', error);
+        }
+      })()
     );
   }
   
   // Top unidades de cadastro (movido para seção de Rankings)
   if (byUnit && Array.isArray(byUnit) && byUnit.length > 0) {
-    const topUnidades = byUnit.slice(0, 20);
+    const topUnidades = byUnit.slice(0, 10); // Top 10 principais
     const labels = topUnidades.map(u => u.unit || 'N/A');
     const values = topUnidades.map(u => u.count || 0);
     
@@ -1221,45 +1371,38 @@ async function renderSLAChart(slaData) {
   try {
     const canvas = document.getElementById('chartSLA');
     if (canvas) {
+      // Usar função do escopo global ou local
+      const tooltipFn = window.getStandardDoughnutTooltip || getStandardDoughnutTooltip;
+      
       await window.chartFactory.createDoughnutChart('chartSLA', labels, values, {
         chartOptions: {
           plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const label = context.label || '';
-                  const value = context.parsed || 0;
-                  const percent = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-                  return `${label}: ${value.toLocaleString('pt-BR')} (${percent}%)`;
-                }
-              }
-            }
+            legend: {
+              display: false // Desabilitar legenda padrão (usamos legenda customizada abaixo)
+            },
+            tooltip: tooltipFn()
           }
         }
       });
       
-      // Adicionar informações detalhadas na legenda
-      const legendContainer = document.getElementById('legendSLA');
-      if (legendContainer) {
-        const colors = ['#34d399', '#22d3ee', '#fbbf24', '#fb7185'];
-        legendContainer.innerHTML = slaWithPercent.map((s, idx) => `
-          <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
-            <div class="flex items-center gap-2">
-              <div class="w-3 h-3 rounded-full" style="background-color: ${colors[idx]}"></div>
-              <span class="text-sm text-slate-300">${s.label}</span>
-            </div>
-            <div class="text-right">
-              <div class="text-sm font-bold" style="color: ${colors[idx]}">${s.value.toLocaleString('pt-BR')}</div>
-              <div class="text-xs text-slate-400">${s.percent}%</div>
-            </div>
-          </div>
-        `).join('');
-      }
+      // Adicionar informações detalhadas na legenda (padronizado)
+      // SLA usa cores fixas específicas
+      const slaColors = ['#34d399', '#22d3ee', '#fbbf24', '#fb7185'];
+      
+      // Usar função do escopo global ou local
+      const legendFn = window.renderStandardDoughnutLegend || renderStandardDoughnutLegend;
+      legendFn('legendSLA', slaWithPercent.map((s, idx) => ({
+        label: s.label,
+        count: s.value,
+        percent: s.percent,
+        color: slaColors[idx]
+      })));
     }
   } catch (error) {
     if (window.Logger) {
       window.Logger.error('Erro ao criar chartSLA:', error);
     }
+    console.error('Erro ao criar chartSLA:', error);
   }
 }
 
@@ -1769,40 +1912,32 @@ function aggregateFilteredData(rows) {
 
 /**
  * Inicializar listeners de eventos de filtro
- * Escuta eventos do sistema de comunicação de gráficos para recarregar dados
+ * FILTROS DE CLIQUE COMPLETAMENTE DESABILITADOS
+ * O overview NÃO deve recarregar quando filtros são aplicados
+ * Filtros só funcionam através da página de filtros avançados
  */
 function initOverviewFilterListeners() {
-  // FILTROS DE CLIQUE DESABILITADOS: Não escutar eventos de filtro
-  // Os filtros só funcionam através da página de filtros avançados
+  // FILTROS DE CLIQUE COMPLETAMENTE DESABILITADOS
+  // Não escutar NENHUM evento de filtro
+  // O overview sempre mostra dados completos, sem filtros
   if (window.Logger) {
-    window.Logger.debug('⚠️ Listeners de filtro desabilitados (filtros de clique removidos)');
+    window.Logger.debug('⚠️ Listeners de filtro completamente desabilitados - Overview não recarrega com filtros');
   }
-  return;
   
-  // CÓDIGO DESABILITADO - Mantido apenas para referência
-  /*
-  if (!window.chartCommunication) {
-    if (window.Logger) {
-      window.Logger.warn('Sistema de comunicação de gráficos não disponível. Overview não será atualizado automaticamente.');
+  // Garantir que nenhum listener esteja ativo
+  if (window.chartCommunication) {
+    // Remover qualquer listener que possa ter sido adicionado anteriormente
+    try {
+      window.chartCommunication.off('filter:applied');
+      window.chartCommunication.off('filter:removed');
+      window.chartCommunication.off('filter:cleared');
+      window.chartCommunication.off('filter:changed');
+    } catch (e) {
+      // Ignorar erros se os listeners não existirem
     }
-    return;
   }
   
-  // Escutar evento de filtro aplicado
-  window.chartCommunication.on('filter:applied', (data) => {
-    // ... código removido
-  });
-  
-  // Escutar evento de filtro removido
-  window.chartCommunication.on('filter:removed', (data) => {
-    // ... código removido
-  });
-  
-  // Escutar evento de filtros limpos
-  window.chartCommunication.on('filter:cleared', () => {
-    // ... código removido
-  });
-  */
+  return;
 }
 
 // Exportar função globalmente

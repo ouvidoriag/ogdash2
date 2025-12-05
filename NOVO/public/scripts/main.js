@@ -10,9 +10,20 @@ function initPage() {
   }
   
   const btnOuvidoria = document.getElementById('btnSectionOuvidoria');
-  const isOuvidoria = btnOuvidoria?.classList.contains('active');
-  const homePageId = isOuvidoria ? 'page-home' : 'page-zeladoria-home';
-  const homePageData = isOuvidoria ? 'home' : 'zeladoria-home';
+  const btnZeladoria = document.getElementById('btnSectionZeladoria');
+  const btnEsic = document.getElementById('btnSectionEsic');
+  
+  let isOuvidoria = btnOuvidoria?.classList.contains('active');
+  let isZeladoria = btnZeladoria?.classList.contains('active');
+  let isEsic = btnEsic?.classList.contains('active');
+  
+  // Se nenhum estiver ativo, padrão é Ouvidoria
+  if (!isOuvidoria && !isZeladoria && !isEsic) {
+    isOuvidoria = true;
+  }
+  
+  const homePageId = isOuvidoria ? 'page-home' : (isZeladoria ? 'page-zeladoria-home' : 'page-esic-home');
+  const homePageData = isOuvidoria ? 'home' : (isZeladoria ? 'zeladoria-home' : 'esic-home');
   
   const allPages = document.getElementById('pages');
   if (allPages) {
@@ -25,7 +36,7 @@ function initPage() {
   
   const activeMenu = isOuvidoria 
     ? document.getElementById('sideMenuOuvidoria')
-    : document.getElementById('sideMenuZeladoria');
+    : (isZeladoria ? document.getElementById('sideMenuZeladoria') : document.getElementById('sideMenuEsic'));
   
   if (activeMenu) {
     activeMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active'));
@@ -123,6 +134,18 @@ function getPageLoader(page) {
   if (page === 'zeladoria-overview') {
     return window.loadZeladoriaOverview || (() => Promise.resolve());
   }
+  if (page === 'esic-home') {
+    return () => {
+      if (window.Logger) {
+        window.Logger.info('Página Home E-SIC carregada');
+      }
+      // Não precisa carregar dados, apenas mostrar a página
+      return Promise.resolve();
+    };
+  }
+  if (page === 'esic-overview') {
+    return window.loadEsicOverview || (() => Promise.resolve());
+  }
   
   // Páginas dinâmicas de unidades de saúde
   if (page?.startsWith('unit-')) {
@@ -154,14 +177,9 @@ function getPageLoader(page) {
     'cadastrante': 'loadCadastrante',
     'reclamacoes': 'loadReclamacoes',
     'projecao-2026': 'loadProjecao2026',
-    'secretaria': 'loadSecretaria',
-    'secretarias-distritos': 'loadSecretariasDistritos',
     'tipo': 'loadTipo',
-    'setor': 'loadSetor',
-    'categoria': 'loadCategoria',
     'status': 'loadStatusPage',
     'bairro': 'loadBairro',
-    'uac': 'loadUAC',
     'responsavel': 'loadResponsavel',
     'canal': 'loadCanal',
     'prioridade': 'loadPrioridade',
@@ -174,7 +192,14 @@ function getPageLoader(page) {
     'zeladoria-canal': 'loadZeladoriaCanal',
     'zeladoria-tempo': 'loadZeladoriaTempo',
     'zeladoria-mensal': 'loadZeladoriaMensal',
-    'zeladoria-geografica': 'loadZeladoriaGeografica'
+    'zeladoria-geografica': 'loadZeladoriaGeografica',
+    // Páginas de E-SIC
+    'esic-status': 'loadEsicStatus',
+    'esic-tipo-informacao': 'loadEsicTipoInformacao',
+    'esic-responsavel': 'loadEsicResponsavel',
+    'esic-unidade': 'loadEsicUnidade',
+    'esic-canal': 'loadEsicCanal',
+    'esic-mensal': 'loadEsicMensal'
   };
   
   const funcName = loaderMap[page];
@@ -242,7 +267,9 @@ async function loadSection(page) {
   
   const activeMenu = document.getElementById('sideMenuOuvidoria')?.style.display !== 'none'
     ? document.getElementById('sideMenuOuvidoria')
-    : document.getElementById('sideMenuZeladoria');
+    : (document.getElementById('sideMenuZeladoria')?.style.display !== 'none'
+      ? document.getElementById('sideMenuZeladoria')
+      : document.getElementById('sideMenuEsic'));
   
   if (activeMenu) {
     activeMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active'));
@@ -277,32 +304,124 @@ function initNavigation() {
 function initSectionSelector() {
   const btnOuvidoria = document.getElementById('btnSectionOuvidoria');
   const btnZeladoria = document.getElementById('btnSectionZeladoria');
+  const btnEsic = document.getElementById('btnSectionEsic');
   const menuOuvidoria = document.getElementById('sideMenuOuvidoria');
   const menuZeladoria = document.getElementById('sideMenuZeladoria');
+  const menuEsic = document.getElementById('sideMenuEsic');
   const sectionTitle = document.getElementById('sectionTitle');
   
-  if (!btnOuvidoria || !btnZeladoria || !menuOuvidoria || !menuZeladoria) return;
+  // Debug: verificar elementos encontrados
+  if (window.Logger) {
+    window.Logger.debug('Inicializando seletor de seções:', {
+      btnOuvidoria: !!btnOuvidoria,
+      btnZeladoria: !!btnZeladoria,
+      btnEsic: !!btnEsic,
+      menuOuvidoria: !!menuOuvidoria,
+      menuZeladoria: !!menuZeladoria,
+      menuEsic: !!menuEsic
+    });
+  }
+  
+  // Verificar elementos mínimos necessários
+  if (!btnOuvidoria || !btnZeladoria || !menuOuvidoria || !menuZeladoria) {
+    if (window.Logger) {
+      window.Logger.warn('Elementos básicos não encontrados para initSectionSelector');
+    }
+    return;
+  }
   
   function switchSection(section) {
+    console.log('🔄 switchSection chamado com:', section);
+    
+    // Remover active de todos os botões (se existirem)
+    if (btnOuvidoria) btnOuvidoria.classList.remove('active');
+    if (btnZeladoria) btnZeladoria.classList.remove('active');
+    if (btnEsic) btnEsic.classList.remove('active');
+    
+    // Esconder todos os menus (se existirem)
+    if (menuOuvidoria) menuOuvidoria.style.display = 'none';
+    if (menuZeladoria) menuZeladoria.style.display = 'none';
+    if (menuEsic) menuEsic.style.display = 'none';
+    
     if (section === 'ouvidoria') {
-      btnOuvidoria.classList.add('active');
-      btnZeladoria.classList.remove('active');
-      menuOuvidoria.style.display = 'block';
-      menuZeladoria.style.display = 'none';
+      if (btnOuvidoria) btnOuvidoria.classList.add('active');
+      if (menuOuvidoria) menuOuvidoria.style.display = 'block';
       if (sectionTitle) sectionTitle.textContent = 'Ouvidoria';
       loadSection('home');
-    } else {
-      btnOuvidoria.classList.remove('active');
-      btnZeladoria.classList.add('active');
-      menuOuvidoria.style.display = 'none';
-      menuZeladoria.style.display = 'block';
+    } else if (section === 'zeladoria') {
+      if (btnZeladoria) btnZeladoria.classList.add('active');
+      if (menuZeladoria) menuZeladoria.style.display = 'block';
       if (sectionTitle) sectionTitle.textContent = 'Zeladoria';
       loadSection('zeladoria-home');
+    } else if (section === 'esic') {
+      console.log('✅ Ativando seção E-SIC');
+      if (btnEsic) {
+        btnEsic.classList.add('active');
+        console.log('✅ Botão E-SIC marcado como active');
+      } else {
+        console.error('❌ btnEsic não encontrado');
+      }
+      if (menuEsic) {
+        menuEsic.style.display = 'block';
+        console.log('✅ Menu E-SIC exibido');
+      } else {
+        console.error('❌ menuEsic não encontrado');
+      }
+      if (sectionTitle) {
+        sectionTitle.textContent = 'E-SIC';
+        console.log('✅ Título atualizado para E-SIC');
+      }
+      loadSection('esic-home');
+      
+      if (window.Logger) {
+        window.Logger.info('Seção E-SIC ativada');
+      }
     }
   }
   
-  btnOuvidoria.addEventListener('click', () => switchSection('ouvidoria'));
-  btnZeladoria.addEventListener('click', () => switchSection('zeladoria'));
+  // Adicionar event listeners apenas se os elementos existirem
+  if (btnOuvidoria) {
+    btnOuvidoria.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      switchSection('ouvidoria');
+    });
+  }
+  
+  if (btnZeladoria) {
+    btnZeladoria.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      switchSection('zeladoria');
+    });
+  }
+  
+  if (btnEsic) {
+    btnEsic.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🔵 Botão E-SIC clicado - chamando switchSection');
+      switchSection('esic');
+    });
+    console.log('✅ Event listener adicionado ao botão E-SIC');
+  } else {
+    console.error('❌ Botão E-SIC não encontrado para adicionar event listener');
+  }
+  
+  // Expor função globalmente para debug e fallback
+  window.switchSection = switchSection;
+  globalSwitchSection = switchSection; // Guardar em variável global também
+  console.log('✅ switchSection exposto globalmente');
+  
+  // Fallback: adicionar onclick direto no botão se event listener não funcionar
+  if (btnEsic) {
+    btnEsic.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🔵 Botão E-SIC clicado (onclick direto)');
+      switchSection('esic');
+    };
+  }
 }
 
 function initEventListeners() {
@@ -339,12 +458,46 @@ function initUrlRouting() {
   }
 }
 
+// Expor switchSection globalmente ANTES de init
+let globalSwitchSection = null;
+
+// Função switchSection global (será sobrescrita pela versão completa)
+window.switchSection = function(section) {
+  console.warn('⚠️ switchSection chamado antes da inicialização completa, tentando novamente...');
+  // Tentar encontrar elementos e executar
+  const btnOuvidoria = document.getElementById('btnSectionOuvidoria');
+  const btnZeladoria = document.getElementById('btnSectionZeladoria');
+  const btnEsic = document.getElementById('btnSectionEsic');
+  const menuOuvidoria = document.getElementById('sideMenuOuvidoria');
+  const menuZeladoria = document.getElementById('sideMenuZeladoria');
+  const menuEsic = document.getElementById('sideMenuEsic');
+  const sectionTitle = document.getElementById('sectionTitle');
+  
+  if (section === 'esic') {
+    if (btnEsic) btnEsic.classList.add('active');
+    if (btnOuvidoria) btnOuvidoria.classList.remove('active');
+    if (btnZeladoria) btnZeladoria.classList.remove('active');
+    if (menuEsic) menuEsic.style.display = 'block';
+    if (menuOuvidoria) menuOuvidoria.style.display = 'none';
+    if (menuZeladoria) menuZeladoria.style.display = 'none';
+    if (sectionTitle) sectionTitle.textContent = 'E-SIC';
+    if (window.loadSection) {
+      window.loadSection('esic-home');
+    }
+  }
+};
+
 function init() {
   initSectionSelector();
   initPage();
   initNavigation();
   initEventListeners();
   initUrlRouting(); // Adicionar roteamento de URL
+  
+  // Garantir que switchSection está disponível
+  if (globalSwitchSection) {
+    window.switchSection = globalSwitchSection;
+  }
   
   // Usar Timer Manager se disponível, senão fallback para setTimeout
   if (window.timerManager) {
@@ -375,6 +528,11 @@ window.main = {
   initSectionSelector,
   initEventListeners
 };
+
+// Garantir que switchSection está disponível globalmente
+if (globalSwitchSection) {
+  window.switchSection = globalSwitchSection;
+}
 
 window.initPage = initPage;
 window.loadHome = loadHome;

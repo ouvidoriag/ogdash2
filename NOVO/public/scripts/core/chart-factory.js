@@ -46,7 +46,12 @@ function getColorFromPalette(index, customPalette = null) {
   return color;
 }
 
-function getColorWithAlpha(color, alpha = 0.7) {
+function getColorWithAlpha(color, alpha = null) {
+  // Se alpha não foi especificado, usar padrão baseado no modo
+  if (alpha === null) {
+    alpha = isLightMode() ? 0.7 : 0.75; // Mais suave para modo escuro
+  }
+  
   if (color.startsWith('rgba')) {
     return color.replace(/[\d\.]+\)$/g, `${alpha})`);
   }
@@ -61,6 +66,82 @@ function getColorWithAlpha(color, alpha = 0.7) {
 
 function isLightMode() {
   return document.body.classList.contains('light-mode');
+}
+
+/**
+ * Detectar categoria baseada em field, canvasId ou labels
+ * @param {string} field - Campo sendo visualizado
+ * @param {string} canvasId - ID do canvas
+ * @param {Array} labels - Labels do gráfico
+ * @returns {string|null} - Categoria detectada ou null
+ */
+function detectCategory(field, canvasId, labels) {
+  const fieldLower = (field || '').toLowerCase();
+  const canvasLower = (canvasId || '').toLowerCase();
+  
+  // Verificar campo explicitamente
+  if (fieldLower.includes('tipo') || fieldLower.includes('manifestacao')) {
+    return 'tipo';
+  }
+  if (fieldLower.includes('status') || fieldLower.includes('situacao')) {
+    return 'status';
+  }
+  if (fieldLower.includes('canal') || fieldLower.includes('origem')) {
+    return 'canal';
+  }
+  if (fieldLower.includes('prioridade')) {
+    return 'prioridade';
+  }
+  
+  // Verificar canvasId
+  if (canvasLower.includes('tipo') || canvasLower.includes('manifestacao')) {
+    return 'tipo';
+  }
+  if (canvasLower.includes('status') || canvasLower.includes('situacao')) {
+    return 'status';
+  }
+  if (canvasLower.includes('canal') || canvasLower.includes('origem')) {
+    return 'canal';
+  }
+  if (canvasLower.includes('prioridade')) {
+    return 'prioridade';
+  }
+  
+  // Verificar labels se disponíveis
+  if (labels && Array.isArray(labels) && labels.length > 0) {
+    const firstLabels = labels.slice(0, 5).map(l => (l || '').toLowerCase());
+    const labelsStr = firstLabels.join(' ');
+    
+    // Detectar tipo de manifestação
+    if (labelsStr.includes('elogio') || labelsStr.includes('reclama') || 
+        labelsStr.includes('denúncia') || labelsStr.includes('denuncia') || 
+        labelsStr.includes('sugest')) {
+      return 'tipo';
+    }
+    
+    // Detectar status
+    if (labelsStr.includes('aberto') || labelsStr.includes('fechado') || 
+        labelsStr.includes('pendente') || labelsStr.includes('vencido') ||
+        labelsStr.includes('concluído') || labelsStr.includes('concluido')) {
+      return 'status';
+    }
+    
+    // Detectar canal
+    if (labelsStr.includes('site') || labelsStr.includes('email') || 
+        labelsStr.includes('presencial') || labelsStr.includes('telefone') ||
+        labelsStr.includes('whatsapp')) {
+      return 'canal';
+    }
+    
+    // Detectar prioridade
+    if (labelsStr.includes('alta') || labelsStr.includes('média') || 
+        labelsStr.includes('media') || labelsStr.includes('baixa') ||
+        labelsStr.includes('urgente')) {
+      return 'prioridade';
+    }
+  }
+  
+  return null;
 }
 
 /**
@@ -305,13 +386,31 @@ async function createBarChart(canvasId, labels, values, options = {}) {
     
     if (Array.isArray(values) && values.length > 0) {
       if (typeof values[0] === 'object' && !Array.isArray(values[0]) && ('data' in values[0] || 'label' in values[0])) {
-        datasets = values.map((dataset, idx) => ({
-          label: dataset.label || `Dataset ${idx + 1}`,
-          data: dataset.data || [],
-          backgroundColor: dataset.backgroundColor || getColorWithAlpha(getColorFromPalette(idx, palette), 0.7),
-          borderColor: dataset.borderColor || getColorFromPalette(idx, palette),
-          borderWidth: dataset.borderWidth || options.borderWidth || 1
-        }));
+        // Detectar categoria para datasets múltiplos (ex: gráfico de status mensal)
+        const category = detectCategory(options.field, canvasId, values.map(d => d.label));
+        
+        datasets = values.map((dataset, idx) => {
+          const label = dataset.label || `Dataset ${idx + 1}`;
+          
+          // Se detectou categoria, usar cor consistente baseada no label
+          let backgroundColor, borderColor;
+          if (category && window.config?.getColorByCategory) {
+            const color = window.config.getColorByCategory(category, label);
+            backgroundColor = color ? getColorWithAlpha(color, 0.75) : getColorWithAlpha(getColorFromPalette(idx, palette), 0.7);
+            borderColor = color || getColorFromPalette(idx, palette);
+          } else {
+            backgroundColor = dataset.backgroundColor || getColorWithAlpha(getColorFromPalette(idx, palette), 0.7);
+            borderColor = dataset.borderColor || getColorFromPalette(idx, palette);
+          }
+          
+          return {
+            label: label,
+            data: dataset.data || [],
+            backgroundColor: backgroundColor,
+            borderColor: borderColor,
+            borderWidth: dataset.borderWidth || options.borderWidth || 1
+          };
+        });
       } else if (Array.isArray(values[0]) && typeof values[0][0] === 'number') {
         datasets = values.map((data, idx) => ({
           label: options.labels?.[idx] || `Dataset ${idx + 1}`,
@@ -321,39 +420,48 @@ async function createBarChart(canvasId, labels, values, options = {}) {
           borderWidth: options.borderWidth || 1
         }));
       } else {
-        // Verificar se é tipo de manifestação e usar cores específicas
-        const isTipoManifestacao = options.field === 'tipoDeManifestacao' || 
-                                    options.field === 'Tipo' ||
-                                    canvasId.toLowerCase().includes('tipo') ||
-                                    (labels && labels.some(l => {
-                                      const tipoLower = (l || '').toLowerCase();
-                                      return tipoLower.includes('elogio') || 
-                                             tipoLower.includes('reclama') || 
-                                             tipoLower.includes('denúncia') || 
-                                             tipoLower.includes('denuncia') ||
-                                             tipoLower.includes('sugest');
-                                    }));
+        // Detectar categoria automaticamente
+        const category = detectCategory(options.field, canvasId, labels);
         
         let backgroundColor, borderColor;
         
-        if (isTipoManifestacao && window.config?.getColorByTipoManifestacao) {
-          // Usar cores específicas por tipo de manifestação
+        // Se detectou uma categoria, usar cores consistentes para ela
+        if (category && window.config?.getColorByCategory) {
+          backgroundColor = labels.map((label) => {
+            const color = window.config.getColorByCategory(category, label);
+            // Usar cores mais suaves para fundo escuro (alpha 0.75)
+            return color ? getColorWithAlpha(color, 0.75) : getColorWithAlpha(getColorFromPalette(0, palette), 0.7);
+          });
+          borderColor = labels.map((label) => {
+            const color = window.config.getColorByCategory(category, label);
+            return color || getColorFromPalette(0, palette);
+          });
+        } 
+        // Fallback para tipo de manifestação (compatibilidade)
+        else if (category === 'tipo' && window.config?.getColorByTipoManifestacao) {
           backgroundColor = labels.map((label) => {
             const color = window.config.getColorByTipoManifestacao(label);
-            return color ? getColorWithAlpha(color, 0.7) : getColorWithAlpha(getColorFromPalette(1, palette), 0.7);
+            return color ? getColorWithAlpha(color, 0.75) : getColorWithAlpha(getColorFromPalette(0, palette), 0.7);
           });
           borderColor = labels.map((label) => {
             const color = window.config.getColorByTipoManifestacao(label);
-            return color || getColorFromPalette(1, palette);
+            return color || getColorFromPalette(0, palette);
           });
-        } else {
-          // Usar cor padrão
-          const colorIndex = options.colorIndex !== undefined ? options.colorIndex : 1;
+        } 
+        // Se cores customizadas foram fornecidas, usar elas
+        else if (options.backgroundColor && Array.isArray(options.backgroundColor)) {
+          backgroundColor = options.backgroundColor;
+          borderColor = options.borderColor || options.backgroundColor;
+        }
+        // Caso padrão: usar cor única da paleta
+        else {
+          const colorIndex = options.colorIndex !== undefined ? options.colorIndex : 0;
           const baseColor = options.backgroundColor 
             ? (options.backgroundColor.startsWith('#') ? options.backgroundColor : getColorFromPalette(colorIndex, palette))
             : getColorFromPalette(colorIndex, palette);
           
-          backgroundColor = options.backgroundColor || getColorWithAlpha(baseColor, 0.7);
+          // Cores mais suaves para fundo escuro
+          backgroundColor = options.backgroundColor || getColorWithAlpha(baseColor, 0.75);
           borderColor = options.borderColor || baseColor;
         }
         
@@ -406,7 +514,20 @@ async function createBarChart(canvasId, labels, values, options = {}) {
     
     // FILTROS DE CLIQUE DESABILITADOS: Por padrão, gráficos NÃO são interativos
     // Para habilitar, passar explicitamente onClick: true
-    const shouldEnableClick = options.onClick === true; // false por padrão, true apenas se explicitamente habilitado
+    // PROTEÇÃO ADICIONAL: Gráficos do overview NUNCA têm cliques (mesmo se onClick: true for passado)
+    const isOverviewChart = canvasId && (
+      canvasId.includes('chartTrend') ||
+      canvasId.includes('chartFunnelStatus') ||
+      canvasId.includes('chartDailyDistribution') ||
+      canvasId.includes('chartTopOrgaos') ||
+      canvasId.includes('chartTopTemas') ||
+      canvasId.includes('chartTiposManifestacao') ||
+      canvasId.includes('chartCanais') ||
+      canvasId.includes('chartPrioridades') ||
+      canvasId.includes('chartUnidadesCadastro') ||
+      canvasId.includes('chartSLA')
+    );
+    const shouldEnableClick = !isOverviewChart && options.onClick === true; // false por padrão, true apenas se explicitamente habilitado E não for gráfico do overview
     
     if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
@@ -582,7 +703,20 @@ async function createLineChart(canvasId, labels, values, options = {}) {
     
     // FILTROS DE CLIQUE DESABILITADOS: Por padrão, gráficos NÃO são interativos
     // Para habilitar, passar explicitamente onClick: true
-    const shouldEnableClick = options.onClick === true; // false por padrão, true apenas se explicitamente habilitado
+    // PROTEÇÃO ADICIONAL: Gráficos do overview NUNCA têm cliques (mesmo se onClick: true for passado)
+    const isOverviewChart = canvasId && (
+      canvasId.includes('chartTrend') ||
+      canvasId.includes('chartFunnelStatus') ||
+      canvasId.includes('chartDailyDistribution') ||
+      canvasId.includes('chartTopOrgaos') ||
+      canvasId.includes('chartTopTemas') ||
+      canvasId.includes('chartTiposManifestacao') ||
+      canvasId.includes('chartCanais') ||
+      canvasId.includes('chartPrioridades') ||
+      canvasId.includes('chartUnidadesCadastro') ||
+      canvasId.includes('chartSLA')
+    );
+    const shouldEnableClick = !isOverviewChart && options.onClick === true; // false por padrão, true apenas se explicitamente habilitado E não for gráfico do overview
     
     if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';
@@ -683,45 +817,65 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
     const defaults = getChartDefaults('doughnut');
     const palette = getColorPalette();
     
-    // Verificar se é tipo de manifestação e usar cores específicas
-    const isTipoManifestacao = options.field === 'tipoDeManifestacao' || 
-                                options.field === 'Tipo' ||
-                                canvasId.toLowerCase().includes('tipo') ||
-                                (labels && labels.some(l => {
-                                  const tipoLower = (l || '').toLowerCase();
-                                  return tipoLower.includes('elogio') || 
-                                         tipoLower.includes('reclama') || 
-                                         tipoLower.includes('denúncia') || 
-                                         tipoLower.includes('denuncia') ||
-                                         tipoLower.includes('sugest') ||
-                                         tipoLower.includes('esic') ||
-                                         tipoLower.includes('acesso') ||
-                                         tipoLower.includes('não informado') ||
-                                         tipoLower.includes('nao informado');
-                                }));
+    // Detectar categoria automaticamente para cores consistentes
+    const category = detectCategory(options.field, canvasId, labels);
     
     let backgroundColor, borderColor;
     
-    if (isTipoManifestacao && window.config?.getColorByTipoManifestacao) {
-      // Usar cores específicas por tipo de manifestação
-      backgroundColor = labels.map((label, idx) => {
-        const color = window.config.getColorByTipoManifestacao(label);
-        return color ? getColorWithAlpha(color, 0.8) : getColorWithAlpha(getColorFromPalette(idx, palette), 0.8);
+    // Se detectou uma categoria, usar cores consistentes para ela
+    if (category && window.config?.getColorByCategory) {
+      backgroundColor = labels.map((label) => {
+        const color = window.config.getColorByCategory(category, label);
+        // Cores mais suaves para doughnut (alpha 0.85 para melhor visibilidade)
+        return color ? getColorWithAlpha(color, 0.85) : getColorWithAlpha(getColorFromPalette(labels.indexOf(label), palette), 0.85);
       });
-      borderColor = labels.map((label, idx) => {
-        const color = window.config.getColorByTipoManifestacao(label);
-        return color || getColorFromPalette(idx, palette);
+      borderColor = labels.map((label) => {
+        const color = window.config.getColorByCategory(category, label);
+        return color || getColorFromPalette(labels.indexOf(label), palette);
       });
-    } else {
-      // Usar paleta padrão
+    } 
+    // Fallback para tipo de manifestação (compatibilidade)
+    else if (category === 'tipo' && window.config?.getColorByTipoManifestacao) {
+      backgroundColor = labels.map((label) => {
+        const color = window.config.getColorByTipoManifestacao(label);
+        return color ? getColorWithAlpha(color, 0.85) : getColorWithAlpha(getColorFromPalette(labels.indexOf(label), palette), 0.85);
+      });
+      borderColor = labels.map((label) => {
+        const color = window.config.getColorByTipoManifestacao(label);
+        return color || getColorFromPalette(labels.indexOf(label), palette);
+      });
+    } 
+    // Se cores customizadas foram fornecidas, usar elas
+    else if (options.backgroundColor && Array.isArray(options.backgroundColor)) {
+      backgroundColor = options.backgroundColor;
+      borderColor = options.borderColor || options.backgroundColor;
+    }
+    // Caso padrão: usar paleta padrão com cores suaves
+    else {
       backgroundColor = Array.isArray(values) && values.length > 0
-        ? values.map((_, idx) => getColorWithAlpha(getColorFromPalette(idx, palette), 0.8))
-        : [getColorWithAlpha(getColorFromPalette(0, palette), 0.8)];
+        ? values.map((_, idx) => getColorWithAlpha(getColorFromPalette(idx, palette), 0.85))
+        : [getColorWithAlpha(getColorFromPalette(0, palette), 0.85)];
       
       borderColor = Array.isArray(values) && values.length > 0
         ? values.map((_, idx) => getColorFromPalette(idx, palette))
         : [getColorFromPalette(0, palette)];
     }
+    
+    // Garantir que a legenda padrão do Chart.js sempre esteja desabilitada
+    // (usamos legenda customizada abaixo do gráfico quando legendContainer é fornecido)
+    const finalOptions = {
+      ...defaults,
+      ...options.chartOptions,
+      plugins: {
+        ...defaults.plugins,
+        ...(options.chartOptions?.plugins || {}),
+        // SEMPRE desabilitar legenda padrão do Chart.js
+        // A legenda customizada será renderizada abaixo se legendContainer for fornecido
+        legend: {
+          display: false
+        }
+      }
+    };
     
     const config = {
       type: options.type || 'doughnut',
@@ -735,14 +889,18 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
           borderWidth: options.borderWidth || 2
         }]
       },
-      options: {
-        ...defaults,
-        ...options.chartOptions
-      }
+      options: finalOptions
     };
     
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
+    
+    // GARANTIR que a legenda padrão do Chart.js esteja desabilitada
+    // (mesmo que tenha sido habilitada por algum motivo)
+    if (chart.options && chart.options.plugins) {
+      chart.options.plugins.legend = { display: false };
+      chart.update('none'); // Atualizar sem animação para aplicar imediatamente
+    }
     
     // Criar legenda interativa se container especificado
     if (options.legendContainer && labels && labels.length > 0) {
@@ -773,7 +931,20 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
     
     // FILTROS DE CLIQUE DESABILITADOS: Por padrão, gráficos NÃO são interativos
     // Para habilitar, passar explicitamente onClick: true
-    const shouldEnableClick = options.onClick === true; // false por padrão, true apenas se explicitamente habilitado
+    // PROTEÇÃO ADICIONAL: Gráficos do overview NUNCA têm cliques (mesmo se onClick: true for passado)
+    const isOverviewChart = canvasId && (
+      canvasId.includes('chartTrend') ||
+      canvasId.includes('chartFunnelStatus') ||
+      canvasId.includes('chartDailyDistribution') ||
+      canvasId.includes('chartTopOrgaos') ||
+      canvasId.includes('chartTopTemas') ||
+      canvasId.includes('chartTiposManifestacao') ||
+      canvasId.includes('chartCanais') ||
+      canvasId.includes('chartPrioridades') ||
+      canvasId.includes('chartUnidadesCadastro') ||
+      canvasId.includes('chartSLA')
+    );
+    const shouldEnableClick = !isOverviewChart && options.onClick === true; // false por padrão, true apenas se explicitamente habilitado E não for gráfico do overview
     
     if (shouldEnableClick) {
       chart.canvas.style.cursor = 'pointer';

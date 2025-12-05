@@ -456,24 +456,22 @@ export async function buscarVencimentos(req, res) {
       
       // OTIMIZAÇÃO 4: Cache de emails (buscar do banco de uma vez)
       const secretariasUnicas = [...new Set(protocolosEncontrados.map(p => p.secretaria))];
-      const SecretariaInfo = (await import('../../models/SecretariaInfo.model.js')).default;
-      const secretariasInfo = await SecretariaInfo.find({
-        name: { $in: secretariasUnicas }
-      })
-      .select('name email')
-      .lean();
+      
+      // Usar função que busca emails corretamente do banco (incluindo alternateEmail)
+      const { getEmailSecretariaFromDB } = await import('../../services/email-notifications/emailConfig.js');
       
       const emailsCache = new Map();
-      secretariasInfo.forEach(s => {
-        emailsCache.set(s.name, s.email);
+      
+      // Buscar emails de todas as secretarias em paralelo
+      const promises = secretariasUnicas.map(async (secretaria) => {
+        const email = await getEmailSecretariaFromDB(secretaria, null);
+        return { secretaria, email };
       });
       
-      // Preencher cache com função para secretarias não encontradas
-      for (const secretaria of secretariasUnicas) {
-        if (!emailsCache.has(secretaria)) {
-          emailsCache.set(secretaria, getEmailSecretaria(secretaria));
-        }
-      }
+      const resultados = await Promise.all(promises);
+      resultados.forEach(({ secretaria, email }) => {
+        emailsCache.set(secretaria, email);
+      });
       
       // Agrupar por secretaria
       const porSecretaria = {};
@@ -744,33 +742,30 @@ export async function enviarSelecionados(req, res) {
     }
     
     // OTIMIZAÇÃO: Cache de emails (buscar do banco de uma vez)
-    const SecretariaInfo = (await import('../../models/SecretariaInfo.model.js')).default;
-    const secretariasInfo = await SecretariaInfo.find({
-      name: { $in: secretarias }
-    })
-    .select('name email')
-    .lean();
+    // Usar função que busca emails corretamente do banco (incluindo alternateEmail)
+    const { getEmailSecretariaFromDB } = await import('../../services/email-notifications/emailConfig.js');
     
     const emailsCache = new Map();
-    secretariasInfo.forEach(s => {
-      emailsCache.set(s.name, s.email);
+    
+    // Buscar emails de todas as secretarias em paralelo
+    const emailPromises = secretarias.map(async (secretaria) => {
+      const email = await getEmailSecretariaFromDB(secretaria, null);
+      return { secretaria, email };
     });
     
-    // Preencher com função para secretarias não encontradas
-    for (const secretaria of secretarias) {
-      if (!emailsCache.has(secretaria)) {
-        emailsCache.set(secretaria, getEmailSecretaria(secretaria));
-      }
-    }
+    const emailResultados = await Promise.all(emailPromises);
+    emailResultados.forEach(({ secretaria, email }) => {
+      emailsCache.set(secretaria, email);
+    });
     
     // Enviar emails (processamento paralelo limitado)
     const BATCH_SIZE = 5; // Limitar a 5 emails por vez
-    const promises = [];
+    const sendPromises = [];
     
     for (const [secretaria, protocolos] of Object.entries(porSecretaria)) {
       if (protocolos.length === 0) continue;
       
-      promises.push(
+      sendPromises.push(
         (async () => {
           const emailSecretaria = emailsCache.get(secretaria);
           if (!emailSecretaria) {
@@ -850,8 +845,8 @@ export async function enviarSelecionados(req, res) {
     }
     
     // Executar em batches paralelos
-    for (let i = 0; i < promises.length; i += BATCH_SIZE) {
-      await Promise.all(promises.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < sendPromises.length; i += BATCH_SIZE) {
+      await Promise.all(sendPromises.slice(i, i + BATCH_SIZE));
     }
     
     return resultados;

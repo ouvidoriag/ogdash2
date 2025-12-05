@@ -26,6 +26,7 @@ import aiRoutes from './ai.js';
 import dataRoutes from './data.js';
 import geographicRoutes from './geographic.js';
 import zeladoriaRoutes from './zeladoria.js';
+import esicRoutes from './esic.js';
 import notificationRoutes from './notifications.js';
 import colabRoutes from './colab.js';
 import batchRoutes from './batch.js';
@@ -47,6 +48,7 @@ export default function apiRoutes(prisma, getMongoClient) {
     data: '/api/*',
     geographic: '/api/secretarias, /api/distritos, etc.',
     zeladoria: '/api/zeladoria/*',
+    esic: '/api/esic/*',
     notifications: '/api/notifications/*',
     colab: '/api/colab/*',
     batch: '/api/batch/*',
@@ -81,6 +83,9 @@ export default function apiRoutes(prisma, getMongoClient) {
   
   // Rotas de Zeladoria - Dados de serviços de zeladoria
   router.use('/zeladoria', zeladoriaRoutes());
+  
+  // Rotas de ESIC - Dados de e-SIC (Sistema Eletrônico de Informações ao Cidadão)
+  router.use('/esic', esicRoutes());
   
   // Rotas de Notificações - Sistema de notificações por email
   // REFATORAÇÃO: Mongoose (sem prisma)

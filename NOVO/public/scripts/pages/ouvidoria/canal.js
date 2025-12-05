@@ -26,6 +26,7 @@ async function loadCanal(forceRefresh = false) {
     
     await window.chartFactory?.createDoughnutChart('chartCanal', labels, values, {
       type: 'doughnut',
+      field: 'Canal', // Campo para cores consistentes
       onClick: false, // FILTROS DE CLIQUE DESABILITADOS
       legendContainer: 'legendCanal'
     });

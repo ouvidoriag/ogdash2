@@ -70,11 +70,17 @@ Este documento é um **índice executivo** do mapeamento completo do sistema. Pa
 - **Endpoints**: 100+ endpoints
 
 ### Sistemas Globais
-- **Total**: 6 sistemas principais
-  1. `window.dataLoader` - Carregamento de dados
-  2. `window.dataStore` - Cache centralizado
-  3. `window.chartFactory` - Fábrica de gráficos
-  4. `window.chartCommunication` - Comunicação entre gráficos
+- **Total**: 8 sistemas principais
+  1. `window.dataLoader` - Carregamento de dados com cache e controle de concorrência
+  2. `window.dataStore` - Repositório central com cache persistente
+  3. `window.chartFactory` - Fábrica de gráficos padronizados (Chart.js)
+  4. `window.chartCommunication` - Sistema de comunicação entre gráficos e filtros globais
+  5. `window.advancedCharts` - Gráficos avançados (Plotly.js)
+  6. `window.config` - Configurações globais centralizadas
+  7. `window.chartLegend` - Sistema de legendas interativas
+  8. `window.Logger` - Sistema de logging estruturado
+  
+  📚 **Documentação Completa**: [`../docs/system/SISTEMAS_GLOBAIS_COMPLETO.md`](../docs/system/SISTEMAS_GLOBAIS_COMPLETO.md)
   5. `window.advancedCharts` - Gráficos avançados
   6. `window.config` - Configurações
 

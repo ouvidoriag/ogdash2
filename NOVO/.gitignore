@@ -1,77 +1,87 @@
-# Dependências
+# Dependencies
 node_modules/
-.pnp
-.pnp.js
+package-lock.json
+yarn.lock
 
-# Arquivos de ambiente
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-
-# Prisma
-# Manter schema.prisma, mas ignorar client gerado se necessário
-# node_modules/.prisma/
-
-# Sistema operacional
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Build e dist
+# Build outputs
 dist/
 build/
 *.tsbuildinfo
 
-# Temporários
-*.tmp
-*.temp
+# TypeScript compiled files (mantidos os .js compilados dos .ts)
+# Os arquivos .js compilados dos .ts serão gerados automaticamente
+# e podem ser ignorados se necessário, mas por enquanto mantemos para compatibilidade
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Cache
 .cache/
+.parcel-cache/
 
-# Arquivos de backup
-*.bak
-*.backup
+# Temporary files
+tmp/
+temp/
 
-# Arquivos Excel (se houver)
-*.xlsx
-*.xls
-!Dashboard_Duque_de_Caxias_Ouvidoria_Duque_de_Caxias_Tabela_ATUALIZADA.xlsx.example
+# Prisma
+prisma/migrations/
 
-# Dados sensíveis
+# MongoDB
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Pipeline
+Pipeline/__pycache__/
+Pipeline/*.log
+Pipeline/*.pyc
+
+# Data
+NOVO/db-data/
+NOVO/data/*.xlsx
+NOVO/data/*.csv
+
+# Credentials
 *.pem
 *.key
-*.cert
-
-# Credenciais Gmail API
-gmail-credentials.json
-gmail-token.json
-config/gmail-credentials.json
-config/gmail-token.json
-
-# Credenciais Google Sheets API
+credentials.json
 google-credentials.json
-*-credentials.json
-google-sheets-*.json
-config/google-credentials.json
-config/*-credentials.json
 
+# Vitest
+.vitest/

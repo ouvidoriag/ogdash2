@@ -4,7 +4,7 @@
  */
 
 import 'dotenv/config';
-import { getAuthUrl, authorize } from '../src/services/email-notifications/gmailService.js';
+import { getAuthUrl, authorize } from '../../src/services/email-notifications/gmailService.js';
 import readline from 'readline';
 
 const rl = readline.createInterface({

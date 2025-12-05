@@ -42,6 +42,7 @@
 ### 📂 Pasta `system/`
 - `INDICE_SISTEMA.md` - Índice completo do sistema
 - `SISTEMAS_CACHE.md` - Guia de sistemas de cache
+- `SISTEMAS_GLOBAIS_COMPLETO.md` ⭐⭐⭐ - **Documentação completa dos 8 sistemas globais do frontend**
 - `GUIA_LOGGING.md` - Guia de logging
 - `ESTRUTURA_FINAL_OTIMIZADA.md` - Estrutura do sistema
 - `PLANO_REFATORACAO_MONGOOSE.md` - Plano de migração (histórico)

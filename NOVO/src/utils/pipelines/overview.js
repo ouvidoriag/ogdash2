@@ -167,6 +167,7 @@ function buildMatchFromFilters(filters = {}) {
 
 /**
  * Pipeline para agregação por mês
+ * CORREÇÃO: Priorizar dataCriacaoIso (data real da manifestação) ao invés de createdAt (data de importação)
  */
 function buildMonthAggregation() {
   return [
@@ -174,12 +175,44 @@ function buildMonthAggregation() {
       $addFields: {
         dateField: {
           $cond: {
-            if: { $ne: ['$createdAt', null] },
-            then: '$createdAt',
+            // PRIORIDADE 1: dataCriacaoIso (data real da manifestação)
+            if: { $ne: ['$dataCriacaoIso', null] },
+            then: { $dateFromString: { dateString: { $concat: ['$dataCriacaoIso', 'T00:00:00Z'] } } },
             else: {
+              // PRIORIDADE 2: dataDaCriacao (fallback se dataCriacaoIso não existir)
+              // Tentar parsear dataDaCriacao diretamente
               $cond: {
-                if: { $ne: ['$dataCriacaoIso', null] },
-                then: { $dateFromString: { dateString: { $concat: ['$dataCriacaoIso', 'T00:00:00Z'] } } },
+                if: { $ne: ['$dataDaCriacao', null] },
+                then: {
+                  $dateFromString: {
+                    dateString: {
+                      $cond: {
+                        // Se dataDaCriacao já está em formato ISO (YYYY-MM-DD), usar diretamente
+                        if: { $regexMatch: { input: '$dataDaCriacao', regex: /^\d{4}-\d{2}-\d{2}/ } },
+                        then: { $concat: ['$dataDaCriacao', 'T00:00:00Z'] },
+                        // Se está em formato DD/MM/YYYY, converter para YYYY-MM-DD
+                        else: {
+                          $cond: {
+                            if: { $regexMatch: { input: '$dataDaCriacao', regex: /^\d{2}\/\d{2}\/\d{4}/ } },
+                            then: {
+                              $concat: [
+                                { $substr: ['$dataDaCriacao', 6, 4] }, // ano (posições 6-9)
+                                '-',
+                                { $substr: ['$dataDaCriacao', 3, 2] }, // mês (posições 3-4)
+                                '-',
+                                { $substr: ['$dataDaCriacao', 0, 2] }, // dia (posições 0-1)
+                                'T00:00:00Z'
+                              ]
+                            },
+                            // Tentar parsear como está (pode ser outro formato)
+                            else: { $concat: ['$dataDaCriacao', 'T00:00:00Z'] }
+                          }
+                        }
+                      }
+                    },
+                    onError: null
+                  }
+                },
                 else: null
               }
             }
@@ -223,6 +256,7 @@ function buildMonthAggregation() {
 
 /**
  * Pipeline para agregação por dia
+ * CORREÇÃO: Priorizar dataCriacaoIso (data real da manifestação) ao invés de createdAt (data de importação)
  */
 function buildDayAggregation() {
   return [
@@ -230,12 +264,44 @@ function buildDayAggregation() {
       $addFields: {
         dateField: {
           $cond: {
-            if: { $ne: ['$createdAt', null] },
-            then: '$createdAt',
+            // PRIORIDADE 1: dataCriacaoIso (data real da manifestação)
+            if: { $ne: ['$dataCriacaoIso', null] },
+            then: { $dateFromString: { dateString: { $concat: ['$dataCriacaoIso', 'T00:00:00Z'] } } },
             else: {
+              // PRIORIDADE 2: dataDaCriacao (fallback se dataCriacaoIso não existir)
+              // Tentar parsear dataDaCriacao diretamente
               $cond: {
-                if: { $ne: ['$dataCriacaoIso', null] },
-                then: { $dateFromString: { dateString: { $concat: ['$dataCriacaoIso', 'T00:00:00Z'] } } },
+                if: { $ne: ['$dataDaCriacao', null] },
+                then: {
+                  $dateFromString: {
+                    dateString: {
+                      $cond: {
+                        // Se dataDaCriacao já está em formato ISO (YYYY-MM-DD), usar diretamente
+                        if: { $regexMatch: { input: '$dataDaCriacao', regex: /^\d{4}-\d{2}-\d{2}/ } },
+                        then: { $concat: ['$dataDaCriacao', 'T00:00:00Z'] },
+                        // Se está em formato DD/MM/YYYY, converter para YYYY-MM-DD
+                        else: {
+                          $cond: {
+                            if: { $regexMatch: { input: '$dataDaCriacao', regex: /^\d{2}\/\d{2}\/\d{4}/ } },
+                            then: {
+                              $concat: [
+                                { $substr: ['$dataDaCriacao', 6, 4] }, // ano (posições 6-9)
+                                '-',
+                                { $substr: ['$dataDaCriacao', 3, 2] }, // mês (posições 3-4)
+                                '-',
+                                { $substr: ['$dataDaCriacao', 0, 2] }, // dia (posições 0-1)
+                                'T00:00:00Z'
+                              ]
+                            },
+                            // Tentar parsear como está (pode ser outro formato)
+                            else: { $concat: ['$dataDaCriacao', 'T00:00:00Z'] }
+                          }
+                        }
+                      }
+                    },
+                    onError: null
+                  }
+                },
                 else: null
               }
             }
@@ -271,6 +337,7 @@ function buildDayAggregation() {
 
 /**
  * Pipeline para contagem dos últimos N dias
+ * CORREÇÃO: Priorizar dataCriacaoIso (data real da manifestação) ao invés de createdAt (data de importação)
  */
 function buildLastDaysAggregation(days) {
   return [
@@ -278,12 +345,44 @@ function buildLastDaysAggregation(days) {
       $addFields: {
         dateField: {
           $cond: {
-            if: { $ne: ['$createdAt', null] },
-            then: '$createdAt',
+            // PRIORIDADE 1: dataCriacaoIso (data real da manifestação)
+            if: { $ne: ['$dataCriacaoIso', null] },
+            then: { $dateFromString: { dateString: { $concat: ['$dataCriacaoIso', 'T00:00:00Z'] } } },
             else: {
+              // PRIORIDADE 2: dataDaCriacao (fallback se dataCriacaoIso não existir)
+              // Tentar parsear dataDaCriacao diretamente
               $cond: {
-                if: { $ne: ['$dataCriacaoIso', null] },
-                then: { $dateFromString: { dateString: { $concat: ['$dataCriacaoIso', 'T00:00:00Z'] } } },
+                if: { $ne: ['$dataDaCriacao', null] },
+                then: {
+                  $dateFromString: {
+                    dateString: {
+                      $cond: {
+                        // Se dataDaCriacao já está em formato ISO (YYYY-MM-DD), usar diretamente
+                        if: { $regexMatch: { input: '$dataDaCriacao', regex: /^\d{4}-\d{2}-\d{2}/ } },
+                        then: { $concat: ['$dataDaCriacao', 'T00:00:00Z'] },
+                        // Se está em formato DD/MM/YYYY, converter para YYYY-MM-DD
+                        else: {
+                          $cond: {
+                            if: { $regexMatch: { input: '$dataDaCriacao', regex: /^\d{2}\/\d{2}\/\d{4}/ } },
+                            then: {
+                              $concat: [
+                                { $substr: ['$dataDaCriacao', 6, 4] }, // ano (posições 6-9)
+                                '-',
+                                { $substr: ['$dataDaCriacao', 3, 2] }, // mês (posições 3-4)
+                                '-',
+                                { $substr: ['$dataDaCriacao', 0, 2] }, // dia (posições 0-1)
+                                'T00:00:00Z'
+                              ]
+                            },
+                            // Tentar parsear como está (pode ser outro formato)
+                            else: { $concat: ['$dataDaCriacao', 'T00:00:00Z'] }
+                          }
+                        }
+                      }
+                    },
+                    onError: null
+                  }
+                },
                 else: null
               }
             }

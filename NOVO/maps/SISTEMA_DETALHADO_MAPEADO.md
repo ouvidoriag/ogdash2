@@ -17,157 +17,166 @@
 
 ## 🔧 SISTEMAS GLOBAIS DETALHADOS
 
+> 📚 **Documentação Completa**: Ver [`../docs/system/SISTEMAS_GLOBAIS_COMPLETO.md`](../docs/system/SISTEMAS_GLOBAIS_COMPLETO.md)
+
 ### **dataLoader** - `window.dataLoader`
 
-**Arquivo**: `public\scripts\core\dataLoader.js`
-**Descrição**: Sistema de carregamento de dados com cache e deduplicação
+**Arquivo**: `public/scripts/core/dataLoader.js`  
+**Descrição**: Sistema unificado de carregamento de dados com cache, deduplicação, controle de concorrência e retry automático.
 
-**API Principal**: `window.dataLoader`
+**Funcionalidades**:
+- ✅ Controle de concorrência (máx. 6 requisições simultâneas)
+- ✅ Timeouts adaptativos por tipo de endpoint
+- ✅ Retry com backoff exponencial
+- ✅ Deduplicação de requisições
+- ✅ Integração com dataStore
+- ✅ Fallback automático
 
-**Funções e Métodos Disponíveis** (4):
-- `getAdaptiveTimeout()`
-- `getBackoffDelay()`
-- `processQueue()`
-- `executeRequest()`
+**API Principal**: `window.dataLoader.load(endpoint, options)`
 
-**Como Usar**:
+**Exemplo de Uso**:
 ```javascript
-// Exemplo de uso
-const data = await window.dataLoader.load('/api/endpoint');
+const data = await window.dataLoader.load('/api/dashboard-data', {
+  useDataStore: true,
+  ttl: 5000,
+  retries: 2,
+  fallback: []
+});
 ```
 
 ---
 
 ### **dataStore** - `window.dataStore`
 
-**Arquivo**: `public\scripts\core\global-store.js`
-**Descrição**: Repositório central de dados com cache e reatividade
+**Arquivo**: `public/scripts/core/global-store.js`  
+**Descrição**: Repositório central de dados com cache em memória e localStorage, sistema de listeners e TTL configurável.
 
-**API Principal**: `window.dataStore`
+**Funcionalidades**:
+- ✅ Cache em memória (Map)
+- ✅ Cache persistente (localStorage)
+- ✅ TTL configurável por endpoint
+- ✅ Sistema de listeners
+- ✅ Deep copy automático
+- ✅ Invalidação de cache
 
-**Funções e Métodos Disponíveis** (15):
-- `createDeepCopy()`
-- `getEffectiveTTL()`
-- `getPersistent()`
-- `setPersistent()`
-- `clearOldPersistent()`
-- `get()`
-- `set()`
-- `notifyListeners()`
-- `subscribe()`
-- `clear()`
-- `clearPersistent()`
-- `invalidate()`
-- `getStats()`
-- `getDefaultTTL()`
-- `setDefaultTTL()`
+**API Principal**: `window.dataStore.get(key, ttl)`, `window.dataStore.set(key, data, ttl)`
 
-**Como Usar**:
+**Exemplo de Uso**:
 ```javascript
-// Exemplo de uso
-const data = await window.dataStore.load('/api/endpoint');
+// Obter dados (com cache)
+const data = window.dataStore.get('/api/dashboard-data', 5000);
+
+// Armazenar dados
+window.dataStore.set('/api/dashboard-data', data, 5000);
+
+// Inscrever-se em mudanças
+window.dataStore.subscribe('/api/dashboard-data', (newData) => {
+  updateCharts(newData);
+});
 ```
 
 ---
 
 ### **chartFactory** - `window.chartFactory`
 
-**Arquivo**: `public\scripts\core\chart-factory.js`
-**Descrição**: Fábrica de gráficos padronizados (Chart.js)
+**Arquivo**: `public/scripts/core/chart-factory.js`  
+**Descrição**: Fábrica de gráficos padronizados usando Chart.js com configurações centralizadas, paleta de cores e suporte a modo claro/escuro.
 
-**API Principal**: `window.chartFactory`
+**Funcionalidades**:
+- ✅ Gráficos padronizados (Bar, Line, Doughnut, Pie, etc.)
+- ✅ Paleta de cores centralizada
+- ✅ Lazy loading do Chart.js
+- ✅ Destruição segura (previne memory leaks)
+- ✅ Atualização reativa via dataStore
+- ✅ Tooltips customizados
 
-**Funções e Métodos Disponíveis** (20):
-- `darkenHexColor()`
-- `getColorPalette()`
-- `getColorFromPalette()`
-- `getColorWithAlpha()`
-- `isLightMode()`
-- `getHighlightedColor()`
-- `highlightChartElement()`
-- `getChartDefaults()`
-- `ensureChartJS()`
-- `createBarChart()`
-- `createLineChart()`
-- `createDoughnutChart()`
-- `updateChart()`
-- `createReactiveChart()`
-- `destroyChartSafely()`
-- `destroyCharts()`
-- `onload()`
-- `onerror()`
-- `onclick()`
-- `updateChartFromStore()`
+**API Principal**: `window.chartFactory.createBarChart()`, `window.chartFactory.createLineChart()`, etc.
 
-**Como Usar**:
+**Exemplo de Uso**:
 ```javascript
-// Exemplo de uso
-const data = await window.chartFactory.load('/api/endpoint');
+const chart = window.chartFactory.createBarChart('chartStatus',
+  ['Aberto', 'Em Andamento', 'Concluído'],
+  [100, 50, 200],
+  { title: 'Status das Manifestações' }
+);
+
+// Destruir gráfico
+window.chartFactory.destroyChartSafely('chartStatus');
 ```
 
 ---
 
 ### **chartCommunication** - `window.chartCommunication`
 
-**Arquivo**: `public\scripts\core\chart-communication.js`
-**Descrição**: Sistema de comunicação entre gráficos e filtros globais
+**Arquivo**: `public/scripts/core/chart-communication.js`  
+**Descrição**: Sistema de comunicação entre gráficos, filtros globais e atualização reativa de componentes.
 
-**API Principal**: `window.chartCommunication`
+**Funcionalidades**:
+- ✅ Event Bus global
+- ✅ Filtros globais compartilhados
+- ✅ Atualização reativa de gráficos
+- ✅ Auto-connect de páginas
+- ✅ Mapeamento automático de campos
+- ✅ Feedback visual de interações
 
-**Funções e Métodos Disponíveis** (3):
-- `applyFilter()`
-- `handleFilterChange()`
-- `getFieldMapping()`
+**API Principal**: `window.chartCommunication.applyFilter()`, `window.chartCommunication.on()`, `window.chartCommunication.emit()`
 
-**Como Usar**:
+**Exemplo de Uso**:
 ```javascript
-// Exemplo de uso
-const data = await window.chartCommunication.load('/api/endpoint');
+// Aplicar filtro
+window.chartCommunication.applyFilter('Status', 'Aberto', 'equals');
+
+// Escutar mudanças
+window.chartCommunication.on('filter:changed', (filters) => {
+  loadData();
+});
 ```
 
 ---
 
 ### **advancedCharts** - `window.advancedCharts`
 
-**Arquivo**: `public\scripts\core\advanced-charts.js`
-**Descrição**: Gráficos avançados com Plotly.js
+**Arquivo**: `public/scripts/core/advanced-charts.js`  
+**Descrição**: Gráficos avançados usando Plotly.js (Sankey, TreeMap, Mapas Geográficos, Heatmaps).
 
-**API Principal**: `window.advancedCharts`
+**Funcionalidades**:
+- ✅ Lazy loading do Plotly.js
+- ✅ Sankey Charts (diagramas de fluxo)
+- ✅ TreeMap Charts (mapas de árvore)
+- ✅ Mapas Geográficos interativos
+- ✅ Heatmaps
 
-**Funções e Métodos Disponíveis** (7):
-- `ensurePlotly()`
-- `loadAdvancedCharts()`
-- `loadSankeyChart()`
-- `loadTreeMapChart()`
-- `loadGeographicMap()`
-- `buildHeatmap()`
-- `onerror()`
+**API Principal**: `window.advancedCharts.loadSankeyChart()`, `window.advancedCharts.loadGeographicMap()`, etc.
 
-**Como Usar**:
+**Exemplo de Uso**:
 ```javascript
-// Exemplo de uso
-const data = await window.advancedCharts.load('/api/endpoint');
+await window.advancedCharts.loadSankeyChart('sankeyChart', {
+  nodes: [...],
+  links: [...]
+});
 ```
 
 ---
 
 ### **config** - `window.config`
 
-**Arquivo**: `public\scripts\core\config.js`
-**Descrição**: Configurações globais do sistema
+**Arquivo**: `public/scripts/core/config.js`  
+**Descrição**: Configurações globais centralizadas (nomes de campos, endpoints, cores, formatos).
 
-**API Principal**: `window.config`
+**Funcionalidades**:
+- ✅ Nomes de campos centralizados
+- ✅ Endpoints centralizados
+- ✅ Paleta de cores e mapeamento por tipo
+- ✅ Configurações de formato (data, número, etc.)
+- ✅ Configurações de performance
 
-**Funções e Métodos Disponíveis** (4):
-- `getFieldLabel()`
-- `buildEndpoint()`
-- `isLightMode()`
-- `getColorByTipoManifestacao()`
+**API Principal**: `window.config.getFieldLabel()`, `window.config.buildEndpoint()`, `window.config.getColorByTipoManifestacao()`
 
-**Como Usar**:
+**Exemplo de Uso**:
 ```javascript
-// Exemplo de uso
-const data = await window.config.load('/api/endpoint');
+const label = window.config.getFieldLabel('Status');
+const url = window.config.buildEndpoint('/api/aggregate/count-by', { field: 'Status' });
+const color = window.config.getColorByTipoManifestacao('reclamação');
 ```
 
 ---
@@ -1114,21 +1123,28 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/filter`**
   - Tipo: fetch
-  - Contexto: fetch('/api/filter', {       method: 'POST',       headers: {         'Conten...
+  - Contexto: fetch('/api/filter', {
+       method: 'POST',
+       headers: {
+         'Conten...
 
 - **`/api/distinct?field=${encodeURIComponent(field)}`,`**
   - Tipo: direct
   - Variável: `values`
-  - Contexto: /api/distinct?field=${encodeURIComponent(field)}`, {         useDataStore: true...
+  - Contexto: /api/distinct?field=${encodeURIComponent(field)}`, {
+         useDataStore: true...
 
 - **`/api/distinct?field=${encodeURIComponent(field)}`;`**
   - Tipo: direct
-  - Contexto: /api/distinct?field=${encodeURIComponent(field)}`;       const cached = window....
+  - Contexto: /api/distinct?field=${encodeURIComponent(field)}`;
+       const cached = window....
 
 - **`/api/summary`**
   - Tipo: direct
   - Variável: `summary`
-  - Contexto: /api/summary', {         useDataStore: true,         ttl: 5 * 60 * 1000 // Cac...
+  - Contexto: /api/summary', {
+         useDataStore: true,
+         ttl: 5 * 60 * 1000 // Cac...
 
 **KPIs e Cards** (2):
 
@@ -1174,15 +1190,19 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/by-subject`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/by-subject', {       useDataStore: true...
+  - Contexto: window.dataLoader?.load('/api/aggregate/by-subject', {
+       useDataStore: true...
 
 - **`/api/aggregate/count-by-status-mes?field=Assunto`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Assunto', {  ...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Assunto', {
+  ...
 
 - **`/api/dashboard-data`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/dashboard-data', {       useDataStore: true,    ...
+  - Contexto: window.dataLoader?.load('/api/dashboard-data', {
+       useDataStore: true,
+    ...
 
 **Gráficos** (3):
 
@@ -1239,11 +1259,13 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Bairro`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Bairro', {       useData...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Bairro', {
+       useData...
 
 - **`/api/aggregate/count-by-status-mes?field=Bairro`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Bairro', {   ...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Bairro', {
+   ...
 
 **Gráficos** (2):
 
@@ -1292,19 +1314,24 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/by-server`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/by-server', {         useDataStore: tru...
+  - Contexto: window.dataLoader?.load('/api/aggregate/by-server', {
+         useDataStore: tru...
 
 - **`/api/aggregate/count-by?field=UAC`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=UAC', {         useDataS...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=UAC', {
+         useDataS...
 
 - **`/api/aggregate/by-month`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/by-month', {         useDataStore: true...
+  - Contexto: window.dataLoader?.load('/api/aggregate/by-month', {
+         useDataStore: true...
 
 - **`/api/summary`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/summary', {         useDataStore: true,         ...
+  - Contexto: window.dataLoader?.load('/api/summary', {
+         useDataStore: true,
+         ...
 
 **Gráficos** (1):
 
@@ -1355,7 +1382,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Canal`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Canal', {       useDataS...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Canal', {
+       useDataS...
 
 **Gráficos** (1):
 
@@ -1399,11 +1427,13 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Categoria`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Categoria', {       useD...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Categoria', {
+       useD...
 
 - **`/api/aggregate/count-by-status-mes?field=Categoria`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Categoria', {...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Categoria', {
+...
 
 **Gráficos** (2):
 
@@ -1453,7 +1483,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/chat/messages`**
   - Tipo: fetch
-  - Contexto: fetch('/api/chat/messages', {       credentials: 'include' // Enviar cookies de...
+  - Contexto: fetch('/api/chat/messages', {
+       credentials: 'include' // Enviar cookies de...
 
 **Sistemas Globais Usados**: `Logger`
 
@@ -1651,23 +1682,34 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/dashboard-data`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/dashboard-data', {           useDataStore: !force...
+  - Contexto: window.dataLoader?.load('/api/dashboard-data', {
+           useDataStore: !force...
 
 - **`/api/sla/summary`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/sla/summary', {         useDataStore: !shouldRefr...
+  - Contexto: window.dataLoader?.load('/api/sla/summary', {
+         useDataStore: !shouldRefr...
 
 - **`/api/ai/insights`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/ai/insights', {       useDataStore: true,       ...
+  - Contexto: window.dataLoader?.load('/api/ai/insights', {
+       useDataStore: true,
+       ...
 
 - **`/api/filter`**
   - Tipo: fetch
-  - Contexto: fetch('/api/filter', {           method: 'POST',           headers: {        ...
+  - Contexto: fetch('/api/filter', {
+           method: 'POST',
+           headers: {
+        ...
 
 - **`/api/summary`**
   - Tipo: direct
-  - Contexto: /api/summary'         ]);       }              // Recarregar overview com re...
+  - Contexto: /api/summary'
+         ]);
+       }
+       
+       // Recarregar overview com re...
 
 **Gráficos** (10):
 
@@ -1745,7 +1787,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Prioridade`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Prioridade', {       use...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Prioridade', {
+       use...
 
 **Gráficos** (1):
 
@@ -1869,11 +1912,13 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/complaints-denunciations`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/complaints-denunciations', {         useDataStore...
+  - Contexto: window.dataLoader?.load('/api/complaints-denunciations', {
+         useDataStore...
 
 - **`/api/aggregate/by-month`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/by-month', {         useDataStore: true...
+  - Contexto: window.dataLoader?.load('/api/aggregate/by-month', {
+         useDataStore: true...
 
 **Gráficos** (2):
 
@@ -1924,7 +1969,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Responsavel`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Responsavel', {       us...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Responsavel', {
+       us...
 
 **Gráficos** (1):
 
@@ -1969,11 +2015,14 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Secretaria`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Secretaria', {       use...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Secretaria', {
+       use...
 
 - **`/api/aggregate/by-month`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/by-month', {       useDataStore: true,...
+  - Contexto: window.dataLoader?.load('/api/aggregate/by-month', {
+       useDataStore: true,
+...
 
 **Gráficos** (2):
 
@@ -2022,7 +2071,9 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/distritos`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/distritos', {       useDataStore: true,       tt...
+  - Contexto: window.dataLoader?.load('/api/distritos', {
+       useDataStore: true,
+       tt...
 
 **Gráficos** (1):
 
@@ -2068,7 +2119,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Setor`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Setor', {       useDataS...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Setor', {
+       useDataS...
 
 **Gráficos** (1):
 
@@ -2112,11 +2164,13 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Status`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Status', {       useData...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Status', {
+       useData...
 
 - **`/api/aggregate/count-by-status-mes?field=Status`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Status', {   ...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Status', {
+   ...
 
 **Gráficos** (2):
 
@@ -2233,51 +2287,69 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/stats/average-time/by-month`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/stats/average-time/by-month', {       fallback: [...
+  - Contexto: window.dataLoader?.load('/api/stats/average-time/by-month', {
+       fallback: [...
 
 - **`/api/stats/average-time/stats?meses=${encodeURIComponent(mesSelecionado)}``**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/stats?meses=${encodeURIComponent(mesSelecionado)}`     ...
+  - Contexto: /api/stats/average-time/stats?meses=${encodeURIComponent(mesSelecionado)}`
+     ...
 
 - **`/api/stats/average-time/stats`**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/stats';          if (window.Logger) {       window.Lo...
+  - Contexto: /api/stats/average-time/stats';
+     
+     if (window.Logger) {
+       window.Lo...
 
 - **`/api/stats/average-time/stats?meses=${encodeURIComponent(novoMes)}``**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/stats?meses=${encodeURIComponent(novoMes)}`         : '...
+  - Contexto: /api/stats/average-time/stats?meses=${encodeURIComponent(novoMes)}`
+         : '...
 
 - **`/api/stats/average-time?meses=${encodeURIComponent(mesSelecionado)}``**
   - Tipo: direct
-  - Contexto: /api/stats/average-time?meses=${encodeURIComponent(mesSelecionado)}`       : '/...
+  - Contexto: /api/stats/average-time?meses=${encodeURIComponent(mesSelecionado)}`
+       : '/...
 
 - **`/api/stats/average-time`**
   - Tipo: direct
-  - Contexto: /api/stats/average-time';          const dataOrgao = await window.dataLoader?....
+  - Contexto: /api/stats/average-time';
+     
+     const dataOrgao = await window.dataLoader?....
 
 - **`/api/stats/average-time/by-day?meses=${encodeURIComponent(mesSelecionado)}``**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/by-day?meses=${encodeURIComponent(mesSelecionado)}`    ...
+  - Contexto: /api/stats/average-time/by-day?meses=${encodeURIComponent(mesSelecionado)}`
+    ...
 
 - **`/api/stats/average-time/by-day`**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/by-day';          const dataDia = await window.dataLoa...
+  - Contexto: /api/stats/average-time/by-day';
+     
+     const dataDia = await window.dataLoa...
 
 - **`/api/stats/average-time/by-week?meses=${encodeURIComponent(mesSelecionado)}``**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/by-week?meses=${encodeURIComponent(mesSelecionado)}`   ...
+  - Contexto: /api/stats/average-time/by-week?meses=${encodeURIComponent(mesSelecionado)}`
+   ...
 
 - **`/api/stats/average-time/by-week`**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/by-week';          const dataSemana = await window.dat...
+  - Contexto: /api/stats/average-time/by-week';
+     
+     const dataSemana = await window.dat...
 
 - **`/api/stats/average-time/by-unit?meses=${encodeURIComponent(mesSelecionado)}``**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/by-unit?meses=${encodeURIComponent(mesSelecionado)}`   ...
+  - Contexto: /api/stats/average-time/by-unit?meses=${encodeURIComponent(mesSelecionado)}`
+   ...
 
 - **`/api/stats/average-time/by-unit`**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/by-unit';          const dataUnidade = await window.da...
+  - Contexto: /api/stats/average-time/by-unit';
+     
+     const dataUnidade = await window.da...
 
 - **`/api/stats/average-time/by-month-unit?meses=${encodeURIComponent(mesSelecionado)}``**
   - Tipo: direct
@@ -2285,7 +2357,9 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/stats/average-time/by-month-unit`**
   - Tipo: direct
-  - Contexto: /api/stats/average-time/by-month-unit';          const dataUnidadeMes = await ...
+  - Contexto: /api/stats/average-time/by-month-unit';
+     
+     const dataUnidadeMes = await ...
 
 **Gráficos** (6):
 
@@ -2348,7 +2422,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=Tipo`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Tipo', {       useDataSt...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=Tipo', {
+       useDataSt...
 
 **Gráficos** (1):
 
@@ -2392,7 +2467,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/aggregate/count-by?field=UAC`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=UAC', {       useDataSto...
+  - Contexto: window.dataLoader?.load('/api/aggregate/count-by?field=UAC', {
+       useDataSto...
 
 **Gráficos** (1):
 
@@ -2438,7 +2514,9 @@ const data = await window.config.load('/api/endpoint');
 - **`/api/unit/${encodeURIComponent(unidade.busca)}`,`**
   - Tipo: direct
   - Variável: `data`
-  - Contexto: /api/unit/${encodeURIComponent(unidade.busca)}`, {       useDataStore: true,  ...
+  - Contexto: /api/unit/${encodeURIComponent(unidade.busca)}`, {
+       useDataStore: true,
+  ...
 
 **KPIs e Cards** (8):
 
@@ -2484,7 +2562,9 @@ const data = await window.config.load('/api/endpoint');
 - **`/api/unit/${encodeURIComponent(searchName)}`,`**
   - Tipo: direct
   - Variável: `data`
-  - Contexto: /api/unit/${encodeURIComponent(searchName)}`, {       useDataStore: true,     ...
+  - Contexto: /api/unit/${encodeURIComponent(searchName)}`, {
+       useDataStore: true,
+     ...
 
 **Sistemas Globais Usados**: `dataLoader`, `chartFactory`, `chartCommunication`, `Logger`
 
@@ -2728,11 +2808,14 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/colab/categories?type=post`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/colab/categories?type=post', {       useDataStore...
+  - Contexto: window.dataLoader?.load('/api/colab/categories?type=post', {
+       useDataStore...
 
 - **`/api/colab/posts`**
   - Tipo: fetch
-  - Contexto: fetch('/api/colab/posts', {       method: 'POST',       headers: { 'Content-Ty...
+  - Contexto: fetch('/api/colab/posts', {
+       method: 'POST',
+       headers: { 'Content-Ty...
 
 - **`/api/colab/posts?start_date=${encodeURIComponent(startDateStr)}&end_date=${encodeURIComponent(endDateStr)}`,`**
   - Tipo: direct
@@ -2745,27 +2828,36 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/colab/posts/${id}/accept``**
   - Tipo: direct
-  - Contexto: /api/colab/posts/${id}/accept` : `/api/colab/events/${id}/accept`;     const re...
+  - Contexto: /api/colab/posts/${id}/accept` : `/api/colab/events/${id}/accept`;
+     const re...
 
 - **`/api/colab/events/${id}/accept`;`**
   - Tipo: direct
-  - Contexto: /api/colab/events/${id}/accept`;     const response = await fetch(endpoint, { m...
+  - Contexto: /api/colab/events/${id}/accept`;
+     const response = await fetch(endpoint, { m...
 
 - **`/api/colab/posts/${id}/solve``**
   - Tipo: direct
-  - Contexto: /api/colab/posts/${id}/solve` : `/api/colab/events/${id}/solve`;     const resp...
+  - Contexto: /api/colab/posts/${id}/solve` : `/api/colab/events/${id}/solve`;
+     const resp...
 
 - **`/api/colab/events/${id}/solve`;`**
   - Tipo: direct
-  - Contexto: /api/colab/events/${id}/solve`;     const response = await fetch(endpoint, {  ...
+  - Contexto: /api/colab/events/${id}/solve`;
+     const response = await fetch(endpoint, {
+  ...
 
 - **`/api/colab/posts/${id}``**
   - Tipo: direct
-  - Contexto: /api/colab/posts/${id}` : `/api/colab/events/${id}`;     const response = await...
+  - Contexto: /api/colab/posts/${id}` : `/api/colab/events/${id}`;
+     const response = await...
 
 - **`/api/colab/events/${id}`;`**
   - Tipo: direct
-  - Contexto: /api/colab/events/${id}`;     const response = await fetch(endpoint);        ...
+  - Contexto: /api/colab/events/${id}`;
+     const response = await fetch(endpoint);
+     
+   ...
 
 **Gráficos** (2):
 
@@ -2853,7 +2945,8 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/zeladoria/geographic`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/geographic', {       useDataStore: true...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/geographic', {
+       useDataStore: true...
 
 **KPIs e Cards** (1):
 
@@ -2893,11 +2986,14 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/zeladoria/by-month`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/by-month', {       useDataStore: true,...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/by-month', {
+       useDataStore: true,
+...
 
 - **`/api/zeladoria/by-status-month`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/by-status-month', {       useDataStore:...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/by-status-month', {
+       useDataStore:...
 
 **Gráficos** (2):
 
@@ -2934,23 +3030,30 @@ const data = await window.config.load('/api/endpoint');
 
 - **`/api/zeladoria/stats`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/stats', {       useDataStore: true,   ...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/stats', {
+       useDataStore: true,
+   ...
 
 - **`/api/zeladoria/count-by?field=status`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/count-by?field=status', {       useData...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/count-by?field=status', {
+       useData...
 
 - **`/api/zeladoria/count-by?field=categoria`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/count-by?field=categoria', {       useD...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/count-by?field=categoria', {
+       useD...
 
 - **`/api/zeladoria/count-by?field=departamento`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/count-by?field=departamento', {       u...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/count-by?field=departamento', {
+       u...
 
 - **`/api/zeladoria/by-month`**
   - Tipo: dataLoader
-  - Contexto: window.dataLoader?.load('/api/zeladoria/by-month', {       useDataStore: true,...
+  - Contexto: window.dataLoader?.load('/api/zeladoria/by-month', {
+       useDataStore: true,
+...
 
 **Gráficos** (4):
 

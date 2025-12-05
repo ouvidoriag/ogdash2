@@ -9,6 +9,7 @@
 // Importar todos os models
 import Record from './Record.model.js';
 import Zeladoria from './Zeladoria.model.js';
+import Esic from './Esic.model.js';
 import ChatMessage from './ChatMessage.model.js';
 import AggregationCache from './AggregationCache.model.js';
 import NotificacaoEmail from './NotificacaoEmail.model.js';
@@ -19,6 +20,7 @@ import User from './User.model.js';
 export {
   Record,
   Zeladoria,
+  Esic,
   ChatMessage,
   AggregationCache,
   NotificacaoEmail,
@@ -30,6 +32,7 @@ export {
 export default {
   Record,
   Zeladoria,
+  Esic,
   ChatMessage,
   AggregationCache,
   NotificacaoEmail,

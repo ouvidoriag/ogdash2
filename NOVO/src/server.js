@@ -319,19 +319,40 @@ process.on('SIGTERM', async () => {
     const mongooseConnected = await initializeDatabase(mongodbUrl);
     
     if (!mongooseConnected) {
-      logger.error('❌ Falha ao conectar Mongoose. Tentando continuar com Prisma...');
-      // Continuar com Prisma como fallback temporário
-    } else {
-      logger.info('✅ Mongoose conectado com sucesso!');
-      
-      // Verificar conexão testando um model
-      try {
-        const { ChatMessage } = await import('./models/index.js');
-        const count = await ChatMessage.countDocuments();
-        logger.info(`💬 Mensagens no banco (Mongoose): ${count} mensagens`);
-      } catch (error) {
-        logger.warn('⚠️ Não foi possível contar mensagens com Mongoose:', error.message);
+      logger.error('❌ Falha ao conectar Mongoose. Encerrando servidor...');
+      process.exit(1);
+    }
+    
+    // CRÍTICO: Aguardar conexão estar realmente pronta antes de continuar
+    // Verificar estado da conexão
+    let connectionReady = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (!connectionReady && attempts < maxAttempts) {
+      const state = mongoose.connection.readyState;
+      if (state === 1) { // 1 = connected
+        connectionReady = true;
+        logger.info('✅ Mongoose conexão confirmada e pronta!');
+      } else {
+        attempts++;
+        logger.info(`⏳ Aguardando conexão Mongoose... (tentativa ${attempts}/${maxAttempts}, estado: ${state})`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
+    }
+    
+    if (!connectionReady) {
+      logger.error('❌ Timeout aguardando conexão Mongoose. Encerrando servidor...');
+      process.exit(1);
+    }
+    
+    // Verificar conexão testando um model
+    try {
+      const { ChatMessage } = await import('./models/index.js');
+      const count = await ChatMessage.countDocuments();
+      logger.info(`💬 Mensagens no banco (Mongoose): ${count} mensagens`);
+    } catch (error) {
+      logger.warn('⚠️ Não foi possível contar mensagens com Mongoose:', error.message);
     }
     
     // ============================================

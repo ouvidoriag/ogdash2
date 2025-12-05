@@ -5,7 +5,7 @@
 
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
-import { sendEmail } from '../src/services/email-notifications/gmailService.js';
+import { sendEmail } from '../../src/services/email-notifications/gmailService.js';
 import { 
   getEmailSecretaria, 
   EMAIL_REMETENTE, 
@@ -13,8 +13,8 @@ import {
   getTemplate15Dias,
   getTemplateVencimento,
   getTemplate60Dias
-} from '../src/services/email-notifications/emailConfig.js';
-import { getDataCriacao, isConcluido } from '../src/utils/dateUtils.js';
+} from '../../src/services/email-notifications/emailConfig.js';
+import { getDataCriacao, isConcluido } from '../../src/utils/dateUtils.js';
 
 const prisma = new PrismaClient();
 const EMAIL_SAUDE = 'ouvgeral.gestao@gmail.com';

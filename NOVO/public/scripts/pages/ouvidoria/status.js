@@ -46,6 +46,7 @@ async function loadStatusPage(forceRefresh = false) {
       
       await window.chartFactory?.createDoughnutChart('chartStatusPage', labels, values, {
         type: 'doughnut',
+        field: 'Status', // Campo para cores consistentes
         onClick: false, // FILTROS DE CLIQUE DESABILITADOS
         legendContainer: 'legendStatusPage'
       });
@@ -122,6 +123,7 @@ async function renderStatusMesChart(dataMes) {
   const labels = meses.map(m => window.dateUtils?.formatMonthYearShort(m) || m);
   
   await window.chartFactory?.createBarChart('chartStatusMes', labels, datasets, {
+    field: 'Status', // Campo para cores consistentes
     colorIndex: 0,
     legendContainer: 'legendStatusMes'
   });

@@ -92,7 +92,7 @@ async function loadTempoMedio(forceRefresh = false) {
     }
     
     const stats = await window.dataLoader?.load(statsUrl, {
-      useDataStore: !mesSelecionado, // Não cachear quando há filtro
+      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se for refresh forçado ou se houver filtro
       ttl: 5 * 60 * 1000,
       fallback: { media: 0, mediana: 0, minimo: 0, maximo: 0, total: 0 } // Fallback para erro 502
     }) || {};
@@ -101,18 +101,28 @@ async function loadTempoMedio(forceRefresh = false) {
       window.Logger.debug(`⏱️ Stats recebidos:`, stats);
     }
     
-    // Renderizar estatísticas (sempre atualizar os cards)
+    // Renderizar estatísticas (sempre atualizar TODOS os cards quando há filtro ou refresh)
     renderTempoMedioStats(stats);
     
-    // Renderizar gráficos principais
-    await renderTempoMedioCharts(stats, dataMes, mesSelecionado);
+    if (window.Logger && (forceRefresh || mesSelecionado)) {
+      window.Logger.debug(`✅ Cards atualizados com filtro: ${mesSelecionado || 'nenhum'}`);
+    }
     
-    // Carregar dados secundários em background
-    loadSecondaryTempoMedioData(mesSelecionado).catch(err => {
+    // Renderizar gráficos principais (passar forceRefresh para controle de cache)
+    await renderTempoMedioCharts(stats, dataMes, mesSelecionado, forceRefresh);
+    
+    // Carregar dados secundários (AGUARDAR conclusão para garantir que TUDO seja atualizado)
+    // Quando há filtro ativo ou refresh forçado, todos os dados devem ser recarregados
+    await loadSecondaryTempoMedioData(mesSelecionado, forceRefresh).catch(err => {
+      console.error('❌ Erro ao carregar dados secundários de tempo médio:', err);
       if (window.Logger) {
-        window.Logger.debug('Erro ao carregar dados secundários:', err);
+        window.Logger.error('Erro ao carregar dados secundários:', err);
       }
     });
+    
+    if (window.Logger && (forceRefresh || mesSelecionado)) {
+      window.Logger.debug(`✅ Todos os cards, gráficos e dados atualizados com sucesso (filtro: ${mesSelecionado || 'nenhum'})`);
+    }
     
     if (window.Logger) {
       window.Logger.success('⏱️ loadTempoMedio: Concluído');
@@ -167,7 +177,7 @@ function popularDropdownMeses(dataMes) {
       loadingOverlay.innerHTML = `
         <div class="glass rounded-2xl p-8 text-center">
           <div class="text-4xl mb-4 animate-spin">⏳</div>
-          <p class="text-slate-300">Atualizando gráficos e cards...</p>
+          <p class="text-slate-300">Atualizando TODOS os cards e gráficos...</p>
         </div>
       `;
       document.body.appendChild(loadingOverlay);
@@ -176,21 +186,41 @@ function popularDropdownMeses(dataMes) {
     // Destruir todos os gráficos antes de recarregar
     destroyAllTempoMedioCharts();
     
-    // Invalidar cache para forçar recarregamento (especialmente stats)
+    // Invalidar TODOS os caches relacionados ao tempo médio para forçar recarregamento completo
     if (window.dataStore) {
+      // Invalidar cache completo
       window.dataStore.invalidate();
-      // Invalidar especificamente o cache de stats
-      const statsUrl = novoMes 
-        ? `/api/stats/average-time/stats?meses=${encodeURIComponent(novoMes)}`
-        : '/api/stats/average-time/stats';
-      if (typeof window.dataStore.clear === 'function') {
-        window.dataStore.clear(statsUrl);
-      } else if (window.Logger) {
-        window.Logger.debug('dataStore.clear indisponível; cache específico não removido');
+      
+      // Invalidar especificamente todos os endpoints que podem ser afetados pelo filtro
+      const endpointsToClear = [
+        '/api/stats/average-time/stats',
+        '/api/stats/average-time',
+        '/api/stats/average-time/by-month',
+        '/api/stats/average-time/by-day',
+        '/api/stats/average-time/by-week',
+        '/api/stats/average-time/by-unit',
+        '/api/stats/average-time/by-month-unit'
+      ];
+      
+      // Limpar cache para cada endpoint (com e sem filtro de mês)
+      endpointsToClear.forEach(endpoint => {
+        if (typeof window.dataStore.clear === 'function') {
+          // Limpar sem filtro
+          window.dataStore.clear(endpoint);
+          // Limpar com filtro se houver
+          if (novoMes) {
+            window.dataStore.clear(`${endpoint}?meses=${encodeURIComponent(novoMes)}`);
+          }
+        }
+      });
+      
+      if (window.Logger) {
+        window.Logger.debug(`⏱️ Cache invalidado para ${endpointsToClear.length} endpoints`);
       }
     }
     
     try {
+      // Recarregar TUDO com forceRefresh=true para garantir atualização completa
       await loadTempoMedio(true);
     } catch (error) {
       console.error('❌ Erro ao atualizar Tempo Médio:', error);
@@ -266,11 +296,24 @@ function renderTempoMedioStats(stats) {
   }
   
   if (window.Logger) {
-    window.Logger.debug('📊 Cards atualizados:', { media, mediana, minimo, maximo });
+    window.Logger.debug('📊 TODOS os cards atualizados:', { 
+      media: media.toFixed(1), 
+      mediana: mediana.toFixed(1), 
+      minimo: minimo.toFixed(1), 
+      maximo: maximo.toFixed(1) 
+    });
   }
+  
+  // Confirmar visualmente que os cards foram atualizados
+  console.log('✅ Cards atualizados:', {
+    Média: media.toFixed(1),
+    Mediana: mediana.toFixed(1),
+    Mínimo: minimo.toFixed(1),
+    Máximo: maximo.toFixed(1)
+  });
 }
 
-async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '') {
+async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', forceRefresh = false) {
   try {
     // Carregar dados por órgão/unidade (com filtro de mês se selecionado)
     const dataOrgaoUrl = mesSelecionado 
@@ -278,30 +321,170 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '') {
       : '/api/stats/average-time';
     
     const dataOrgao = await window.dataLoader?.load(dataOrgaoUrl, {
-        useDataStore: !mesSelecionado, // Não cachear quando há filtro
+        useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
         ttl: 5 * 60 * 1000,
         fallback: [] // Fallback para erro 502
       }) || [];
     
     // Gráfico principal: Tempo médio por órgão/unidade
     if (dataOrgao && Array.isArray(dataOrgao) && dataOrgao.length > 0) {
-      const top20 = dataOrgao.slice(0, 20);
-      const labels = top20.map(o => o.org || o.unit || o._id || 'N/A');
-      const values = top20.map(o => o.dias || o.average || o.media || 0);
+      // Ordenar por tempo médio (maior primeiro) e pegar apenas os top 10
+      const sortedData = [...dataOrgao].sort((a, b) => {
+        const valueA = a.dias || a.average || a.media || 0;
+        const valueB = b.dias || b.average || b.media || 0;
+        return valueB - valueA; // Ordem decrescente
+      });
       
-      if (labels.length > 0 && values.length > 0) {
+      const top10 = sortedData.slice(0, 10); // GARANTIR APENAS 10 ITENS
+      const labels = top10.map(o => o.org || o.unit || o._id || 'N/A');
+      const values = top10.map(o => o.dias || o.average || o.media || 0);
+      
+      // GARANTIR APENAS 10 ITENS - SEM EXCEÇÕES
+      const MAX_ITEMS = 10;
+      const finalLabels = labels.slice(0, MAX_ITEMS);
+      const finalValues = values.slice(0, MAX_ITEMS);
+      
+      if (window.Logger) {
+        window.Logger.debug(`⏱️ Top ${finalLabels.length} unidades selecionadas (de ${dataOrgao.length} totais)`);
+      }
+      
+      // Log para debug
+      console.log(`📊 Gráfico Tempo Médio: Exibindo exatamente ${finalLabels.length} unidades`);
+      
+      if (finalLabels.length > 0 && finalValues.length > 0) {
         // Destruir gráfico existente antes de criar novo
         destroyChartSafely('chartTempoMedio');
         
-        await window.chartFactory?.createBarChart('chartTempoMedio', labels, values, {
+        // Truncar labels longos para melhor visualização
+        const truncatedLabels = finalLabels.map(label => {
+          const maxLength = 35;
+          return label && label.length > maxLength 
+            ? label.substring(0, maxLength) + '...' 
+            : label || 'N/A';
+        });
+        
+        // Calcular cores com gradiente baseado no valor
+        const maxValue = Math.max(...finalValues);
+        const minValue = Math.min(...finalValues);
+        
+        // Criar cores com gradiente de cyan para violeta
+        const backgroundColor = finalValues.map((value) => {
+          const normalized = (value - minValue) / (maxValue - minValue || 1); // 0 a 1
+          // Gradiente de cyan (180) para violeta (270)
+          const hue = 180 + (270 - 180) * normalized;
+          const saturation = 70 + (normalized * 10); // 70-80%
+          const lightness = 55 - (normalized * 10); // 55-45%
+          return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.85)`;
+        });
+        
+        const borderColor = finalValues.map((value) => {
+          const normalized = (value - minValue) / (maxValue - minValue || 1);
+          const hue = 180 + (270 - 180) * normalized;
+          return `hsl(${hue}, 75%, 55%)`;
+        });
+        
+        await window.chartFactory?.createBarChart('chartTempoMedio', truncatedLabels, finalValues, {
           horizontal: true,
           colorIndex: 0,
           label: 'Tempo Médio (dias)',
-          onClick: false // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+          backgroundColor: backgroundColor,
+          borderColor: borderColor,
+          borderWidth: 2,
+          chartOptions: {
+            indexAxis: 'y',
+            maintainAspectRatio: true,
+            responsive: true,
+            layout: {
+              padding: {
+                left: 10,
+                right: 10,
+                top: 10,
+                bottom: 10
+              }
+            },
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                titleColor: '#e2e8f0',
+                bodyColor: '#cbd5e1',
+                borderColor: '#06b6d4',
+                borderWidth: 1,
+                padding: 12,
+                displayColors: true,
+                callbacks: {
+                  title: function(context) {
+                    // Mostrar label completo no tooltip
+                    const index = context[0].dataIndex;
+                    return finalLabels[index] || 'N/A';
+                  },
+                  label: function(context) {
+                    const value = context.parsed.x || context.parsed.y;
+                    return `Tempo médio: ${value.toFixed(1)} dias`;
+                  },
+                  afterLabel: function(context) {
+                    const index = context.dataIndex;
+                    const total = finalValues.reduce((a, b) => a + b, 0);
+                    const percent = total > 0 ? ((finalValues[index] / total) * 100).toFixed(1) : '0.0';
+                    return `${percent}% do total acumulado`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                beginAtZero: true,
+                ticks: {
+                  color: '#94a3b8',
+                  font: {
+                    size: 11,
+                    weight: '500'
+                  },
+                  callback: function(value) {
+                    return value + ' dias';
+                  }
+                },
+                grid: {
+                  color: 'rgba(148, 163, 184, 0.1)',
+                  lineWidth: 1
+                },
+                title: {
+                  display: true,
+                  text: 'Tempo Médio (dias)',
+                  color: '#06b6d4',
+                  font: {
+                    size: 12,
+                    weight: '600'
+                  }
+                }
+              },
+              y: {
+                ticks: {
+                  color: '#cbd5e1',
+                  font: {
+                    size: 11,
+                    weight: '500'
+                  },
+                  maxRotation: 0,
+                  autoSkip: false
+                },
+                grid: {
+                  display: false
+                }
+              }
+            },
+            animation: {
+              duration: 1500,
+              easing: 'easeInOutQuart'
+            }
+          }
         });
         
-        // Renderizar ranking
-        renderTempoMedioRanking(dataOrgao);
+        // Renderizar ranking (apenas top 10)
+        renderTempoMedioRanking(top10);
       }
     }
     
@@ -352,22 +535,71 @@ function renderTempoMedioRanking(dataOrgao) {
     return;
   }
   
-  listaTempoMedio.innerHTML = dataOrgao.slice(0, 20).map((item, idx) => {
+  // Ordenar por tempo médio (maior primeiro) e garantir apenas os top 10
+  const sortedData = [...dataOrgao].sort((a, b) => {
+    const valueA = a.dias || a.average || a.media || 0;
+    const valueB = b.dias || b.average || b.media || 0;
+    return valueB - valueA; // Ordem decrescente
+  });
+  
+  const top10 = sortedData.slice(0, 10); // Garantir apenas 10 itens
+  
+  if (top10.length === 0) {
+    listaTempoMedio.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum dado encontrado</div>';
+    return;
+  }
+  
+  const maxValue = Math.max(...top10.map(item => item.dias || item.average || item.media || 0));
+  
+  listaTempoMedio.innerHTML = top10.map((item, idx) => {
     const unit = item.org || item.unit || item._id || 'N/A';
-    const average = (item.dias || item.average || item.media || 0).toFixed(1);
+    const average = item.dias || item.average || item.media || 0;
+    const averageFormatted = average.toFixed(1);
+    const percentage = maxValue > 0 ? ((average / maxValue) * 100).toFixed(0) : 0;
+    
+    // Cores para os top 3
+    let badgeClass = 'bg-slate-700/50 text-slate-300';
+    let badgeIcon = '';
+    if (idx === 0) {
+      badgeClass = 'bg-gradient-to-r from-yellow-500/20 to-amber-500/20 text-yellow-400 border border-yellow-500/30';
+      badgeIcon = '🥇';
+    } else if (idx === 1) {
+      badgeClass = 'bg-gradient-to-r from-slate-400/20 to-slate-500/20 text-slate-300 border border-slate-500/30';
+      badgeIcon = '🥈';
+    } else if (idx === 2) {
+      badgeClass = 'bg-gradient-to-r from-orange-500/20 to-amber-500/20 text-orange-400 border border-orange-500/30';
+      badgeIcon = '🥉';
+    }
+    
+    // Truncar nome longo
+    const unitDisplay = unit.length > 30 ? unit.substring(0, 30) + '...' : unit;
+    
     return `
-      <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">
-        <div class="flex items-center gap-3">
-          <span class="text-xs text-slate-400 w-8">${idx + 1}.</span>
-          <span class="text-sm text-slate-300">${unit}</span>
+      <div class="group relative flex items-center justify-between py-3 px-4 rounded-xl hover:bg-gradient-to-r hover:from-violet-500/10 hover:to-cyan-500/10 transition-all duration-300 border border-transparent hover:border-violet-500/20">
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <div class="flex-shrink-0 w-10 h-10 rounded-lg ${badgeClass} flex items-center justify-center text-xs font-bold">
+            ${badgeIcon || (idx + 1)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-slate-200 truncate" title="${unit}">${unitDisplay}</div>
+            <div class="mt-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                class="h-full bg-gradient-to-r from-cyan-500 to-violet-500 transition-all duration-500" 
+                style="width: ${percentage}%"
+              ></div>
+            </div>
+          </div>
         </div>
-        <span class="text-sm font-bold text-cyan-300">${average} dias</span>
+        <div class="flex-shrink-0 ml-3 text-right">
+          <span class="text-sm font-bold text-cyan-300">${averageFormatted}</span>
+          <span class="text-xs text-slate-500 ml-1">dias</span>
+        </div>
       </div>
     `;
   }).join('');
 }
 
-async function loadSecondaryTempoMedioData(mesSelecionado = '') {
+async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = false) {
   try {
     // Carregar dados por dia (com filtro de mês se selecionado)
     const dataDiaUrl = mesSelecionado 
@@ -375,7 +607,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
       : '/api/stats/average-time/by-day';
     
     const dataDia = await window.dataLoader?.load(dataDiaUrl, {
-      useDataStore: !mesSelecionado, // Não cachear quando há filtro
+      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];
@@ -408,7 +640,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
       : '/api/stats/average-time/by-week';
     
     const dataSemana = await window.dataLoader?.load(dataSemanaUrl, {
-      useDataStore: !mesSelecionado, // Não cachear quando há filtro
+      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];
@@ -456,7 +688,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
       : '/api/stats/average-time/by-unit';
     
     const dataUnidade = await window.dataLoader?.load(dataUnidadeUrl, {
-      useDataStore: !mesSelecionado, // Não cachear quando há filtro
+      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];
@@ -485,7 +717,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '') {
       : '/api/stats/average-time/by-month-unit';
     
     const dataUnidadeMes = await window.dataLoader?.load(dataUnidadeMesUrl, {
-      useDataStore: !mesSelecionado, // Não cachear quando há filtro
+      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];

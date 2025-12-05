@@ -76,37 +76,64 @@ function buildEndpoint(endpoint, params = {}) {
 
 const CHART_CONFIG = {
   COLORS: {
-    PRIMARY: '#22d3ee',
-    SECONDARY: '#a78bfa',
-    SUCCESS: '#34d399',
-    WARNING: '#f59e0b',
-    DANGER: '#fb7185',
-    INFO: '#06b6d4',
-    PURPLE: '#8b5cf6',
-    PINK: '#ec4899',
-    INDIGO: '#6366f1'
+    PRIMARY: '#06b6d4',        // Cyan - cor principal
+    SECONDARY: '#8b5cf6',      // Violet - cor secundária
+    SUCCESS: '#10b981',        // Verde - sucesso/concluído
+    WARNING: '#f59e0b',        // Amarelo/Laranja - atenção
+    DANGER: '#ef4444',         // Vermelho - erro/crítico
+    INFO: '#3b82f6',           // Azul - informação
+    PURPLE: '#a78bfa',         // Roxo
+    PINK: '#ec4899',           // Rosa
+    INDIGO: '#6366f1'          // Índigo
   },
   
+  // Paleta principal - cores suaves otimizadas para fundo escuro
   COLOR_PALETTE: [
-    '#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#fb7185', '#e879f9',
-    '#8b5cf6', '#06b6d4', '#10b981', '#f97316', '#ec4899', '#6366f1'
+    '#06b6d4', // Cyan
+    '#8b5cf6', // Violet
+    '#10b981', // Verde
+    '#f59e0b', // Amarelo
+    '#ef4444', // Vermelho
+    '#3b82f6', // Azul
+    '#ec4899', // Rosa
+    '#a78bfa', // Roxo claro
+    '#f97316', // Laranja
+    '#6366f1', // Índigo
+    '#eab308', // Amarelo ouro
+    '#14b8a6'  // Turquesa
   ],
   
-  // Mapeamento de cores por tipo de manifestação (modo escuro)
+  // Paleta alternativa - tons mais suaves para gráficos múltiplos
+  COLOR_PALETTE_SOFT: [
+    'rgba(6, 182, 212, 0.7)',   // Cyan suave
+    'rgba(139, 92, 246, 0.7)',  // Violet suave
+    'rgba(16, 185, 129, 0.7)',  // Verde suave
+    'rgba(245, 158, 11, 0.7)',  // Amarelo suave
+    'rgba(239, 68, 68, 0.7)',   // Vermelho suave
+    'rgba(59, 130, 246, 0.7)',  // Azul suave
+    'rgba(236, 72, 153, 0.7)',  // Rosa suave
+    'rgba(167, 139, 250, 0.7)', // Roxo suave
+    'rgba(249, 115, 22, 0.7)',  // Laranja suave
+    'rgba(99, 102, 241, 0.7)',  // Índigo suave
+    'rgba(234, 179, 8, 0.7)',   // Amarelo ouro suave
+    'rgba(20, 184, 166, 0.7)'   // Turquesa suave
+  ],
+  
+  // Mapeamento de cores por tipo de manifestação (modo escuro) - cores suaves e consistentes
   TIPO_MANIFESTACAO_COLORS: {
-    'elogio': '#10b981',        // Verde
+    'elogio': '#10b981',        // Verde - positivo
     'elogios': '#10b981',
-    'reclamação': '#f97316',    // Laranja
+    'reclamação': '#f97316',    // Laranja - sempre laranja para reclamação
     'reclamações': '#f97316',
     'reclamacao': '#f97316',
     'reclamacoes': '#f97316',
     'reclama': '#f97316',
-    'denúncia': '#ef4444',      // Vermelho
+    'denúncia': '#ef4444',      // Vermelho - crítico
     'denúncias': '#ef4444',
     'denuncia': '#ef4444',
     'denuncias': '#ef4444',
     'denún': '#ef4444',
-    'sugestão': '#3b82f6',      // Azul
+    'sugestão': '#3b82f6',      // Azul - neutro/positivo
     'sugestões': '#3b82f6',
     'sugestao': '#3b82f6',
     'sugestoes': '#3b82f6',
@@ -166,6 +193,77 @@ const CHART_CONFIG = {
     'e sic': '#ca8a04',
     'lei de acesso': '#ca8a04',
     'lei acesso': '#ca8a04'
+  },
+  
+  // Mapeamento de cores por Status (consistente em todo o dashboard)
+  STATUS_COLORS: {
+    'aberto': '#3b82f6',           // Azul - em andamento
+    'abertos': '#3b82f6',
+    'em andamento': '#3b82f6',
+    'andamento': '#3b82f6',
+    'pendente': '#f59e0b',         // Amarelo - atenção
+    'pendentes': '#f59e0b',
+    'fechado': '#10b981',          // Verde - resolvido
+    'fechados': '#10b981',
+    'resolvido': '#10b981',
+    'resolvidos': '#10b981',
+    'concluído': '#10b981',
+    'concluidos': '#10b981',
+    'concluída': '#10b981',
+    'concluidas': '#10b981',
+    'cancelado': '#94a3b8',        // Cinza - cancelado
+    'cancelados': '#94a3b8',
+    'cancelada': '#94a3b8',
+    'canceladas': '#94a3b8',
+    'vencido': '#ef4444',          // Vermelho - atrasado
+    'vencidos': '#ef4444',
+    'vencida': '#ef4444',
+    'vencidas': '#ef4444',
+    'atrasado': '#ef4444',
+    'atrasados': '#ef4444',
+    'atrasada': '#ef4444',
+    'atrasadas': '#ef4444',
+    'em análise': '#8b5cf6',       // Roxo - análise
+    'em analise': '#8b5cf6',
+    'análise': '#8b5cf6',
+    'analise': '#8b5cf6'
+  },
+  
+  // Mapeamento de cores por Canal (consistente em todo o dashboard)
+  CANAL_COLORS: {
+    'site': '#06b6d4',             // Cyan - online
+    'internet': '#06b6d4',
+    'web': '#06b6d4',
+    'online': '#06b6d4',
+    'e-mail': '#3b82f6',           // Azul - email
+    'email': '#3b82f6',
+    'correio eletrônico': '#3b82f6',
+    'presencial': '#10b981',       // Verde - presencial
+    'balcão': '#10b981',
+    'balcao': '#10b981',
+    'telefone': '#f59e0b',         // Amarelo - telefone
+    'fone': '#f59e0b',
+    'whatsapp': '#25d366',         // Verde WhatsApp
+    'redes sociais': '#ec4899',    // Rosa - redes sociais
+    'facebook': '#1877f2',
+    'instagram': '#e4405f',
+    'twitter': '#1da1f2'
+  },
+  
+  // Mapeamento de cores por Prioridade (consistente em todo o dashboard)
+  PRIORIDADE_COLORS: {
+    'alta': '#ef4444',             // Vermelho - urgente
+    'altas': '#ef4444',
+    'urgente': '#ef4444',
+    'urgentes': '#ef4444',
+    'média': '#f59e0b',            // Amarelo/Laranja - atenção
+    'media': '#f59e0b',
+    'médias': '#f59e0b',
+    'medias': '#f59e0b',
+    'baixa': '#10b981',            // Verde - normal
+    'baixas': '#10b981',
+    'normal': '#10b981',
+    'normais': '#10b981'
   },
   
   PERFORMANCE: {
@@ -262,6 +360,72 @@ function getColorByTipoManifestacao(tipo) {
   return null;
 }
 
+/**
+ * Obter cor baseada em categoria e valor (função genérica)
+ * @param {string} category - Categoria (Status, Canal, Prioridade, Tipo, etc.)
+ * @param {string} value - Valor da categoria
+ * @returns {string|null} - Cor hexadecimal ou null se não encontrada
+ */
+function getColorByCategory(category, value) {
+  if (!category || !value) return null;
+  
+  const categoryLower = category.toLowerCase().trim();
+  const valueLower = (value || '').toString().toLowerCase().trim();
+  
+  // Mapear categoria para o objeto de cores correspondente
+  let colorMap = null;
+  
+  if (categoryLower.includes('tipo') || categoryLower.includes('manifestacao')) {
+    colorMap = isLightMode() 
+      ? CHART_CONFIG.TIPO_MANIFESTACAO_COLORS_LIGHT 
+      : CHART_CONFIG.TIPO_MANIFESTACAO_COLORS;
+  } else if (categoryLower.includes('status') || categoryLower.includes('situacao')) {
+    colorMap = CHART_CONFIG.STATUS_COLORS;
+  } else if (categoryLower.includes('canal') || categoryLower.includes('origem')) {
+    colorMap = CHART_CONFIG.CANAL_COLORS;
+  } else if (categoryLower.includes('prioridade')) {
+    colorMap = CHART_CONFIG.PRIORIDADE_COLORS;
+  }
+  
+  if (!colorMap) return null;
+  
+  // Buscar correspondência exata ou parcial
+  for (const [key, color] of Object.entries(colorMap)) {
+    if (valueLower === key || valueLower.includes(key) || key.includes(valueLower)) {
+      return color;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Obter cor por Status
+ * @param {string} status - Status
+ * @returns {string|null} - Cor hexadecimal
+ */
+function getColorByStatus(status) {
+  return getColorByCategory('status', status);
+}
+
+/**
+ * Obter cor por Canal
+ * @param {string} canal - Canal
+ * @returns {string|null} - Cor hexadecimal
+ */
+function getColorByCanal(canal) {
+  return getColorByCategory('canal', canal);
+}
+
+/**
+ * Obter cor por Prioridade
+ * @param {string} prioridade - Prioridade
+ * @returns {string|null} - Cor hexadecimal
+ */
+function getColorByPrioridade(prioridade) {
+  return getColorByCategory('prioridade', prioridade);
+}
+
 window.config = {
   FIELD_NAMES,
   FIELD_LABELS,
@@ -271,7 +435,11 @@ window.config = {
   CHART_CONFIG,
   FORMAT_CONFIG,
   PERFORMANCE_CONFIG,
-  getColorByTipoManifestacao
+  getColorByTipoManifestacao,
+  getColorByCategory,
+  getColorByStatus,
+  getColorByCanal,
+  getColorByPrioridade
 };
 
 window.FIELD_NAMES = FIELD_NAMES;

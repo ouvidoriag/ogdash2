@@ -145,6 +145,98 @@ model Zeladoria {
   @@map("zeladoria")
 }
 
+// Modelo para dados de e-SIC (Sistema Eletrônico de Informações ao Cidadão)
+model Esic {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  data      Json     // Armazena o JSON completo do CSV
+  createdAt DateTime @default(now())
+  
+  // Datas
+  dataCriacao           String? // Data de criação
+  dataEncerramento      String? // Data de encerramento
+  dataCriacaoIso        String? // YYYY-MM-DD
+  dataEncerramentoIso  String? // YYYY-MM-DD
+  
+  // Status e prioridade
+  status                String? // Status
+  prioridade            String? // Prioridade
+  responsavel           String? // Responsável
+  
+  // Identificadores
+  codigoRastreio        String? // Código de rastreio
+  idExterno             String? // ID externo
+  idUsuario             String? // ID do usuário
+  
+  // Solicitante
+  solicitante           String? // Solicitante
+  nomeCompleto          String? // Nome completo
+  nomeSolicitante       String? // Nome do solicitante
+  email                 String? // E-mail
+  emailSolicitante      String? // E-mail do solicitante
+  telefone              String? // Telefone
+  telefoneSolicitante   String? // Telefone do solicitante
+  
+  // Informações da solicitação
+  tipoInformacao        String? // Tipo de informação
+  especificacaoInformacao String? // Especificação da informação
+  detalhesSolicitacao   String? // Detalhes da solicitação
+  
+  // Metadados
+  solicitacaoAnonima    String? // Solicitação anônima
+  preenchidoPor         String? // Preenchido por
+  criadoPor             String? // Criado por
+  atrelarColab          String? // Atrelar ao Colab
+  
+  // Servidor
+  servidorNome          String? // Nome do servidor
+  servidorMatricula     String? // Matrícula do servidor
+  
+  // Unidade e canal
+  unidadeContato        String? // Unidade de contato
+  canal                 String? // Canal
+  
+  // Prazo
+  prazo                 String? // Prazo
+  
+  // Localização
+  cep                   String? // CEP
+  bairro                String? // Bairro
+  
+  // Dados demográficos (opcionais)
+  raca                  String? // Raça
+  escolaridade          String? // Escolaridade
+  genero                String? // Gênero
+  dataNascimento        String? // Data de nascimento
+  
+  // Relacionamentos e uploads
+  relacionamentos       String? // Relacionamentos
+  uploadDocumentos      String? // Upload de documentos
+  
+  // Índices simples
+  @@index([status])
+  @@index([prioridade])
+  @@index([responsavel])
+  @@index([codigoRastreio])
+  @@index([idExterno])
+  @@index([tipoInformacao])
+  @@index([unidadeContato])
+  @@index([canal])
+  @@index([bairro])
+  @@index([dataCriacaoIso])
+  @@index([dataEncerramentoIso])
+  
+  // Índices compostos para queries comuns
+  @@index([status, prioridade])
+  @@index([dataCriacaoIso, status])
+  @@index([dataCriacaoIso, tipoInformacao])
+  @@index([responsavel, status])
+  @@index([unidadeContato, status])
+  @@index([canal, status])
+  @@index([bairro, status])
+  
+  @@map("esic")
+}
+
 // Modelo para rastrear notificações de email enviadas
 model NotificacaoEmail {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId

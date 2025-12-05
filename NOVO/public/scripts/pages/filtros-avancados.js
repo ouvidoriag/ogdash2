@@ -630,9 +630,17 @@ function displayResults(resultados) {
             const orgao = data.orgaos || row.orgaos || 'N/A';
             const canal = data.canal || row.canal || 'N/A';
             
+            // Criar URL do Colab com o protocolo
+            const colabUrl = `https://duquedecaxias.colab.re/item/workflow/${protocolo}`;
+            
             return `
               <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                <td class="px-4 py-3 text-cyan-300 font-mono">${protocolo}</td>
+                <td class="px-4 py-3">
+                  <a href="${colabUrl}" target="_blank" rel="noopener noreferrer" 
+                     class="text-cyan-300 font-mono hover:text-cyan-200 hover:underline transition-colors cursor-pointer">
+                    ${protocolo}
+                  </a>
+                </td>
                 <td class="px-4 py-3 text-slate-300">${formatDate(dataCriacao)}</td>
                 <td class="px-4 py-3 text-slate-300">${status}</td>
                 <td class="px-4 py-3 text-slate-300">${truncateText(tema, 30)}</td>

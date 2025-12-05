@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>e-SIC - Duque de Caxias - Dashboard</title>
+    <link rel="icon" type="image/png" href="/dc-logo.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #0f172a;
+        --muted: #94a3b8;
+        --primary: #22d3ee;
+        --accent: #a78bfa;
+        --success: #34d399;
+        --danger: #fb7185;
+      }
+      body { 
+        background: radial-gradient(1200px 600px at top left, rgba(34,211,238,0.08), transparent 60%), 
+                    radial-gradient(1200px 600px at bottom right, rgba(167,139,250,0.08), transparent 60%), 
+                    var(--bg); 
+      }
+      .glass { 
+        background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); 
+        box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08); 
+        border: 1px solid rgba(255,255,255,0.08); 
+      }
+      .neon { text-shadow: 0 0 12px rgba(34,211,238,0.65), 0 0 24px rgba(167,139,250,0.45); }
+      .glow-ring { box-shadow: 0 0 0 2px rgba(34,211,238,0.15), 0 0 32px rgba(34,211,238,0.25); }
+      nav div[data-page].active {
+        background: linear-gradient(90deg, rgba(34,211,238,0.15) 0%, rgba(34,211,238,0.05) 100%);
+        border-left: 3px solid #22d3ee;
+        color: #22d3ee;
+        font-weight: 600;
+      }
+      nav div[data-page]:hover:not(.active) {
+        background: rgba(255,255,255,0.05);
+      }
+      :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+      }
+      :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #0a0a0a, #1a1a1a);
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #111, #222);
+      }
+    </style>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+              if (window.Logger) {
+                window.Logger.success('Service Worker registrado:', reg.scope);
+              } else {
+                console.log('✅ Service Worker registrado:', reg.scope);
+              }
+            })
+            .catch(err => {
+              if (window.Logger) {
+                window.Logger.warn('Service Worker não registrado:', err);
+              }
+            });
+        });
+      }
+    </script>
+  </head>
+  <body class="text-slate-100">
+    <div class="min-h-screen grid grid-cols-12 gap-6 p-6">
+      <aside class="col-span-12 lg:col-span-3 xl:col-span-2 glass rounded-2xl p-5">
+        <div class="mb-6">
+          <div class="flex items-center gap-3 mb-4">
+            <img src="/dc-logo.png" alt="Duque de Caxias" class="h-12 w-auto object-contain" />
+            <div>
+              <div class="text-lg font-semibold">e-SIC</div>
+              <div class="text-xs text-slate-400">Sistema Eletrônico de Informações ao Cidadão</div>
+            </div>
+          </div>
+        </div>
+        
+        <nav class="space-y-3 text-sm">
+          <div class="space-y-1">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🏠 Início</div>
+            <div data-page="home" class="active px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏠 Home</div>
+            <div data-page="overview" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📊 Visão Geral</div>
+          </div>
+          <div class="space-y-1">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📋 Análises</div>
+            <div data-page="status" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📈 Por Status</div>
+            <div data-page="tipo-informacao" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📑 Tipo de Informação</div>
+            <div data-page="responsavel" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">👤 Responsável</div>
+            <div data-page="unidade" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏢 Unidade</div>
+            <div data-page="canal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📞 Canal</div>
+            <div data-page="mensal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📅 Análise Mensal</div>
+          </div>
+        </nav>
+      </aside>
+
+      <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">
+        <div id="pageTitle" class="mb-4"></div>
+        
+        <section id="page-home" class="">
+          <div class="glass rounded-2xl p-8 md:p-12 text-center">
+            <div class="mb-8">
+              <div class="inline-block relative">
+                <h1 class="neon text-4xl md:text-5xl font-bold mb-4">📋 e-SIC</h1>
+                <div class="text-slate-400 text-lg">Sistema Eletrônico de Informações ao Cidadão</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+              <div class="glass rounded-xl p-6 hover:bg-white/5 transition-colors cursor-pointer" onclick="loadSection('overview')">
+                <div class="text-3xl mb-2">📊</div>
+                <div class="font-semibold text-cyan-300">Visão Geral</div>
+                <div class="text-xs text-slate-400 mt-1">Estatísticas e métricas</div>
+              </div>
+              <div class="glass rounded-xl p-6 hover:bg-white/5 transition-colors cursor-pointer" onclick="loadSection('status')">
+                <div class="text-3xl mb-2">📈</div>
+                <div class="font-semibold text-emerald-300">Por Status</div>
+                <div class="text-xs text-slate-400 mt-1">Análise de status das solicitações</div>
+              </div>
+              <div class="glass rounded-xl p-6 hover:bg-white/5 transition-colors cursor-pointer" onclick="loadSection('tipo-informacao')">
+                <div class="text-3xl mb-2">📑</div>
+                <div class="font-semibold text-violet-300">Tipo de Informação</div>
+                <div class="text-xs text-slate-400 mt-1">Análise por tipo de informação</div>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <section id="page-overview" style="display: none;">
+          <div class="glass rounded-2xl p-6 mb-6">
+            <h2 class="neon text-2xl font-bold mb-4">📊 Visão Geral - e-SIC</h2>
+            <div id="esicStats" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div class="glass rounded-xl p-4">
+                <div class="text-slate-400 text-sm mb-1">Total de Solicitações</div>
+                <div id="esic-kpi-total" class="text-2xl font-bold text-cyan-300">-</div>
+              </div>
+              <div class="glass rounded-xl p-4">
+                <div class="text-slate-400 text-sm mb-1">Encerradas</div>
+                <div id="esic-kpi-encerradas" class="text-2xl font-bold text-emerald-300">-</div>
+              </div>
+              <div class="glass rounded-xl p-4">
+                <div class="text-slate-400 text-sm mb-1">Em Aberto</div>
+                <div id="esic-kpi-abertas" class="text-2xl font-bold text-amber-300">-</div>
+              </div>
+              <div class="glass rounded-xl p-4">
+                <div class="text-slate-400 text-sm mb-1">Tempo Médio</div>
+                <div id="esic-kpi-tempo" class="text-2xl font-bold text-violet-300">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="glass rounded-2xl p-6">
+              <h3 class="font-semibold mb-4 text-cyan-400">Solicitações por Status</h3>
+              <canvas id="esic-chart-status"></canvas>
+            </div>
+            <div class="glass rounded-2xl p-6">
+              <h3 class="font-semibold mb-4 text-cyan-400">Solicitações por Tipo de Informação</h3>
+              <canvas id="esic-chart-tipo-informacao"></canvas>
+            </div>
+            <div class="glass rounded-2xl p-6">
+              <h3 class="font-semibold mb-4 text-cyan-400">Solicitações por Responsável</h3>
+              <canvas id="esic-chart-responsavel"></canvas>
+            </div>
+            <div class="glass rounded-2xl p-6">
+              <h3 class="font-semibold mb-4 text-cyan-400">Evolução Mensal</h3>
+              <canvas id="esic-chart-mensal"></canvas>
+            </div>
+          </div>
+        </section>
+        
+        <section id="page-status" style="display: none;">
+          <div class="glass rounded-2xl p-6">
+            <h2 class="neon text-2xl font-bold mb-4">📈 Solicitações por Status</h2>
+            <canvas id="esic-chart-status-detail"></canvas>
+          </div>
+        </section>
+        
+        <section id="page-tipo-informacao" style="display: none;">
+          <div class="glass rounded-2xl p-6">
+            <h2 class="neon text-2xl font-bold mb-4">📑 Solicitações por Tipo de Informação</h2>
+            <canvas id="esic-chart-tipo-informacao-detail"></canvas>
+          </div>
+        </section>
+        
+        <section id="page-responsavel" style="display: none;">
+          <div class="glass rounded-2xl p-6">
+            <h2 class="neon text-2xl font-bold mb-4">👤 Solicitações por Responsável</h2>
+            <canvas id="esic-chart-responsavel-detail"></canvas>
+          </div>
+        </section>
+        
+        <section id="page-unidade" style="display: none;">
+          <div class="glass rounded-2xl p-6">
+            <h2 class="neon text-2xl font-bold mb-4">🏢 Solicitações por Unidade</h2>
+            <canvas id="esic-chart-unidade-detail"></canvas>
+          </div>
+        </section>
+        
+        <section id="page-canal" style="display: none;">
+          <div class="glass rounded-2xl p-6">
+            <h2 class="neon text-2xl font-bold mb-4">📞 Solicitações por Canal</h2>
+            <canvas id="esic-chart-canal-detail"></canvas>
+          </div>
+        </section>
+        
+        <section id="page-mensal" style="display: none;">
+          <div class="glass rounded-2xl p-6">
+            <h2 class="neon text-2xl font-bold mb-4">📅 Análise Mensal</h2>
+            <canvas id="esic-chart-mensal-detail"></canvas>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/scripts/utils/lazy-libraries.js"></script>
+    <script src="/scripts/utils/logger.js"></script>
+    <script src="/scripts/utils/dateUtils.js" defer></script>
+    <script src="/scripts/core/config.js"></script>
+    <script src="/scripts/core/dataLoader.js"></script>
+    <script src="/scripts/core/global-store.js" defer></script>
+    <script src="/scripts/core/chart-communication.js" defer></script>
+    <script src="/scripts/core/chart-factory.js" defer></script>
+    <script src="/scripts/pages/esic/esic-main.js"></script>
+  </body>
+</html>
+
