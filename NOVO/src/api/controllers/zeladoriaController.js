@@ -341,3 +341,77 @@ export async function geographic(req, res) {
   });
 }
 
+/**
+ * GET /api/zeladoria/map
+ * Dados para mapa (todas as demandas individuais com coordenadas)
+ */
+export async function map(req, res) {
+  const cacheKey = 'zeladoria:map:v2';
+  return withCache(cacheKey, 3600, res, async () => {
+    const rows = await Zeladoria.find({
+      latitude: { $ne: null, $exists: true },
+      longitude: { $ne: null, $exists: true }
+    })
+    .select('protocoloEmpresa latitude longitude categoria status bairro endereco dataCriacaoIso dataConclusaoIso departamento apoios')
+    .lean();
+    
+    // Limites de Duque de Caxias para validação
+    const CAXIAS_BOUNDS = {
+      north: -22.65,
+      south: -22.90,
+      east: -43.15,
+      west: -43.45
+    };
+    
+    // Função para validar coordenadas
+    const validateCoords = (lat, lng) => {
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return false;
+      return lat >= CAXIAS_BOUNDS.south && lat <= CAXIAS_BOUNDS.north &&
+             lng >= CAXIAS_BOUNDS.west && lng <= CAXIAS_BOUNDS.east;
+    };
+    
+    // Função para identificar distrito pelo bairro
+    const getDistrito = (bairro) => {
+      if (!bairro) return null;
+      const bairroLower = bairro.trim().toLowerCase();
+      
+      const distritos = {
+        '1º Distrito - Duque de Caxias (Sede)': ['centro', 'sarapuí', 'gramacho', 'parque beira-mar', 'vila meriti'],
+        '2º Distrito - Campos Elíseos': ['campos elíseos', 'pilar', 'saracuruna', 'são bento'],
+        '3º Distrito - Imbariê': ['imbariê', 'santa lúcia', 'santa cruz da serra'],
+        '4º Distrito - Xerém': ['xerém', 'mantiquira', 'capivari']
+      };
+      
+      for (const [distrito, bairros] of Object.entries(distritos)) {
+        if (bairros.some(b => bairroLower.includes(b))) {
+          return distrito;
+        }
+      }
+      return null;
+    };
+    
+    return rows.map(r => {
+      const lat = parseFloat(r.latitude);
+      const lng = parseFloat(r.longitude);
+      const isValid = validateCoords(lat, lng);
+      
+      return {
+        id: r._id?.toString() || r.protocoloEmpresa,
+        protocolo: r.protocoloEmpresa || 'N/A',
+        latitude: lat,
+        longitude: lng,
+        categoria: r.categoria || 'Não informado',
+        status: r.status || 'Não informado',
+        bairro: r.bairro || 'Não informado',
+        endereco: r.endereco || 'Não informado',
+        dataCriacao: r.dataCriacaoIso || r.dataCriacao || 'N/A',
+        dataConclusao: r.dataConclusaoIso || r.dataConclusao || null,
+        departamento: r.departamento || 'Não informado',
+        apoios: r.apoios || 0,
+        distrito: getDistrito(r.bairro),
+        coordenadasValidas: isValid
+      };
+    }).filter(r => !isNaN(r.latitude) && !isNaN(r.longitude));
+  });
+}
+

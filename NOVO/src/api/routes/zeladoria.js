@@ -90,6 +90,13 @@ export default function zeladoriaRoutes() {
    */
   router.get('/geographic', (req, res) => zeladoriaController.geographic(req, res));
   
+  /**
+   * GET /api/zeladoria/map
+   * Dados para mapa (demandas individuais com coordenadas GPS)
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/map', (req, res) => zeladoriaController.map(req, res));
+  
   return router;
 }
 

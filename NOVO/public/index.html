@@ -300,6 +300,83 @@
       :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(180deg, #111, #222);
       }
+      /* Estilos para marcadores do mapa Leaflet */
+      .custom-marker {
+        background: transparent !important;
+        border: none !important;
+      }
+      .marker-pin {
+        width: 30px !important;
+        height: 30px !important;
+        border-radius: 50% 50% 50% 0 !important;
+        border: 3px solid !important;
+        transform: rotate(-45deg) !important;
+        position: relative !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.6) !important;
+        z-index: 1000 !important;
+      }
+      .marker-pin-inner {
+        width: 16px !important;
+        height: 16px !important;
+        background: white !important;
+        border-radius: 50% !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) rotate(45deg) !important;
+      }
+      .marker-cluster {
+        background: transparent !important;
+        border: none !important;
+      }
+      .cluster-marker {
+        width: 40px !important;
+        height: 40px !important;
+        border-radius: 50% !important;
+        background: linear-gradient(135deg, #22d3ee, #a78bfa) !important;
+        color: white !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.5) !important;
+        border: 3px solid white !important;
+      }
+      .cluster-marker.cluster-medium {
+        width: 50px !important;
+        height: 50px !important;
+        font-size: 16px !important;
+      }
+      .cluster-marker.cluster-large {
+        width: 60px !important;
+        height: 60px !important;
+        font-size: 18px !important;
+      }
+      .custom-popup .leaflet-popup-content-wrapper {
+        background: #0f172a !important;
+        color: #e2e8f0 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+      }
+      .custom-popup .leaflet-popup-tip {
+        background: #0f172a !important;
+      }
+      .custom-popup .leaflet-popup-close-button {
+        color: #94a3b8 !important;
+        font-size: 20px !important;
+        padding: 4px 8px !important;
+      }
+      .custom-popup .leaflet-popup-close-button:hover {
+        color: #22d3ee !important;
+      }
+      /* Garantir que os marcadores apareçam acima do mapa */
+      .leaflet-marker-icon {
+        z-index: 1000 !important;
+      }
+      .leaflet-marker-pane {
+        z-index: 600 !important;
+      }
       
       body.light-mode :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb {
         background: linear-gradient(180deg, #cbd5e1, #94a3b8);
@@ -650,6 +727,7 @@
             <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📈 Relatórios</div>
             <div data-page="zeladoria-mensal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📅 Análise Mensal</div>
             <div data-page="zeladoria-geografica" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🗺️ Análise Geográfica</div>
+            <div data-page="zeladoria-mapa" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🗺️ Mapa Interativo</div>
           </div>
         </nav>
         
@@ -1128,19 +1206,6 @@
                 <div id="statMaximo" class="text-2xl font-bold text-red-300">—</div>
                 <div class="text-xs text-slate-500 mt-1">dias</div>
               </div>
-            </div>
-            
-            <!-- Filtro por Mês -->
-            <div class="mt-4">
-              <label for="selectMesTempoMedio" class="block text-sm font-medium text-slate-300 mb-2">
-                Filtrar por mês:
-              </label>
-              <select 
-                id="selectMesTempoMedio" 
-                class="w-full md:w-64 px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-              >
-                <option value="">Todos os meses</option>
-              </select>
             </div>
           </header>
 
@@ -2339,13 +2404,23 @@
           <div class="glass rounded-2xl p-6">
             <h3 class="text-lg font-semibold text-cyan-300 mb-2">Protocolos Filtrados</h3>
             <p class="text-sm text-slate-400 mb-4">Resultados baseados nos filtros aplicados acima.</p>
-            <div id="resultadosFiltros" class="min-h-[400px] flex items-center justify-center">
+            <div id="resultadosFiltros" class="min-h-[400px] flex items-center justify-center overflow-x-auto">
               <div class="text-center">
                 <div class="text-6xl mb-4 text-slate-600">🔍</div>
                 <p class="text-slate-400">Aplique os filtros acima para visualizar os resultados</p>
               </div>
             </div>
           </div>
+          
+          <!-- Botão Flutuante: Voltar ao Topo -->
+          <button 
+            id="btnVoltarTopo" 
+            class="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-r from-cyan-500/80 to-violet-500/80 hover:from-cyan-500 hover:to-violet-500 border-2 border-cyan-400/50 rounded-full shadow-lg shadow-cyan-500/20 flex items-center justify-center text-white text-2xl transition-all duration-300 opacity-0 pointer-events-none z-50 backdrop-blur-sm"
+            onclick="voltarAoTopo()"
+            title="Voltar ao topo"
+          >
+            ↑
+          </button>
         </section>
         
         <!-- Página: Cora Chat -->
@@ -3061,6 +3136,67 @@
           </div>
         </section>
         
+        <section id="page-zeladoria-mapa" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">🗺️ Mapa Interativo • Zeladoria</h2>
+              <div class="text-xs text-slate-400">Visualização geográfica das demandas</div>
+            </div>
+            <div id="zeladoria-mapa-stats" class="mb-4">
+              <div class="glass rounded-lg p-3 text-center text-slate-400">Carregando estatísticas...</div>
+            </div>
+            <div class="flex gap-4 mb-4 flex-wrap items-center">
+              <select id="mapa-filter-status" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="">Carregando status...</option>
+              </select>
+              <select id="mapa-filter-categoria" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="">Carregando categorias...</option>
+              </select>
+              <select id="mapa-filter-departamento" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="">Carregando departamentos...</option>
+              </select>
+              <select id="mapa-filter-distrito" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="">Carregando distritos...</option>
+              </select>
+              <select id="mapa-theme-select" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="osm">OpenStreetMap</option>
+              </select>
+              <button id="mapa-clear-filters" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-semibold transition-colors">
+                🔄 Limpar Filtros
+              </button>
+            </div>
+            <div class="flex gap-4 mb-4 flex-wrap items-center text-sm">
+              <div class="flex items-center gap-2 glass rounded-lg px-3 py-2">
+                <input type="checkbox" id="mapa-toggle-clusters" checked class="w-4 h-4 rounded border-slate-600 bg-slate-700">
+                <label for="mapa-toggle-clusters" class="text-slate-300 cursor-pointer">Agrupar marcadores</label>
+              </div>
+              <div class="flex items-center gap-2 glass rounded-lg px-3 py-2">
+                <label for="mapa-marker-size" class="text-slate-300">Tamanho:</label>
+                <select id="mapa-marker-size" class="px-2 py-1 bg-slate-800 rounded text-xs border border-slate-700">
+                  <option value="small">Pequeno</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="large">Grande</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-2 glass rounded-lg px-3 py-2">
+                <input type="checkbox" id="mapa-toggle-legend" checked class="w-4 h-4 rounded border-slate-600 bg-slate-700">
+                <label for="mapa-toggle-legend" class="text-slate-300 cursor-pointer">Legenda</label>
+              </div>
+              <div class="flex items-center gap-2 glass rounded-lg px-3 py-2">
+                <input type="checkbox" id="mapa-toggle-coordinates" checked class="w-4 h-4 rounded border-slate-600 bg-slate-700">
+                <label for="mapa-toggle-coordinates" class="text-slate-300 cursor-pointer">Coordenadas</label>
+              </div>
+              <div class="flex items-center gap-2 glass rounded-lg px-3 py-2">
+                <input type="checkbox" id="mapa-toggle-heatmap" class="w-4 h-4 rounded border-slate-600 bg-slate-700">
+                <label for="mapa-toggle-heatmap" class="text-slate-300 cursor-pointer">🗺️ Mapa de Calor</label>
+              </div>
+            </div>
+          </header>
+          <div id="zeladoria-mapa-content" class="glass rounded-2xl p-6">
+            <div id="zeladoria-map-container" style="height: 600px; width: 100%; border-radius: 12px; overflow: hidden;"></div>
+          </div>
+        </section>
+        
         <!-- Páginas de E-SIC -->
         <section id="page-esic-home" style="display: none;">
           <div class="glass rounded-2xl p-8 md:p-12 text-center">
@@ -3358,6 +3494,10 @@
     <script src="/scripts/core/chart-communication/global-filters.js"></script>
     <script src="/scripts/core/chart-communication/auto-connect.js"></script>
     <script src="/scripts/core/chart-communication.js" defer></script>
+    <script src="/scripts/core/crossfilter-overview.js" defer></script>
+    <!-- Script de teste do crossfilter (apenas em desenvolvimento) -->
+    <script src="/scripts/test/test-crossfilter-browser.js" defer></script>
+    <script src="/scripts/test/test-crossfilter-aggregation.js" defer></script>
     <!-- MIGRAÇÃO TYPESCRIPT: chart-legend.ts criado, mantendo .js para compatibilidade -->
     <script src="/scripts/core/chart-legend.js" defer></script>
     <script src="/scripts/core/chart-factory.js" defer></script>
@@ -3395,6 +3535,7 @@
     <script src="/scripts/pages/zeladoria/zeladoria-tempo.js" defer></script>
     <script src="/scripts/pages/zeladoria/zeladoria-mensal.js" defer></script>
     <script src="/scripts/pages/zeladoria/zeladoria-geografica.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-mapa.js" defer></script>
     <script src="/scripts/pages/esic/esic-overview.js" defer></script>
     <script src="/scripts/pages/esic/esic-status.js" defer></script>
     <script src="/scripts/pages/esic/esic-tipo-informacao.js" defer></script>

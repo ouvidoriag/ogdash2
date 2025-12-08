@@ -79,6 +79,87 @@ async function loadPlotly() {
   });
 }
 
+async function loadLeaflet() {
+  if (window.L) {
+    return Promise.resolve();
+  }
+  
+  return new Promise((resolve, reject) => {
+    if (window._leafletLoading) {
+      window._leafletLoading.then(resolve).catch(reject);
+      return;
+    }
+    
+    const loadingPromise = new Promise((res, rej) => {
+      // CSS
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+      link.crossOrigin = '';
+      document.head.appendChild(link);
+      
+      // JS
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+      script.crossOrigin = '';
+      script.async = true;
+      script.onload = () => {
+        // Carregar plugin de clusters
+        const clusterScript = document.createElement('script');
+        clusterScript.src = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js';
+        clusterScript.async = true;
+        clusterScript.onload = () => {
+          const clusterCSS = document.createElement('link');
+          clusterCSS.rel = 'stylesheet';
+          clusterCSS.href = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css';
+          document.head.appendChild(clusterCSS);
+          
+          const clusterDefaultCSS = document.createElement('link');
+          clusterDefaultCSS.rel = 'stylesheet';
+          clusterDefaultCSS.href = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css';
+          document.head.appendChild(clusterDefaultCSS);
+          
+          // Carregar plugin de heatmap
+          const heatScript = document.createElement('script');
+          heatScript.src = 'https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js';
+          heatScript.async = true;
+          heatScript.onload = () => {
+            window._leafletLoading = null;
+            res();
+          };
+          heatScript.onerror = () => {
+            window._leafletLoading = null;
+            if (window.Logger) {
+              window.Logger.warn('Erro ao carregar leaflet.heat, continuando sem ele');
+            }
+            // Continuar mesmo sem heatmap
+            res();
+          };
+          document.head.appendChild(heatScript);
+        };
+        clusterScript.onerror = () => {
+          window._leafletLoading = null;
+          if (window.Logger) {
+            window.Logger.warn('Erro ao carregar leaflet.markercluster, continuando sem ele');
+          }
+          res();
+        };
+        document.head.appendChild(clusterScript);
+      };
+      script.onerror = () => {
+        window._leafletLoading = null;
+        rej(new Error('Erro ao carregar Leaflet'));
+      };
+      document.head.appendChild(script);
+    });
+    
+    window._leafletLoading = loadingPromise;
+    loadingPromise.then(resolve).catch(reject);
+  });
+}
+
 async function loadChartLibraries() {
   return Promise.all([loadChartJS()]);
 }
@@ -88,6 +169,7 @@ if (typeof window !== 'undefined') {
   
   window.lazyLibraries.loadChartJS = loadChartJS;
   window.lazyLibraries.loadPlotly = loadPlotly;
+  window.lazyLibraries.loadLeaflet = loadLeaflet;
   window.lazyLibraries.loadChartLibraries = loadChartLibraries;
 }
 

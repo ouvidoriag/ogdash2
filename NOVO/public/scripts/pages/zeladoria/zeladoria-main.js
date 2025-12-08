@@ -56,7 +56,8 @@ function getPageLoader(page) {
     'overview': window.loadZeladoriaOverview || (() => Promise.resolve()),
     'demandas': window.loadColabDemandas || (() => Promise.resolve()),
     'criar': window.loadZeladoriaColabCriar || (() => Promise.resolve()),
-    'categorias': window.loadZeladoriaColabCategorias || (() => Promise.resolve())
+    'categorias': window.loadZeladoriaColabCategorias || (() => Promise.resolve()),
+    'mapa': window.loadZeladoriaMapa || (() => Promise.resolve())
   };
   
   return loaderMap[page] || null;
