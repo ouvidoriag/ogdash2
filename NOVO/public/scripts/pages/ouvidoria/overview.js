@@ -7,6 +7,13 @@
  * - Usa dataStore para cache
  * - Usa chartFactory para gráficos
  * - Estrutura modular e limpa
+ * 
+ * CROSSFILTER INTELIGENTE (Power BI Style):
+ * - Sistema de filtros multi-dimensionais
+ * - Clique esquerdo = aplica filtro
+ * - Clique direito = limpa todos os filtros
+ * - Banner visual mostra filtros ativos
+ * - Todos os gráficos reagem bidirecionalmente
  */
 
 /**
@@ -49,12 +56,30 @@ async function loadOverview(forceRefresh = false) {
   }
   
   try {
-    // FILTROS DE CLIQUE COMPLETAMENTE DESABILITADOS
-    // O overview SEMPRE carrega dados completos, sem filtros
-    // Filtros só funcionam através da página de filtros avançados
     let dashboardData = {};
     
-    // SEMPRE carregar dados sem filtros (código de filtros removido completamente)
+    // CROSSFILTER: Carregar dados completos e armazenar no crossfilter
+    if (window.crossfilterOverview) {
+      // Carregar dados completos primeiro
+      dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
+        useDataStore: !forceRefresh,
+        ttl: 5 * 60 * 1000 // 5 minutos
+      }) || {};
+      
+      // Armazenar dados completos no crossfilter
+      window.crossfilterOverview.allData = dashboardData;
+      
+      // Aplicar filtros se houver
+      dashboardData = window.crossfilterOverview.applyFilters(dashboardData);
+    } else {
+      // Fallback: carregar normalmente
+      dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
+        useDataStore: !forceRefresh,
+        ttl: 5 * 60 * 1000 // 5 minutos
+      }) || {};
+    }
+    
+    // CÓDIGO ANTIGO DE FILTROS (mantido para referência, mas não usado)
     if (false) {
       try {
         const filterRequest = {
@@ -188,6 +213,363 @@ async function loadOverview(forceRefresh = false) {
     const byPriority = dashboardData.manifestationsByPriority || [];
     const byUnit = dashboardData.manifestationsByUnit || [];
     
+    // CROSSFILTER: Renderizar banner de filtros ativos
+    renderCrossfilterBanner();
+    
+    // CROSSFILTER: Registrar listener UMA VEZ para atualizar quando filtros mudarem
+    if (window.crossfilterOverview && !window.crossfilterOverview._listenerRegistered) {
+      window.crossfilterOverview._listenerRegistered = true;
+      
+      // CORREÇÃO CRÍTICA: Garantir que aggregateFilteredData está disponível
+      if (!window.aggregateFilteredData && typeof aggregateFilteredData === 'function') {
+        window.aggregateFilteredData = aggregateFilteredData;
+        if (window.Logger) {
+          window.Logger.debug('✅ aggregateFilteredData exportada no listener', {
+            functionType: typeof window.aggregateFilteredData
+          });
+        }
+      }
+      
+      window.crossfilterOverview.onFilterChange(async () => {
+        // Prevenir múltiplas execuções simultâneas
+        if (window.crossfilterOverview._isUpdating) {
+          if (window.Logger) {
+            window.Logger.debug('⏸️ Listener já está executando, pulando...');
+          }
+          return;
+        }
+        window.crossfilterOverview._isUpdating = true;
+        
+        try {
+          const filters = window.crossfilterOverview.filters;
+          const hasActiveFilters = Object.values(filters).some(v => v !== null);
+          
+          if (window.Logger) {
+            window.Logger.debug('🔄 Listener de filtros acionado:', {
+              hasActiveFilters,
+              filters,
+              activeFiltersCount: Object.values(filters).filter(v => v !== null).length
+            });
+          }
+          
+          let filteredData;
+          
+          if (hasActiveFilters) {
+            // Construir filtros para API
+            const apiFilters = [];
+            Object.entries(filters).forEach(([field, value]) => {
+              if (value) {
+                // Mapear campos do crossfilter para campos da API
+                // IMPORTANTE: Usar os nomes exatos que a API espera
+                const fieldMap = {
+                  status: 'Status', // API usa 'Status' que mapeia para 'status' ou 'statusDemanda' no banco
+                  tema: 'Tema',
+                  orgaos: 'Orgaos',
+                  tipo: 'Tipo',
+                  canal: 'Canal',
+                  prioridade: 'Prioridade',
+                  unidade: 'UnidadeCadastro',
+                  bairro: 'Bairro'
+                };
+                const apiField = fieldMap[field] || field;
+                apiFilters.push({ field: apiField, op: 'eq', value: value });
+              }
+            });
+            
+            // SOLUÇÃO DEFINITIVA: Usar endpoint /api/filter/aggregated
+            // Este endpoint faz a agregação no backend usando MongoDB aggregation pipeline
+            // Muito mais rápido e confiável do que agregar no frontend
+            try {
+              if (window.Logger) {
+                window.Logger.debug('🚀 SOLUÇÃO DEFINITIVA: Buscando dados agregados da API /api/filter/aggregated:', { 
+                  apiFilters,
+                  filtersCount: apiFilters.length,
+                  endpoint: '/api/filter/aggregated'
+                });
+              }
+              
+              // LOG CRÍTICO: Confirmar que está usando o endpoint correto
+              console.log('🚀🚀🚀 CHAMANDO /api/filter/aggregated (NÃO /api/filter)', {
+                filters: apiFilters,
+                endpoint: '/api/filter/aggregated',
+                timestamp: new Date().toISOString()
+              });
+              
+              const response = await fetch('/api/filter/aggregated', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filters: apiFilters })
+              });
+              
+              console.log('📡 Resposta recebida:', {
+                ok: response.ok,
+                status: response.status,
+                url: response.url,
+                endpoint: '/api/filter/aggregated'
+              });
+              
+              if (window.Logger) {
+                window.Logger.debug('📡 Resposta da API /api/filter/aggregated:', {
+                  ok: response.ok,
+                  status: response.status,
+                  statusText: response.statusText,
+                  url: response.url
+                });
+              }
+              
+              if (response.ok) {
+                filteredData = await response.json();
+                
+                if (window.Logger) {
+                  window.Logger.debug('📦 Dados brutos recebidos da API:', {
+                    type: typeof filteredData,
+                    isArray: Array.isArray(filteredData),
+                    keys: filteredData ? Object.keys(filteredData).slice(0, 15) : [],
+                    total: filteredData?.totalManifestations,
+                    hasByStatus: !!filteredData?.manifestationsByStatus,
+                    byStatusLength: Array.isArray(filteredData?.manifestationsByStatus) ? filteredData.manifestationsByStatus.length : 'N/A'
+                  });
+                }
+                
+                // Validar estrutura retornada
+                if (!filteredData || typeof filteredData !== 'object' || Array.isArray(filteredData)) {
+                  if (window.Logger) {
+                    window.Logger.error('❌ API retornou estrutura inválida:', {
+                      type: typeof filteredData,
+                      isArray: Array.isArray(filteredData),
+                      value: filteredData
+                    });
+                  }
+                  // Fallback: estrutura vazia
+                  filteredData = {
+                    totalManifestations: 0,
+                    last7Days: 0,
+                    last30Days: 0,
+                    manifestationsByMonth: [],
+                    manifestationsByDay: [],
+                    manifestationsByStatus: [],
+                    manifestationsByTheme: [],
+                    manifestationsByOrgan: [],
+                    manifestationsByType: [],
+                    manifestationsByChannel: [],
+                    manifestationsByPriority: [],
+                    manifestationsByUnit: []
+                  };
+                } else {
+                  // Garantir que todas as propriedades existem
+                  filteredData = {
+                    totalManifestations: filteredData.totalManifestations ?? 0,
+                    last7Days: filteredData.last7Days ?? 0,
+                    last30Days: filteredData.last30Days ?? 0,
+                    manifestationsByMonth: Array.isArray(filteredData.manifestationsByMonth) ? filteredData.manifestationsByMonth : [],
+                    manifestationsByDay: Array.isArray(filteredData.manifestationsByDay) ? filteredData.manifestationsByDay : [],
+                    manifestationsByStatus: Array.isArray(filteredData.manifestationsByStatus) ? filteredData.manifestationsByStatus : [],
+                    manifestationsByTheme: Array.isArray(filteredData.manifestationsByTheme) ? filteredData.manifestationsByTheme : [],
+                    manifestationsByOrgan: Array.isArray(filteredData.manifestationsByOrgan) ? filteredData.manifestationsByOrgan : [],
+                    manifestationsByType: Array.isArray(filteredData.manifestationsByType) ? filteredData.manifestationsByType : [],
+                    manifestationsByChannel: Array.isArray(filteredData.manifestationsByChannel) ? filteredData.manifestationsByChannel : [],
+                    manifestationsByPriority: Array.isArray(filteredData.manifestationsByPriority) ? filteredData.manifestationsByPriority : [],
+                    manifestationsByUnit: Array.isArray(filteredData.manifestationsByUnit) ? filteredData.manifestationsByUnit : []
+                  };
+                  
+                  if (window.Logger) {
+                    window.Logger.debug('✅ Dados agregados processados e validados:', {
+                      total: filteredData.totalManifestations,
+                      byStatus: filteredData.manifestationsByStatus.length,
+                      byTheme: filteredData.manifestationsByTheme.length,
+                      byOrgan: filteredData.manifestationsByOrgan.length,
+                      byType: filteredData.manifestationsByType.length,
+                      byChannel: filteredData.manifestationsByChannel.length,
+                      byPriority: filteredData.manifestationsByPriority.length,
+                      byUnit: filteredData.manifestationsByUnit.length,
+                      byMonth: filteredData.manifestationsByMonth.length,
+                      byDay: filteredData.manifestationsByDay.length,
+                      sampleStatus: filteredData.manifestationsByStatus[0],
+                      sampleTheme: filteredData.manifestationsByTheme[0],
+                      sampleOrgan: filteredData.manifestationsByOrgan[0]
+                    });
+                  }
+                }
+              } else {
+                const errorText = await response.text();
+                if (window.Logger) {
+                  window.Logger.error('❌ Erro na resposta da API /api/filter/aggregated:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    error: errorText
+                  });
+                }
+                // Fallback: estrutura vazia
+                filteredData = {
+                  totalManifestations: 0,
+                  last7Days: 0,
+                  last30Days: 0,
+                  manifestationsByMonth: [],
+                  manifestationsByDay: [],
+                  manifestationsByStatus: [],
+                  manifestationsByTheme: [],
+                  manifestationsByOrgan: [],
+                  manifestationsByType: [],
+                  manifestationsByChannel: [],
+                  manifestationsByPriority: [],
+                  manifestationsByUnit: []
+                };
+              }
+            } catch (error) {
+              if (window.Logger) {
+                window.Logger.error('❌ Erro ao buscar dados agregados:', {
+                  error: error.message,
+                  stack: error.stack
+                });
+              }
+              // Fallback: estrutura vazia
+              filteredData = {
+                totalManifestations: 0,
+                last7Days: 0,
+                last30Days: 0,
+                manifestationsByMonth: [],
+                manifestationsByDay: [],
+                manifestationsByStatus: [],
+                manifestationsByTheme: [],
+                manifestationsByOrgan: [],
+                manifestationsByType: [],
+                manifestationsByChannel: [],
+                manifestationsByPriority: [],
+                manifestationsByUnit: []
+              };
+            }
+          } else {
+            // Sem filtros, usar dados completos
+            filteredData = window.crossfilterOverview.allData;
+          }
+          
+          if (filteredData) {
+            // VALIDAÇÃO CRÍTICA: Garantir que filteredData tem estrutura válida
+            if (!filteredData || typeof filteredData !== 'object' || Array.isArray(filteredData)) {
+              if (window.Logger) {
+                window.Logger.error('❌ filteredData inválido antes de renderizar!', {
+                  type: typeof filteredData,
+                  isArray: Array.isArray(filteredData),
+                  value: filteredData
+                });
+              }
+              // Usar dados originais como fallback
+              filteredData = window.crossfilterOverview.allData;
+              if (!filteredData) {
+                if (window.Logger) {
+                  window.Logger.error('❌ Não há dados originais disponíveis! Usando estrutura vazia.');
+                }
+                filteredData = {
+                  totalManifestations: 0,
+                  last7Days: 0,
+                  last30Days: 0,
+                  manifestationsByMonth: [],
+                  manifestationsByDay: [],
+                  manifestationsByStatus: [],
+                  manifestationsByTheme: [],
+                  manifestationsByOrgan: [],
+                  manifestationsByType: [],
+                  manifestationsByChannel: [],
+                  manifestationsByPriority: [],
+                  manifestationsByUnit: []
+                };
+              }
+            }
+            
+            // Garantir que todas as propriedades necessárias existem
+            const safeFilteredData = {
+              totalManifestations: filteredData.totalManifestations ?? 0,
+              last7Days: filteredData.last7Days ?? 0,
+              last30Days: filteredData.last30Days ?? 0,
+              manifestationsByMonth: Array.isArray(filteredData.manifestationsByMonth) ? filteredData.manifestationsByMonth : [],
+              manifestationsByDay: Array.isArray(filteredData.manifestationsByDay) ? filteredData.manifestationsByDay : [],
+              manifestationsByStatus: Array.isArray(filteredData.manifestationsByStatus) ? filteredData.manifestationsByStatus : [],
+              manifestationsByTheme: Array.isArray(filteredData.manifestationsByTheme) ? filteredData.manifestationsByTheme : [],
+              manifestationsByOrgan: Array.isArray(filteredData.manifestationsByOrgan) ? filteredData.manifestationsByOrgan : [],
+              manifestationsByType: Array.isArray(filteredData.manifestationsByType) ? filteredData.manifestationsByType : [],
+              manifestationsByChannel: Array.isArray(filteredData.manifestationsByChannel) ? filteredData.manifestationsByChannel : [],
+              manifestationsByPriority: Array.isArray(filteredData.manifestationsByPriority) ? filteredData.manifestationsByPriority : [],
+              manifestationsByUnit: Array.isArray(filteredData.manifestationsByUnit) ? filteredData.manifestationsByUnit : []
+            };
+            
+            // Log detalhado dos dados antes de renderizar
+            if (window.Logger) {
+              window.Logger.debug('📊 Preparando dados para renderização:', {
+                total: safeFilteredData.totalManifestations,
+                byMonth: safeFilteredData.manifestationsByMonth.length,
+                byDay: safeFilteredData.manifestationsByDay.length,
+                byStatus: safeFilteredData.manifestationsByStatus.length,
+                byTheme: safeFilteredData.manifestationsByTheme.length,
+                byOrgan: safeFilteredData.manifestationsByOrgan.length,
+                byType: safeFilteredData.manifestationsByType.length,
+                byChannel: safeFilteredData.manifestationsByChannel.length,
+                byPriority: safeFilteredData.manifestationsByPriority.length,
+                byUnit: safeFilteredData.manifestationsByUnit.length,
+                // Amostras
+                sampleMonth: safeFilteredData.manifestationsByMonth[0],
+                sampleDay: safeFilteredData.manifestationsByDay[0],
+                sampleStatus: safeFilteredData.manifestationsByStatus[0],
+                sampleTheme: safeFilteredData.manifestationsByTheme[0]
+              });
+            }
+            
+            // Re-renderizar com dados filtrados
+            const filteredSummary = {
+              total: safeFilteredData.totalManifestations,
+              last7: safeFilteredData.last7Days,
+              last30: safeFilteredData.last30Days,
+              statusCounts: safeFilteredData.manifestationsByStatus
+            };
+            const filteredByMonth = safeFilteredData.manifestationsByMonth;
+            const filteredByDay = safeFilteredData.manifestationsByDay;
+            const filteredByStatus = safeFilteredData.manifestationsByStatus;
+            const filteredByTheme = safeFilteredData.manifestationsByTheme;
+            const filteredByOrgan = safeFilteredData.manifestationsByOrgan;
+            const filteredByType = safeFilteredData.manifestationsByType;
+            const filteredByChannel = safeFilteredData.manifestationsByChannel;
+            const filteredByPriority = safeFilteredData.manifestationsByPriority;
+            const filteredByUnit = safeFilteredData.manifestationsByUnit;
+            
+            // Validar dados antes de renderizar
+            if (window.Logger) {
+              if (safeFilteredData.totalManifestations > 0 && 
+                  filteredByMonth.length === 0 && 
+                  filteredByStatus.length === 0 && 
+                  filteredByTheme.length === 0) {
+                window.Logger.warn('⚠️ Dados filtrados não geraram agregações!', {
+                  totalRows: safeFilteredData.totalManifestations,
+                  byMonth: filteredByMonth.length,
+                  byDay: filteredByDay.length,
+                  byStatus: filteredByStatus.length,
+                  byTheme: filteredByTheme.length,
+                  byOrgan: filteredByOrgan.length,
+                  byType: filteredByType.length,
+                  byChannel: filteredByChannel.length,
+                  byPriority: filteredByPriority.length,
+                  byUnit: filteredByUnit.length
+                });
+              }
+            }
+            
+            // Atualizar KPIs
+            await renderKPIs(filteredSummary, filteredByDay, filteredByMonth);
+            
+            // Atualizar todos os gráficos
+            await renderMainCharts(filteredSummary, filteredByMonth, filteredByDay, filteredByTheme, filteredByOrgan, filteredByType, filteredByChannel, filteredByPriority, filteredByUnit, false);
+            
+            // Atualizar banner
+            renderCrossfilterBanner();
+          }
+        } catch (error) {
+          if (window.Logger) {
+            window.Logger.error('Erro ao atualizar com filtros:', error);
+          }
+        } finally {
+          window.crossfilterOverview._isUpdating = false;
+        }
+      });
+    }
+    
     // OTIMIZAÇÃO: Renderizar KPIs primeiro (mais rápido, feedback imediato)
     await renderKPIs(summary, byDay, byMonth);
     
@@ -269,48 +651,31 @@ async function renderKPIs(summary, dailyData, byMonth) {
     kpi30.textContent = (summary.last30 || 0).toLocaleString('pt-BR');
   }
   
-  // INTERLIGAÇÃO: Adicionar handlers de clique nos KPIs
-  // KPI Total: Limpar todos os filtros quando clicado
-  if (kpiTotalContainer && window.chartCommunication) {
-    // FILTROS DE CLIQUE DESABILITADOS
-    // kpiTotalContainer.style.cursor = 'pointer'; removido
-    // kpiTotalContainer.classList.add('kpi-clickable', 'kpi-total'); removido
-    // kpiTotalContainer.title removido
+  // CROSSFILTER: Adicionar feedback visual quando há filtros ativos
+  // Os KPIs não filtram, mas mostram estado visual
+  function updateKPIsVisualState() {
+    const hasFilters = window.crossfilterOverview && 
+      Object.values(window.crossfilterOverview.filters).some(v => v !== null);
     
-    // FILTROS DE CLIQUE DESABILITADOS
-    // kpiTotalContainer.onclick removido
+    [kpiTotalContainer, kpi7Container, kpi30Container].forEach(container => {
+      if (container) {
+        if (hasFilters) {
+          container.classList.add('ring-2', 'ring-cyan-500/50');
+          container.style.opacity = '0.9';
+        } else {
+          container.classList.remove('ring-2', 'ring-cyan-500/50');
+          container.style.opacity = '1';
+        }
+      }
+    });
   }
   
-  // KPI Últimos 7 dias: Filtrar por últimos 7 dias
-  if (kpi7Container && window.chartCommunication) {
-    // FILTROS DE CLIQUE DESABILITADOS
-    // kpi7Container.style.cursor = 'pointer'; removido
-    // kpi7Container.classList.add('kpi-clickable', 'kpi-7days'); removido
-    // kpi7Container.title removido
-    
-    // FILTROS DE CLIQUE DESABILITADOS
-    // kpi7Container.onclick removido
-  }
-  
-  // KPI Últimos 30 dias: Filtrar por últimos 30 dias
-  if (kpi30Container && window.chartCommunication) {
-    // FILTROS DE CLIQUE DESABILITADOS
-    // kpi30Container.style.cursor = 'pointer'; removido
-    // kpi30Container.classList.add('kpi-clickable', 'kpi-30days'); removido
-    // kpi30Container.title removido
-    
-    // FILTROS DE CLIQUE DESABILITADOS
-    // kpi30Container.onclick removido
-  }
-  
-  // Atualizar estado visual dos KPIs baseado em filtros ativos
+  // Atualizar estado visual inicial
   updateKPIsVisualState();
   
-  // Escutar mudanças de filtros para atualizar estado visual
-  if (window.chartCommunication) {
-    window.chartCommunication.on('filter:applied', updateKPIsVisualState);
-    window.chartCommunication.on('filter:cleared', updateKPIsVisualState);
-    window.chartCommunication.on('filter:removed', updateKPIsVisualState);
+  // Listener para atualizar estado visual quando filtros mudarem
+  if (window.crossfilterOverview) {
+    window.crossfilterOverview.onFilterChange(updateKPIsVisualState);
   }
   
   // Renderizar sparklines se houver dados
@@ -330,54 +695,7 @@ async function renderKPIs(summary, dailyData, byMonth) {
  * Exportada para uso global
  */
 function updateKPIsVisualState() {
-  if (!window.chartCommunication) return;
-  
-  const filters = window.chartCommunication.filters.filters || [];
-  const hasFilters = filters.length > 0;
-  
-  // KPI Total: destacar se não há filtros (mostra que está "ativo")
-  const kpiTotalContainer = document.querySelector('.kpi-total');
-  if (kpiTotalContainer) {
-    if (!hasFilters) {
-      kpiTotalContainer.classList.add('kpi-active');
-      kpiTotalContainer.style.borderColor = 'rgba(34, 211, 238, 0.5)';
-      kpiTotalContainer.style.backgroundColor = 'rgba(34, 211, 238, 0.05)';
-    } else {
-      kpiTotalContainer.classList.remove('kpi-active');
-      kpiTotalContainer.style.borderColor = '';
-      kpiTotalContainer.style.backgroundColor = '';
-    }
-  }
-  
-  // KPI 7 dias: destacar se filtro de data está ativo
-  const kpi7Container = document.querySelector('.kpi-7days');
-  if (kpi7Container) {
-    const hasDateFilter = filters.some(f => f.field === 'Data');
-    if (hasDateFilter) {
-      kpi7Container.classList.add('kpi-active');
-      kpi7Container.style.borderColor = 'rgba(167, 139, 250, 0.5)';
-      kpi7Container.style.backgroundColor = 'rgba(167, 139, 250, 0.05)';
-    } else {
-      kpi7Container.classList.remove('kpi-active');
-      kpi7Container.style.borderColor = '';
-      kpi7Container.style.backgroundColor = '';
-    }
-  }
-  
-  // KPI 30 dias: destacar se filtro de data está ativo
-  const kpi30Container = document.querySelector('.kpi-30days');
-  if (kpi30Container) {
-    const hasDateFilter = filters.some(f => f.field === 'Data');
-    if (hasDateFilter) {
-      kpi30Container.classList.add('kpi-active');
-      kpi30Container.style.borderColor = 'rgba(16, 185, 129, 0.5)';
-      kpi30Container.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
-    } else {
-      kpi30Container.classList.remove('kpi-active');
-      kpi30Container.style.borderColor = '';
-      kpi30Container.style.backgroundColor = '';
-    }
-  }
+  return;
 }
 
 // Exportar função para uso global
@@ -400,7 +718,7 @@ async function renderSparkline(canvasId, data) {
     fill: true,
     tension: 0.4,
     colorIndex: 0,
-    onClick: false, // Sparklines não devem ser interativos
+        onClick: false,
     chartOptions: {
       plugins: {
         legend: { display: false },
@@ -593,6 +911,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   // Gráfico de tendência mensal
   if (byMonth && Array.isArray(byMonth) && byMonth.length > 0) {
     const last12Months = byMonth.slice(-12);
+    // Armazenar para uso no onClick handler
+    window._last12MonthsData = last12Months;
+    
     const labels = last12Months.map(m => {
       const month = m.month || m.ym || '';
       if (month.includes('-')) {
@@ -661,12 +982,27 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     criticalChartsPromises.push(
       (async () => {
         try {
-          await window.chartFactory.createLineChart('chartTrend', labels, values, {
+          // CROSSFILTER: Adicionar wrapper para clique direito
+      const trendCanvas = document.getElementById('chartTrend');
+      if (trendCanvas) {
+        const container = trendCanvas.parentElement;
+        if (container && !container.dataset.crossfilterEnabled) {
+          container.dataset.crossfilterEnabled = 'true';
+          container.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (window.crossfilterOverview) {
+              window.crossfilterOverview.clearAllFilters();
+              window.crossfilterOverview.notifyListeners();
+            }
+          });
+        }
+      }
+      
+          const trendChart = await window.chartFactory.createLineChart('chartTrend', labels, values, {
             label: 'Manifestações',
             colorIndex: 0,
             fill: true,
             tension: 0.4,
-            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
             chartOptions: {
               plugins: {
                 tooltip: {
@@ -685,6 +1021,30 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             setTimeout(() => {
               addPeakAnnotations('chartTrend', topPeaks, labels, values);
             }, 500);
+          }
+          
+          // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+          if (trendChart && trendChart.canvas) {
+            trendChart.canvas.style.cursor = 'pointer';
+            trendChart.options.onClick = (event, elements) => {
+              // CROSSFILTER: Filtrar por mês quando clicado
+              if (elements && elements.length > 0) {
+                const element = elements[0];
+                const index = element.index;
+                const monthData = window._last12MonthsData?.[index] || last12Months[index];
+                if (monthData) {
+                  const month = monthData.month || monthData.ym || monthData._id;
+                  if (month && window.chartCommunication && window.chartCommunication.filters) {
+                    if (window.Logger) {
+                      window.Logger.debug('📊 Clique no gráfico chartTrend (mês):', { month, index });
+                    }
+                    // Filtrar por mês usando dataCriacaoIso
+                    window.chartCommunication.filters.apply('dataCriacaoIso', month, 'chartTrend', { operator: 'contains' });
+                  }
+                }
+              }
+            };
+            trendChart.update('none');
           }
         } catch (error) {
           console.error('Erro ao criar chartTrend:', error);
@@ -747,11 +1107,10 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     criticalChartsPromises.push(
       (async () => {
         try {
-          await window.chartFactory.createDoughnutChart('chartFunnelStatus', labels, values, {
+          const statusChart = await window.chartFactory.createDoughnutChart('chartFunnelStatus', labels, values, {
             type: 'doughnut',
             field: 'Status', // Campo para cores consistentes
-            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-            legendContainer: 'legendFunnelStatus',
+            // Não passar legendContainer para evitar duplicação - usamos apenas renderStandardDoughnutLegend
             chartOptions: {
               plugins: {
                 legend: {
@@ -768,6 +1127,28 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             count: s.count,
             percent: s.percent
           })));
+          
+          // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+          if (statusChart && statusChart.canvas) {
+            statusChart.canvas.style.cursor = 'pointer';
+            statusChart.options.onClick = (event, elements) => {
+              if (elements && elements.length > 0) {
+                const element = elements[0];
+                const index = element.index;
+                // Usar o valor original dos dados, não apenas o label
+                const statusItem = statusData[index];
+                const status = statusItem?.status || statusItem?._id || labels[index];
+                if (status && window.crossfilterOverview) {
+                  if (window.Logger) {
+                    window.Logger.debug('📊 Clique no gráfico de Status:', { status, index, label: labels[index], statusItem });
+                  }
+                  window.crossfilterOverview.setStatusFilter(status);
+                  window.crossfilterOverview.notifyListeners();
+                }
+              }
+            };
+            statusChart.update('none');
+          }
         } catch (error) {
           console.error('Erro ao criar chartFunnelStatus:', error);
           if (window.Logger) {
@@ -799,6 +1180,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     
     // Pegar últimos 30 dias ou todos se tiver menos
     const last30Days = byDay.slice(-30);
+    // Armazenar para uso no onClick handler
+    window._last30DaysData = last30Days;
     
     // Formatar labels de data
     const labels = last30Days.map(d => {
@@ -906,11 +1289,24 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         total: total
       });
       
+      // CROSSFILTER: Adicionar wrapper para clique direito
+      const dailyChartContainer = canvas.parentElement;
+      if (dailyChartContainer && !dailyChartContainer.dataset.crossfilterEnabled) {
+        dailyChartContainer.dataset.crossfilterEnabled = 'true';
+        dailyChartContainer.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (window.crossfilterOverview) {
+            window.crossfilterOverview.clearAllFilters();
+            window.crossfilterOverview.notifyListeners();
+          }
+        });
+      }
+      
       // OTIMIZAÇÃO: Adicionar à lista de promises para renderização paralela
       criticalChartsPromises.push(
-        window.chartFactory.createBarChart('chartDailyDistribution', labels, values, {
+        (async () => {
+          const dailyChart = await window.chartFactory.createBarChart('chartDailyDistribution', labels, values, {
           colorIndex: 0,
-          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
           chartOptions: {
             plugins: {
               tooltip: {
@@ -932,7 +1328,34 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
               }
             }
           }
-        })
+          });
+          
+          // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+          if (dailyChart && dailyChart.canvas) {
+            dailyChart.canvas.style.cursor = 'pointer';
+            dailyChart.options.onClick = (event, elements) => {
+              // CROSSFILTER: Filtrar por data quando clicado
+              if (elements && elements.length > 0) {
+                const element = elements[0];
+                const index = element.index;
+                const dayData = window._last30DaysData?.[index] || last30Days[index];
+                if (dayData) {
+                  const date = dayData.date || dayData._id;
+                  if (date && window.chartCommunication && window.chartCommunication.filters) {
+                    if (window.Logger) {
+                      window.Logger.debug('📊 Clique no gráfico chartDailyDistribution (data):', { date, index });
+                    }
+                    // Filtrar por data usando dataCriacaoIso
+                    window.chartCommunication.filters.apply('dataCriacaoIso', date, 'chartDailyDistribution', { operator: 'contains' });
+                  }
+                }
+              }
+            };
+            dailyChart.update('none');
+          }
+          
+          return dailyChart;
+        })()
       );
       
       if (window.Logger) {
@@ -978,43 +1401,6 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     try {
       let slaData = null;
       
-      // Verificar se há filtros ativos
-      if (window.chartCommunication) {
-        const globalFilters = window.chartCommunication.filters.filters || [];
-        if (globalFilters.length > 0) {
-          // Se houver filtros, buscar dados filtrados e calcular SLA localmente
-          try {
-            const filterRequest = {
-              filters: globalFilters,
-              originalUrl: window.location.pathname
-            };
-            
-            const response = await fetch('/api/filter', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              credentials: 'include', // Enviar cookies de sessão
-              body: JSON.stringify(filterRequest)
-            });
-            
-            if (response.ok) {
-              const filteredRows = await response.json();
-              // Calcular SLA dos dados filtrados
-              slaData = calculateSLAFromRows(filteredRows);
-              if (window.Logger) {
-                window.Logger.debug('📊 SLA calculado a partir de dados filtrados:', slaData);
-              }
-            }
-          } catch (filterError) {
-            if (window.Logger) {
-              window.Logger.warn('Erro ao calcular SLA com filtros, usando dados sem filtro:', filterError);
-            }
-          }
-        }
-      }
-      
-      // Se não há filtros ou houve erro, usar endpoint normal
       if (!slaData) {
         slaData = await window.dataLoader?.load('/api/sla/summary', {
           useDataStore: !forceRefresh,
@@ -1041,20 +1427,79 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   
   // Top órgãos (se disponível)
   if (byOrgan && Array.isArray(byOrgan) && byOrgan.length > 0) {
-    const topOrgaos = byOrgan.slice(0, 10); // Top 10 principais
+    // GARANTIR APENAS TOP 5: Ordenar por count (maior primeiro) e pegar apenas 5
+    const sortedOrgaos = [...byOrgan].sort((a, b) => (b.count || 0) - (a.count || 0));
+    const topOrgaos = sortedOrgaos.slice(0, 5); // Top 5 principais
     const labels = topOrgaos.map(o => o.organ || o._id || 'N/A');
     const values = topOrgaos.map(o => o.count || 0);
     
     if (window.Logger) {
-      window.Logger.debug('📊 Renderizando chartTopOrgaos:', { labels: labels.length, values: values.length });
+      window.Logger.debug('📊 Renderizando chartTopOrgaos (TOP 5):', { 
+        labels: labels.length, 
+        values: values.length,
+        labelsList: labels,
+        valuesList: values
+      });
+    }
+    
+    // CROSSFILTER: Adicionar wrapper para clique direito
+    const orgaosCanvas = document.getElementById('chartTopOrgaos');
+    if (orgaosCanvas) {
+      const container = orgaosCanvas.parentElement;
+      if (container && !container.dataset.crossfilterEnabled) {
+        container.dataset.crossfilterEnabled = 'true';
+        container.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (window.crossfilterOverview) {
+            window.crossfilterOverview.clearAllFilters();
+            window.crossfilterOverview.notifyListeners();
+          }
+        });
+      }
     }
     
     rankingPromises.push(
-      window.chartFactory.createBarChart('chartTopOrgaos', labels, values, {
+      (async () => {
+        // GARANTIR que apenas 5 barras sejam exibidas (validação final)
+        // Backend já limita a 5, mas garantimos aqui também
+        const MAX_ITEMS = 5;
+        const finalLabels = labels.slice(0, MAX_ITEMS);
+        const finalValues = values.slice(0, MAX_ITEMS);
+        
+        // Log para debug
+        if (window.Logger && (finalLabels.length !== MAX_ITEMS || finalValues.length !== MAX_ITEMS)) {
+          window.Logger.warn(`⚠️ chartTopOrgaos: Esperado ${MAX_ITEMS} itens, recebido ${finalLabels.length} labels e ${finalValues.length} values`);
+        }
+        
+        const orgaosChart = await window.chartFactory.createBarChart('chartTopOrgaos', finalLabels, finalValues, {
         horizontal: true,
         colorIndex: 1,
-        onClick: false // FILTROS DE CLIQUE DESABILITADOS
-      }).catch(error => {
+        });
+        
+        // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+        if (orgaosChart && orgaosChart.canvas) {
+          orgaosChart.canvas.style.cursor = 'pointer';
+          orgaosChart.options.onClick = (event, elements) => {
+            if (elements && elements.length > 0) {
+              const element = elements[0];
+              const index = element.index;
+              // Usar dados do top 5 (já limitado)
+              const orgaoItem = topOrgaos[index];
+              const orgao = orgaoItem?.organ || orgaoItem?._id || finalLabels[index] || 'N/A';
+              if (orgao && window.crossfilterOverview) {
+                if (window.Logger) {
+                  window.Logger.debug('📊 Clique no gráfico de Órgãos:', { orgao, index, orgaoItem });
+                }
+                window.crossfilterOverview.setOrgaosFilter(orgao);
+                window.crossfilterOverview.notifyListeners();
+              }
+            }
+          };
+          orgaosChart.update('none');
+        }
+        
+        return orgaosChart;
+      })().catch(error => {
         console.error('Erro ao criar chartTopOrgaos:', error);
         if (window.Logger) {
           window.Logger.error('Erro ao criar chartTopOrgaos:', error);
@@ -1088,20 +1533,79 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   
   // Top temas (se disponível)
   if (byTheme && Array.isArray(byTheme) && byTheme.length > 0) {
-    const topTemas = byTheme.slice(0, 10); // Top 10 principais
+    // GARANTIR APENAS TOP 5: Ordenar por count (maior primeiro) e pegar apenas 5
+    const sortedTemas = [...byTheme].sort((a, b) => (b.count || 0) - (a.count || 0));
+    const topTemas = sortedTemas.slice(0, 5); // Top 5 principais
     const labels = topTemas.map(t => t.theme || t._id || 'N/A');
     const values = topTemas.map(t => t.count || 0);
     
     if (window.Logger) {
-      window.Logger.debug('📊 Renderizando chartTopTemas:', { labels: labels.length, values: values.length });
+      window.Logger.debug('📊 Renderizando chartTopTemas (TOP 5):', { 
+        labels: labels.length, 
+        values: values.length,
+        labelsList: labels,
+        valuesList: values
+      });
+    }
+    
+    // CROSSFILTER: Adicionar wrapper para clique direito
+    const temasCanvas = document.getElementById('chartTopTemas');
+    if (temasCanvas) {
+      const container = temasCanvas.parentElement;
+      if (container && !container.dataset.crossfilterEnabled) {
+        container.dataset.crossfilterEnabled = 'true';
+        container.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (window.crossfilterOverview) {
+            window.crossfilterOverview.clearAllFilters();
+            window.crossfilterOverview.notifyListeners();
+          }
+        });
+      }
     }
     
     rankingPromises.push(
-      window.chartFactory.createBarChart('chartTopTemas', labels, values, {
+      (async () => {
+        // GARANTIR que apenas 5 barras sejam exibidas (validação final)
+        // Backend já limita a 5, mas garantimos aqui também
+        const MAX_ITEMS = 5;
+        const finalLabels = labels.slice(0, MAX_ITEMS);
+        const finalValues = values.slice(0, MAX_ITEMS);
+        
+        // Log para debug
+        if (window.Logger && (finalLabels.length !== MAX_ITEMS || finalValues.length !== MAX_ITEMS)) {
+          window.Logger.warn(`⚠️ chartTopTemas: Esperado ${MAX_ITEMS} itens, recebido ${finalLabels.length} labels e ${finalValues.length} values`);
+        }
+        
+        const temasChart = await window.chartFactory.createBarChart('chartTopTemas', finalLabels, finalValues, {
         horizontal: true,
         colorIndex: 2,
-        onClick: false // FILTROS DE CLIQUE DESABILITADOS
-      }).catch(error => {
+        });
+        
+        // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+        if (temasChart && temasChart.canvas) {
+          temasChart.canvas.style.cursor = 'pointer';
+          temasChart.options.onClick = (event, elements) => {
+            if (elements && elements.length > 0) {
+              const element = elements[0];
+              const index = element.index;
+              // Usar dados do top 5 (já limitado)
+              const temaItem = topTemas[index];
+              const tema = temaItem?.theme || temaItem?._id || finalLabels[index] || 'N/A';
+              if (tema && window.crossfilterOverview) {
+                if (window.Logger) {
+                  window.Logger.debug('📊 Clique no gráfico de Temas:', { tema, index, temaItem });
+                }
+                window.crossfilterOverview.setTemaFilter(tema);
+                window.crossfilterOverview.notifyListeners();
+              }
+            }
+          };
+          temasChart.update('none');
+        }
+        
+        return temasChart;
+      })().catch(error => {
         console.error('Erro ao criar chartTopTemas:', error);
         if (window.Logger) {
           window.Logger.error('Erro ao criar chartTopTemas:', error);
@@ -1170,10 +1674,25 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     });
     
     try {
-      await window.chartFactory.createDoughnutChart('chartTiposManifestacao', labels, values, {
+      // CROSSFILTER: Adicionar wrapper para clique direito
+      const tiposCanvas = document.getElementById('chartTiposManifestacao');
+      if (tiposCanvas) {
+        const container = tiposCanvas.parentElement;
+        if (container && !container.dataset.crossfilterEnabled) {
+          container.dataset.crossfilterEnabled = 'true';
+          container.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (window.crossfilterOverview) {
+              window.crossfilterOverview.clearAllFilters();
+              window.crossfilterOverview.notifyListeners();
+            }
+          });
+        }
+      }
+      
+      const tiposChart = await window.chartFactory.createDoughnutChart('chartTiposManifestacao', labels, values, {
         field: 'tipoDeManifestacao',
-        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-        legendContainer: 'legendTiposManifestacao',
+        // Não passar legendContainer para evitar duplicação - usamos apenas renderStandardDoughnutLegend
         chartOptions: {
           plugins: {
             legend: {
@@ -1190,6 +1709,28 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         count: t.count,
         percent: t.percent
       })));
+      
+      // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+      if (tiposChart && tiposChart.canvas) {
+        tiposChart.canvas.style.cursor = 'pointer';
+        tiposChart.options.onClick = (event, elements) => {
+          if (elements && elements.length > 0) {
+            const element = elements[0];
+            const index = element.index;
+            // Usar dados originais
+            const tipoItem = byType[index];
+            const tipo = tipoItem?.type || tipoItem?._id || labels[index];
+            if (tipo && window.crossfilterOverview) {
+              if (window.Logger) {
+                window.Logger.debug('📊 Clique no gráfico de Tipos:', { tipo, index, tipoItem });
+              }
+              window.crossfilterOverview.setTipoFilter(tipo);
+              window.crossfilterOverview.notifyListeners();
+            }
+          }
+        };
+        tiposChart.update('none');
+      }
     } catch (error) {
       console.error('Erro ao criar chartTiposManifestacao:', error);
     }
@@ -1215,10 +1756,25 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     distributionPromises.push(
       (async () => {
         try {
-          await window.chartFactory.createDoughnutChart('chartCanais', labels, values, {
+          // CROSSFILTER: Adicionar wrapper para clique direito
+          const canaisCanvas = document.getElementById('chartCanais');
+          if (canaisCanvas) {
+            const container = canaisCanvas.parentElement;
+            if (container && !container.dataset.crossfilterEnabled) {
+              container.dataset.crossfilterEnabled = 'true';
+              container.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (window.crossfilterOverview) {
+                  window.crossfilterOverview.clearAllFilters();
+                  window.crossfilterOverview.notifyListeners();
+                }
+              });
+            }
+          }
+          
+          const canaisChart = await window.chartFactory.createDoughnutChart('chartCanais', labels, values, {
             field: 'Canal', // Campo para detecção automática de cores consistentes
-            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-            legendContainer: 'legendCanais',
+            // Não passar legendContainer para evitar duplicação - usamos apenas renderStandardDoughnutLegend
             chartOptions: {
               plugins: {
                 legend: {
@@ -1236,6 +1792,28 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             itemLabel: 'canais'
           });
           renderStandardDoughnutLegend('legendCanais', canaisWithPercent);
+          
+          // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+          if (canaisChart && canaisChart.canvas) {
+            canaisChart.canvas.style.cursor = 'pointer';
+            canaisChart.options.onClick = (event, elements) => {
+              if (elements && elements.length > 0) {
+                const element = elements[0];
+                const index = element.index;
+                // Usar dados originais
+                const canalItem = topCanais[index];
+                const canal = canalItem?.channel || canalItem?._id || labels[index];
+                if (canal && window.crossfilterOverview) {
+                  if (window.Logger) {
+                    window.Logger.debug('📊 Clique no gráfico de Canais:', { canal, index, canalItem });
+                  }
+                  window.crossfilterOverview.setCanalFilter(canal);
+                  window.crossfilterOverview.notifyListeners();
+                }
+              }
+            };
+            canaisChart.update('none');
+          }
         } catch (error) {
           console.error('Erro ao criar chartCanais:', error);
         }
@@ -1259,10 +1837,25 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     distributionPromises.push(
       (async () => {
         try {
-          await window.chartFactory.createDoughnutChart('chartPrioridades', labels, values, {
+          // CROSSFILTER: Adicionar wrapper para clique direito
+          const prioridadesCanvas = document.getElementById('chartPrioridades');
+          if (prioridadesCanvas) {
+            const container = prioridadesCanvas.parentElement;
+            if (container && !container.dataset.crossfilterEnabled) {
+              container.dataset.crossfilterEnabled = 'true';
+              container.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (window.crossfilterOverview) {
+                  window.crossfilterOverview.clearAllFilters();
+                  window.crossfilterOverview.notifyListeners();
+                }
+              });
+            }
+          }
+          
+          const prioridadesChart = await window.chartFactory.createDoughnutChart('chartPrioridades', labels, values, {
             field: 'Prioridade', // Campo para detecção automática de cores consistentes
-            onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-            legendContainer: 'legendPrioridades',
+            // Não passar legendContainer para evitar duplicação - usamos apenas renderStandardDoughnutLegend
             chartOptions: {
               plugins: {
                 legend: {
@@ -1280,6 +1873,28 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             itemLabel: 'prioridades'
           });
           renderStandardDoughnutLegend('legendPrioridades', prioridadesWithPercent);
+          
+          // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+          if (prioridadesChart && prioridadesChart.canvas) {
+            prioridadesChart.canvas.style.cursor = 'pointer';
+            prioridadesChart.options.onClick = (event, elements) => {
+              if (elements && elements.length > 0) {
+                const element = elements[0];
+                const index = element.index;
+                // Usar dados originais
+                const prioridadeItem = byPriority[index];
+                const prioridade = prioridadeItem?.priority || prioridadeItem?._id || labels[index];
+                if (prioridade && window.crossfilterOverview) {
+                  if (window.Logger) {
+                    window.Logger.debug('📊 Clique no gráfico de Prioridades:', { prioridade, index, prioridadeItem });
+                  }
+                  window.crossfilterOverview.setPrioridadeFilter(prioridade);
+                  window.crossfilterOverview.notifyListeners();
+                }
+              }
+            };
+            prioridadesChart.update('none');
+          }
         } catch (error) {
           console.error('Erro ao criar chartPrioridades:', error);
         }
@@ -1289,16 +1904,79 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   
   // Top unidades de cadastro (movido para seção de Rankings)
   if (byUnit && Array.isArray(byUnit) && byUnit.length > 0) {
-    const topUnidades = byUnit.slice(0, 10); // Top 10 principais
-    const labels = topUnidades.map(u => u.unit || 'N/A');
+    // GARANTIR APENAS TOP 5: Ordenar por count (maior primeiro) e pegar apenas 5
+    const sortedUnidades = [...byUnit].sort((a, b) => (b.count || 0) - (a.count || 0));
+    const topUnidades = sortedUnidades.slice(0, 5); // Top 5 principais
+    const labels = topUnidades.map(u => u.unit || u.unidadeCadastro || u._id || 'N/A');
     const values = topUnidades.map(u => u.count || 0);
     
+    if (window.Logger) {
+      window.Logger.debug('📊 Renderizando chartUnidadesCadastro (TOP 5):', { 
+        labels: labels.length, 
+        values: values.length,
+        labelsList: labels,
+        valuesList: values
+      });
+    }
+    
+    // CROSSFILTER: Adicionar wrapper para clique direito
+    const unidadesCanvas = document.getElementById('chartUnidadesCadastro');
+    if (unidadesCanvas) {
+      const container = unidadesCanvas.parentElement;
+      if (container && !container.dataset.crossfilterEnabled) {
+        container.dataset.crossfilterEnabled = 'true';
+        container.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (window.crossfilterOverview) {
+            window.crossfilterOverview.clearAllFilters();
+            window.crossfilterOverview.notifyListeners();
+          }
+        });
+      }
+    }
+    
     distributionPromises.push(
-      window.chartFactory.createBarChart('chartUnidadesCadastro', labels, values, {
+      (async () => {
+        // GARANTIR que apenas 5 barras sejam exibidas (validação final)
+        // Backend já limita a 5, mas garantimos aqui também
+        const MAX_ITEMS = 5;
+        const finalLabels = labels.slice(0, MAX_ITEMS);
+        const finalValues = values.slice(0, MAX_ITEMS);
+        
+        // Log para debug
+        if (window.Logger && (finalLabels.length !== MAX_ITEMS || finalValues.length !== MAX_ITEMS)) {
+          window.Logger.warn(`⚠️ chartUnidadesCadastro: Esperado ${MAX_ITEMS} itens, recebido ${finalLabels.length} labels e ${finalValues.length} values`);
+        }
+        
+        const unidadesChart = await window.chartFactory.createBarChart('chartUnidadesCadastro', finalLabels, finalValues, {
         horizontal: true,
         colorIndex: 3,
-        onClick: false // FILTROS DE CLIQUE DESABILITADOS
-      }).catch(error => {
+        });
+        
+        // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+        if (unidadesChart && unidadesChart.canvas) {
+          unidadesChart.canvas.style.cursor = 'pointer';
+          unidadesChart.options.onClick = (event, elements) => {
+            if (elements && elements.length > 0) {
+              const element = elements[0];
+              const index = element.index;
+              // Usar dados do top 5 (já limitado)
+              const unidadeItem = topUnidades[index];
+              const unidade = unidadeItem?.unit || unidadeItem?.unidadeCadastro || unidadeItem?._id || finalLabels[index] || 'N/A';
+              if (unidade && window.crossfilterOverview) {
+                if (window.Logger) {
+                  window.Logger.debug('📊 Clique no gráfico de Unidades:', { unidade, index, unidadeItem });
+                }
+                window.crossfilterOverview.setUnidadeFilter(unidade);
+                window.crossfilterOverview.notifyListeners();
+              }
+            }
+          };
+          unidadesChart.update('none');
+        }
+        
+        return unidadesChart;
+      })().catch(error => {
         console.error('Erro ao criar chartUnidadesCadastro:', error);
       })
     );
@@ -1374,7 +2052,23 @@ async function renderSLAChart(slaData) {
       // Usar função do escopo global ou local
       const tooltipFn = window.getStandardDoughnutTooltip || getStandardDoughnutTooltip;
       
-      await window.chartFactory.createDoughnutChart('chartSLA', labels, values, {
+      // CROSSFILTER: Adicionar wrapper para clique direito
+      const slaCanvas = document.getElementById('chartSLA');
+      if (slaCanvas) {
+        const container = slaCanvas.parentElement;
+        if (container && !container.dataset.crossfilterEnabled) {
+          container.dataset.crossfilterEnabled = 'true';
+          container.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (window.crossfilterOverview) {
+              window.crossfilterOverview.clearAllFilters();
+              window.crossfilterOverview.notifyListeners();
+            }
+          });
+        }
+      }
+      
+      const slaChart = await window.chartFactory.createDoughnutChart('chartSLA', labels, values, {
         chartOptions: {
           plugins: {
             legend: {
@@ -1397,6 +2091,15 @@ async function renderSLAChart(slaData) {
         percent: s.percent,
         color: slaColors[idx]
       })));
+      
+      // CROSSFILTER: Adicionar handler de clique após criar o gráfico
+      if (slaChart && slaChart.canvas) {
+        slaChart.canvas.style.cursor = 'pointer';
+        slaChart.options.onClick = (event, elements) => {
+          // CROSSFILTER: Por enquanto não filtrar por SLA (categoria especial)
+        };
+        slaChart.update('none');
+      }
     }
   } catch (error) {
     if (window.Logger) {
@@ -1610,22 +2313,75 @@ function calculateSLAFromRows(rows) {
  * Agregar dados filtrados localmente
  * Converte array de registros filtrados em formato de dashboard-data
  */
+// CORREÇÃO CRÍTICA: NÃO criar stub - a função será definida logo abaixo
+// O stub estava causando problemas porque retornava estrutura incompleta
+
 function aggregateFilteredData(rows) {
+  // CORREÇÃO CRÍTICA: Console.log DIRETO para garantir que aparece
+  console.log('🚀🚀🚀 aggregateFilteredData CHAMADA!', {
+    rowsCount: rows?.length,
+    isArray: Array.isArray(rows),
+    functionName: 'aggregateFilteredData',
+    timestamp: new Date().toISOString()
+  });
+  
+  // CORREÇÃO CRÍTICA: Validar entrada imediatamente
+  if (!rows || !Array.isArray(rows)) {
+    console.error('❌ aggregateFilteredData: rows não é um array válido!', {
+      type: typeof rows,
+      isArray: Array.isArray(rows),
+      value: rows
+    });
+    if (window.Logger) {
+      window.Logger.error('❌ aggregateFilteredData: rows não é um array válido!', {
+        type: typeof rows,
+        isArray: Array.isArray(rows),
+        value: rows
+      });
+    }
+    return {
+      totalManifestations: 0,
+      last7Days: 0,
+      last30Days: 0,
+      manifestationsByMonth: [],
+      manifestationsByDay: [],
+      manifestationsByStatus: [],
+      manifestationsByTheme: [],
+      manifestationsByOrgan: [],
+      manifestationsByType: [],
+      manifestationsByChannel: [],
+      manifestationsByPriority: [],
+      manifestationsByUnit: []
+    };
+  }
+  
+  // CORREÇÃO CRÍTICA: Log imediato para confirmar que a função está sendo executada
+  console.log('📊 aggregateFilteredData: Iniciando processamento...', rows.length);
   if (window.Logger) {
-    window.Logger.debug('📊 aggregateFilteredData: Iniciando agregação', {
-      totalRows: rows?.length || 0,
-      sampleRow: rows?.[0] ? {
-        id: rows[0].id || rows[0]._id,
-        keys: Object.keys(rows[0]).slice(0, 15),
-        hasData: !!rows[0].data,
-        dataKeys: rows[0].data ? Object.keys(rows[0].data).slice(0, 15) : [],
-        prioridade: rows[0].prioridade || rows[0].Prioridade || rows[0].data?.prioridade || rows[0].data?.Prioridade || 'N/A',
-        status: rows[0].status || rows[0].Status || rows[0].data?.status || rows[0].data?.Status || 'N/A'
-      } : null
+    window.Logger.debug('🚀 aggregateFilteredData: FUNÇÃO REAL EXECUTADA!', {
+      totalRows: rows.length,
+      isArray: Array.isArray(rows),
+      firstRowExists: !!rows[0],
+      functionName: 'aggregateFilteredData'
     });
   }
   
-  if (!rows || rows.length === 0) {
+  try {
+    if (window.Logger) {
+      window.Logger.debug('📊 aggregateFilteredData: Iniciando agregação', {
+        totalRows: rows.length,
+        sampleRow: rows[0] ? {
+          id: rows[0].id || rows[0]._id,
+          keys: Object.keys(rows[0]).slice(0, 15),
+          hasData: !!rows[0].data,
+          dataKeys: rows[0].data ? Object.keys(rows[0].data).slice(0, 15) : [],
+          prioridade: rows[0].prioridade || rows[0].Prioridade || rows[0].data?.prioridade || rows[0].data?.Prioridade || 'N/A',
+          status: rows[0].status || rows[0].Status || rows[0].data?.status || rows[0].data?.Status || 'N/A'
+        } : null
+      });
+    }
+  
+    if (!rows || rows.length === 0) {
     if (window.Logger) {
       window.Logger.warn('📊 aggregateFilteredData: Nenhum registro para agregar');
     }
@@ -1665,111 +2421,297 @@ function aggregateFilteredData(rows) {
   let last7Count = 0;
   let last30Count = 0;
   
-  // Helper para buscar campo em múltiplos locais (definido antes do loop)
+  // Helper MELHORADO para buscar campo em múltiplos locais
+  // CORREÇÃO CRÍTICA: Buscar em TODAS as variações possíveis de nomes de campos
   const getFieldValue = (row, fieldName, variations = []) => {
-    const data = row.data || row;
+    if (!row || typeof row !== 'object') return null;
     
-    // Tentar no registro direto
-    if (row[fieldName] !== undefined && row[fieldName] !== null) {
-      return row[fieldName];
-    }
-    // Tentar no data
-    if (data && typeof data === 'object') {
-      if (data[fieldName] !== undefined && data[fieldName] !== null) {
-        return data[fieldName];
-      }
-      // Tentar variações
-      for (const variation of variations) {
-        if (data[variation] !== undefined && data[variation] !== null) {
-          return data[variation];
+    // Criar lista completa de variações para buscar
+    const allVariations = [
+      fieldName, // Nome original
+      ...variations, // Variações fornecidas
+      // Variações automáticas
+      fieldName.charAt(0).toUpperCase() + fieldName.slice(1), // Primeira maiúscula
+      fieldName.toUpperCase(), // Tudo maiúscula
+      fieldName.toLowerCase(), // Tudo minúscula
+      // Para cada variação fornecida, criar maiúsculas/minúsculas
+      ...variations.map(v => v.charAt(0).toUpperCase() + v.slice(1)),
+      ...variations.map(v => v.toUpperCase()),
+      ...variations.map(v => v.toLowerCase())
+    ];
+    
+    // Remover duplicatas e valores vazios
+    const uniqueVariations = [...new Set(allVariations.filter(v => v && v.trim()))];
+    
+    // 1. PRIORIDADE MÁXIMA: Tentar no registro direto (campos normalizados do banco)
+    for (const variation of uniqueVariations) {
+      if (row.hasOwnProperty(variation) && row[variation] !== undefined && row[variation] !== null && row[variation] !== '') {
+        const value = String(row[variation]).trim();
+        if (value && value !== 'null' && value !== 'undefined' && value !== 'N/A' && value.length > 0) {
+          return value;
         }
       }
     }
+    
+    // 2. Tentar no objeto data (JSON armazenado)
+    const data = row.data;
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      for (const variation of uniqueVariations) {
+        if (data.hasOwnProperty(variation) && data[variation] !== undefined && data[variation] !== null && data[variation] !== '') {
+          const value = String(data[variation]).trim();
+          if (value && value !== 'null' && value !== 'undefined' && value !== 'N/A' && value.length > 0) {
+            return value;
+          }
+        }
+      }
+    }
+    
+    // 3. FALLBACK: Tentar buscar em todas as chaves do objeto (case-insensitive)
+    const allKeys = Object.keys(row);
+    const lowerFieldName = fieldName.toLowerCase();
+    
+    for (const key of allKeys) {
+      if (key.toLowerCase() === lowerFieldName) {
+        const value = row[key];
+        if (value !== undefined && value !== null && value !== '') {
+          const strValue = String(value).trim();
+          if (strValue && strValue !== 'null' && strValue !== 'undefined' && strValue !== 'N/A' && strValue.length > 0) {
+            return strValue;
+          }
+        }
+      }
+    }
+    
+    // 4. FALLBACK FINAL: Tentar no data com busca case-insensitive
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const dataKeys = Object.keys(data);
+      for (const key of dataKeys) {
+        if (key.toLowerCase() === lowerFieldName) {
+          const value = data[key];
+          if (value !== undefined && value !== null && value !== '') {
+            const strValue = String(value).trim();
+            if (strValue && strValue !== 'null' && strValue !== 'undefined' && strValue !== 'N/A' && strValue.length > 0) {
+              return strValue;
+            }
+          }
+        }
+      }
+    }
+    
+    // 5. FALLBACK EXTRA: Tentar buscar variações case-insensitive em todas as chaves
+    for (const variation of uniqueVariations) {
+      const lowerVariation = variation.toLowerCase();
+      for (const key of allKeys) {
+        if (key.toLowerCase() === lowerVariation) {
+          const value = row[key];
+          if (value !== undefined && value !== null && value !== '') {
+            const strValue = String(value).trim();
+            if (strValue && strValue !== 'null' && strValue !== 'undefined' && strValue !== 'N/A' && strValue.length > 0) {
+              return strValue;
+            }
+          }
+        }
+      }
+      
+      // Também tentar no data
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const dataKeys = Object.keys(data);
+        for (const key of dataKeys) {
+          if (key.toLowerCase() === lowerVariation) {
+            const value = data[key];
+            if (value !== undefined && value !== null && value !== '') {
+              const strValue = String(value).trim();
+              if (strValue && strValue !== 'null' && strValue !== 'undefined' && strValue !== 'N/A' && strValue.length > 0) {
+                return strValue;
+              }
+            }
+          }
+        }
+      }
+    }
+    
     return null;
   };
   
   // OTIMIZAÇÃO: Processar todos os registros (já limitado a 50000 no loadOverview)
+  let processedCount = 0;
+  let fieldsFound = {
+    status: 0,
+    tema: 0,
+    orgaos: 0,
+    tipo: 0,
+    canal: 0,
+    prioridade: 0,
+    unidade: 0,
+    data: 0
+  };
+  
+  // CORREÇÃO: Log detalhado do primeiro registro para debug
+  if (rows.length > 0 && window.Logger) {
+    const firstRow = rows[0];
+    window.Logger.debug('🔍 ESTRUTURA DO PRIMEIRO REGISTRO FILTRADO:', {
+      allKeys: Object.keys(firstRow),
+      hasData: !!firstRow.data,
+      dataKeys: firstRow.data ? Object.keys(firstRow.data) : [],
+      // Testar TODOS os campos possíveis
+      testStatus: getFieldValue(firstRow, 'status', ['Status', 'status_demanda', 'StatusDemanda', 'statusDemanda']),
+      testTema: getFieldValue(firstRow, 'tema', ['Tema', 'categoria', 'Categoria']),
+      testOrgaos: getFieldValue(firstRow, 'orgaos', ['orgao', 'Orgaos', 'secretaria', 'Secretaria']),
+      testTipo: getFieldValue(firstRow, 'tipoDeManifestacao', ['tipo', 'Tipo', 'tipo_de_manifestacao']),
+      testCanal: getFieldValue(firstRow, 'canal', ['Canal']),
+      testPrioridade: getFieldValue(firstRow, 'prioridade', ['Prioridade']),
+      testUnidade: getFieldValue(firstRow, 'unidadeCadastro', ['unidade_cadastro', 'UnidadeCadastro', 'UAC']),
+      testData: getFieldValue(firstRow, 'dataCriacaoIso', ['dataDaCriacao', 'dataCriacao', 'Data']),
+      // Valores diretos (para comparação)
+      direct: {
+        status: firstRow.status,
+        tema: firstRow.tema,
+        orgaos: firstRow.orgaos,
+        tipo: firstRow.tipoDeManifestacao,
+        canal: firstRow.canal,
+        prioridade: firstRow.prioridade,
+        unidade: firstRow.unidadeCadastro,
+        dataCriacaoIso: firstRow.dataCriacaoIso
+      },
+      // Valores em data (para comparação)
+      inData: firstRow.data ? {
+        status: firstRow.data.status,
+        tema: firstRow.data.tema,
+        orgaos: firstRow.data.orgaos,
+        tipo: firstRow.data.tipoDeManifestacao,
+        canal: firstRow.data.canal,
+        prioridade: firstRow.data.prioridade,
+        unidade: firstRow.data.unidadeCadastro
+      } : null
+    });
+  }
+  
   for (const row of rows) {
-    // Extrair dados - pode estar em row.data ou diretamente em row
-    // Também verificar campos normalizados do banco
-    // FILTROS LOCAIS: Buscar dados em múltiplos locais para garantir compatibilidade
-    const data = row.data || row;
+    processedCount++;
     
-    // Status - verificar múltiplos campos possíveis
-    const status = getFieldValue(row, 'status', ['Status', 'status_demanda', 'StatusDemanda', 'statusDemanda']) || 'N/A';
-    if (status && status !== 'N/A') {
+    // CORREÇÃO CRÍTICA: Usar getFieldValue para TODOS os campos
+    // Isso garante que encontramos os dados independente de onde estejam
+    
+    // Status - usar getFieldValue com todas as variações possíveis
+    const status = getFieldValue(row, 'status', [
+      'Status', 'status_demanda', 'StatusDemanda', 'statusDemanda', 
+      'situacao', 'Situacao', 'situação', 'Situação'
+    ]);
+    if (status) {
       statusMap.set(status, (statusMap.get(status) || 0) + 1);
+      fieldsFound.status++;
     }
     
-    // Tema - verificar múltiplos campos possíveis
-    const theme = getFieldValue(row, 'tema', ['Tema']) || 'N/A';
-    if (theme && theme !== 'N/A') {
+    // Tema - usar getFieldValue
+    const theme = getFieldValue(row, 'tema', [
+      'Tema', 'categoria', 'Categoria', 'assunto', 'Assunto'
+    ]);
+    if (theme) {
       themeMap.set(theme, (themeMap.get(theme) || 0) + 1);
+      fieldsFound.tema++;
     }
     
-    // Órgãos
-    const organ = getFieldValue(row, 'orgaos', ['orgao', 'Orgaos', 'Orgao']) || 'N/A';
-    if (organ && organ !== 'N/A') {
+    // Órgãos - usar getFieldValue
+    const organ = getFieldValue(row, 'orgaos', [
+      'orgao', 'Orgaos', 'Orgao', 'secretaria', 'Secretaria',
+      'orgaoResponsavel', 'OrgaoResponsavel', 'orgão', 'Órgão'
+    ]);
+    if (organ) {
       organMap.set(organ, (organMap.get(organ) || 0) + 1);
+      fieldsFound.orgaos++;
     }
     
-    // Tipo
-    const type = getFieldValue(row, 'tipoDeManifestacao', ['tipo', 'Tipo', 'tipo_de_manifestacao', 'TipoDeManifestacao']) || 'N/A';
-    if (type && type !== 'N/A') {
+    // Tipo - usar getFieldValue
+    const type = getFieldValue(row, 'tipoDeManifestacao', [
+      'tipo', 'Tipo', 'tipo_de_manifestacao', 'TipoDeManifestacao',
+      'tipoManifestacao', 'TipoManifestacao', 'tipo_manifestacao'
+    ]);
+    if (type) {
       typeMap.set(type, (typeMap.get(type) || 0) + 1);
+      fieldsFound.tipo++;
     }
     
-    // Canal - verificar múltiplos campos possíveis
-    const channel = getFieldValue(row, 'canal', ['Canal']) || 'N/A';
-    if (channel && channel !== 'N/A') {
+    // Canal - usar getFieldValue
+    const channel = getFieldValue(row, 'canal', [
+      'Canal', 'canalAtendimento', 'CanalAtendimento',
+      'canalEntrada', 'CanalEntrada'
+    ]);
+    if (channel) {
       channelMap.set(channel, (channelMap.get(channel) || 0) + 1);
+      fieldsFound.canal++;
     }
     
-    // Prioridade - verificar múltiplos campos possíveis
-    const priority = getFieldValue(row, 'prioridade', ['Prioridade']) || 'N/A';
-    if (priority && priority !== 'N/A') {
+    // Prioridade - usar getFieldValue
+    const priority = getFieldValue(row, 'prioridade', [
+      'Prioridade', 'prioridadeDemanda', 'PrioridadeDemanda'
+    ]);
+    if (priority) {
       priorityMap.set(priority, (priorityMap.get(priority) || 0) + 1);
+      fieldsFound.prioridade++;
     }
     
-    // Unidade - verificar múltiplos campos possíveis
-    const unit = getFieldValue(row, 'unidadeCadastro', ['unidade_cadastro', 'UnidadeCadastro', 'unidadeCadastro']) || 'N/A';
-    if (unit && unit !== 'N/A') {
+    // Unidade - usar getFieldValue
+    const unit = getFieldValue(row, 'unidadeCadastro', [
+      'unidade_cadastro', 'UnidadeCadastro', 'UAC', 'uac',
+      'unidade', 'Unidade', 'unidadeAtendimento', 'UnidadeAtendimento'
+    ]);
+    if (unit) {
       unitMap.set(unit, (unitMap.get(unit) || 0) + 1);
+      fieldsFound.unidade++;
     }
     
-    // Data - verificar múltiplos campos possíveis (com mais variações)
-    let dataCriacao = data.data_da_criacao || 
-                      data.dataDaCriacao || 
-                      data.dataCriacaoIso ||
-                      data.Data || 
-                      data.DataDaCriacao ||
-                      data.Data_Criacao ||
-                      row.data_da_criacao || 
-                      row.dataDaCriacao || 
-                      row.dataCriacaoIso ||
-                      row.Data ||
-                      row.DataDaCriacao ||
-                      row.Data_Criacao;
+    // Log de progresso a cada 1000 registros
+    if (processedCount % 1000 === 0 && window.Logger) {
+      window.Logger.debug(`📊 Processando registro ${processedCount}/${rows.length}`, {
+        fieldsFound: {
+          status: fieldsFound.status,
+          tema: fieldsFound.tema,
+          orgaos: fieldsFound.orgaos,
+          tipo: fieldsFound.tipo,
+          canal: fieldsFound.canal,
+          prioridade: fieldsFound.prioridade,
+          unidade: fieldsFound.unidade,
+          data: fieldsFound.data
+        },
+        mapsSize: {
+          status: statusMap.size,
+          theme: themeMap.size,
+          organ: organMap.size,
+          type: typeMap.size,
+          channel: channelMap.size,
+          priority: priorityMap.size,
+          unit: unitMap.size,
+          month: monthMap.size,
+          day: dayMap.size
+        }
+      });
+    }
+    
+    // Data - usar getFieldValue para buscar data de criação
+    const dataCriacao = getFieldValue(row, 'dataCriacaoIso', [
+      'dataDaCriacao', 
+      'data_da_criacao', 
+      'dataCriacao',
+      'DataCriacao',
+      'Data',
+      'data',
+      'DataDaCriacao',
+      'Data_Criacao'
+    ]);
     
     // Se não encontrou, tentar usar getDataCriacao do sistema global
-    if (!dataCriacao && window.getDataCriacao) {
-      dataCriacao = window.getDataCriacao(row);
+    let finalDataCriacao = dataCriacao;
+    if (!finalDataCriacao && window.getDataCriacao) {
+      finalDataCriacao = window.getDataCriacao(row);
     }
     
-    // Se ainda não encontrou, tentar buscar no campo normalizado do Prisma
-    if (!dataCriacao && row.dataDaCriacao) {
-      dataCriacao = row.dataDaCriacao;
-    }
-    if (!dataCriacao && row.dataCriacaoIso) {
-      dataCriacao = row.dataCriacaoIso;
-    }
-    
-    if (dataCriacao) {
+    if (finalDataCriacao) {
+      fieldsFound.data++;
       // Normalizar formato de data
-      let dateStr = dataCriacao;
+      let dateStr = String(finalDataCriacao).trim();
       
       // Se for string sem T, adicionar T00:00:00
-      if (typeof dataCriacao === 'string') {
+      if (typeof finalDataCriacao === 'string') {
         // Remover espaços extras
         dateStr = dateStr.trim();
         
@@ -1878,65 +2820,409 @@ function aggregateFilteredData(rows) {
     });
   }
   
+  // IMPORTANTE: Garantir que todas as variáveis estão definidas
+  // Se alguma variável não foi definida (erro anterior), criar arrays vazios
+  const safeManifestationsByStatus = typeof manifestationsByStatus !== 'undefined' ? manifestationsByStatus : [];
+  const safeManifestationsByTheme = typeof manifestationsByTheme !== 'undefined' ? manifestationsByTheme : [];
+  const safeManifestationsByOrgan = typeof manifestationsByOrgan !== 'undefined' ? manifestationsByOrgan : [];
+  const safeManifestationsByType = typeof manifestationsByType !== 'undefined' ? manifestationsByType : [];
+  const safeManifestationsByChannel = typeof manifestationsByChannel !== 'undefined' ? manifestationsByChannel : [];
+  const safeManifestationsByPriority = typeof manifestationsByPriority !== 'undefined' ? manifestationsByPriority : [];
+  const safeManifestationsByUnit = typeof manifestationsByUnit !== 'undefined' ? manifestationsByUnit : [];
+  const safeManifestationsByMonth = typeof manifestationsByMonth !== 'undefined' ? manifestationsByMonth : [];
+  const safeManifestationsByDay = typeof manifestationsByDay !== 'undefined' ? manifestationsByDay : [];
+  
+  // IMPORTANTE: Garantir que todos os arrays existem
   const result = {
-    totalManifestations: rows.length,
-    last7Days: last7Count,
-    last30Days: last30Count,
-    manifestationsByMonth,
-    manifestationsByDay,
-    manifestationsByStatus,
-    manifestationsByTheme,
-    manifestationsByOrgan,
-    manifestationsByType,
-    manifestationsByChannel,
-    manifestationsByPriority,
-    manifestationsByUnit
+    totalManifestations: rows.length || 0,
+    last7Days: last7Count || 0,
+    last30Days: last30Count || 0,
+    manifestationsByMonth: safeManifestationsByMonth,
+    manifestationsByDay: safeManifestationsByDay,
+    manifestationsByStatus: safeManifestationsByStatus,
+    manifestationsByTheme: safeManifestationsByTheme,
+    manifestationsByOrgan: safeManifestationsByOrgan,
+    manifestationsByType: safeManifestationsByType,
+    manifestationsByChannel: safeManifestationsByChannel,
+    manifestationsByPriority: safeManifestationsByPriority,
+    manifestationsByUnit: safeManifestationsByUnit
   };
+  
+  // Validar que o objeto está completo
+  if (!result.totalManifestations && result.totalManifestations !== 0) {
+    result.totalManifestations = rows.length || 0;
+  }
+  
+  // Garantir que todas as propriedades existem
+  if (!Array.isArray(result.manifestationsByStatus)) result.manifestationsByStatus = [];
+  if (!Array.isArray(result.manifestationsByTheme)) result.manifestationsByTheme = [];
+  if (!Array.isArray(result.manifestationsByOrgan)) result.manifestationsByOrgan = [];
+  if (!Array.isArray(result.manifestationsByType)) result.manifestationsByType = [];
+  if (!Array.isArray(result.manifestationsByChannel)) result.manifestationsByChannel = [];
+  if (!Array.isArray(result.manifestationsByPriority)) result.manifestationsByPriority = [];
+  if (!Array.isArray(result.manifestationsByUnit)) result.manifestationsByUnit = [];
+  if (!Array.isArray(result.manifestationsByMonth)) result.manifestationsByMonth = [];
+  if (!Array.isArray(result.manifestationsByDay)) result.manifestationsByDay = [];
   
   if (window.Logger) {
     window.Logger.debug('📊 aggregateFilteredData: Agregação concluída', {
+      totalRows: rows.length,
+      processedCount: processedCount,
       total: result.totalManifestations,
+      last7Days: result.last7Days,
+      last30Days: result.last30Days,
       byStatus: result.manifestationsByStatus.length,
       byMonth: result.manifestationsByMonth.length,
       byDay: result.manifestationsByDay.length,
       byTheme: result.manifestationsByTheme.length,
       byOrgan: result.manifestationsByOrgan.length,
+      byType: result.manifestationsByType.length,
+      byChannel: result.manifestationsByChannel.length,
+      byPriority: result.manifestationsByPriority.length,
+      byUnit: result.manifestationsByUnit.length,
+      // Contadores de campos encontrados (de TODOS os registros processados)
+      fieldsFound: fieldsFound,
+      fieldsFoundPercent: {
+        status: rows.length > 0 ? ((fieldsFound.status / rows.length) * 100).toFixed(1) + '%' : '0%',
+        tema: rows.length > 0 ? ((fieldsFound.tema / rows.length) * 100).toFixed(1) + '%' : '0%',
+        orgaos: rows.length > 0 ? ((fieldsFound.orgaos / rows.length) * 100).toFixed(1) + '%' : '0%',
+        tipo: rows.length > 0 ? ((fieldsFound.tipo / rows.length) * 100).toFixed(1) + '%' : '0%',
+        canal: rows.length > 0 ? ((fieldsFound.canal / rows.length) * 100).toFixed(1) + '%' : '0%',
+        prioridade: rows.length > 0 ? ((fieldsFound.prioridade / rows.length) * 100).toFixed(1) + '%' : '0%',
+        unidade: rows.length > 0 ? ((fieldsFound.unidade / rows.length) * 100).toFixed(1) + '%' : '0%',
+        data: rows.length > 0 ? ((fieldsFound.data / rows.length) * 100).toFixed(1) + '%' : '0%'
+      },
+      // Tamanhos dos Maps (quantos valores únicos foram encontrados)
+      mapsSize: {
+        status: statusMap.size,
+        theme: themeMap.size,
+        organ: organMap.size,
+        type: typeMap.size,
+        channel: channelMap.size,
+        priority: priorityMap.size,
+        unit: unitMap.size,
+        month: monthMap.size,
+        day: dayMap.size
+      },
+      // Amostras dos primeiros itens
       sampleStatus: result.manifestationsByStatus[0],
+      sampleTheme: result.manifestationsByTheme[0],
+      sampleOrgan: result.manifestationsByOrgan[0],
+      sampleType: result.manifestationsByType[0],
+      sampleChannel: result.manifestationsByChannel[0],
+      samplePriority: result.manifestationsByPriority[0],
       sampleMonth: result.manifestationsByMonth[0],
-      sampleDay: result.manifestationsByDay[0]
+      sampleDay: result.manifestationsByDay[0],
+      // Top 3 de cada categoria
+      top3Status: result.manifestationsByStatus.slice(0, 3),
+      top3Theme: result.manifestationsByTheme.slice(0, 3),
+      top3Organ: result.manifestationsByOrgan.slice(0, 3)
     });
+    
+    // Se não há dados agregados mas há registros, avisar com detalhes
+    if (rows.length > 0 && 
+        result.manifestationsByStatus.length === 0 && 
+        result.manifestationsByTheme.length === 0 &&
+        result.manifestationsByOrgan.length === 0) {
+      const sampleRow = rows[0];
+      window.Logger.error('❌ ERRO CRÍTICO: aggregateFilteredData não encontrou campos nos dados!', {
+        totalRows: rows.length,
+        fieldsFound: fieldsFound,
+        fieldsFoundPercent: rows.length > 0 ? {
+          status: ((fieldsFound.status / rows.length) * 100).toFixed(1) + '%',
+          tema: ((fieldsFound.tema / rows.length) * 100).toFixed(1) + '%',
+          orgaos: ((fieldsFound.orgaos / rows.length) * 100).toFixed(1) + '%',
+          tipo: ((fieldsFound.tipo / rows.length) * 100).toFixed(1) + '%',
+          canal: ((fieldsFound.canal / rows.length) * 100).toFixed(1) + '%',
+          prioridade: ((fieldsFound.prioridade / rows.length) * 100).toFixed(1) + '%',
+          unidade: ((fieldsFound.unidade / rows.length) * 100).toFixed(1) + '%',
+          data: ((fieldsFound.data / rows.length) * 100).toFixed(1) + '%'
+        } : {},
+        sampleRowKeys: Object.keys(sampleRow).slice(0, 30),
+        hasData: !!sampleRow.data,
+        dataKeys: sampleRow.data ? Object.keys(sampleRow.data).slice(0, 30) : [],
+        // Testar campos diretamente
+        statusDirect: sampleRow.status,
+        statusData: sampleRow.data?.status,
+        temaDirect: sampleRow.tema,
+        temaData: sampleRow.data?.tema,
+        orgaosDirect: sampleRow.orgaos,
+        orgaosData: sampleRow.data?.orgaos,
+        tipoDirect: sampleRow.tipoDeManifestacao,
+        tipoData: sampleRow.data?.tipoDeManifestacao,
+        canalDirect: sampleRow.canal,
+        canalData: sampleRow.data?.canal,
+        prioridadeDirect: sampleRow.prioridade,
+        prioridadeData: sampleRow.data?.prioridade,
+        unidadeDirect: sampleRow.unidadeCadastro,
+        unidadeData: sampleRow.data?.unidadeCadastro,
+        // Testar getFieldValue no primeiro registro
+        testGetFieldValue: {
+          status: getFieldValue(sampleRow, 'status', ['Status', 'status_demanda', 'StatusDemanda', 'statusDemanda']),
+          tema: getFieldValue(sampleRow, 'tema', ['Tema', 'categoria', 'Categoria']),
+          orgaos: getFieldValue(sampleRow, 'orgaos', ['orgao', 'Orgaos', 'secretaria', 'Secretaria']),
+          tipo: getFieldValue(sampleRow, 'tipoDeManifestacao', ['tipo', 'Tipo', 'tipo_de_manifestacao']),
+          canal: getFieldValue(sampleRow, 'canal', ['Canal']),
+          prioridade: getFieldValue(sampleRow, 'prioridade', ['Prioridade']),
+          unidade: getFieldValue(sampleRow, 'unidadeCadastro', ['unidade_cadastro', 'UnidadeCadastro', 'UAC'])
+        }
+      });
+    } else if (rows.length > 0 && window.Logger) {
+      // Log de sucesso com resumo
+      window.Logger.success('✅ aggregateFilteredData: Agregação bem-sucedida!', {
+        totalRows: rows.length,
+        totalManifestations: result.totalManifestations,
+        agregações: {
+          status: result.manifestationsByStatus.length,
+          tema: result.manifestationsByTheme.length,
+          orgaos: result.manifestationsByOrgan.length,
+          tipo: result.manifestationsByType.length,
+          canal: result.manifestationsByChannel.length,
+          prioridade: result.manifestationsByPriority.length,
+          unidade: result.manifestationsByUnit.length,
+          mes: result.manifestationsByMonth.length,
+          dia: result.manifestationsByDay.length
+        },
+        camposEncontrados: {
+          status: fieldsFound.status + ' (' + ((fieldsFound.status / rows.length) * 100).toFixed(1) + '%)',
+          tema: fieldsFound.tema + ' (' + ((fieldsFound.tema / rows.length) * 100).toFixed(1) + '%)',
+          orgaos: fieldsFound.orgaos + ' (' + ((fieldsFound.orgaos / rows.length) * 100).toFixed(1) + '%)',
+          tipo: fieldsFound.tipo + ' (' + ((fieldsFound.tipo / rows.length) * 100).toFixed(1) + '%)',
+          canal: fieldsFound.canal + ' (' + ((fieldsFound.canal / rows.length) * 100).toFixed(1) + '%)',
+          prioridade: fieldsFound.prioridade + ' (' + ((fieldsFound.prioridade / rows.length) * 100).toFixed(1) + '%)',
+          unidade: fieldsFound.unidade + ' (' + ((fieldsFound.unidade / rows.length) * 100).toFixed(1) + '%)',
+          data: fieldsFound.data + ' (' + ((fieldsFound.data / rows.length) * 100).toFixed(1) + '%)'
+        }
+      });
+    }
   }
   
-  return result;
+    // IMPORTANTE: Garantir que o objeto está completo antes de retornar
+    // Validar TODAS as propriedades antes de retornar
+    const finalResult = {
+      totalManifestations: result.totalManifestations || rows.length || 0,
+      last7Days: result.last7Days || 0,
+      last30Days: result.last30Days || 0,
+      manifestationsByMonth: Array.isArray(result.manifestationsByMonth) ? result.manifestationsByMonth : [],
+      manifestationsByDay: Array.isArray(result.manifestationsByDay) ? result.manifestationsByDay : [],
+      manifestationsByStatus: Array.isArray(result.manifestationsByStatus) ? result.manifestationsByStatus : [],
+      manifestationsByTheme: Array.isArray(result.manifestationsByTheme) ? result.manifestationsByTheme : [],
+      manifestationsByOrgan: Array.isArray(result.manifestationsByOrgan) ? result.manifestationsByOrgan : [],
+      manifestationsByType: Array.isArray(result.manifestationsByType) ? result.manifestationsByType : [],
+      manifestationsByChannel: Array.isArray(result.manifestationsByChannel) ? result.manifestationsByChannel : [],
+      manifestationsByPriority: Array.isArray(result.manifestationsByPriority) ? result.manifestationsByPriority : [],
+      manifestationsByUnit: Array.isArray(result.manifestationsByUnit) ? result.manifestationsByUnit : []
+    };
+    
+    // VALIDAÇÃO FINAL: Garantir que todos os arrays têm pelo menos a estrutura correta
+    if (finalResult.manifestationsByStatus.length === 0 && fieldsFound.status > 0) {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ statusMap tem dados mas manifestationsByStatus está vazio!', {
+          statusMapSize: statusMap.size,
+          fieldsFoundStatus: fieldsFound.status
+        });
+      }
+    }
+    
+    if (window.Logger) {
+      window.Logger.debug('📊 aggregateFilteredData: Retornando resultado FINAL', {
+        hasTotal: 'totalManifestations' in finalResult,
+        totalValue: finalResult.totalManifestations,
+        resultKeys: Object.keys(finalResult),
+        resultKeysCount: Object.keys(finalResult).length,
+        resultType: typeof finalResult,
+        allKeys: Object.keys(finalResult).join(', '),
+        byStatus: finalResult.manifestationsByStatus.length,
+        byTheme: finalResult.manifestationsByTheme.length,
+        byOrgan: finalResult.manifestationsByOrgan.length,
+        byType: finalResult.manifestationsByType.length,
+        byChannel: finalResult.manifestationsByChannel.length,
+        byPriority: finalResult.manifestationsByPriority.length,
+        byUnit: finalResult.manifestationsByUnit.length,
+        byMonth: finalResult.manifestationsByMonth.length,
+        byDay: finalResult.manifestationsByDay.length,
+        // Verificar se os maps têm dados
+        mapsHaveData: {
+          status: statusMap.size > 0,
+          theme: themeMap.size > 0,
+          organ: organMap.size > 0,
+          type: typeMap.size > 0,
+          channel: channelMap.size > 0,
+          priority: priorityMap.size > 0,
+          unit: unitMap.size > 0,
+          month: monthMap.size > 0,
+          day: dayMap.size > 0
+        },
+        // Amostras dos primeiros itens de cada array
+        samples: {
+          status: finalResult.manifestationsByStatus[0],
+          theme: finalResult.manifestationsByTheme[0],
+          organ: finalResult.manifestationsByOrgan[0],
+          type: finalResult.manifestationsByType[0],
+          channel: finalResult.manifestationsByChannel[0],
+          priority: finalResult.manifestationsByPriority[0],
+          unit: finalResult.manifestationsByUnit[0],
+          month: finalResult.manifestationsByMonth[0],
+          day: finalResult.manifestationsByDay[0]
+        }
+      });
+    }
+    
+    return finalResult;
+  } catch (error) {
+    if (window.Logger) {
+      window.Logger.error('❌ ERRO CRÍTICO em aggregateFilteredData:', {
+        error: error.message,
+        stack: error.stack,
+        rowsCount: rows?.length || 0
+      });
+    }
+    
+    // Retornar estrutura vazia em caso de erro
+    return {
+      totalManifestations: rows?.length || 0,
+      last7Days: 0,
+      last30Days: 0,
+      manifestationsByMonth: [],
+      manifestationsByDay: [],
+      manifestationsByStatus: [],
+      manifestationsByTheme: [],
+      manifestationsByOrgan: [],
+      manifestationsByType: [],
+      manifestationsByChannel: [],
+      manifestationsByPriority: [],
+      manifestationsByUnit: []
+    };
+  }
+}
+
+// CORREÇÃO CRÍTICA: Exportar função imediatamente após definição
+// Garantir que está disponível quando o listener for executado
+if (typeof window !== 'undefined') {
+  // Atualizar função real - SEMPRE sobrescrever
+  window._aggregateFilteredDataReal = aggregateFilteredData;
+  window.aggregateFilteredData = aggregateFilteredData;
+  
+  // CORREÇÃO: Garantir que não há stub interferindo
+  if (window.aggregateFilteredData !== aggregateFilteredData) {
+    window.aggregateFilteredData = aggregateFilteredData;
+  }
+  
+  if (window.Logger) {
+    window.Logger.debug('✅ aggregateFilteredData exportada para window', {
+      functionType: typeof window.aggregateFilteredData,
+      isFunction: typeof window.aggregateFilteredData === 'function',
+      hasRealFunction: typeof window._aggregateFilteredDataReal === 'function',
+      functionsMatch: window.aggregateFilteredData === aggregateFilteredData,
+      realFunctionMatches: window._aggregateFilteredDataReal === aggregateFilteredData
+    });
+  }
+}
+
+/**
+ * Renderizar banner de filtros ativos (Crossfilter)
+ */
+function renderCrossfilterBanner() {
+  if (!window.crossfilterOverview) return;
+  
+  const pageMain = document.getElementById('page-main');
+  if (!pageMain) return;
+  
+  // Remover banner existente
+  const existingBanner = document.getElementById('crossfilter-banner');
+  if (existingBanner) {
+    existingBanner.remove();
+  }
+  
+  const activeCount = window.crossfilterOverview.getActiveFilterCount();
+  if (activeCount === 0) return;
+  
+  const filters = window.crossfilterOverview.filters;
+  
+  // Criar banner
+  const banner = document.createElement('section');
+  banner.id = 'crossfilter-banner';
+  banner.className = 'glass rounded-2xl p-4 mb-6';
+  banner.style.cssText = 'background: rgba(34, 211, 238, 0.1); border-left: 4px solid #22d3ee;';
+  
+  // Criar estrutura do banner
+  const bannerContent = document.createElement('div');
+  bannerContent.style.cssText = 'display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;';
+  
+  const pillsContainer = document.createElement('div');
+  pillsContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;';
+  
+  const title = document.createElement('strong');
+  title.style.cssText = 'color: #22d3ee; font-size: 1.1rem;';
+  title.textContent = `Filtros Ativos (${activeCount}):`;
+  pillsContainer.appendChild(title);
+  
+  // Criar pill para cada filtro ativo
+  Object.entries(filters).forEach(([field, value]) => {
+    if (value) {
+      const emoji = window.crossfilterOverview.getFieldEmoji(field);
+      const label = window.crossfilterOverview.getFieldLabel(field);
+      
+      const pill = document.createElement('span');
+      pill.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm';
+      pill.style.cssText = 'background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(34, 211, 238, 0.3);';
+      
+      const labelEl = document.createElement('strong');
+      labelEl.style.color = '#22d3ee';
+      labelEl.textContent = `${label}: `;
+      
+      const valueEl = document.createElement('span');
+      valueEl.style.color = '#e2e8f0';
+      valueEl.textContent = value;
+      
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '✕';
+      removeBtn.style.cssText = 'background: transparent; border: none; cursor: pointer; padding: 0; color: #94a3b8; margin-left: 4px; font-size: 16px; line-height: 1;';
+      removeBtn.title = 'Remover filtro';
+      removeBtn.addEventListener('click', () => {
+        window.crossfilterOverview.filters[field] = null;
+        window.crossfilterOverview.notifyListeners();
+      });
+      
+      pill.appendChild(labelEl);
+      pill.appendChild(valueEl);
+      pill.appendChild(removeBtn);
+      pillsContainer.appendChild(pill);
+    }
+  });
+  
+  const clearAllBtn = document.createElement('button');
+  clearAllBtn.textContent = 'Limpar Todos';
+  clearAllBtn.style.cssText = 'padding: 0.5rem 1rem; background: #22d3ee; color: #0b1020; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;';
+  clearAllBtn.title = 'Limpar todos os filtros';
+  clearAllBtn.addEventListener('click', () => {
+    window.crossfilterOverview.clearAllFilters();
+    window.crossfilterOverview.notifyListeners();
+  });
+  
+  bannerContent.appendChild(pillsContainer);
+  bannerContent.appendChild(clearAllBtn);
+  banner.appendChild(bannerContent);
+  
+  // Inserir banner após o header
+  const header = pageMain.querySelector('header');
+  if (header) {
+    header.insertAdjacentElement('afterend', banner);
+  } else {
+    pageMain.insertBefore(banner, pageMain.firstChild);
+  }
 }
 
 /**
  * Inicializar listeners de eventos de filtro
- * FILTROS DE CLIQUE COMPLETAMENTE DESABILITADOS
- * O overview NÃO deve recarregar quando filtros são aplicados
- * Filtros só funcionam através da página de filtros avançados
+ * CROSSFILTER: Agora usa sistema de crossfilter inteligente
  */
 function initOverviewFilterListeners() {
-  // FILTROS DE CLIQUE COMPLETAMENTE DESABILITADOS
-  // Não escutar NENHUM evento de filtro
-  // O overview sempre mostra dados completos, sem filtros
   if (window.Logger) {
-    window.Logger.debug('⚠️ Listeners de filtro completamente desabilitados - Overview não recarrega com filtros');
+    window.Logger.debug('✅ Listeners de crossfilter inicializados - Overview com filtros inteligentes');
   }
   
-  // Garantir que nenhum listener esteja ativo
-  if (window.chartCommunication) {
-    // Remover qualquer listener que possa ter sido adicionado anteriormente
-    try {
-      window.chartCommunication.off('filter:applied');
-      window.chartCommunication.off('filter:removed');
-      window.chartCommunication.off('filter:cleared');
-      window.chartCommunication.off('filter:changed');
-    } catch (e) {
-      // Ignorar erros se os listeners não existirem
-    }
-  }
-  
+  // CROSSFILTER: Não usar chartCommunication, usar crossfilterOverview
   return;
 }
 
@@ -1962,4 +3248,5 @@ if (document.readyState === 'loading') {
 if (window.Logger) {
   window.Logger.debug('✅ Página Overview carregada');
 }
+
 
