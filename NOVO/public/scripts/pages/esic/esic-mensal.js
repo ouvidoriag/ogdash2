@@ -134,4 +134,3 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
 }
 
 window.loadEsicMensal = loadEsicMensal;
-export default loadEsicMensal;

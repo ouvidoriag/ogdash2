@@ -5,6 +5,8 @@
  * Recriada com estrutura otimizada
  */
 
+let filtroMesAssunto = '';
+
 async function loadAssunto() {
   if (window.Logger) {
     window.Logger.debug('📝 loadAssunto: Iniciando');
@@ -16,6 +18,16 @@ async function loadAssunto() {
   }
   
   try {
+    // Coletar filtros de mês
+    const filtrosMes = window.MonthFilterHelper?.coletarFiltrosMes?.('filtroMesAssunto') || [];
+    
+    // Combinar com filtros globais
+    let activeFilters = filtrosMes;
+    if (window.chartCommunication) {
+      const globalFilters = window.chartCommunication.filters?.filters || [];
+      activeFilters = [...globalFilters, ...filtrosMes];
+    }
+    
     // Destruir gráficos existentes antes de criar novos
     if (window.chartFactory?.destroyCharts) {
       window.chartFactory.destroyCharts([
@@ -25,11 +37,57 @@ async function loadAssunto() {
       ]);
     }
     
-    // Carregar dados de assuntos
-    const dataAssuntosRaw = await window.dataLoader?.load('/api/aggregate/by-subject', {
-      useDataStore: true,
-      ttl: 10 * 60 * 1000
-    }) || [];
+    // Aplicar filtros se houver
+    let dataAssuntosRaw = [];
+    let filtrosAplicados = false;
+    
+    if (activeFilters.length > 0) {
+      filtrosAplicados = true;
+      try {
+        const filterRequest = {
+          filters: activeFilters,
+          originalUrl: '/api/aggregate/by-subject'
+        };
+        
+        const response = await fetch('/api/filter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(filterRequest)
+        });
+        
+        if (response.ok) {
+          const filteredData = await response.json();
+          if (Array.isArray(filteredData) && filteredData.length > 0) {
+            // Agrupar por assunto manualmente
+            const assuntoMap = new Map();
+            filteredData.forEach(record => {
+              const assunto = record.assunto || record.data?.assunto || 'N/A';
+              if (assunto && assunto !== 'N/A') {
+                assuntoMap.set(assunto, (assuntoMap.get(assunto) || 0) + 1);
+              }
+            });
+            
+            dataAssuntosRaw = Array.from(assuntoMap.entries())
+              .map(([assunto, count]) => ({ assunto, quantidade: count }))
+              .sort((a, b) => b.quantidade - a.quantidade);
+          }
+        }
+      } catch (error) {
+        if (window.Logger) {
+          window.Logger.warn('Erro ao aplicar filtros, carregando sem filtros:', error);
+        }
+        filtrosAplicados = false;
+      }
+    }
+    
+    // Se não aplicou filtros ou deu erro, carregar normalmente
+    if (!filtrosAplicados || dataAssuntosRaw.length === 0) {
+      dataAssuntosRaw = await window.dataLoader?.load('/api/aggregate/by-subject', {
+        useDataStore: true,
+        ttl: 10 * 60 * 1000
+      }) || [];
+    }
     
     // Validar dados recebidos
     if (!Array.isArray(dataAssuntosRaw)) {
@@ -100,11 +158,34 @@ function initAssuntoFilterListeners() {
   }
 }
 
+// Exportar função imediatamente
+window.loadAssunto = loadAssunto;
+
 // Inicializar listeners quando o script carregar
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initAssuntoFilterListeners);
-} else {
+function initAssuntoPage() {
   initAssuntoFilterListeners();
+  
+  // Aguardar helper estar disponível
+  if (window.MonthFilterHelper && window.MonthFilterHelper.inicializarFiltroMes) {
+    window.MonthFilterHelper.inicializarFiltroMes({
+      selectId: 'filtroMesAssunto',
+      endpoint: '/api/aggregate/by-month',
+      mesSelecionado: filtroMesAssunto,
+      onChange: async (novoMes) => {
+        filtroMesAssunto = novoMes;
+        await loadAssunto();
+      }
+    });
+  } else {
+    // Tentar novamente após um delay se o helper não estiver disponível
+    setTimeout(initAssuntoPage, 100);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAssuntoPage);
+} else {
+  initAssuntoPage();
 }
 
 async function renderAssuntoChart(dataAssuntos) {
@@ -127,7 +208,7 @@ async function renderAssuntoChart(dataAssuntos) {
     horizontal: true,
     colorIndex: 3,
     label: 'Manifestações',
-      onClick: false // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false
   });
 }
 
@@ -155,7 +236,7 @@ async function renderStatusAssuntoChart(dataAssuntos) {
       
       await window.chartFactory?.createDoughnutChart('chartStatusAssunto', labels, values, {
         type: 'doughnut',
-        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+        onClick: false,
         legendContainer: 'legendStatusAssunto'
       });
     }
@@ -268,6 +349,4 @@ function renderAssuntosList(dataAssuntos) {
     `;
   }).join('');
 }
-
-window.loadAssunto = loadAssunto;
 

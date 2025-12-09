@@ -58,7 +58,7 @@ async function loadEsicTipoInformacao() {
       await window.chartFactory?.createBarChart('esic-chart-tipo-informacao-detail', labels, values, {
         horizontal: true,
         colorIndex: 1,
-        onClick: false
+        onClick: false,
       });
     }
     
@@ -112,4 +112,3 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
 }
 
 window.loadEsicTipoInformacao = loadEsicTipoInformacao;
-export default loadEsicTipoInformacao;

@@ -91,23 +91,5 @@
       window.Logger.success('✅ Sistema de Comunicação entre Gráficos inicializado (modularizado)');
     }
     
-    // Conectar automaticamente todas as páginas ao sistema de filtros globais
-    // Sistema Looker/Power BI: Todas as páginas se atualizam quando um filtro é aplicado
-    // Aguardar um pouco para garantir que todas as funções de loader estejam disponíveis
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-          if (window.chartCommunication && window.chartCommunication.autoConnectAllPages) {
-            window.chartCommunication.autoConnectAllPages();
-          }
-        }, 1500);
-      });
-    } else {
-      setTimeout(() => {
-        if (window.chartCommunication && window.chartCommunication.autoConnectAllPages) {
-          window.chartCommunication.autoConnectAllPages();
-        }
-      }, 1500);
-    }
   }
 })();

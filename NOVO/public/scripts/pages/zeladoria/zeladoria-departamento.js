@@ -71,7 +71,7 @@ async function loadZeladoriaDepartamento() {
       horizontal: true,
       colorIndex: 2,
       field: 'departamento',
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       legendContainer: 'zeladoria-departamento-legend'
     });
     
@@ -142,11 +142,18 @@ async function renderDepartamentoMesChart(dataMes, topDepartamentos) {
     return m;
   });
   
-  await window.chartFactory?.createBarChart('zeladoria-departamento-mes-chart', labels, datasets, {
-    colorIndex: 0,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-departamento-mes-legend'
-  });
+  const canvas = document.getElementById('zeladoria-departamento-mes-chart');
+  if (canvas) {
+    await window.chartFactory?.createBarChart('zeladoria-departamento-mes-chart', labels, datasets, {
+      colorIndex: 0,
+      onClick: false,
+      legendContainer: 'zeladoria-departamento-mes-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-departamento-mes-chart não encontrado');
+    }
+  }
 }
 
 /**

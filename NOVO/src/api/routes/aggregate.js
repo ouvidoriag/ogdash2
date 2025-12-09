@@ -132,6 +132,14 @@ export default function aggregateRoutes(prisma, getMongoClient) {
    */
   router.get('/by-district', (req, res) => aggregateController.byDistrict(req, res));
   
+  /**
+   * GET /api/aggregate/top-protocolos-demora
+   * Busca os 10 protocolos com maior tempo de demora
+   * Query params: limit (padrão: 10)
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/top-protocolos-demora', (req, res) => aggregateController.topProtocolosDemora(req, res, getMongoClient));
+  
   return router;
 }
 

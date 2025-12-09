@@ -139,12 +139,19 @@ async function renderTempoMesChart(timeSeries) {
     return m;
   });
   
-  await window.chartFactory?.createLineChart('zeladoria-tempo-mes-chart', labels, tempoMedio, {
-    colorIndex: 6,
-    label: 'Tempo Médio (dias)',
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-tempo-mes-legend'
-  });
+  const canvasMes = document.getElementById('zeladoria-tempo-mes-chart');
+  if (canvasMes) {
+    await window.chartFactory?.createLineChart('zeladoria-tempo-mes-chart', labels, tempoMedio, {
+      colorIndex: 6,
+      label: 'Tempo Médio (dias)',
+      onClick: false,
+      legendContainer: 'zeladoria-tempo-mes-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-tempo-mes-chart não encontrado');
+    }
+  }
 }
 
 /**
@@ -163,12 +170,19 @@ async function renderTempoDistribuicao(stats) {
   const labels = Object.keys(buckets);
   const values = Object.values(buckets);
   
-  await window.chartFactory?.createBarChart('zeladoria-tempo-distribuicao-chart', labels, values, {
-    colorIndex: 6,
-    horizontal: true,
-    onClick: false, // Distribuição de tempo não deve filtrar
-    legendContainer: 'zeladoria-tempo-distribuicao-legend'
-  });
+  const canvasDist = document.getElementById('zeladoria-tempo-distribuicao-chart');
+  if (canvasDist) {
+    await window.chartFactory?.createBarChart('zeladoria-tempo-distribuicao-chart', labels, values, {
+      colorIndex: 6,
+      horizontal: true,
+      onClick: false,
+      legendContainer: 'zeladoria-tempo-distribuicao-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-tempo-distribuicao-chart não encontrado');
+    }
+  }
 }
 
 /**

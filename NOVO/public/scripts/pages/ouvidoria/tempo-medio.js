@@ -6,6 +6,8 @@
  */
 
 let mesSelecionadoTempoMedio = '';
+let ordenacaoTempoMedio = 'decrescente'; // 'decrescente' ou 'crescente'
+let filtroMesTempoMedio = ''; // Filtro por mês (YYYY-MM)
 
 /**
  * Função auxiliar para destruir um gráfico de forma segura
@@ -54,6 +56,40 @@ function destroyAllTempoMedioCharts() {
   }
 }
 
+/**
+ * Coletar filtros da página
+ */
+function coletarFiltrosTempoMedio() {
+  const filtros = [];
+  
+  // Filtro por mês
+  const mesFiltro = document.getElementById('filtroMesTempoMedio')?.value?.trim() || '';
+  if (mesFiltro) {
+    // Formato: YYYY-MM
+    const [ano, mes] = mesFiltro.split('-');
+    if (ano && mes) {
+      // Filtrar por data de criação no mês selecionado
+      const dataInicial = `${mesFiltro}-01`;
+      const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
+      const dataFinal = `${mesFiltro}-${ultimoDia}`;
+      
+      filtros.push({
+        field: 'dataCriacaoIso',
+        op: 'gte',
+        value: dataInicial
+      });
+      filtros.push({
+        field: 'dataCriacaoIso',
+        op: 'lte',
+        value: `${dataFinal}T23:59:59.999Z`
+      });
+    }
+  }
+  
+  
+  return filtros;
+}
+
 async function loadTempoMedio(forceRefresh = false) {
   if (window.Logger) {
     window.Logger.debug('⏱️ loadTempoMedio: Iniciando');
@@ -65,63 +101,136 @@ async function loadTempoMedio(forceRefresh = false) {
   }
   
   try {
-    // Carregar dados por mês primeiro (para popular dropdown)
+    // Coletar filtros da página
+    const filtrosPagina = coletarFiltrosTempoMedio();
+    
+    // Verificar se há filtros ativos
+    let activeFilters = null;
+    if (window.chartCommunication) {
+      const globalFilters = window.chartCommunication.filters?.filters || [];
+      // Combinar filtros globais com filtros da página
+      activeFilters = [...globalFilters, ...filtrosPagina];
+      if (activeFilters.length > 0) {
+        if (window.Logger) {
+          window.Logger.debug(`⏱️ loadTempoMedio: ${activeFilters.length} filtro(s) ativo(s)`, activeFilters);
+        }
+      }
+    } else if (filtrosPagina.length > 0) {
+      activeFilters = filtrosPagina;
+    }
+    
+    // Carregar dados por mês (para gráfico de evolução)
     const dataMes = await window.dataLoader?.load('/api/stats/average-time/by-month', {
       fallback: [], // Fallback para erro 502
       useDataStore: true,
       ttl: 5 * 60 * 1000
     }) || [];
     
-    // Popular dropdown se ainda não foi populado
-    if (document.getElementById('selectMesTempoMedio')?.options.length <= 1) {
-      popularDropdownMeses(dataMes);
-    }
-    
-    // Obter mês selecionado
-    const selectMes = document.getElementById('selectMesTempoMedio');
-    const mesSelecionado = selectMes?.value || '';
+    // Usar filtro de mês selecionado
+    const mesSelecionado = filtroMesTempoMedio || '';
     mesSelecionadoTempoMedio = mesSelecionado;
     
-    // Carregar estatísticas principais (com filtro de mês se selecionado)
-    const statsUrl = mesSelecionado 
-      ? `/api/stats/average-time/stats?meses=${encodeURIComponent(mesSelecionado)}`
-      : '/api/stats/average-time/stats';
+    // Carregar estatísticas principais
+    let stats = {};
     
-    if (window.Logger) {
-      window.Logger.debug(`⏱️ Carregando stats de: ${statsUrl}`);
+    // Se houver filtros, usar endpoint /api/filter e calcular stats localmente
+    if (activeFilters && activeFilters.length > 0) {
+      try {
+        const filterRequest = {
+          filters: activeFilters,
+          originalUrl: window.location.pathname
+        };
+        
+        const response = await fetch('/api/filter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify(filterRequest)
+        });
+        
+        if (response.ok) {
+          const filteredData = await response.json();
+          
+          if (Array.isArray(filteredData) && filteredData.length > 0) {
+            // Calcular estatísticas dos dados filtrados
+            const tempos = filteredData
+              .map(record => {
+                const tempo = record.tempoDeResolucaoEmDias || 
+                             record.data?.tempoDeResolucaoEmDias ||
+                             record.data?.tempo_de_resolucao_em_dias ||
+                             null;
+                return tempo !== null && tempo !== undefined ? parseFloat(tempo) : null;
+              })
+              .filter(t => t !== null && !isNaN(t));
+            
+            if (tempos.length > 0) {
+              const sorted = [...tempos].sort((a, b) => a - b);
+              const media = tempos.reduce((a, b) => a + b, 0) / tempos.length;
+              const mediana = sorted.length % 2 === 0
+                ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                : sorted[Math.floor(sorted.length / 2)];
+              const minimo = sorted[0];
+              const maximo = sorted[sorted.length - 1];
+              
+              stats = {
+                media: media,
+                mediana: mediana,
+                minimo: minimo,
+                maximo: maximo,
+                total: filteredData.length
+              };
+            }
+          }
+        }
+      } catch (filterError) {
+        if (window.Logger) {
+          window.Logger.error('Erro ao aplicar filtros, carregando sem filtros:', filterError);
+        }
+      }
     }
     
-    const stats = await window.dataLoader?.load(statsUrl, {
-      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se for refresh forçado ou se houver filtro
-      ttl: 5 * 60 * 1000,
-      fallback: { media: 0, mediana: 0, minimo: 0, maximo: 0, total: 0 } // Fallback para erro 502
-    }) || {};
+    // Se não calculou stats com filtros, usar endpoint normal
+    if (!stats.media && !stats.total) {
+      const statsUrl = '/api/stats/average-time/stats';
+      
+      if (window.Logger) {
+        window.Logger.debug(`⏱️ Carregando stats de: ${statsUrl}`);
+      }
+      
+      stats = await window.dataLoader?.load(statsUrl, {
+        useDataStore: !forceRefresh, // Não usar cache se for refresh forçado
+        ttl: 5 * 60 * 1000,
+        fallback: { media: 0, mediana: 0, minimo: 0, maximo: 0, total: 0 } // Fallback para erro 502
+      }) || {};
+    }
     
     if (window.Logger) {
       window.Logger.debug(`⏱️ Stats recebidos:`, stats);
     }
     
-    // Renderizar estatísticas (sempre atualizar TODOS os cards quando há filtro ou refresh)
+    // Renderizar estatísticas (sempre atualizar TODOS os cards quando há refresh)
     renderTempoMedioStats(stats);
     
-    if (window.Logger && (forceRefresh || mesSelecionado)) {
-      window.Logger.debug(`✅ Cards atualizados com filtro: ${mesSelecionado || 'nenhum'}`);
+    if (window.Logger && forceRefresh) {
+      window.Logger.debug(`✅ Cards atualizados`);
     }
     
-    // Renderizar gráficos principais (passar forceRefresh para controle de cache)
-    await renderTempoMedioCharts(stats, dataMes, mesSelecionado, forceRefresh);
+    // Renderizar gráficos principais (passar forceRefresh e filtros para controle de cache)
+    await renderTempoMedioCharts(stats, dataMes, mesSelecionado, forceRefresh, activeFilters);
     
     // Carregar dados secundários (AGUARDAR conclusão para garantir que TUDO seja atualizado)
-    // Quando há filtro ativo ou refresh forçado, todos os dados devem ser recarregados
-    await loadSecondaryTempoMedioData(mesSelecionado, forceRefresh).catch(err => {
+    // Quando há refresh forçado, todos os dados devem ser recarregados
+    await loadSecondaryTempoMedioData('', forceRefresh).catch(err => {
       console.error('❌ Erro ao carregar dados secundários de tempo médio:', err);
       if (window.Logger) {
         window.Logger.error('Erro ao carregar dados secundários:', err);
       }
     });
     
-    if (window.Logger && (forceRefresh || mesSelecionado)) {
-      window.Logger.debug(`✅ Todos os cards, gráficos e dados atualizados com sucesso (filtro: ${mesSelecionado || 'nenhum'})`);
+    if (window.Logger && forceRefresh) {
+      window.Logger.debug(`✅ Todos os cards, gráficos e dados atualizados com sucesso`);
     }
     
     if (window.Logger) {
@@ -135,107 +244,7 @@ async function loadTempoMedio(forceRefresh = false) {
   }
 }
 
-function popularDropdownMeses(dataMes) {
-  const select = document.getElementById('selectMesTempoMedio');
-  if (!select || !dataMes || dataMes.length === 0) return;
-  
-  // Limpar opções existentes (exceto "Todos os meses")
-  while (select.options.length > 1) {
-    select.remove(1);
-  }
-  
-  // Ordenar meses (mais recentes primeiro)
-  const mesesOrdenados = [...dataMes]
-    .map(m => ({ ym: m.month || m.ym || '', dias: m.dias || 0 }))
-    .filter(m => m.ym)
-    .sort((a, b) => b.ym.localeCompare(a.ym));
-  
-  // Adicionar opções
-  mesesOrdenados.forEach(m => {
-    const option = document.createElement('option');
-    option.value = m.ym;
-    const label = window.dateUtils?.formatMonthYear?.(m.ym) || m.ym;
-    option.textContent = `${label} (${m.dias.toFixed(1)} dias)`;
-    select.appendChild(option);
-  });
-  
-  // Adicionar listener para mudança de seleção
-  select.addEventListener('change', async (e) => {
-    const novoMes = e.target.value;
-    mesSelecionadoTempoMedio = novoMes;
-    
-    if (window.Logger) {
-      window.Logger.debug(`⏱️ Mês alterado para: ${novoMes || 'Todos os meses'}`);
-    }
-    
-    // Mostrar loading
-    const page = document.getElementById('page-tempo-medio');
-    if (page) {
-      const loadingOverlay = document.createElement('div');
-      loadingOverlay.id = 'tempoMedioLoading';
-      loadingOverlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
-      loadingOverlay.innerHTML = `
-        <div class="glass rounded-2xl p-8 text-center">
-          <div class="text-4xl mb-4 animate-spin">⏳</div>
-          <p class="text-slate-300">Atualizando TODOS os cards e gráficos...</p>
-        </div>
-      `;
-      document.body.appendChild(loadingOverlay);
-    }
-    
-    // Destruir todos os gráficos antes de recarregar
-    destroyAllTempoMedioCharts();
-    
-    // Invalidar TODOS os caches relacionados ao tempo médio para forçar recarregamento completo
-    if (window.dataStore) {
-      // Invalidar cache completo
-      window.dataStore.invalidate();
-      
-      // Invalidar especificamente todos os endpoints que podem ser afetados pelo filtro
-      const endpointsToClear = [
-        '/api/stats/average-time/stats',
-        '/api/stats/average-time',
-        '/api/stats/average-time/by-month',
-        '/api/stats/average-time/by-day',
-        '/api/stats/average-time/by-week',
-        '/api/stats/average-time/by-unit',
-        '/api/stats/average-time/by-month-unit'
-      ];
-      
-      // Limpar cache para cada endpoint (com e sem filtro de mês)
-      endpointsToClear.forEach(endpoint => {
-        if (typeof window.dataStore.clear === 'function') {
-          // Limpar sem filtro
-          window.dataStore.clear(endpoint);
-          // Limpar com filtro se houver
-          if (novoMes) {
-            window.dataStore.clear(`${endpoint}?meses=${encodeURIComponent(novoMes)}`);
-          }
-        }
-      });
-      
-      if (window.Logger) {
-        window.Logger.debug(`⏱️ Cache invalidado para ${endpointsToClear.length} endpoints`);
-      }
-    }
-    
-    try {
-      // Recarregar TUDO com forceRefresh=true para garantir atualização completa
-      await loadTempoMedio(true);
-    } catch (error) {
-      console.error('❌ Erro ao atualizar Tempo Médio:', error);
-      if (window.Logger) {
-        window.Logger.error('Erro ao atualizar Tempo Médio:', error);
-      }
-    } finally {
-      // Remover loading
-      const loadingOverlay = document.getElementById('tempoMedioLoading');
-      if (loadingOverlay) {
-        loadingOverlay.remove();
-      }
-    }
-  });
-}
+// Função removida - filtro por mês não está mais disponível
 
 function renderTempoMedioStats(stats) {
   if (!stats) {
@@ -315,24 +324,25 @@ function renderTempoMedioStats(stats) {
 
 async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', forceRefresh = false) {
   try {
-    // Carregar dados por órgão/unidade (com filtro de mês se selecionado)
-    const dataOrgaoUrl = mesSelecionado 
-      ? `/api/stats/average-time?meses=${encodeURIComponent(mesSelecionado)}`
-      : '/api/stats/average-time';
+    // Carregar dados por órgão/unidade (sem filtro de mês)
+    const dataOrgaoUrl = '/api/stats/average-time';
     
     const dataOrgao = await window.dataLoader?.load(dataOrgaoUrl, {
-        useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
+        useDataStore: !forceRefresh, // Não usar cache se há refresh forçado
         ttl: 5 * 60 * 1000,
         fallback: [] // Fallback para erro 502
       }) || [];
     
     // Gráfico principal: Tempo médio por órgão/unidade
     if (dataOrgao && Array.isArray(dataOrgao) && dataOrgao.length > 0) {
-      // Ordenar por tempo médio (maior primeiro) e pegar apenas os top 10
+      // Ordenar por tempo médio conforme ordenação selecionada
       const sortedData = [...dataOrgao].sort((a, b) => {
         const valueA = a.dias || a.average || a.media || 0;
         const valueB = b.dias || b.average || b.media || 0;
-        return valueB - valueA; // Ordem decrescente
+        // Usar ordenação selecionada
+        return ordenacaoTempoMedio === 'crescente' 
+          ? valueA - valueB  // Ordem crescente (menor primeiro)
+          : valueB - valueA;  // Ordem decrescente (maior primeiro)
       });
       
       const top10 = sortedData.slice(0, 10); // GARANTIR APENAS 10 ITENS
@@ -387,7 +397,7 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', force
           horizontal: true,
           colorIndex: 0,
           label: 'Tempo Médio (dias)',
-          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false,
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderWidth: 2,
@@ -490,14 +500,8 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', force
     
     // Gráfico por mês
     if (dataMes && Array.isArray(dataMes) && dataMes.length > 0) {
-      // Se houver mês selecionado, destacar no gráfico
-      let dadosParaGrafico = dataMes;
-      if (mesSelecionado) {
-        // Mostrar últimos 12 meses, mas destacar o selecionado
-        dadosParaGrafico = dataMes.slice(-12);
-      } else {
-        dadosParaGrafico = dataMes.slice(-12);
-      }
+      // Mostrar últimos 12 meses
+      const dadosParaGrafico = dataMes.slice(-12);
       
       const labels = dadosParaGrafico.map(m => {
         const ym = m.month || m.ym || '';
@@ -514,7 +518,7 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', force
           colorIndex: 0,
           fill: true,
           tension: 0.4,
-          onClick: false // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false,
         });
       }
     }
@@ -535,11 +539,14 @@ function renderTempoMedioRanking(dataOrgao) {
     return;
   }
   
-  // Ordenar por tempo médio (maior primeiro) e garantir apenas os top 10
+  // Ordenar por tempo médio conforme ordenação selecionada
   const sortedData = [...dataOrgao].sort((a, b) => {
     const valueA = a.dias || a.average || a.media || 0;
     const valueB = b.dias || b.average || b.media || 0;
-    return valueB - valueA; // Ordem decrescente
+    // Usar ordenação selecionada
+    return ordenacaoTempoMedio === 'crescente' 
+      ? valueA - valueB  // Ordem crescente (menor primeiro)
+      : valueB - valueA; // Ordem decrescente (maior primeiro)
   });
   
   const top10 = sortedData.slice(0, 10); // Garantir apenas 10 itens
@@ -601,13 +608,11 @@ function renderTempoMedioRanking(dataOrgao) {
 
 async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = false) {
   try {
-    // Carregar dados por dia (com filtro de mês se selecionado)
-    const dataDiaUrl = mesSelecionado 
-      ? `/api/stats/average-time/by-day?meses=${encodeURIComponent(mesSelecionado)}`
-      : '/api/stats/average-time/by-day';
+    // Carregar dados por dia (sem filtro de mês)
+    const dataDiaUrl = '/api/stats/average-time/by-day';
     
     const dataDia = await window.dataLoader?.load(dataDiaUrl, {
-      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
+      useDataStore: !forceRefresh, // Não usar cache se há refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];
@@ -629,18 +634,16 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = f
           colorIndex: 0,
           fill: true,
           tension: 0.4,
-          onClick: false // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false,
         });
       }
     }
     
-    // Carregar dados por semana (com filtro de mês se selecionado)
-    const dataSemanaUrl = mesSelecionado 
-      ? `/api/stats/average-time/by-week?meses=${encodeURIComponent(mesSelecionado)}`
-      : '/api/stats/average-time/by-week';
+    // Carregar dados por semana (sem filtro de mês)
+    const dataSemanaUrl = '/api/stats/average-time/by-week';
     
     const dataSemana = await window.dataLoader?.load(dataSemanaUrl, {
-      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
+      useDataStore: !forceRefresh, // Não usar cache se há refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];
@@ -665,7 +668,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = f
         await window.chartFactory?.createLineChart('chartTempoMedioSemana', labels, values, {
           label: 'Tempo Médio (dias)',
           colorIndex: 1,
-          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false,
           fill: true,
           tension: 0.4
         });
@@ -682,13 +685,11 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = f
       }
     }
     
-    // Carregar dados por unidade de cadastro (com filtro de mês se selecionado)
-    const dataUnidadeUrl = mesSelecionado 
-      ? `/api/stats/average-time/by-unit?meses=${encodeURIComponent(mesSelecionado)}`
-      : '/api/stats/average-time/by-unit';
+    // Carregar dados por unidade de cadastro (sem filtro de mês)
+    const dataUnidadeUrl = '/api/stats/average-time/by-unit';
     
     const dataUnidade = await window.dataLoader?.load(dataUnidadeUrl, {
-      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
+      useDataStore: !forceRefresh, // Não usar cache se há refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];
@@ -706,18 +707,16 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = f
           horizontal: true,
           colorIndex: 2,
           label: 'Tempo Médio (dias)',
-          onClick: false // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false,
         });
       }
     }
     
-    // Carregar dados por unidade e mês (com filtro de mês se selecionado)
-    const dataUnidadeMesUrl = mesSelecionado 
-      ? `/api/stats/average-time/by-month-unit?meses=${encodeURIComponent(mesSelecionado)}`
-      : '/api/stats/average-time/by-month-unit';
+    // Carregar dados por unidade e mês (sem filtro de mês)
+    const dataUnidadeMesUrl = '/api/stats/average-time/by-month-unit';
     
     const dataUnidadeMes = await window.dataLoader?.load(dataUnidadeMesUrl, {
-      useDataStore: !forceRefresh && !mesSelecionado, // Não usar cache se há filtro ou refresh forçado
+      useDataStore: !forceRefresh, // Não usar cache se há refresh forçado
       ttl: 5 * 60 * 1000,
       fallback: [] // Fallback para erro 502
     }) || [];
@@ -749,7 +748,7 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = f
         await window.chartFactory?.createLineChart('chartTempoMedioUnidadeMes', labels, datasets, {
           fill: false,
           tension: 0.4,
-          onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false,
           legendContainer: 'legendTempoMedioUnidadeMes'
         });
       }
@@ -760,6 +759,160 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = f
       window.Logger.error('Erro ao carregar dados secundários de tempo médio:', error);
     }
   }
+}
+
+/**
+ * Atualizar ordenação do ranking
+ */
+function atualizarOrdenacaoTempoMedio(novaOrdenacao) {
+  ordenacaoTempoMedio = novaOrdenacao;
+  
+  // Atualizar botões visuais
+  const btnDecrescente = document.getElementById('btnOrdenacaoDecrescente');
+  const btnCrescente = document.getElementById('btnOrdenacaoCrescente');
+  
+  if (btnDecrescente && btnCrescente) {
+    if (novaOrdenacao === 'decrescente') {
+      btnDecrescente.className = 'px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 active:scale-95';
+      btnCrescente.className = 'px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 bg-slate-700/30 text-slate-400 border border-slate-600/30 hover:bg-slate-600/40 hover:text-slate-300 active:scale-95';
+    } else {
+      btnCrescente.className = 'px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 active:scale-95';
+      btnDecrescente.className = 'px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 bg-slate-700/30 text-slate-400 border border-slate-600/30 hover:bg-slate-600/40 hover:text-slate-300 active:scale-95';
+    }
+  }
+  
+  // Recarregar dados para aplicar nova ordenação
+  loadTempoMedio(false).catch(err => {
+    console.error('❌ Erro ao recarregar com nova ordenação:', err);
+  });
+}
+
+/**
+ * Inicializar event listeners para botões de ordenação
+ */
+function inicializarBotoesOrdenacaoTempoMedio() {
+  const btnDecrescente = document.getElementById('btnOrdenacaoDecrescente');
+  const btnCrescente = document.getElementById('btnOrdenacaoCrescente');
+  
+  if (btnDecrescente) {
+    btnDecrescente.addEventListener('click', () => {
+      atualizarOrdenacaoTempoMedio('decrescente');
+    });
+  }
+  
+  if (btnCrescente) {
+    btnCrescente.addEventListener('click', () => {
+      atualizarOrdenacaoTempoMedio('crescente');
+    });
+  }
+  
+  // Inicializar estado visual
+  atualizarOrdenacaoTempoMedio(ordenacaoTempoMedio);
+}
+
+/**
+ * Popular select de meses
+ */
+async function popularSelectMesesTempoMedio() {
+  const selectMes = document.getElementById('filtroMesTempoMedio');
+  if (!selectMes) return;
+  
+  try {
+    // Carregar dados mensais para obter meses disponíveis
+    const dataMes = await window.dataLoader?.load('/api/stats/average-time/by-month', {
+      useDataStore: true,
+      ttl: 10 * 60 * 1000,
+      fallback: []
+    }) || [];
+    
+    // Limpar opções existentes (exceto "Todos os meses")
+    while (selectMes.children.length > 1) {
+      selectMes.removeChild(selectMes.lastChild);
+    }
+    
+    // Adicionar meses disponíveis (ordenados do mais recente para o mais antigo)
+    const meses = dataMes
+      .map(d => d.month || d.ym || d._id)
+      .filter(m => m)
+      .sort()
+      .reverse();
+    
+    meses.forEach(mes => {
+      const option = document.createElement('option');
+      option.value = mes;
+      
+      // Formatar para nome do mês (ex: "Janeiro 2025")
+      let nomeMes = mes;
+      try {
+        if (mes && mes.includes('-')) {
+          const [ano, mesNum] = mes.split('-');
+          const mesesNomes = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+          ];
+          const mesIndex = parseInt(mesNum) - 1;
+          if (mesIndex >= 0 && mesIndex < 12) {
+            nomeMes = `${mesesNomes[mesIndex]} ${ano}`;
+          }
+        }
+      } catch (e) {
+        // Se der erro, usar formatação padrão
+        nomeMes = window.dateUtils?.formatMonthYearShort(mes) || mes;
+      }
+      
+      option.textContent = nomeMes;
+      selectMes.appendChild(option);
+    });
+    
+    // Restaurar seleção anterior se existir
+    if (filtroMesTempoMedio) {
+      selectMes.value = filtroMesTempoMedio;
+    }
+  } catch (error) {
+    console.error('❌ Erro ao popular select de meses:', error);
+  }
+}
+
+
+/**
+ * Inicializar listeners de filtros
+ */
+function inicializarFiltrosTempoMedio() {
+  const selectMes = document.getElementById('filtroMesTempoMedio');
+  
+  // Listener para filtro de mês
+  if (selectMes) {
+    selectMes.addEventListener('change', async (e) => {
+      filtroMesTempoMedio = e.target.value || '';
+      
+      if (window.Logger) {
+        window.Logger.debug(`⏱️ Filtro de mês alterado para: ${filtroMesTempoMedio || 'Todos'}`);
+      }
+      
+      // Invalidar cache
+      if (window.dataStore && typeof window.dataStore.clear === 'function') {
+        window.dataStore.clear('/api/stats/average-time');
+        window.dataStore.clear('/api/stats/average-time/stats');
+      }
+      
+      // Recarregar dados
+      await loadTempoMedio(true);
+    });
+  }
+  
+  // Popular select de meses
+  popularSelectMesesTempoMedio();
+}
+
+// Inicializar botões quando a página carregar
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    inicializarBotoesOrdenacaoTempoMedio();
+    inicializarFiltrosTempoMedio();
+  });
+} else {
+  inicializarBotoesOrdenacaoTempoMedio();
+  inicializarFiltrosTempoMedio();
 }
 
 // Conectar ao sistema global de filtros

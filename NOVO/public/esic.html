@@ -7,6 +7,10 @@
     <link rel="icon" type="image/png" href="/dc-logo.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <!-- Google Fonts - Rajdhani (mesma fonte do painel de login) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
       :root {
         --bg: #0b1020;
@@ -17,10 +21,21 @@
         --success: #34d399;
         --danger: #fb7185;
       }
+      /* Aplicar fonte Rajdhani globalmente */
+      * {
+        font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      
       body { 
+        font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: radial-gradient(1200px 600px at top left, rgba(34,211,238,0.08), transparent 60%), 
                     radial-gradient(1200px 600px at bottom right, rgba(167,139,250,0.08), transparent 60%), 
                     var(--bg); 
+      }
+      
+      /* Garantir que inputs, buttons, selects e textareas também usem Rajdhani */
+      input, button, select, textarea, label, span, div, p, h1, h2, h3, h4, h5, h6, a, li, td, th {
+        font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       }
       .glass { 
         background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); 
@@ -137,7 +152,7 @@
           </div>
         </section>
         
-        <section id="page-overview" style="display: none;">
+        <section id="page-esic-overview" style="display: none;">
           <div class="glass rounded-2xl p-6 mb-6">
             <h2 class="neon text-2xl font-bold mb-4">📊 Visão Geral - e-SIC</h2>
             <div id="esicStats" class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -179,44 +194,51 @@
           </div>
         </section>
         
-        <section id="page-status" style="display: none;">
+        <section id="page-esic-status" style="display: none;">
           <div class="glass rounded-2xl p-6">
             <h2 class="neon text-2xl font-bold mb-4">📈 Solicitações por Status</h2>
+            <div id="esic-status-ranking" class="mb-6"></div>
+            <div id="esic-status-stats" class="mb-6"></div>
             <canvas id="esic-chart-status-detail"></canvas>
           </div>
         </section>
         
-        <section id="page-tipo-informacao" style="display: none;">
+        <section id="page-esic-tipo-informacao" style="display: none;">
           <div class="glass rounded-2xl p-6">
             <h2 class="neon text-2xl font-bold mb-4">📑 Solicitações por Tipo de Informação</h2>
+            <div id="esic-tipo-ranking" class="mb-6"></div>
             <canvas id="esic-chart-tipo-informacao-detail"></canvas>
           </div>
         </section>
         
-        <section id="page-responsavel" style="display: none;">
+        <section id="page-esic-responsavel" style="display: none;">
           <div class="glass rounded-2xl p-6">
             <h2 class="neon text-2xl font-bold mb-4">👤 Solicitações por Responsável</h2>
+            <div id="esic-responsavel-ranking" class="mb-6"></div>
             <canvas id="esic-chart-responsavel-detail"></canvas>
           </div>
         </section>
         
-        <section id="page-unidade" style="display: none;">
+        <section id="page-esic-unidade" style="display: none;">
           <div class="glass rounded-2xl p-6">
             <h2 class="neon text-2xl font-bold mb-4">🏢 Solicitações por Unidade</h2>
+            <div id="esic-unidade-ranking" class="mb-6"></div>
             <canvas id="esic-chart-unidade-detail"></canvas>
           </div>
         </section>
         
-        <section id="page-canal" style="display: none;">
+        <section id="page-esic-canal" style="display: none;">
           <div class="glass rounded-2xl p-6">
             <h2 class="neon text-2xl font-bold mb-4">📞 Solicitações por Canal</h2>
+            <div id="esic-canal-ranking" class="mb-6"></div>
             <canvas id="esic-chart-canal-detail"></canvas>
           </div>
         </section>
         
-        <section id="page-mensal" style="display: none;">
+        <section id="page-esic-mensal" style="display: none;">
           <div class="glass rounded-2xl p-6">
             <h2 class="neon text-2xl font-bold mb-4">📅 Análise Mensal</h2>
+            <div id="esic-mensal-stats" class="mb-6"></div>
             <canvas id="esic-chart-mensal-detail"></canvas>
           </div>
         </section>

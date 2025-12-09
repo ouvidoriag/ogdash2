@@ -16,7 +16,9 @@ export const FIELD_MAP = {
   'Assunto': 'assunto',
   'Secretaria': 'orgaos',
   'Orgaos': 'orgaos',
+  'Orgao': 'orgaos', // Alias adicional
   'UnidadeCadastro': 'unidadeCadastro',
+  'Unidade': 'unidadeCadastro', // Alias para compatibilidade
   'Setor': 'unidadeCadastro',
   'Bairro': 'endereco',
   'Canal': 'canal',

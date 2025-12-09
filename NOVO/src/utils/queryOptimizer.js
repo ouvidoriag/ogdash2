@@ -12,6 +12,21 @@ import { getDataCriacao } from './dateUtils.js';
 import Record from '../models/Record.model.js';
 
 /**
+ * Sanitizar string para garantir UTF-8 válido
+ * Remove caracteres inválidos que podem causar erro no MongoDB
+ */
+function sanitizeUTF8(str) {
+  if (typeof str !== 'string') return str;
+  try {
+    // Tentar decodificar e recodificar para garantir UTF-8 válido
+    return Buffer.from(str, 'utf8').toString('utf8');
+  } catch (error) {
+    // Se falhar, remover caracteres não-ASCII inválidos
+    return str.replace(/[^\x00-\x7F]/g, '').trim();
+  }
+}
+
+/**
  * Obter filtro de data otimizado (últimos 24 meses)
  * @deprecated Para Prisma - use getDateFilterMongo() para MongoDB
  */
@@ -87,13 +102,15 @@ export async function optimizedGroupBy(prisma, field, where = {}, options = {}) 
       pipeline.push({ $limit: limit });
     }
     
-    const results = await Record.aggregate(pipeline);
+    const results = await Record.aggregate(pipeline).allowDiskUse(true);
     
-    // Mapear resultados
-    const mapped = results.map(r => ({
-      key: r._id ?? 'Não informado',
-      count: r.count
-    }));
+    // Mapear resultados e sanitizar strings
+    const mapped = results
+      .filter(r => r._id !== null && r._id !== undefined)
+      .map(r => ({
+        key: sanitizeUTF8(String(r._id ?? 'Não informado')),
+        count: r.count || 0
+      }));
     
     return mapped;
   } catch (error) {
@@ -134,11 +151,17 @@ async function fallbackGroupBy(prisma, field, where = {}, options = {}) {
     .limit(limit || 100000)
     .lean();
   
-  // Agrupar em memória
+  // Agrupar em memória com sanitização
   const map = new Map();
   for (const row of rows) {
-    const key = row[field] ?? 'Não informado';
-    map.set(key, (map.get(key) || 0) + 1);
+    try {
+      const rawKey = row[field] ?? 'Não informado';
+      const key = sanitizeUTF8(String(rawKey));
+      map.set(key, (map.get(key) || 0) + 1);
+    } catch (error) {
+      // Ignorar registros com erro de encoding
+      continue;
+    }
   }
   
   const result = Array.from(map.entries())
@@ -178,28 +201,45 @@ export async function optimizedGroupByMonth(prisma, where = {}, options = {}) {
     }
     
     // Pipeline MongoDB para agrupar por mês
+    // Usar pipeline mais seguro que trata strings inválidas
     const pipeline = [
       { $match: filter },
       {
         $project: {
+          // Extrair mês de forma segura, evitando $dateFromString que pode falhar com UTF-8 inválido
           month: {
             $cond: {
-              if: { $ne: ['$dataCriacaoIso', null] },
+              if: { 
+                $and: [
+                  { $ne: ['$dataCriacaoIso', null] },
+                  { $ne: ['$dataCriacaoIso', ''] },
+                  { $gt: [{ $strLenCP: { $ifNull: ['$dataCriacaoIso', ''] } }, 6] }
+                ]
+              },
               then: { $substr: ['$dataCriacaoIso', 0, 7] },
               else: {
                 $cond: {
-                  if: { $ne: ['$dataDaCriacao', null] },
+                  if: { 
+                    $and: [
+                      { $ne: ['$dataDaCriacao', null] },
+                      { $ne: ['$dataDaCriacao', ''] },
+                      { $gt: [{ $strLenCP: { $ifNull: ['$dataDaCriacao', ''] } }, 6] }
+                    ]
+                  },
                   then: {
-                    $substr: [
-                      {
-                        $dateToString: {
-                          date: { $dateFromString: { dateString: '$dataDaCriacao' } },
-                          format: '%Y-%m'
+                    // Extrair YYYY-MM diretamente da string usando substr se possível
+                    $cond: {
+                      if: { $eq: [{ $type: '$dataDaCriacao' }, 'string'] },
+                      then: {
+                        $cond: {
+                          // Se começa com YYYY-MM, usar substr
+                          if: { $regexMatch: { input: '$dataDaCriacao', regex: /^\d{4}-\d{2}/ } },
+                          then: { $substr: ['$dataDaCriacao', 0, 7] },
+                          else: null
                         }
                       },
-                      0,
-                      7
-                    ]
+                      else: null
+                    }
                   },
                   else: null
                 }
@@ -208,22 +248,35 @@ export async function optimizedGroupByMonth(prisma, where = {}, options = {}) {
           }
         }
       },
-      { $match: { month: { $ne: null, $exists: true } } },
+      { $match: { month: { $ne: null, $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}$/ } } },
       { $group: { _id: '$month', count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
       { $limit: limit }
     ];
     
-    const results = await Record.aggregate(pipeline);
+    const results = await Record.aggregate(pipeline).allowDiskUse(true);
     
-    return results.map(r => ({
-      ym: r._id,
-      count: r.count
-    }));
+    // Sanitizar resultados e filtrar inválidos
+    return results
+      .filter(r => r._id && typeof r._id === 'string' && r._id.match(/^\d{4}-\d{2}$/))
+      .map(r => ({
+        ym: sanitizeUTF8(r._id),
+        count: r.count || 0
+      }))
+      .filter(r => r.ym && r.ym.length === 7);
   } catch (error) {
     // Fallback: se aggregation falhar, usar método tradicional
     console.warn(`⚠️ groupByMonth falhou, usando fallback:`, error.message);
-    return await fallbackGroupByMonth(prisma, where, { ...options, dateFilter });
+    if (error.message && error.message.includes('UTF-8')) {
+      console.warn('⚠️ Erro de encoding UTF-8 detectado, usando fallback seguro');
+    }
+    try {
+      return await fallbackGroupByMonth(prisma, where, { ...options, dateFilter });
+    } catch (fallbackError) {
+      console.error('❌ Fallback também falhou:', fallbackError.message);
+      // Retornar array vazio em vez de quebrar
+      return [];
+    }
   }
 }
 
@@ -263,11 +316,28 @@ async function fallbackGroupByMonth(prisma, where = {}, options = {}) {
   
   const monthMap = new Map();
   for (const r of rows) {
-    // Usar getDataCriacao que já tem fallback para dados da planilha
-    const dataCriacao = getDataCriacao(r);
-    if (!dataCriacao) continue;
-    const mes = dataCriacao.slice(0, 7); // YYYY-MM
-    monthMap.set(mes, (monthMap.get(mes) || 0) + 1);
+    try {
+      // Usar getDataCriacao que já tem fallback para dados da planilha
+      const dataCriacao = getDataCriacao(r);
+      if (!dataCriacao) continue;
+      
+      // Sanitizar string antes de processar
+      const dataCriacaoSanitizada = sanitizeUTF8(String(dataCriacao));
+      if (!dataCriacaoSanitizada || dataCriacaoSanitizada.length < 7) continue;
+      
+      const mes = dataCriacaoSanitizada.slice(0, 7); // YYYY-MM
+      
+      // Validar formato YYYY-MM
+      if (!mes.match(/^\d{4}-\d{2}$/)) continue;
+      
+      monthMap.set(mes, (monthMap.get(mes) || 0) + 1);
+    } catch (error) {
+      // Ignorar registros com erro de encoding
+      if (window.Logger) {
+        window.Logger.debug('Registro ignorado por erro de encoding:', error.message);
+      }
+      continue;
+    }
   }
   
   return Array.from(monthMap.entries())

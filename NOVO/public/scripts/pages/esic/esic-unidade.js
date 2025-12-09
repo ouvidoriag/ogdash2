@@ -58,7 +58,7 @@ async function loadEsicUnidade() {
       await window.chartFactory?.createBarChart('esic-chart-unidade-detail', labels, values, {
         horizontal: true,
         colorIndex: 3,
-        onClick: false
+        onClick: false,
       });
     }
     
@@ -112,4 +112,3 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
 }
 
 window.loadEsicUnidade = loadEsicUnidade;
-export default loadEsicUnidade;

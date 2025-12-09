@@ -28,6 +28,7 @@ import geographicRoutes from './geographic.js';
 import zeladoriaRoutes from './zeladoria.js';
 import esicRoutes from './esic.js';
 import notificationRoutes from './notifications.js';
+import dataSyncRoutes from './dataSync.js';
 import colabRoutes from './colab.js';
 import batchRoutes from './batch.js';
 import metricsRoutes from './metrics.js';
@@ -50,6 +51,7 @@ export default function apiRoutes(prisma, getMongoClient) {
     zeladoria: '/api/zeladoria/*',
     esic: '/api/esic/*',
     notifications: '/api/notifications/*',
+    dataSync: '/api/data-sync/*',
     colab: '/api/colab/*',
     batch: '/api/batch/*',
     metrics: '/api/metrics/*'
@@ -90,6 +92,9 @@ export default function apiRoutes(prisma, getMongoClient) {
   // Rotas de Notificações - Sistema de notificações por email
   // REFATORAÇÃO: Mongoose (sem prisma)
   router.use('/notifications', notificationRoutes());
+  
+  // Rotas de Sincronização de Dados - Atualização automática do Google Sheets
+  router.use('/data-sync', dataSyncRoutes());
   
   // Rotas de Colab - Integração com API do Colab
   router.use('/colab', colabRoutes());

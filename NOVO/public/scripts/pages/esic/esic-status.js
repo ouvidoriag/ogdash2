@@ -62,7 +62,7 @@ async function loadEsicStatus() {
     await window.chartFactory?.createBarChart('esic-chart-status-detail', labels, values, {
       horizontal: false,
       colorIndex: 0,
-      onClick: false
+      onClick: false,
     });
     
     // Renderizar ranking de status
@@ -176,4 +176,3 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
 }
 
 window.loadEsicStatus = loadEsicStatus;
-export default loadEsicStatus;

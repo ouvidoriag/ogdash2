@@ -109,7 +109,7 @@ async function renderTiposChart(tipos) {
     field: 'tipoDeManifestacao',
     colorIndex: 4,
     label: 'Quantidade',
-    onClick: false // FILTROS DE CLIQUE DESABILITADOS
+    onClick: false
   });
 }
 

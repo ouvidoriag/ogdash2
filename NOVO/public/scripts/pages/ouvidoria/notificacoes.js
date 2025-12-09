@@ -111,7 +111,7 @@ function renderStats(stats, ultimaExecucao) {
 
     window.chartFactory.createDoughnutChart('notificacoes-chart-tipo', tipos, valores, {
       colorIndex: 0,
-      onClick: false
+      onClick: false,
     });
   }
 

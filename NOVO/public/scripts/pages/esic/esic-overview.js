@@ -150,4 +150,3 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
   window.chartCommunication.createPageFilterListener('page-esic-overview', loadEsicOverview, 500);
 }
 
-export default loadEsicOverview;

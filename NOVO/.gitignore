@@ -82,6 +82,13 @@ NOVO/data/*.csv
 *.key
 credentials.json
 google-credentials.json
+gmail-credentials.json
+gmail-token.json
+config/*.json
+NOVO/config/*.json
 
 # Vitest
 .vitest/
+
+# GitHub Workflows Credentials
+.github/workflows/credentials.json

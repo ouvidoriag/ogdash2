@@ -196,12 +196,33 @@ async function loadOverview(forceRefresh = false) {
     }
     
     // Extrair dados
+    // CORREÇÃO: Mapear diferentes formatos de resposta da API
     const summary = {
-      total: dashboardData.totalManifestations || 0,
-      last7: dashboardData.last7Days || 0,
-      last30: dashboardData.last30Days || 0,
-      statusCounts: dashboardData.manifestationsByStatus || []
+      total: dashboardData.totalManifestations || dashboardData.total || dashboardData.count || 0,
+      last7: dashboardData.last7Days || dashboardData.last7 || dashboardData.last_7_days || 0,
+      last30: dashboardData.last30Days || dashboardData.last30 || dashboardData.last_30_days || 0,
+      statusCounts: dashboardData.manifestationsByStatus || dashboardData.byStatus || dashboardData.status || []
     };
+    
+    // Debug: Log dos dados recebidos para identificar problema
+    if (window.Logger) {
+      window.Logger.debug('📊 Dados do summary extraídos:', {
+        total: summary.total,
+        last7: summary.last7,
+        last30: summary.last30,
+        dashboardDataKeys: Object.keys(dashboardData).slice(0, 20),
+        totalManifestations: dashboardData.totalManifestations,
+        total: dashboardData.total,
+        count: dashboardData.count
+      });
+    } else {
+      console.log('📊 Dados do summary:', {
+        total: summary.total,
+        last7: summary.last7,
+        last30: summary.last30,
+        dashboardDataKeys: Object.keys(dashboardData).slice(0, 20)
+      });
+    }
     
     const byMonth = dashboardData.manifestationsByMonth || [];
     const byDay = dashboardData.manifestationsByDay || [];

@@ -27,7 +27,7 @@ async function loadTipo() {
     await window.chartFactory?.createDoughnutChart('chartTipo', labels, values, {
       type: 'pie',
       field: 'tipoDeManifestacao',
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       legendContainer: 'legendTipo'
     });
     

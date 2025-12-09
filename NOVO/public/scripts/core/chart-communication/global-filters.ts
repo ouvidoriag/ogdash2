@@ -335,7 +335,6 @@
      * CROSSFILTER MULTI-DIMENSIONAL: Mostra todos os filtros ativos com pills removíveis
      */
     updateFilterIndicator(): void {
-      // FILTROS DE CLIQUE DESABILITADOS: Não mostrar banner de filtros
       // Ocultar banner se existir
       const indicator = document.getElementById('filterIndicator');
       if (indicator) {

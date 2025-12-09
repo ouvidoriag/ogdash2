@@ -28,6 +28,7 @@ import { initializeCache } from './config/cache.js';
 import { initializeGemini } from './utils/geminiHelper.js';
 import { iniciarScheduler } from './services/email-notifications/scheduler.js';
 import { iniciarCronVencimentos } from './cron/vencimentos.cron.js';
+import { iniciarSchedulerAtualizacao } from './services/data-sync/scheduler.js';
 import { requireAuth } from './api/middleware/authMiddleware.js';
 import { startChangeStreamWatcher } from './services/changeStreamWatcher.js';
 
@@ -392,6 +393,16 @@ process.on('SIGTERM', async () => {
       logger.info('🔔 Cron de vencimentos automático iniciado');
     } catch (error) {
       logger.warn('⚠️ Erro ao iniciar cron de vencimentos:', error.message);
+    }
+    
+    // ============================================
+    // Inicializar scheduler de atualização automática de dados
+    // ============================================
+    try {
+      iniciarSchedulerAtualizacao();
+      logger.info('📊 Scheduler de atualização automática de dados iniciado (execução diária às 10h)');
+    } catch (error) {
+      logger.warn('⚠️ Erro ao iniciar scheduler de atualização de dados:', error.message);
     }
     
     // ============================================

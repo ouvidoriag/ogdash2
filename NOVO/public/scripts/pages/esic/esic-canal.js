@@ -58,7 +58,7 @@ async function loadEsicCanal() {
       await window.chartFactory?.createBarChart('esic-chart-canal-detail', labels, values, {
         horizontal: true,
         colorIndex: 4,
-        onClick: false
+        onClick: false,
       });
     }
     
@@ -112,4 +112,3 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
 }
 
 window.loadEsicCanal = loadEsicCanal;
-export default loadEsicCanal;

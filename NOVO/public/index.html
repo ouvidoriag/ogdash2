@@ -16,6 +16,10 @@
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- Google Fonts - Rajdhani (mesma fonte do painel de login) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
       :root {
         --bg: #0b1020;
@@ -53,12 +57,23 @@
         --light-soft: #eef2ff;
       }
       
+      /* Aplicar fonte Rajdhani globalmente */
+      * {
+        font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      
       body { 
+        font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: radial-gradient(1200px 600px at top left, rgba(34,211,238,0.08), transparent 60%), 
                     radial-gradient(1200px 600px at bottom right, rgba(167,139,250,0.08), transparent 60%), 
                     var(--bg);
         color: var(--text-primary);
         transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      
+      /* Garantir que inputs, buttons, selects e textareas também usem Rajdhani */
+      input, button, select, textarea, label, span, div, p, h1, h2, h3, h4, h5, h6, a, li, td, th {
+        font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       }
       
       body.light-mode {
@@ -682,6 +697,7 @@
             <div data-page="orgao-mes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏢 Por Órgão e Mês</div>
             <div data-page="tempo-medio" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏱️ Tempo Médio</div>
             <div data-page="vencimento" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏰ Vencimento</div>
+            <div data-page="protocolos-demora" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏳ Protocolos com Maior Demora</div>
             <div data-page="notificacoes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📧 Notificações de Email</div>
             <div data-page="tema" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📑 Por Tema</div>
             <div data-page="assunto" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📝 Por Assunto</div>
@@ -953,21 +969,21 @@
             <div class="grid grid-cols-12 gap-6">
               <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
                 <h3 class="font-semibold text-cyan-300 mb-3">🏛️ Top Órgãos</h3>
-                <div class="text-xs text-slate-400 mb-3">Top 10 órgãos com mais manifestações</div>
+                <div class="text-xs text-slate-400 mb-3">Top 5 órgãos com mais manifestações</div>
                 <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
                   <canvas id="chartTopOrgaos"></canvas>
                 </div>
               </div>
               <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
                 <h3 class="font-semibold text-emerald-300 mb-3">📑 Top Temas</h3>
-                <div class="text-xs text-slate-400 mb-3">Top 10 temas mais frequentes</div>
+                <div class="text-xs text-slate-400 mb-3">Top 5 temas mais frequentes</div>
                 <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
                   <canvas id="chartTopTemas"></canvas>
                 </div>
               </div>
               <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
                 <h3 class="font-semibold text-indigo-300 mb-3">📍 Top Unidades de Cadastro</h3>
-                <div class="text-xs text-slate-400 mb-3">Top 10 unidades com mais registros</div>
+                <div class="text-xs text-slate-400 mb-3">Top 5 unidades com mais registros</div>
                 <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
                   <canvas id="chartUnidadesCadastro"></canvas>
                 </div>
@@ -1184,6 +1200,21 @@
               <div class="text-xs text-slate-400">Análise detalhada de tempo de resposta</div>
             </div>
             
+            <!-- Filtros -->
+            <div class="mb-4">
+              <div>
+                <label for="filtroMesTempoMedio" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesTempoMedio" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+            </div>
+            
             <!-- KPIs Principais -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
               <div class="glass rounded-xl p-4 border border-cyan-500/20">
@@ -1228,10 +1259,26 @@
               </div>
             </div>
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5 border border-violet-500/20 shadow-lg shadow-violet-500/10">
-              <h3 class="font-bold text-lg mb-4 text-violet-400 flex items-center gap-2">
-                <span class="text-2xl">🏆</span>
-                Ranking
-              </h3>
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-lg text-violet-400 flex items-center gap-2">
+                  <span class="text-2xl">🏆</span>
+                  Ranking
+                </h3>
+                <div class="flex items-center gap-2">
+                  <button 
+                    id="btnOrdenacaoDecrescente" 
+                    class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 active:scale-95"
+                    title="Maior tempo primeiro (quem mais demora)">
+                    ⬇️ Decrescente
+                  </button>
+                  <button 
+                    id="btnOrdenacaoCrescente" 
+                    class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 bg-slate-700/30 text-slate-400 border border-slate-600/30 hover:bg-slate-600/40 hover:text-slate-300 active:scale-95"
+                    title="Menor tempo primeiro (quem é mais rápido)">
+                    ⬆️ Crescente
+                  </button>
+                </div>
+              </div>
               <div id="listaTempoMedio" class="space-y-2 max-h-[500px] overflow-y-auto custom-scrollbar">
                 <div class="text-center text-slate-400 py-4">Carregando...</div>
               </div>
@@ -1368,6 +1415,57 @@
               </p>
             </div>
             <div id="tableVencimento" class="overflow-x-auto">
+              <div class="text-center py-8 text-slate-400">
+                <div class="text-2xl mb-2 animate-spin">⏳</div>
+                <div>Carregando protocolos...</div>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Página: Protocolos com Maior Demora -->
+        <section id="page-protocolos-demora" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-xl font-bold">⏳ Protocolos com Maior Tempo de Demora</h2>
+              <div class="text-xs text-slate-400">Top 10 protocolos com maior tempo de demora</div>
+            </div>
+            
+            <!-- KPIs Principais -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
+              <div class="glass rounded-xl p-4 border border-red-500/20">
+                <div class="text-xs text-slate-400 mb-1">Total de Protocolos</div>
+                <div id="kpiTotalDemora" class="text-2xl font-bold text-red-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">com maior demora</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-orange-500/20">
+                <div class="text-xs text-slate-400 mb-1">Maior Demora</div>
+                <div id="kpiMaiorDemora" class="text-2xl font-bold text-orange-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">dias</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-yellow-500/20">
+                <div class="text-xs text-slate-400 mb-1">Média de Demora</div>
+                <div id="kpiMediaDemora" class="text-2xl font-bold text-yellow-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">dias</div>
+              </div>
+              <div class="glass rounded-xl p-4 border border-amber-500/20">
+                <div class="text-xs text-slate-400 mb-1">Não Concluídos</div>
+                <div id="kpiNaoConcluidos" class="text-2xl font-bold text-amber-300">—</div>
+                <div class="text-xs text-slate-500 mt-1">protocolos</div>
+              </div>
+            </div>
+          </header>
+          
+          <div class="glass rounded-2xl p-6">
+            <div class="mb-4">
+              <h3 class="font-semibold text-lg text-red-400 mb-2">Top 10 Protocolos com Maior Tempo de Demora</h3>
+              <p class="text-sm text-slate-400">
+                Protocolos ordenados por tempo de demora (em dias).
+                <br>
+                <span class="text-xs">Tempo de demora = Data atual/conclusão - Data de criação</span>
+              </p>
+            </div>
+            <div id="tableProtocolosDemora" class="overflow-x-auto">
               <div class="text-center py-8 text-slate-400">
                 <div class="text-2xl mb-2 animate-spin">⏳</div>
                 <div>Carregando protocolos...</div>
@@ -1579,6 +1677,21 @@
               <div class="text-xs text-slate-400">Análise detalhada por tema</div>
             </div>
             
+            <!-- Filtros -->
+            <div class="mb-4">
+              <div>
+                <label for="filtroMesTema" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesTema" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+            </div>
+            
             <!-- KPIs Principais -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               <div class="glass rounded-xl p-4 border border-cyan-500/20">
@@ -1648,6 +1761,21 @@
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">📝 Manifestações por Assunto</h2>
               <div class="text-xs text-slate-400">Análise detalhada por assunto</div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="mb-4">
+              <div>
+                <label for="filtroMesAssunto" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesAssunto" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
             </div>
             
             <!-- KPIs Principais -->
@@ -1764,6 +1892,21 @@
               <div class="text-xs text-slate-400">Análise por responsável</div>
             </div>
             
+            <!-- Filtros -->
+            <div class="mb-4">
+              <div>
+                <label for="filtroMesResponsavel" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesResponsavel" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+            </div>
+            
             <!-- KPIs Principais -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               <div class="glass rounded-xl p-4 border border-cyan-500/20">
@@ -1804,6 +1947,21 @@
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">📞 Canais de Atendimento</h2>
               <div class="text-xs text-slate-400">Análise por canal de entrada</div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="mb-4">
+              <div>
+                <label for="filtroMesCanal" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesCanal" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
             </div>
             
             <!-- KPIs Principais -->
@@ -1847,6 +2005,21 @@
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">⚡ Prioridades das Demandas</h2>
               <div class="text-xs text-slate-400">Análise por nível de prioridade</div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="mb-4">
+              <div>
+                <label for="filtroMesPrioridade" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesPrioridade" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
             </div>
             
             <!-- KPIs Principais -->
@@ -1981,6 +2154,21 @@
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">👤 Por Cadastrante / Unidade</h2>
               <div class="text-xs text-slate-400">Análise por servidor e unidade de cadastro</div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="mb-4">
+              <div>
+                <label for="filtroMesCadastrante" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesCadastrante" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
             </div>
             
             <!-- KPIs Principais -->
@@ -3503,10 +3691,12 @@
     <script src="/scripts/core/chart-factory.js" defer></script>
     <script src="/scripts/modules/data-tables.js" defer></script>
     <!-- Páginas Ouvidoria -->
+    <script src="/scripts/core/month-filter-helper.js"></script>
     <script src="/scripts/pages/ouvidoria/overview.js" defer></script>
     <script src="/scripts/pages/ouvidoria/orgao-mes.js" defer></script>
     <script src="/scripts/pages/ouvidoria/tempo-medio.js" defer></script>
     <script src="/scripts/pages/ouvidoria/vencimento.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/protocolos-demora.js" defer></script>
     <script src="/scripts/pages/ouvidoria/notificacoes.js" defer></script>
     <script src="/scripts/pages/filtros-avancados.js" defer></script>
     <script src="/scripts/pages/ouvidoria/tema.js" defer></script>

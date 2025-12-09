@@ -4,6 +4,8 @@
  * Recriada com estrutura otimizada
  */
 
+let filtroMesCadastrante = '';
+
 async function loadCadastrante() {
   if (window.Logger) {
     window.Logger.debug('👤 loadCadastrante: Iniciando');
@@ -15,24 +17,100 @@ async function loadCadastrante() {
   }
   
   try {
-    const [servidores, uacs, dataMensal, summary] = await Promise.all([
-      window.dataLoader?.load('/api/aggregate/by-server', {
+    // Coletar filtros de mês
+    const filtrosMes = window.MonthFilterHelper?.coletarFiltrosMes?.('filtroMesCadastrante') || [];
+    
+    // Combinar com filtros globais
+    let activeFilters = filtrosMes;
+    if (window.chartCommunication) {
+      const globalFilters = window.chartCommunication.filters?.filters || [];
+      activeFilters = [...globalFilters, ...filtrosMes];
+    }
+    
+    // Aplicar filtros se houver
+    let servidores = [], uacs = [], dataMensal = [], summary = { total: 0 };
+    let filtrosAplicados = false;
+    
+    if (activeFilters.length > 0) {
+      filtrosAplicados = true;
+      try {
+        const filterRequest = {
+          filters: activeFilters,
+          originalUrl: '/api/aggregate/by-server'
+        };
+        
+        const response = await fetch('/api/filter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(filterRequest)
+        });
+        
+        if (response.ok) {
+          const filteredData = await response.json();
+          if (Array.isArray(filteredData) && filteredData.length > 0) {
+            // Agrupar por servidor
+            const servidorMap = new Map();
+            filteredData.forEach(record => {
+              const servidor = record.servidor || record.data?.servidor || 'N/A';
+              if (servidor && servidor !== 'N/A') {
+                servidorMap.set(servidor, (servidorMap.get(servidor) || 0) + 1);
+              }
+            });
+            servidores = Array.from(servidorMap.entries())
+              .map(([servidor, count]) => ({ servidor, quantidade: count }))
+              .sort((a, b) => b.quantidade - a.quantidade);
+            
+            // Agrupar por UAC
+            const uacMap = new Map();
+            filteredData.forEach(record => {
+              const uac = record.unidadeCadastro || record.data?.unidade_cadastro || 'N/A';
+              if (uac && uac !== 'N/A') {
+                uacMap.set(uac, (uacMap.get(uac) || 0) + 1);
+              }
+            });
+            uacs = Array.from(uacMap.entries())
+              .map(([key, count]) => ({ key, count }))
+              .sort((a, b) => b.count - a.count);
+            
+            summary = { total: filteredData.length };
+          }
+        }
+      } catch (error) {
+        if (window.Logger) {
+          window.Logger.warn('Erro ao aplicar filtros, carregando sem filtros:', error);
+        }
+        filtrosAplicados = false;
+      }
+    }
+    
+    // Se não aplicou filtros ou deu erro, carregar normalmente
+    if (!filtrosAplicados || servidores.length === 0) {
+      [servidores, uacs, dataMensal, summary] = await Promise.all([
+        window.dataLoader?.load('/api/aggregate/by-server', {
+          useDataStore: true,
+          ttl: 10 * 60 * 1000
+        }) || [],
+        window.dataLoader?.load('/api/aggregate/count-by?field=UAC', {
+          useDataStore: true,
+          ttl: 10 * 60 * 1000
+        }) || [],
+        window.dataLoader?.load('/api/aggregate/by-month', {
+          useDataStore: true,
+          ttl: 10 * 60 * 1000
+        }) || [],
+        window.dataLoader?.load('/api/summary', {
+          useDataStore: true,
+          ttl: 5 * 60 * 1000
+        }) || { total: 0 }
+      ]);
+    } else {
+      // Carregar dados mensais mesmo com filtro
+      dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
-      }) || [],
-      window.dataLoader?.load('/api/aggregate/count-by?field=UAC', {
-        useDataStore: true,
-        ttl: 10 * 60 * 1000
-      }) || [],
-      window.dataLoader?.load('/api/aggregate/by-month', {
-        useDataStore: true,
-        ttl: 10 * 60 * 1000
-      }) || [],
-      window.dataLoader?.load('/api/summary', {
-        useDataStore: true,
-        ttl: 5 * 60 * 1000
-      }) || { total: 0 }
-    ]);
+      }) || [];
+    }
     
     // Renderizar lista de servidores
     renderServidoresList(servidores);
@@ -160,14 +238,38 @@ async function renderCadastranteMesChart(dataMensal) {
   await window.chartFactory?.createBarChart('chartCadastranteMes', labels, values, {
     colorIndex: 1,
     label: 'Quantidade',
-    onClick: false // FILTROS DE CLIQUE DESABILITADOS
+    onClick: false
   });
 }
+
+// Exportar função imediatamente
+window.loadCadastrante = loadCadastrante;
 
 // Conectar ao sistema global de filtros
 if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
   window.chartCommunication.createPageFilterListener('page-cadastrante', loadCadastrante, 500);
 }
 
-window.loadCadastrante = loadCadastrante;
+// Inicializar filtro por mês
+function initCadastrantePage() {
+  if (window.MonthFilterHelper && window.MonthFilterHelper.inicializarFiltroMes) {
+    window.MonthFilterHelper.inicializarFiltroMes({
+      selectId: 'filtroMesCadastrante',
+      endpoint: '/api/aggregate/by-month',
+      mesSelecionado: filtroMesCadastrante,
+      onChange: async (novoMes) => {
+        filtroMesCadastrante = novoMes;
+        await loadCadastrante();
+      }
+    });
+  } else {
+    setTimeout(initCadastrantePage, 100);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initCadastrantePage);
+} else {
+  initCadastrantePage();
+}
 

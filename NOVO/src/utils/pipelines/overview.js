@@ -35,12 +35,12 @@ export function buildOverviewPipeline(filters = {}) {
       // Por Dia (últimos 30 dias)
       porDia: buildDayAggregation(),
       
-      // Por Tema
+      // Por Tema (TOP 5 para Rankings)
       porTema: [
         { $match: { tema: { $exists: true, $ne: null, $ne: '' } } },
         { $group: { _id: '$tema', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
-        { $limit: 20 }
+        { $limit: 5 }
       ],
       
       // Por Assunto
@@ -51,12 +51,12 @@ export function buildOverviewPipeline(filters = {}) {
         { $limit: 20 }
       ],
       
-      // Por Órgãos
+      // Por Órgãos (TOP 5 para Rankings)
       porOrgaos: [
         { $match: { orgaos: { $exists: true, $ne: null, $ne: '' } } },
         { $group: { _id: '$orgaos', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
-        { $limit: 20 }
+        { $limit: 5 }
       ],
       
       // Por Tipo
@@ -81,12 +81,12 @@ export function buildOverviewPipeline(filters = {}) {
         { $sort: { count: -1 } }
       ],
       
-      // Por Unidade de Cadastro
+      // Por Unidade de Cadastro (TOP 5 para Rankings)
       porUnidadeCadastro: [
         { $match: { unidadeCadastro: { $exists: true, $ne: null, $ne: '' } } },
         { $group: { _id: '$unidadeCadastro', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
-        { $limit: 20 }
+        { $limit: 5 }
       ],
       
       // Total e contadores

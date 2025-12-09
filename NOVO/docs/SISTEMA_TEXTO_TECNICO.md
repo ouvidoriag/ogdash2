@@ -1,6 +1,0 @@
-# 💡 Texto Técnico do Sistema
-
-## A pessoa que criou esse sistema sabe:
-
-**Arquitetura distribuída**, **cache híbrido** (memória + MongoDB + arquivo), **agregações MongoDB otimizadas** com pipelines nativos, **SPA vanilla modular** sem dependências pesadas, **ETL Python** para normalização de dados, **OAuth 2.0** para APIs Google (Sheets + Gmail), **sistema de notificações automatizado** com controle de duplicidade, **integração com IA** (Gemini) para respostas contextualizadas, **logging estruturado** (Winston) para observabilidade, **indexação estratégica** em MongoDB Atlas, **cross-filtering** em dashboards analíticos, **lazy loading** de bibliotecas pesadas, **TTL adaptativo** em caches, **normalização de dados** com schemas Mongoose, **rotas modulares** por domínio, **controllers limpos** com separação de responsabilidades, **cron jobs** para automação, **pipeline de dados** com validação e correção automática, **geolocalização** com Leaflet, **visualização de dados** com Chart.js, **performance** em agregações de milhões de registros, **escalabilidade** em sistemas de alta demanda, e **documentação técnica** como parte integral da arquitetura.
-

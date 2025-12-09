@@ -10,7 +10,7 @@
 import { withCache } from '../../utils/responseHelper.js';
 import { optimizedGroupBy, optimizedGroupByMonth } from '../../utils/queryOptimizer.js';
 import { getNormalizedField } from '../../utils/fieldMapper.js';
-import { getDataCriacao } from '../../utils/dateUtils.js';
+import { getDataCriacao, normalizeDate } from '../../utils/dateUtils.js';
 import { executeAggregation } from '../../utils/dbAggregations.js';
 import { buildTemaPipeline, buildAssuntoPipeline, buildOrgaoMesPipeline } from '../../utils/pipelines/index.js';
 import { formatGroupByResult, formatMonthlySeries } from '../../utils/dataFormatter.js';
@@ -878,5 +878,108 @@ export async function byDistrict(req, res) {
   // Mas mantemos aqui para compatibilidade com a rota de aggregate
   const { aggregateByDistrict } = await import('./geographicController.js');
   return aggregateByDistrict(req, res);
+}
+
+/**
+ * GET /api/aggregate/top-protocolos-demora
+ * Busca os 10 protocolos com maior tempo de demora
+ * 
+ * Calcula o tempo de demora como:
+ * - Se concluído: dataConclusaoIso - dataCriacaoIso
+ * - Se não concluído: data atual - dataCriacaoIso
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ */
+export async function topProtocolosDemora(req, res, getMongoClient) {
+  const limit = parseInt(req.query.limit) || 10;
+  
+  const cacheKey = `topProtocolosDemora:${limit}:v1`;
+  
+  return withCache(cacheKey, 300, res, async () => {
+    try {
+      // Buscar todos os registros com protocolo e data de criação
+      const records = await Record.find({
+        protocolo: { $exists: true, $ne: null, $ne: '' },
+        $or: [
+          { dataCriacaoIso: { $exists: true, $ne: null, $ne: '' } },
+          { dataDaCriacao: { $exists: true, $ne: null, $ne: '' } }
+        ]
+      })
+      .select('protocolo dataCriacaoIso dataDaCriacao dataConclusaoIso dataDaConclusao statusDemanda status tema assunto orgaos responsavel')
+      .lean();
+      
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      
+      // Calcular tempo de demora para cada protocolo
+      const protocolosComDemora = records
+        .map(record => {
+          // Obter data de criação (prioridade: dataCriacaoIso > dataDaCriacao)
+          let dataCriacao = null;
+          if (record.dataCriacaoIso) {
+            dataCriacao = new Date(record.dataCriacaoIso + 'T00:00:00');
+          } else if (record.dataDaCriacao) {
+            // Tentar normalizar dataDaCriacao
+            const normalized = normalizeDate(record.dataDaCriacao);
+            if (normalized) {
+              dataCriacao = new Date(normalized + 'T00:00:00');
+            }
+          }
+          
+          if (!dataCriacao || isNaN(dataCriacao.getTime())) {
+            return null;
+          }
+          
+          // Obter data de conclusão (se existir)
+          let dataConclusao = null;
+          let concluido = false;
+          
+          if (record.dataConclusaoIso) {
+            dataConclusao = new Date(record.dataConclusaoIso + 'T00:00:00');
+            concluido = true;
+          } else if (record.dataDaConclusao) {
+            const normalized = normalizeDate(record.dataDaConclusao);
+            if (normalized) {
+              dataConclusao = new Date(normalized + 'T00:00:00');
+              concluido = true;
+            }
+          }
+          
+          // Calcular tempo de demora em dias
+          const dataFim = concluido && dataConclusao ? dataConclusao : hoje;
+          const diffMs = dataFim.getTime() - dataCriacao.getTime();
+          const tempoDemoraDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          
+          // Ignorar se tempo negativo (erro de data)
+          if (tempoDemoraDias < 0) {
+            return null;
+          }
+          
+          return {
+            protocolo: record.protocolo || 'N/A',
+            tempoDemoraDias: tempoDemoraDias,
+            dataCriacao: record.dataCriacaoIso || record.dataDaCriacao || 'N/A',
+            dataConclusao: record.dataConclusaoIso || record.dataDaConclusao || null,
+            concluido: concluido,
+            statusDemanda: record.statusDemanda || record.status || 'N/A',
+            tema: record.tema || 'N/A',
+            assunto: record.assunto || 'N/A',
+            orgaos: record.orgaos || 'N/A',
+            responsavel: record.responsavel || 'N/A'
+          };
+        })
+        .filter(item => item !== null)
+        .sort((a, b) => b.tempoDemoraDias - a.tempoDemoraDias)
+        .slice(0, limit);
+      
+      return {
+        total: protocolosComDemora.length,
+        protocolos: protocolosComDemora
+      };
+    } catch (error) {
+      logger.error('Erro ao buscar protocolos com maior tempo de demora:', { error: error.message });
+      throw error;
+    }
+  });
 }
 

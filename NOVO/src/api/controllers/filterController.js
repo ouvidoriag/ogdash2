@@ -14,6 +14,7 @@ import { getNormalizedField } from '../../utils/fieldMapper.js';
 import { paginateWithCursor } from '../../utils/cursorPagination.js';
 import Record from '../../models/Record.model.js';
 import { logger } from '../../utils/logger.js';
+import { getOverviewData } from '../../utils/dbAggregations.js';
 
 /**
  * POST /api/filter
@@ -294,6 +295,178 @@ export async function filterRecords(req, res, getMongoClient) {
       error: error.message || 'Erro ao processar filtros', 
       data: [],
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+}
+
+/**
+ * POST /api/filter/aggregated
+ * Filtra registros e retorna dados agregados (solução definitiva)
+ * 
+ * SOLUÇÃO DEFINITIVA: Agregação no backend usando MongoDB aggregation pipeline
+ * Evita problemas de encontrar campos no frontend e é muito mais rápido
+ * 
+ * @param {Object} req - Request object
+ * @param {Object} res - Response object
+ * @param {Function} getMongoClient - Função para obter cliente MongoDB nativo
+ */
+export async function filterAndAggregate(req, res, getMongoClient) {
+  try {
+    const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+    
+    logger.debug('/api/filter/aggregated: Filtros recebidos', { 
+      filtersCount: filters.length,
+      filters: filters.slice(0, 3) // Log apenas primeiros 3 para não poluir
+    });
+    
+    // Se não há filtros, retornar estrutura vazia
+    if (filters.length === 0) {
+      logger.warn('/api/filter/aggregated: Chamado SEM filtros! Retornando estrutura vazia.');
+      return res.json({
+        totalManifestations: 0,
+        last7Days: 0,
+        last30Days: 0,
+        manifestationsByMonth: [],
+        manifestationsByDay: [],
+        manifestationsByStatus: [],
+        manifestationsByTheme: [],
+        manifestationsByOrgan: [],
+        manifestationsByType: [],
+        manifestationsByChannel: [],
+        manifestationsByPriority: [],
+        manifestationsByUnit: []
+      });
+    }
+    
+    // Verificar se getMongoClient está disponível
+    if (!getMongoClient) {
+      logger.error('/api/filter/aggregated: getMongoClient não disponível');
+      throw new Error('MongoDB client não disponível');
+    }
+    
+    // Construir filtro MongoDB a partir dos filtros do frontend
+    // Usar a mesma lógica do filterRecords, mas adaptada para agregação
+    const mongoFilter = {};
+    
+    for (const f of filters) {
+      const col = getNormalizedField(f.field);
+      
+      if (!col) {
+        // Campo não normalizado - pular (será filtrado em memória se necessário)
+        continue;
+      }
+      
+      // Aplicar operador
+      if (f.op === 'eq') {
+        // Igualdade exata
+        mongoFilter[col] = f.value;
+      } else if (f.op === 'contains') {
+        // Contém (regex case-insensitive)
+        if ((col === 'dataDaCriacao' || col === 'dataCriacaoIso') && /^\d{4}-\d{2}$/.test(f.value)) {
+          // Filtro por mês: usar regex para melhor performance
+          mongoFilter[col] = { $regex: `^${f.value}`, $options: 'i' };
+        } else {
+          mongoFilter[col] = { $regex: f.value, $options: 'i' };
+        }
+      } else if (f.op === 'gte' || f.op === 'lte' || f.op === 'gt' || f.op === 'lt') {
+        // Operadores de comparação para campos de data
+        if (col === 'dataCriacaoIso' || col === 'dataDaCriacao' || col === 'dataConclusaoIso') {
+          if (!mongoFilter[col]) {
+            mongoFilter[col] = {};
+          }
+          
+          if (f.op === 'gte') {
+            mongoFilter[col].$gte = f.value;
+          } else if (f.op === 'lte') {
+            mongoFilter[col].$lte = f.value;
+          } else if (f.op === 'gt') {
+            mongoFilter[col].$gt = f.value;
+          } else if (f.op === 'lt') {
+            mongoFilter[col].$lt = f.value;
+          }
+        }
+      }
+    }
+    
+    logger.debug('/api/filter/aggregated: Filtro MongoDB construído', {
+      mongoFilterKeys: Object.keys(mongoFilter),
+      mongoFilter: mongoFilter
+    });
+    
+    // Usar getOverviewData com os filtros construídos
+    // getOverviewData espera um objeto de filtros simples (ex: { servidor: 'X', orgaos: 'Y' })
+    // Mas precisamos converter os filtros dinâmicos para esse formato
+    // Por enquanto, vamos passar o mongoFilter diretamente como filtros
+    // Mas getOverviewData usa sanitizeFilters que espera um formato específico
+    
+    // SOLUÇÃO: Usar o pipeline diretamente com os filtros MongoDB construídos
+    const { buildOverviewPipeline } = await import('../../utils/pipelines/overview.js');
+    const { executeAggregation, formatOverviewData } = await import('../../utils/dbAggregations.js');
+    
+    // Construir pipeline base de overview (sem filtros, pois vamos adicionar depois)
+    const basePipeline = buildOverviewPipeline({});
+    
+    // Construir pipeline final
+    const pipeline = [];
+    
+    // Se há filtros, adicionar $match no início ANTES do pipeline base
+    if (Object.keys(mongoFilter).length > 0) {
+      pipeline.push({ $match: mongoFilter });
+    }
+    
+    // Adicionar todo o pipeline base (que já tem seu próprio $match interno se necessário)
+    // O $match do pipeline base será aplicado APÓS o nosso $match (MongoDB aplica em sequência)
+    pipeline.push(...basePipeline);
+    
+    // Executar agregação
+    const startTime = Date.now();
+    const result = await executeAggregation(getMongoClient, pipeline);
+    const duration = Date.now() - startTime;
+    
+    logger.info(`/api/filter/aggregated: Agregação executada em ${duration}ms`, {
+      filtersCount: filters.length,
+      resultKeys: result[0] ? Object.keys(result[0]) : []
+    });
+    
+    // Formatar resultado
+    const facetResult = result[0] || {};
+    const formatted = formatOverviewData(facetResult);
+    
+    // Log de resultado
+    logger.debug('/api/filter/aggregated: Resultado formatado', {
+      total: formatted.totalManifestations,
+      byStatus: formatted.manifestationsByStatus.length,
+      byTheme: formatted.manifestationsByTheme.length,
+      byOrgan: formatted.manifestationsByOrgan.length,
+      byType: formatted.manifestationsByType.length,
+      byChannel: formatted.manifestationsByChannel.length,
+      byPriority: formatted.manifestationsByPriority.length,
+      byUnit: formatted.manifestationsByUnit.length,
+      byMonth: formatted.manifestationsByMonth.length,
+      byDay: formatted.manifestationsByDay.length
+    });
+    
+    return res.json(formatted);
+    
+  } catch (error) {
+    logger.error('Erro no endpoint /api/filter/aggregated:', { 
+      error: error.message, 
+      stack: error.stack 
+    });
+    return res.status(500).json({ 
+      error: error.message || 'Erro ao processar filtros e agregar dados',
+      totalManifestations: 0,
+      last7Days: 0,
+      last30Days: 0,
+      manifestationsByMonth: [],
+      manifestationsByDay: [],
+      manifestationsByStatus: [],
+      manifestationsByTheme: [],
+      manifestationsByOrgan: [],
+      manifestationsByType: [],
+      manifestationsByChannel: [],
+      manifestationsByPriority: [],
+      manifestationsByUnit: []
     });
   }
 }

@@ -81,7 +81,7 @@ async function loadZeladoriaCategoria() {
       horizontal: true,
       colorIndex: 1,
       field: 'categoria',
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       legendContainer: 'zeladoria-categoria-legend'
     });
     
@@ -193,11 +193,18 @@ async function renderCategoriaMesChart(dataMes, topCategorias) {
     return m;
   });
   
-  await window.chartFactory?.createBarChart('zeladoria-categoria-mes-chart', labels, datasets, {
-    colorIndex: 0,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-categoria-mes-legend'
-  });
+  const canvasMes = document.getElementById('zeladoria-categoria-mes-chart');
+  if (canvasMes) {
+    await window.chartFactory?.createBarChart('zeladoria-categoria-mes-chart', labels, datasets, {
+      colorIndex: 0,
+      onClick: false,
+      legendContainer: 'zeladoria-categoria-mes-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-categoria-mes-chart não encontrado');
+    }
+  }
 }
 
 /**
@@ -243,11 +250,18 @@ async function renderCategoriaDepartamentoChart(data) {
     };
   });
   
-  await window.chartFactory?.createBarChart('zeladoria-categoria-dept-chart', departamentos, datasets, {
-    colorIndex: 2,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-categoria-dept-legend'
-  });
+  const canvasDept = document.getElementById('zeladoria-categoria-dept-chart');
+  if (canvasDept) {
+    await window.chartFactory?.createBarChart('zeladoria-categoria-dept-chart', departamentos, datasets, {
+      colorIndex: 2,
+      onClick: false,
+      legendContainer: 'zeladoria-categoria-dept-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-categoria-dept-chart não encontrado');
+    }
+  }
 }
 
 /**

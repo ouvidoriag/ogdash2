@@ -67,7 +67,7 @@ async function loadZeladoriaResponsavel() {
       horizontal: true,
       colorIndex: 4,
       field: 'responsavel',
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       legendContainer: 'zeladoria-responsavel-legend'
     });
     
@@ -129,11 +129,18 @@ async function renderResponsavelMesChart(dataMes, topResponsaveis) {
     return m;
   });
   
-  await window.chartFactory?.createBarChart('zeladoria-responsavel-mes-chart', labels, datasets, {
-    colorIndex: 0,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-responsavel-mes-legend'
-  });
+  const canvas = document.getElementById('zeladoria-responsavel-mes-chart');
+  if (canvas) {
+    await window.chartFactory?.createBarChart('zeladoria-responsavel-mes-chart', labels, datasets, {
+      colorIndex: 0,
+      onClick: false,
+      legendContainer: 'zeladoria-responsavel-mes-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-responsavel-mes-chart não encontrado');
+    }
+  }
 }
 
 /**

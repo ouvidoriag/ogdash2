@@ -90,7 +90,7 @@ async function loadZeladoriaBairro() {
       horizontal: true,
       colorIndex: 3,
       field: 'bairro',
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       legendContainer: 'zeladoria-bairro-legend'
     });
     
@@ -220,11 +220,18 @@ async function renderBairroMesChart(dataMes, topBairros) {
   });
   
   // Criar gráfico de barras agrupadas
-  await window.chartFactory?.createBarChart('zeladoria-bairro-mes-chart', labels, datasets, {
-    colorIndex: 0,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-bairro-mes-legend'
-  });
+  const canvas = document.getElementById('zeladoria-bairro-mes-chart');
+  if (canvas) {
+    await window.chartFactory?.createBarChart('zeladoria-bairro-mes-chart', labels, datasets, {
+      colorIndex: 0,
+      onClick: false,
+      legendContainer: 'zeladoria-bairro-mes-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-bairro-mes-chart não encontrado');
+    }
+  }
 }
 
 /**

@@ -79,7 +79,7 @@ async function loadZeladoriaMensal() {
     // Gráfico de linha mostrando a evolução temporal
     await window.chartFactory?.createLineChart('zeladoria-mensal-chart', labels, values, {
       colorIndex: 0,
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       label: 'Ocorrências',
       legendContainer: 'zeladoria-mensal-legend'
     });
@@ -152,11 +152,18 @@ async function renderMensalStatusChart(statusMesData, labels) {
     };
   });
   
-  await window.chartFactory?.createBarChart('zeladoria-mensal-status-chart', labels, datasets, {
-    colorIndex: 0,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-mensal-status-legend'
-  });
+  const canvas = document.getElementById('zeladoria-mensal-status-chart');
+  if (canvas) {
+    await window.chartFactory?.createBarChart('zeladoria-mensal-status-chart', labels, datasets, {
+      colorIndex: 0,
+      onClick: false,
+      legendContainer: 'zeladoria-mensal-status-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-mensal-status-chart não encontrado, gráfico não será criado');
+    }
+  }
 }
 
 /**

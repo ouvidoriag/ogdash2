@@ -198,70 +198,8 @@ function getCurrentTableHeaders() {
   return currentTableHeaders;
 }
 
-/**
- * Inicializar listeners de eventos de filtro
- * Escuta eventos do sistema de comunicação de gráficos
- */
 function initTableFilterListeners() {
-  if (!window.chartCommunication) {
-    if (window.Logger) {
-      window.Logger.warn('Sistema de comunicação de gráficos não disponível. Tabela não será atualizada automaticamente.');
-    }
-    return;
-  }
-  
-  // Escutar evento de filtro aplicado
-  window.chartCommunication.on('filter:applied', (data) => {
-    if (window.Logger) {
-      window.Logger.debug('Filtro aplicado, atualizando tabela...', data);
-    }
-    
-    // Recarregar tabela com os filtros ativos
-    const tbody = document.getElementById('tbody');
-    if (tbody) {
-      // Usar debounce maior para evitar múltiplas atualizações simultâneas
-      clearTimeout(window.tableUpdateTimeout);
-      window.tableUpdateTimeout = setTimeout(() => {
-        loadTable(50, data.filters || []);
-      }, 500); // Aumentado de 300ms para 500ms para dar mais tempo entre eventos
-    }
-  });
-  
-  // Escutar evento de filtro removido
-  window.chartCommunication.on('filter:removed', (data) => {
-    if (window.Logger) {
-      window.Logger.debug('Filtro removido, atualizando tabela...', data);
-    }
-    
-    const tbody = document.getElementById('tbody');
-    if (tbody) {
-      clearTimeout(window.tableUpdateTimeout);
-      window.tableUpdateTimeout = setTimeout(() => {
-        // Recarregar com filtros atualizados
-        const currentFilters = window.chartCommunication?.filters?.filters || [];
-        loadTable(50, currentFilters.length > 0 ? currentFilters : null);
-      }, 300);
-    }
-  });
-  
-  // Escutar evento de filtros limpos
-  window.chartCommunication.on('filter:cleared', () => {
-    if (window.Logger) {
-      window.Logger.debug('Filtros limpos, recarregando tabela sem filtros...');
-    }
-    
-    const tbody = document.getElementById('tbody');
-    if (tbody) {
-      clearTimeout(window.tableUpdateTimeout);
-      window.tableUpdateTimeout = setTimeout(() => {
-        loadTable(50, null);
-      }, 300);
-    }
-  });
-  
-  if (window.Logger) {
-    window.Logger.success('✅ Listeners de filtro para tabela inicializados');
-  }
+  return;
 }
 
 // Exportar funções para uso global

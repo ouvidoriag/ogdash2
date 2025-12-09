@@ -63,10 +63,11 @@ async function loadZeladoriaStatus() {
     const values = sortedData.map(d => d.count || 0);
     
     // Criar gráfico principal (doughnut)
+    const legendContainer = document.getElementById('zeladoria-status-legend');
     await window.chartFactory?.createDoughnutChart('zeladoria-status-chart', labels, values, {
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       field: 'status',
-      legendContainer: 'zeladoria-status-legend'
+      ...(legendContainer && { legendContainer: 'zeladoria-status-legend' })
     });
     
     // Renderizar ranking de status
@@ -132,11 +133,18 @@ async function renderStatusMesChart(dataMes) {
     return m;
   });
   
-  await window.chartFactory?.createBarChart('zeladoria-status-mes-chart', labels, datasets, {
-    colorIndex: 0,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-status-mes-legend'
-  });
+  const canvas = document.getElementById('zeladoria-status-mes-chart');
+  if (canvas) {
+    await window.chartFactory?.createBarChart('zeladoria-status-mes-chart', labels, datasets, {
+      colorIndex: 0,
+      onClick: false,
+      legendContainer: 'zeladoria-status-mes-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-status-mes-chart não encontrado');
+    }
+  }
 }
 
 /**

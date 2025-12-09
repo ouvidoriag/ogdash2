@@ -61,7 +61,7 @@ async function loadZeladoriaOverview() {
         Object.values(statusCounts),
         { 
           type: 'doughnut',
-          onClick: false // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false
         }
       );
     }
@@ -92,7 +92,7 @@ async function loadZeladoriaOverview() {
         { 
           horizontal: true, 
           colorIndex: 1,
-          onClick: false // FILTROS DE CLIQUE DESABILITADOS
+          onClick: false
         }
       );
     }

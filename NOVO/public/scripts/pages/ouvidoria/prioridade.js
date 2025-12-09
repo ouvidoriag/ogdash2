@@ -4,6 +4,8 @@
  * Recriada com estrutura otimizada
  */
 
+let filtroMesPrioridade = '';
+
 async function loadPrioridade(forceRefresh = false) {
   if (window.Logger) {
     window.Logger.debug('⚡ loadPrioridade: Iniciando');
@@ -15,10 +17,66 @@ async function loadPrioridade(forceRefresh = false) {
   }
   
   try {
-    const data = await window.dataLoader?.load('/api/aggregate/count-by?field=Prioridade', {
-      useDataStore: true,
-      ttl: 10 * 60 * 1000
-    }) || [];
+    // Coletar filtros de mês
+    const filtrosMes = window.MonthFilterHelper?.coletarFiltrosMes?.('filtroMesPrioridade') || [];
+    
+    // Combinar com filtros globais
+    let activeFilters = filtrosMes;
+    if (window.chartCommunication) {
+      const globalFilters = window.chartCommunication.filters?.filters || [];
+      activeFilters = [...globalFilters, ...filtrosMes];
+    }
+    
+    // Aplicar filtros se houver
+    let data = [];
+    let filtrosAplicados = false;
+    
+    if (activeFilters.length > 0) {
+      filtrosAplicados = true;
+      try {
+        const filterRequest = {
+          filters: activeFilters,
+          originalUrl: '/api/aggregate/count-by?field=Prioridade'
+        };
+        
+        const response = await fetch('/api/filter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(filterRequest)
+        });
+        
+        if (response.ok) {
+          const filteredData = await response.json();
+          if (Array.isArray(filteredData) && filteredData.length > 0) {
+            const prioridadeMap = new Map();
+            filteredData.forEach(record => {
+              const prioridade = record.prioridade || record.data?.prioridade || 'N/A';
+              if (prioridade && prioridade !== 'N/A') {
+                prioridadeMap.set(prioridade, (prioridadeMap.get(prioridade) || 0) + 1);
+              }
+            });
+            
+            data = Array.from(prioridadeMap.entries())
+              .map(([key, count]) => ({ key, count }))
+              .sort((a, b) => b.count - a.count);
+          }
+        }
+      } catch (error) {
+        if (window.Logger) {
+          window.Logger.warn('Erro ao aplicar filtros, carregando sem filtros:', error);
+        }
+        filtrosAplicados = false;
+      }
+    }
+    
+    // Se não aplicou filtros ou deu erro, carregar normalmente
+    if (!filtrosAplicados || data.length === 0) {
+      data = await window.dataLoader?.load('/api/aggregate/count-by?field=Prioridade', {
+        useDataStore: true,
+        ttl: 10 * 60 * 1000
+      }) || [];
+    }
     
     const top20 = data.slice(0, 20);
     const labels = top20.map(x => x.key || x._id || 'N/A');
@@ -27,7 +85,7 @@ async function loadPrioridade(forceRefresh = false) {
     await window.chartFactory?.createDoughnutChart('chartPrioridade', labels, values, {
       type: 'doughnut',
       field: 'Prioridade', // Campo para cores consistentes
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       legendContainer: 'legendPrioridade'
     });
     
@@ -83,10 +141,34 @@ function updatePrioridadeKPIs(data) {
   }
 }
 
+// Exportar função imediatamente
+window.loadPrioridade = loadPrioridade;
+
 // Conectar ao sistema global de filtros
 if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
   window.chartCommunication.createPageFilterListener('page-prioridade', loadPrioridade, 500);
 }
 
-window.loadPrioridade = loadPrioridade;
+// Inicializar filtro por mês
+function initPrioridadePage() {
+  if (window.MonthFilterHelper && window.MonthFilterHelper.inicializarFiltroMes) {
+    window.MonthFilterHelper.inicializarFiltroMes({
+      selectId: 'filtroMesPrioridade',
+      endpoint: '/api/aggregate/by-month',
+      mesSelecionado: filtroMesPrioridade,
+      onChange: async (novoMes) => {
+        filtroMesPrioridade = novoMes;
+        await loadPrioridade(true);
+      }
+    });
+  } else {
+    setTimeout(initPrioridadePage, 100);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initPrioridadePage);
+} else {
+  initPrioridadePage();
+}
 

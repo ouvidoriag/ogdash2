@@ -75,11 +75,12 @@ async function loadZeladoriaCanal() {
     // ETAPA 3: Criar gráfico principal de distribuição por canal
     // ========================================================================
     // Gráfico de rosca (doughnut) mostrando a proporção de cada canal
+    const legendContainer = document.getElementById('zeladoria-canal-legend');
     await window.chartFactory?.createDoughnutChart('zeladoria-canal-chart', labels, values, {
-      onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+      onClick: false,
       field: 'canal',
       colorIndex: 5,
-      legendContainer: 'zeladoria-canal-legend'
+      ...(legendContainer && { legendContainer: 'zeladoria-canal-legend' })
     });
     
     // ========================================================================
@@ -163,11 +164,18 @@ async function renderCanalMesChart(dataMes, canais) {
     return m;
   });
   
-  await window.chartFactory?.createBarChart('zeladoria-canal-mes-chart', labels, datasets, {
-    colorIndex: 0,
-    onClick: false, // FILTROS DE CLIQUE DESABILITADOS
-    legendContainer: 'zeladoria-canal-mes-legend'
-  });
+  const canvas = document.getElementById('zeladoria-canal-mes-chart');
+  if (canvas) {
+    await window.chartFactory?.createBarChart('zeladoria-canal-mes-chart', labels, datasets, {
+      colorIndex: 0,
+      onClick: false,
+      legendContainer: 'zeladoria-canal-mes-legend'
+    });
+  } else {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Canvas zeladoria-canal-mes-chart não encontrado');
+    }
+  }
 }
 
 /**

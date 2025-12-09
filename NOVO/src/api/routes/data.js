@@ -28,7 +28,7 @@ import { getDistinct } from '../controllers/distinctController.js';
 import { getUnit } from '../controllers/unitController.js';
 import { getComplaints } from '../controllers/complaintsController.js';
 import { slaSummary } from '../controllers/slaController.js';
-import { filterRecords } from '../controllers/filterController.js';
+import { filterRecords, filterAndAggregate } from '../controllers/filterController.js';
 import { getVencimento } from '../controllers/vencimentoController.js';
 import { getSecretariasInfo, getSecretariaInfoById } from '../controllers/secretariaInfoController.js';
 import { getNotificacoes, getNotificacoesStats, getUltimaExecucao, buscarVencimentos, enviarSelecionados } from '../controllers/notificacoesController.js';
@@ -161,6 +161,15 @@ export default function dataRoutes(prisma, getMongoClient) {
    * REFATORAÇÃO: Mongoose (sem prisma)
    */
   router.post('/filter', (req, res) => filterRecords(req, res, getMongoClient));
+  
+  /**
+   * POST /api/filter/aggregated
+   * Filtra registros e retorna dados agregados (solução definitiva)
+   * Body: { filters: [{ field, op, value }] }
+   * Retorna: { totalManifestations, manifestationsByStatus, manifestationsByTheme, ... }
+   * SOLUÇÃO DEFINITIVA: Agregação no backend usando MongoDB aggregation pipeline
+   */
+  router.post('/filter/aggregated', (req, res) => filterAndAggregate(req, res, getMongoClient));
   
   /**
    * GET /api/meta/aliases

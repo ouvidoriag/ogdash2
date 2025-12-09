@@ -58,7 +58,7 @@ async function loadEsicResponsavel() {
       await window.chartFactory?.createBarChart('esic-chart-responsavel-detail', labels, values, {
         horizontal: true,
         colorIndex: 2,
-        onClick: false
+        onClick: false,
       });
     }
     
@@ -112,4 +112,3 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
 }
 
 window.loadEsicResponsavel = loadEsicResponsavel;
-export default loadEsicResponsavel;

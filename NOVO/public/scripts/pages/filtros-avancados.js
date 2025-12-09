@@ -17,7 +17,9 @@ let filtrosState = {
   protocolosFiltrados: 0,
   optionsCache: {},
   isLoading: false,
-  optionsLoaded: false // Flag para indicar se opções já foram carregadas
+  optionsLoaded: false, // Flag para indicar se opções já foram carregadas
+  todosResultados: [], // Armazenar todos os resultados
+  resultadosExibidos: 100 // Quantidade de resultados exibidos atualmente
 };
 
 /**
@@ -59,6 +61,9 @@ async function loadFiltrosAvancados(forceRefresh = false) {
       filtrosState.listenersSetup = true;
     }
     
+    // Inicializar botão flutuante de voltar ao topo
+    initBotaoVoltarTopo();
+    
     // Restaurar filtros salvos se houver (só na primeira carga)
     if (!filtrosState.filtersRestored) {
       restoreSavedFilters();
@@ -88,16 +93,20 @@ async function initializeFilters() {
   // Atualizar contadores
   updateCounters();
   
-  // Limpar resultados
-  const resultadosDiv = document.getElementById('resultadosFiltros');
-  if (resultadosDiv) {
-    resultadosDiv.innerHTML = `
-      <div class="text-center">
-        <div class="text-6xl mb-4 text-slate-600">🔍</div>
-        <p class="text-slate-400">Aplique os filtros acima para visualizar os resultados</p>
-      </div>
-    `;
-  }
+    // Limpar resultados
+    const resultadosDiv = document.getElementById('resultadosFiltros');
+    if (resultadosDiv) {
+      resultadosDiv.innerHTML = `
+        <div class="text-center">
+          <div class="text-6xl mb-4 text-slate-600">🔍</div>
+          <p class="text-slate-400">Aplique os filtros acima para visualizar os resultados</p>
+        </div>
+      `;
+    }
+    
+    // Resetar estado de resultados
+    filtrosState.todosResultados = [];
+    filtrosState.resultadosExibidos = 100;
 }
 
 /**
@@ -511,38 +520,17 @@ async function applyFilters() {
     // Aplicar filtros via API
     const resultados = await applyFiltersAPI(filtros);
     
+    // Armazenar todos os resultados
+    filtrosState.todosResultados = resultados;
+    filtrosState.resultadosExibidos = 100; // Resetar para 100
+    
     // Exibir resultados
-    displayResults(resultados);
+    displayResults();
     
     // Atualizar estatísticas
     filtrosState.protocolosFiltrados = resultados.length;
     updateStatistics();
     
-    // Aplicar filtros globalmente (integração com sistema de gráficos)
-    if (window.chartCommunication && filtros.length > 0) {
-      // OTIMIZAÇÃO: Marcar que filtros foram aplicados pela própria página
-      // Isso evita recarregamento desnecessário quando o listener detectar a mudança
-      filtrosState.filterAppliedByPage = true;
-      
-      // Aplicar cada filtro no sistema global
-      filtros.forEach(filter => {
-        window.chartCommunication.applyFilter(
-          filter.field,
-          filter.value,
-          'filtros-avancados',
-          {
-            toggle: false,
-            operator: filter.op,
-            clearPrevious: false // Manter outros filtros
-          }
-        );
-      });
-      
-      // Resetar flag após um delay
-      setTimeout(() => {
-        filtrosState.filterAppliedByPage = false;
-      }, 1000);
-    }
     
     // Salvar filtros
     saveFilters();
@@ -591,9 +579,12 @@ async function applyFiltersAPI(filtros) {
 /**
  * Exibir resultados
  */
-function displayResults(resultados) {
+function displayResults() {
   const resultadosDiv = document.getElementById('resultadosFiltros');
   if (!resultadosDiv) return;
+  
+  const resultados = filtrosState.todosResultados;
+  const resultadosExibidos = filtrosState.resultadosExibidos;
   
   if (!resultados || resultados.length === 0) {
     resultadosDiv.innerHTML = `
@@ -606,61 +597,160 @@ function displayResults(resultados) {
     return;
   }
   
+  // Pegar apenas os resultados a serem exibidos
+  const resultadosParaExibir = resultados.slice(0, resultadosExibidos);
+  const temMais = resultados.length > resultadosExibidos;
+  
   // Criar tabela de resultados
   const tableHTML = `
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-slate-700">
-            <th class="px-4 py-3 text-left text-slate-300 font-semibold">Protocolo</th>
-            <th class="px-4 py-3 text-left text-slate-300 font-semibold">Data Criação</th>
-            <th class="px-4 py-3 text-left text-slate-300 font-semibold">Status</th>
-            <th class="px-4 py-3 text-left text-slate-300 font-semibold">Tema</th>
-            <th class="px-4 py-3 text-left text-slate-300 font-semibold">Órgão</th>
-            <th class="px-4 py-3 text-left text-slate-300 font-semibold">Canal</th>
-          </tr>
+           <tr class="border-b border-slate-700">
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Protocolo</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Data Criação</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Status</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Tema</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Assunto</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Órgão</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Canal</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Prioridade</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Unidade</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Tipo</th>
+             <th class="px-3 py-3 text-left text-slate-300 font-semibold whitespace-nowrap">Data Conclusão</th>
+           </tr>
         </thead>
         <tbody>
-          ${resultados.slice(0, 100).map(row => {
+          ${resultadosParaExibir.map(row => {
             const data = row.data || row;
             const protocolo = data.protocolo || row.protocolo || 'N/A';
             const dataCriacao = data.data_da_criacao || data.dataDaCriacao || row.dataDaCriacao || 'N/A';
-            const status = data.status || row.status || 'N/A';
+            const status = data.status || data.statusDemanda || row.status || row.statusDemanda || 'N/A';
             const tema = data.tema || row.tema || 'N/A';
-            const orgao = data.orgaos || row.orgaos || 'N/A';
-            const canal = data.canal || row.canal || 'N/A';
+            const assunto = data.assunto || row.assunto || 'N/A';
+            const orgao = data.orgaos || data.orgao || row.orgaos || row.orgao || 'N/A';
+             const canal = data.canal || row.canal || 'N/A';
+             const prioridade = data.prioridade || row.prioridade || 'N/A';
+             const unidade = data.unidadeCadastro || data.unidade_cadastro || row.unidadeCadastro || row.unidade_cadastro || 'N/A';
+            const tipo = data.tipoDeManifestacao || data.tipo_de_manifestacao || row.tipoDeManifestacao || row.tipo_de_manifestacao || 'N/A';
+            const dataConclusao = data.dataConclusaoIso || data.data_conclusao || data.dataDaConclusao || row.dataConclusaoIso || row.data_conclusao || row.dataDaConclusao || 'N/A';
             
             // Criar URL do Colab com o protocolo
             const colabUrl = `https://duquedecaxias.colab.re/item/workflow/${protocolo}`;
             
             return `
               <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                <td class="px-4 py-3">
+                <td class="px-3 py-3">
                   <a href="${colabUrl}" target="_blank" rel="noopener noreferrer" 
-                     class="text-cyan-300 font-mono hover:text-cyan-200 hover:underline transition-colors cursor-pointer">
+                     class="text-cyan-300 font-mono hover:text-cyan-200 hover:underline transition-colors cursor-pointer text-xs">
                     ${protocolo}
                   </a>
                 </td>
-                <td class="px-4 py-3 text-slate-300">${formatDate(dataCriacao)}</td>
-                <td class="px-4 py-3 text-slate-300">${status}</td>
-                <td class="px-4 py-3 text-slate-300">${truncateText(tema, 30)}</td>
-                <td class="px-4 py-3 text-slate-300">${truncateText(orgao, 30)}</td>
-                <td class="px-4 py-3 text-slate-300">${canal}</td>
+                <td class="px-3 py-3 text-slate-300 text-xs">${formatDate(dataCriacao)}</td>
+                <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(status, 20)}</td>
+                <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(tema, 25)}</td>
+                <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(assunto, 25)}</td>
+                <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(orgao, 25)}</td>
+                 <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(canal, 15)}</td>
+                 <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(prioridade, 15)}</td>
+                 <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(unidade, 25)}</td>
+                <td class="px-3 py-3 text-slate-300 text-xs">${truncateText(tipo, 20)}</td>
+                <td class="px-3 py-3 text-slate-300 text-xs">${dataConclusao !== 'N/A' ? formatDate(dataConclusao) : 'N/A'}</td>
               </tr>
             `;
           }).join('')}
         </tbody>
       </table>
-      ${resultados.length > 100 ? `
-        <div class="mt-4 text-center text-sm text-slate-400">
-          Mostrando 100 de ${resultados.length} resultados. Ajuste os filtros para refinar a busca.
+      <div class="mt-4 flex items-center justify-between">
+        <div class="text-sm text-slate-400">
+          Mostrando ${resultadosExibidos} de ${resultados.length} resultados. ${temMais ? 'Ajuste os filtros para refinar a busca.' : ''}
         </div>
-      ` : ''}
+        ${temMais ? `
+          <button 
+            id="btnVerMais" 
+            class="px-6 py-2 bg-gradient-to-r from-cyan-500/20 to-violet-500/20 border border-cyan-500/50 rounded-lg text-cyan-300 hover:from-cyan-500/30 hover:to-violet-500/30 transition-all flex items-center gap-2 font-semibold"
+            onclick="carregarMaisResultados()"
+          >
+            <span>Ver Mais</span>
+            <span class="text-lg">↓</span>
+          </button>
+        ` : ''}
+      </div>
     </div>
   `;
   
   resultadosDiv.innerHTML = tableHTML;
 }
+
+/**
+ * Carregar mais resultados
+ */
+function carregarMaisResultados() {
+  const incremento = 100;
+  const total = filtrosState.todosResultados.length;
+  const atual = filtrosState.resultadosExibidos;
+  
+  // Aumentar quantidade exibida
+  filtrosState.resultadosExibidos = Math.min(atual + incremento, total);
+  
+  // Re-exibir resultados
+  displayResults();
+  
+  // Scroll suave para o botão "Ver Mais" se ainda houver mais resultados
+  if (filtrosState.resultadosExibidos < total) {
+    setTimeout(() => {
+      const btnVerMais = document.getElementById('btnVerMais');
+      if (btnVerMais) {
+        btnVerMais.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 100);
+  }
+}
+
+// Tornar função acessível globalmente
+window.carregarMaisResultados = carregarMaisResultados;
+
+/**
+ * Voltar ao topo da página
+ */
+function voltarAoTopo() {
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
+}
+
+// Tornar função acessível globalmente
+window.voltarAoTopo = voltarAoTopo;
+
+/**
+ * Inicializar botão flutuante de voltar ao topo
+ */
+function initBotaoVoltarTopo() {
+  const btnVoltarTopo = document.getElementById('btnVoltarTopo');
+  if (!btnVoltarTopo) return;
+  
+  // Listener de scroll para mostrar/ocultar botão
+  let scrollTimeout;
+  window.addEventListener('scroll', () => {
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      const scrollY = window.scrollY || window.pageYOffset;
+      const page = document.getElementById('page-filtros-avancados');
+      
+      // Mostrar botão apenas se estiver na página de filtros avançados e scroll > 300px
+      if (page && page.style.display !== 'none' && scrollY > 300) {
+        btnVoltarTopo.classList.remove('opacity-0', 'pointer-events-none');
+        btnVoltarTopo.classList.add('opacity-100', 'pointer-events-auto');
+      } else {
+        btnVoltarTopo.classList.add('opacity-0', 'pointer-events-none');
+        btnVoltarTopo.classList.remove('opacity-100', 'pointer-events-auto');
+      }
+    }, 10);
+  }, { passive: true });
+}
+
+// A inicialização do botão é feita dentro de loadFiltrosAvancados()
 
 /**
  * Mostrar loading
@@ -681,6 +771,10 @@ function showLoading() {
  * Limpar resultados
  */
 function clearResults() {
+  // Resetar estado de resultados
+  filtrosState.todosResultados = [];
+  filtrosState.resultadosExibidos = 100;
+  
   const resultadosDiv = document.getElementById('resultadosFiltros');
   if (resultadosDiv) {
     resultadosDiv.innerHTML = `
@@ -737,10 +831,7 @@ function clearAllFilters() {
   // Limpar resultados
   clearResults();
   
-  // Limpar filtros globais
-  if (window.chartCommunication) {
-    window.chartCommunication.clearFilters();
-  }
+  // Filtros funcionam apenas nesta página (manual)
   
   // Limpar filtros salvos
   clearSavedFilters();
@@ -887,45 +978,6 @@ function clearSavedFilters() {
 // Exportar função globalmente
 window.loadFiltrosAvancados = loadFiltrosAvancados;
 
-// Conectar ao sistema global de filtros
-// OTIMIZAÇÃO: Criar listener customizado que não recarrega tudo quando filtro vem da própria página
-if (window.chartCommunication) {
-  let updateTimeout = null;
-  
-  const handleFilterChange = () => {
-    // Se o filtro foi aplicado pela própria página, não recarregar tudo
-    if (filtrosState.filterAppliedByPage) {
-      if (window.Logger) {
-        window.Logger.debug('🔍 Filtro aplicado pela própria página, pulando recarregamento completo');
-      }
-      return;
-    }
-    
-    const page = document.getElementById('page-filtros-avancados');
-    if (!page || page.style.display === 'none') {
-      return; // Página não está visível
-    }
-    
-    // OTIMIZAÇÃO: Só atualizar total de protocolos, não recarregar tudo
-    clearTimeout(updateTimeout);
-    updateTimeout = setTimeout(() => {
-      if (window.Logger) {
-        window.Logger.debug('🔍 Filtro mudou de outra página, atualizando apenas contadores');
-      }
-      // Apenas atualizar contadores, não recarregar opções
-      loadTotalProtocolos().catch(err => {
-        if (window.Logger) {
-          window.Logger.warn('Erro ao atualizar total de protocolos:', err);
-        }
-      });
-    }, 500);
-  };
-  
-  // Escutar eventos de filtro
-  window.chartCommunication.on('filter:applied', handleFilterChange);
-  window.chartCommunication.on('filter:removed', handleFilterChange);
-  window.chartCommunication.on('filter:cleared', handleFilterChange);
-}
 
 if (window.Logger) {
   window.Logger.debug('✅ Página Filtros Avançados carregada');

@@ -54,7 +54,7 @@ async function loadZeladoriaOverview() {
       const labels = statusData.map(d => d.key);
       const values = statusData.map(d => d.count);
       await window.chartFactory?.createDoughnutChart('zeladoria-chart-status', labels, values, {
-        onClick: false, // FILTROS DE CLIQUE DESABILITADOS
+        onClick: false,
         colorIndex: 0
       });
     }
