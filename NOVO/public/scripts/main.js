@@ -170,6 +170,7 @@ function getPageLoader(page) {
     'orgao-mes': 'loadOrgaoMes',
     'tempo-medio': 'loadTempoMedio',
     'vencimento': 'loadVencimento',
+    'protocolos-demora': 'loadProtocolosDemora',
     'notificacoes': 'loadNotificacoes',
     'filtros-avancados': 'loadFiltrosAvancados',
     'tema': 'loadTema',
@@ -193,6 +194,7 @@ function getPageLoader(page) {
     'zeladoria-tempo': 'loadZeladoriaTempo',
     'zeladoria-mensal': 'loadZeladoriaMensal',
     'zeladoria-geografica': 'loadZeladoriaGeografica',
+    'zeladoria-mapa': 'loadZeladoriaMapa',
     // Páginas de E-SIC
     'esic-status': 'loadEsicStatus',
     'esic-tipo-informacao': 'loadEsicTipoInformacao',
@@ -289,46 +291,114 @@ async function loadSection(page) {
 }
 
 function initNavigation() {
-  const menuItems = document.querySelectorAll('[data-page]');
-  menuItems.forEach(item => {
-    item.addEventListener('click', (e) => {
-      e.preventDefault();
-      const page = item.getAttribute('data-page');
-      if (page) {
-        loadSection(page);
-      }
+  // Função para aguardar elementos estarem disponíveis
+  function waitForMenuItems(maxAttempts = 50, interval = 100) {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const checkItems = () => {
+        const items = document.querySelectorAll('[data-page]');
+        if (items.length > 0 || attempts >= maxAttempts) {
+          resolve(items);
+        } else {
+          attempts++;
+          setTimeout(checkItems, interval);
+        }
+      };
+      checkItems();
     });
+  }
+
+  waitForMenuItems().then(menuItems => {
+    if (menuItems.length === 0) {
+      if (window.Logger) {
+        window.Logger.warn('Nenhum item de menu encontrado, tentando novamente...');
+      }
+      // Re-tentar após 1 segundo
+      setTimeout(initNavigation, 1000);
+      return;
+    }
+
+    menuItems.forEach(item => {
+      // Remover listeners anteriores para evitar duplicação
+      const newItem = item.cloneNode(true);
+      item.parentNode.replaceChild(newItem, item);
+      
+      const handler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const page = newItem.getAttribute('data-page');
+        if (page) {
+          loadSection(page);
+        }
+      };
+      
+      // Adicionar múltiplos tipos de listeners
+      newItem.addEventListener('click', handler, { passive: false, capture: false });
+      newItem.addEventListener('touchend', handler, { passive: false, capture: false });
+      newItem.onclick = handler;
+      newItem.setAttribute('data-listener-attached', 'true');
+    });
+
+    if (window.Logger) {
+      window.Logger.debug(`✅ ${menuItems.length} itens de menu inicializados`);
+    }
   });
 }
 
 function initSectionSelector() {
-  const btnOuvidoria = document.getElementById('btnSectionOuvidoria');
-  const btnZeladoria = document.getElementById('btnSectionZeladoria');
-  const btnEsic = document.getElementById('btnSectionEsic');
-  const menuOuvidoria = document.getElementById('sideMenuOuvidoria');
-  const menuZeladoria = document.getElementById('sideMenuZeladoria');
-  const menuEsic = document.getElementById('sideMenuEsic');
-  const sectionTitle = document.getElementById('sectionTitle');
-  
-  // Debug: verificar elementos encontrados
-  if (window.Logger) {
-    window.Logger.debug('Inicializando seletor de seções:', {
-      btnOuvidoria: !!btnOuvidoria,
-      btnZeladoria: !!btnZeladoria,
-      btnEsic: !!btnEsic,
-      menuOuvidoria: !!menuOuvidoria,
-      menuZeladoria: !!menuZeladoria,
-      menuEsic: !!menuEsic
+  // Função auxiliar para aguardar elemento estar disponível
+  function waitForElement(selector, maxAttempts = 50, interval = 100) {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const checkElement = () => {
+        const element = typeof selector === 'string' 
+          ? document.querySelector(selector) 
+          : (typeof selector === 'function' ? selector() : selector);
+        
+        if (element) {
+          resolve(element);
+        } else if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(checkElement, interval);
+        } else {
+          resolve(null);
+        }
+      };
+      checkElement();
     });
   }
-  
-  // Verificar elementos mínimos necessários
-  if (!btnOuvidoria || !btnZeladoria || !menuOuvidoria || !menuZeladoria) {
+
+  // Aguardar elementos críticos estarem disponíveis
+  Promise.all([
+    waitForElement(() => document.getElementById('btnSectionOuvidoria')),
+    waitForElement(() => document.getElementById('btnSectionZeladoria')),
+    waitForElement(() => document.getElementById('btnSectionEsic')),
+    waitForElement(() => document.getElementById('sideMenuOuvidoria')),
+    waitForElement(() => document.getElementById('sideMenuZeladoria')),
+    waitForElement(() => document.getElementById('sideMenuEsic')),
+    waitForElement(() => document.getElementById('sectionTitle'))
+  ]).then(([btnOuvidoria, btnZeladoria, btnEsic, menuOuvidoria, menuZeladoria, menuEsic, sectionTitle]) => {
+    // Debug: verificar elementos encontrados
     if (window.Logger) {
-      window.Logger.warn('Elementos básicos não encontrados para initSectionSelector');
+      window.Logger.debug('Inicializando seletor de seções:', {
+        btnOuvidoria: !!btnOuvidoria,
+        btnZeladoria: !!btnZeladoria,
+        btnEsic: !!btnEsic,
+        menuOuvidoria: !!menuOuvidoria,
+        menuZeladoria: !!menuZeladoria,
+        menuEsic: !!menuEsic
+      });
     }
-    return;
-  }
+    
+    // Verificar elementos mínimos necessários
+    if (!btnOuvidoria || !btnZeladoria || !menuOuvidoria || !menuZeladoria) {
+      if (window.Logger) {
+        window.Logger.warn('Elementos básicos não encontrados para initSectionSelector, tentando novamente...');
+      }
+      // Re-tentar após 1 segundo
+      setTimeout(initSectionSelector, 1000);
+      return;
+    }
   
   function switchSection(section) {
     console.log('🔄 switchSection chamado com:', section);
@@ -379,49 +449,73 @@ function initSectionSelector() {
     }
   }
   
-  // Adicionar event listeners apenas se os elementos existirem
-  if (btnOuvidoria) {
-    btnOuvidoria.addEventListener('click', (e) => {
+    // Função para adicionar event listener de forma robusta
+    function addClickListener(element, handler, name) {
+      if (!element) return;
+      
+      // Remover listeners anteriores para evitar duplicação
+      const newElement = element.cloneNode(true);
+      element.parentNode.replaceChild(newElement, element);
+      
+      // Adicionar múltiplos tipos de listeners para garantir funcionamento
+      newElement.addEventListener('click', handler, { passive: false, capture: false });
+      newElement.addEventListener('touchend', handler, { passive: false, capture: false });
+      
+      // Fallback: onclick direto
+      newElement.onclick = handler;
+      
+      // Adicionar atributo para debug
+      newElement.setAttribute('data-listener-attached', 'true');
+      
+      if (window.Logger) {
+        window.Logger.debug(`✅ Event listener adicionado ao ${name}`);
+      }
+      
+      return newElement;
+    }
+    
+    // Adicionar event listeners de forma robusta
+    const handlerOuvidoria = (e) => {
       e.preventDefault();
       e.stopPropagation();
       switchSection('ouvidoria');
-    });
-  }
-  
-  if (btnZeladoria) {
-    btnZeladoria.addEventListener('click', (e) => {
+    };
+    
+    const handlerZeladoria = (e) => {
       e.preventDefault();
       e.stopPropagation();
       switchSection('zeladoria');
-    });
-  }
-  
-  if (btnEsic) {
-    btnEsic.addEventListener('click', (e) => {
+    };
+    
+    const handlerEsic = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      console.log('🔵 Botão E-SIC clicado - chamando switchSection');
-      switchSection('esic');
-    });
-    console.log('✅ Event listener adicionado ao botão E-SIC');
-  } else {
-    console.error('❌ Botão E-SIC não encontrado para adicionar event listener');
-  }
-  
-  // Expor função globalmente para debug e fallback
-  window.switchSection = switchSection;
-  globalSwitchSection = switchSection; // Guardar em variável global também
-  console.log('✅ switchSection exposto globalmente');
-  
-  // Fallback: adicionar onclick direto no botão se event listener não funcionar
-  if (btnEsic) {
-    btnEsic.onclick = function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('🔵 Botão E-SIC clicado (onclick direto)');
+      if (window.Logger) {
+        window.Logger.debug('🔵 Botão E-SIC clicado - chamando switchSection');
+      }
       switchSection('esic');
     };
-  }
+    
+    if (btnOuvidoria) {
+      btnOuvidoria = addClickListener(btnOuvidoria, handlerOuvidoria, 'btnSectionOuvidoria');
+    }
+    
+    if (btnZeladoria) {
+      btnZeladoria = addClickListener(btnZeladoria, handlerZeladoria, 'btnSectionZeladoria');
+    }
+    
+    if (btnEsic) {
+      btnEsic = addClickListener(btnEsic, handlerEsic, 'btnSectionEsic');
+    }
+    
+    // Expor função globalmente para debug e fallback
+    window.switchSection = switchSection;
+    globalSwitchSection = switchSection; // Guardar em variável global também
+    
+    if (window.Logger) {
+      window.Logger.debug('✅ switchSection exposto globalmente');
+    }
+  });
 }
 
 function initEventListeners() {
