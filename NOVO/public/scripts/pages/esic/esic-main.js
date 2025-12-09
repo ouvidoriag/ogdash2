@@ -7,16 +7,37 @@
  * Similar ao zeladoria-main.js
  */
 
-// Mapeamento de páginas
+// Mapeamento de páginas - usando funções globais diretamente (não módulos ES6)
 const pageMap = {
   'home': null,
-  'overview': () => import('./esic-overview.js').then(m => m.default || window.loadEsicOverview),
-  'status': () => import('./esic-status.js').then(m => m.default || window.loadEsicStatus),
-  'tipo-informacao': () => import('./esic-tipo-informacao.js').then(m => m.default || window.loadEsicTipoInformacao),
-  'responsavel': () => import('./esic-responsavel.js').then(m => m.default || window.loadEsicResponsavel),
-  'unidade': () => import('./esic-unidade.js').then(m => m.default || window.loadEsicUnidade),
-  'canal': () => import('./esic-canal.js').then(m => m.default || window.loadEsicCanal),
-  'mensal': () => import('./esic-mensal.js').then(m => m.default || window.loadEsicMensal)
+  'overview': () => {
+    const fn = window.loadEsicOverview;
+    return fn ? Promise.resolve(fn) : Promise.resolve(() => Promise.resolve());
+  },
+  'status': () => {
+    const fn = window.loadEsicStatus;
+    return fn ? Promise.resolve(fn) : Promise.resolve(() => Promise.resolve());
+  },
+  'tipo-informacao': () => {
+    const fn = window.loadEsicTipoInformacao;
+    return fn ? Promise.resolve(fn) : Promise.resolve(() => Promise.resolve());
+  },
+  'responsavel': () => {
+    const fn = window.loadEsicResponsavel;
+    return fn ? Promise.resolve(fn) : Promise.resolve(() => Promise.resolve());
+  },
+  'unidade': () => {
+    const fn = window.loadEsicUnidade;
+    return fn ? Promise.resolve(fn) : Promise.resolve(() => Promise.resolve());
+  },
+  'canal': () => {
+    const fn = window.loadEsicCanal;
+    return fn ? Promise.resolve(fn) : Promise.resolve(() => Promise.resolve());
+  },
+  'mensal': () => {
+    const fn = window.loadEsicMensal;
+    return fn ? Promise.resolve(fn) : Promise.resolve(() => Promise.resolve());
+  }
 };
 
 let currentPage = 'home';
@@ -44,8 +65,9 @@ window.loadSection = function(pageId) {
     navItem.classList.add('active');
   }
   
-  // Mostrar página
-  const page = document.getElementById(`page-${pageId}`);
+  // Mostrar página (adicionar prefixo 'esic-' exceto para 'home')
+  const pageElementId = pageId === 'home' ? `page-${pageId}` : `page-esic-${pageId}`;
+  const page = document.getElementById(pageElementId);
   if (page) {
     page.style.display = 'block';
   }
