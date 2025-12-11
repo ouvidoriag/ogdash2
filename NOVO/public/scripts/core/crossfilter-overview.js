@@ -62,7 +62,11 @@
         return null;
       }
       // Se não há filtros, retornar null para usar dados originais
-      const hasActiveFilters = Object.values(this.filters).some(v => v !== null);
+      const hasActiveFilters = Object.values(this.filters).some(v => {
+        if (v === null || v === undefined) return false;
+        if (Array.isArray(v)) return v.length > 0;
+        return true;
+      });
       if (!hasActiveFilters) {
         return null;
       }
@@ -74,17 +78,56 @@
      * Alternar filtro (toggle)
      * @param {String} field - Nome do campo
      * @param {String} value - Valor do filtro
+     * @param {Boolean} multiSelect - Se true, permite seleção múltipla (Ctrl+clique)
      */
-    toggleFilter(field, value) {
-      if (this.filters[field] === value) {
-        this.filters[field] = null; // Desativar filtro
-        if (window.Logger) {
-          window.Logger.debug(`Crossfilter: Filtro '${field}' desativado`, { field, value });
+    toggleFilter(field, value, multiSelect = false) {
+      if (multiSelect) {
+        // Modo seleção múltipla: adicionar/remover do array
+        const current = this.filters[field];
+        if (Array.isArray(current)) {
+          // Se já é array, adicionar ou remover
+          const index = current.findIndex(v => String(v).toLowerCase() === String(value).toLowerCase());
+          if (index >= 0) {
+            // Remover se já existe
+            current.splice(index, 1);
+            if (current.length === 0) {
+              this.filters[field] = null;
+            }
+            if (window.Logger) {
+              window.Logger.debug(`Crossfilter: Valor removido de '${field}'`, { field, value, remaining: current });
+            }
+          } else {
+            // Adicionar se não existe
+            current.push(value);
+            if (window.Logger) {
+              window.Logger.debug(`Crossfilter: Valor adicionado a '${field}'`, { field, value, total: current.length });
+            }
+          }
+        } else if (current === null || current === undefined) {
+          // Criar novo array
+          this.filters[field] = [value];
+          if (window.Logger) {
+            window.Logger.debug(`Crossfilter: Array criado para '${field}'`, { field, value });
+          }
+        } else {
+          // Converter valor único em array e adicionar novo valor
+          this.filters[field] = [current, value];
+          if (window.Logger) {
+            window.Logger.debug(`Crossfilter: Convertido '${field}' para array`, { field, values: this.filters[field] });
+          }
         }
       } else {
-        this.filters[field] = value; // Ativar filtro
-        if (window.Logger) {
-          window.Logger.debug(`Crossfilter: Filtro '${field}' ativado`, { field, value });
+        // Modo single select: comportamento original (toggle)
+        if (this.filters[field] === value) {
+          this.filters[field] = null; // Desativar filtro
+          if (window.Logger) {
+            window.Logger.debug(`Crossfilter: Filtro '${field}' desativado`, { field, value });
+          }
+        } else {
+          this.filters[field] = value; // Ativar filtro
+          if (window.Logger) {
+            window.Logger.debug(`Crossfilter: Filtro '${field}' ativado`, { field, value });
+          }
         }
       }
       this.notifyListeners();
@@ -92,45 +135,39 @@
 
     /**
      * Setters individuais para cada dimensão
+     * @param {String} value - Valor do filtro
+     * @param {Boolean} multiSelect - Se true, permite seleção múltipla (Ctrl+clique)
      */
-    setStatusFilter(status) {
-      this.filters.status = status === this.filters.status ? null : status;
-      this.notifyListeners();
+    setStatusFilter(status, multiSelect = false) {
+      this.toggleFilter('status', status, multiSelect);
     },
 
-    setTemaFilter(tema) {
-      this.filters.tema = tema === this.filters.tema ? null : tema;
-      this.notifyListeners();
+    setTemaFilter(tema, multiSelect = false) {
+      this.toggleFilter('tema', tema, multiSelect);
     },
 
-    setOrgaosFilter(orgaos) {
-      this.filters.orgaos = orgaos === this.filters.orgaos ? null : orgaos;
-      this.notifyListeners();
+    setOrgaosFilter(orgaos, multiSelect = false) {
+      this.toggleFilter('orgaos', orgaos, multiSelect);
     },
 
-    setTipoFilter(tipo) {
-      this.filters.tipo = tipo === this.filters.tipo ? null : tipo;
-      this.notifyListeners();
+    setTipoFilter(tipo, multiSelect = false) {
+      this.toggleFilter('tipo', tipo, multiSelect);
     },
 
-    setCanalFilter(canal) {
-      this.filters.canal = canal === this.filters.canal ? null : canal;
-      this.notifyListeners();
+    setCanalFilter(canal, multiSelect = false) {
+      this.toggleFilter('canal', canal, multiSelect);
     },
 
-    setPrioridadeFilter(prioridade) {
-      this.filters.prioridade = prioridade === this.filters.prioridade ? null : prioridade;
-      this.notifyListeners();
+    setPrioridadeFilter(prioridade, multiSelect = false) {
+      this.toggleFilter('prioridade', prioridade, multiSelect);
     },
 
-    setUnidadeFilter(unidade) {
-      this.filters.unidade = unidade === this.filters.unidade ? null : unidade;
-      this.notifyListeners();
+    setUnidadeFilter(unidade, multiSelect = false) {
+      this.toggleFilter('unidade', unidade, multiSelect);
     },
 
-    setBairroFilter(bairro) {
-      this.filters.bairro = bairro === this.filters.bairro ? null : bairro;
-      this.notifyListeners();
+    setBairroFilter(bairro, multiSelect = false) {
+      this.toggleFilter('bairro', bairro, multiSelect);
     },
 
     /**
@@ -162,7 +199,11 @@
       if (!data) return data;
 
       // Se não há filtros ativos, retornar dados originais
-      const hasActiveFilters = Object.values(this.filters).some(v => v !== null);
+      const hasActiveFilters = Object.values(this.filters).some(v => {
+        if (v === null || v === undefined) return false;
+        if (Array.isArray(v)) return v.length > 0;
+        return true;
+      });
       if (!hasActiveFilters) {
         return data;
       }
@@ -173,52 +214,74 @@
       // Aplicar filtros em cada agregação
       // IMPORTANTE: Isso filtra apenas os arrays, não recalcula os dados base
       // Para filtragem completa, use /api/filter e reagregue
+      // Suporta valores únicos ou arrays (seleção múltipla)
       if (filtered.manifestationsByStatus && this.filters.status) {
+        const statusFilter = Array.isArray(this.filters.status) ? this.filters.status : [this.filters.status];
         filtered.manifestationsByStatus = filtered.manifestationsByStatus.filter(item => {
           const itemStatus = item.status || item._id || '';
-          return String(itemStatus).toLowerCase() === String(this.filters.status).toLowerCase();
+          return statusFilter.some(filterValue => 
+            String(itemStatus).toLowerCase() === String(filterValue).toLowerCase()
+          );
         });
       }
 
       if (filtered.manifestationsByTheme && this.filters.tema) {
+        const temaFilter = Array.isArray(this.filters.tema) ? this.filters.tema : [this.filters.tema];
         filtered.manifestationsByTheme = filtered.manifestationsByTheme.filter(item => {
           const itemTheme = item.theme || item._id || '';
-          return String(itemTheme).toLowerCase() === String(this.filters.tema).toLowerCase();
+          return temaFilter.some(filterValue => 
+            String(itemTheme).toLowerCase() === String(filterValue).toLowerCase()
+          );
         });
       }
 
       if (filtered.manifestationsByOrgan && this.filters.orgaos) {
+        const orgaosFilter = Array.isArray(this.filters.orgaos) ? this.filters.orgaos : [this.filters.orgaos];
         filtered.manifestationsByOrgan = filtered.manifestationsByOrgan.filter(item => {
           const itemOrgan = item.organ || item._id || '';
-          return String(itemOrgan).toLowerCase() === String(this.filters.orgaos).toLowerCase();
+          return orgaosFilter.some(filterValue => 
+            String(itemOrgan).toLowerCase() === String(filterValue).toLowerCase()
+          );
         });
       }
 
       if (filtered.manifestationsByType && this.filters.tipo) {
+        const tipoFilter = Array.isArray(this.filters.tipo) ? this.filters.tipo : [this.filters.tipo];
         filtered.manifestationsByType = filtered.manifestationsByType.filter(item => {
           const itemType = item.type || item._id || '';
-          return String(itemType).toLowerCase() === String(this.filters.tipo).toLowerCase();
+          return tipoFilter.some(filterValue => 
+            String(itemType).toLowerCase() === String(filterValue).toLowerCase()
+          );
         });
       }
 
       if (filtered.manifestationsByChannel && this.filters.canal) {
+        const canalFilter = Array.isArray(this.filters.canal) ? this.filters.canal : [this.filters.canal];
         filtered.manifestationsByChannel = filtered.manifestationsByChannel.filter(item => {
           const itemChannel = item.channel || item._id || '';
-          return String(itemChannel).toLowerCase() === String(this.filters.canal).toLowerCase();
+          return canalFilter.some(filterValue => 
+            String(itemChannel).toLowerCase() === String(filterValue).toLowerCase()
+          );
         });
       }
 
       if (filtered.manifestationsByPriority && this.filters.prioridade) {
+        const prioridadeFilter = Array.isArray(this.filters.prioridade) ? this.filters.prioridade : [this.filters.prioridade];
         filtered.manifestationsByPriority = filtered.manifestationsByPriority.filter(item => {
           const itemPriority = item.priority || item._id || '';
-          return String(itemPriority).toLowerCase() === String(this.filters.prioridade).toLowerCase();
+          return prioridadeFilter.some(filterValue => 
+            String(itemPriority).toLowerCase() === String(filterValue).toLowerCase()
+          );
         });
       }
 
       if (filtered.manifestationsByUnit && this.filters.unidade) {
+        const unidadeFilter = Array.isArray(this.filters.unidade) ? this.filters.unidade : [this.filters.unidade];
         filtered.manifestationsByUnit = filtered.manifestationsByUnit.filter(item => {
           const itemUnit = item.unit || item._id || '';
-          return String(itemUnit).toLowerCase() === String(this.filters.unidade).toLowerCase();
+          return unidadeFilter.some(filterValue => 
+            String(itemUnit).toLowerCase() === String(filterValue).toLowerCase()
+          );
         });
       }
 
@@ -277,7 +340,13 @@
      * Contador de filtros ativos (para o banner)
      */
     getActiveFilterCount() {
-      return Object.values(this.filters).filter(Boolean).length;
+      return Object.values(this.filters).reduce((count, filter) => {
+        if (filter === null || filter === undefined) return count;
+        if (Array.isArray(filter)) {
+          return count + filter.length;
+        }
+        return count + 1;
+      }, 0);
     },
 
     /**

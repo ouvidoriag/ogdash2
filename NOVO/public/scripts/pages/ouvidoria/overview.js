@@ -11,10 +11,56 @@
  * CROSSFILTER INTELIGENTE (Power BI Style):
  * - Sistema de filtros multi-dimensionais
  * - Clique esquerdo = aplica filtro
+ * - Ctrl+Clique = seleção múltipla (adiciona/remove do filtro)
  * - Clique direito = limpa todos os filtros
  * - Banner visual mostra filtros ativos
  * - Todos os gráficos reagem bidirecionalmente
  */
+
+// Rastrear estado global de Ctrl/Cmd para seleção múltipla
+// Usar um objeto para armazenar o estado de forma mais confiável
+window._ctrlKeyState = { pressed: false, timestamp: 0 };
+
+if (typeof document !== 'undefined') {
+  // Rastrear Ctrl/Cmd em todos os eventos relevantes
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      window._ctrlKeyState.pressed = true;
+      window._ctrlKeyState.timestamp = Date.now();
+    }
+  });
+  
+  document.addEventListener('keyup', (e) => {
+    if (!e.ctrlKey && !e.metaKey) {
+      // Delay para permitir que o onClick do Chart.js capture o estado
+      setTimeout(() => {
+        window._ctrlKeyState.pressed = false;
+      }, 200);
+    }
+  });
+  
+  // Capturar estado no mousedown (mais confiável para Chart.js)
+  document.addEventListener('mousedown', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      window._ctrlKeyState.pressed = true;
+      window._ctrlKeyState.timestamp = Date.now();
+    }
+  });
+  
+  // Manter estado por um tempo após mouseup para garantir que Chart.js veja
+  document.addEventListener('mouseup', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      window._ctrlKeyState.pressed = true;
+      window._ctrlKeyState.timestamp = Date.now();
+      // Manter por mais tempo para garantir captura
+      setTimeout(() => {
+        if (Date.now() - window._ctrlKeyState.timestamp > 500) {
+          window._ctrlKeyState.pressed = false;
+        }
+      }, 300);
+    }
+  });
+}
 
 /**
  * Carregar dados da visão geral
@@ -174,9 +220,33 @@ async function loadOverview(forceRefresh = false) {
                   bairro: 'Bairro'
                 };
                 const apiField = fieldMap[field] || field;
-                apiFilters.push({ field: apiField, op: 'eq', value: value });
+                
+                // Suportar seleção múltipla (arrays)
+                if (Array.isArray(value) && value.length > 0) {
+                  // Se for array, usar operador 'in' para seleção múltipla
+                  if (window.Logger) {
+                    window.Logger.debug('🔍 Enviando filtro com array (seleção múltipla):', { 
+                      field, 
+                      apiField, 
+                      value, 
+                      length: value.length 
+                    });
+                  }
+                  apiFilters.push({ field: apiField, op: 'in', value: value });
+                } else if (!Array.isArray(value)) {
+                  // Valor único, usar operador 'eq'
+                  apiFilters.push({ field: apiField, op: 'eq', value: value });
+                }
               }
             });
+            
+            if (window.Logger) {
+              window.Logger.debug('🔍 Filtros construídos para API:', { 
+                apiFilters, 
+                count: apiFilters.length,
+                hasArrays: apiFilters.some(f => Array.isArray(f.value))
+              });
+            }
             
             // SOLUÇÃO DEFINITIVA: Usar endpoint /api/filter/aggregated
             // Este endpoint faz a agregação no backend usando MongoDB aggregation pipeline
@@ -1186,6 +1256,15 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
           // CROSSFILTER: Adicionar handler de clique após criar o gráfico
           if (statusChart && statusChart.canvas) {
             statusChart.canvas.style.cursor = 'pointer';
+            
+            // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
+            let lastClickCtrlState = false;
+            
+            statusChart.canvas.addEventListener('click', (e) => {
+              lastClickCtrlState = e.ctrlKey || e.metaKey;
+              setTimeout(() => { lastClickCtrlState = false; }, 100);
+            }, true);
+            
             statusChart.options.onClick = (event, elements) => {
               if (elements && elements.length > 0) {
                 const element = elements[0];
@@ -1194,11 +1273,20 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 const statusItem = statusData[index];
                 const status = statusItem?.status || statusItem?._id || labels[index];
                 if (status && window.crossfilterOverview) {
+                  const multiSelect = lastClickCtrlState;
+                  
                   if (window.Logger) {
-                    window.Logger.debug('📊 Clique no gráfico de Status:', { status, index, label: labels[index], statusItem });
+                    window.Logger.debug('📊 Clique no gráfico de Status:', { 
+                      status, 
+                      index, 
+                      label: labels[index], 
+                      statusItem, 
+                      multiSelect
+                    });
                   }
-                  window.crossfilterOverview.setStatusFilter(status);
+                  window.crossfilterOverview.setStatusFilter(status, multiSelect);
                   window.crossfilterOverview.notifyListeners();
+                  lastClickCtrlState = false;
                 }
               }
             };
@@ -1784,6 +1872,21 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       // CROSSFILTER: Adicionar handler de clique após criar o gráfico
       if (tiposChart && tiposChart.canvas) {
         tiposChart.canvas.style.cursor = 'pointer';
+        
+        // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
+        // Armazenar estado de Ctrl no momento do clique
+        let lastClickCtrlState = false;
+        
+        tiposChart.canvas.addEventListener('click', (e) => {
+          // Capturar estado de Ctrl no momento exato do clique
+          lastClickCtrlState = e.ctrlKey || e.metaKey;
+          
+          // Manter estado por um tempo curto para garantir que Chart.js veja
+          setTimeout(() => {
+            lastClickCtrlState = false;
+          }, 100);
+        }, true); // Usar capture phase para interceptar antes do Chart.js
+        
         tiposChart.options.onClick = (event, elements) => {
           if (elements && elements.length > 0) {
             const element = elements[0];
@@ -1792,11 +1895,24 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             const tipoItem = byType[index];
             const tipo = tipoItem?.type || tipoItem?._id || labels[index];
             if (tipo && window.crossfilterOverview) {
+              // Usar o estado capturado no clique do canvas
+              const multiSelect = lastClickCtrlState;
+              
               if (window.Logger) {
-                window.Logger.debug('📊 Clique no gráfico de Tipos:', { tipo, index, tipoItem });
+                window.Logger.debug('📊 Clique no gráfico de Tipos:', { 
+                  tipo, 
+                  index, 
+                  tipoItem, 
+                  multiSelect,
+                  lastClickCtrlState,
+                  ctrlState: window._ctrlKeyState
+                });
               }
-              window.crossfilterOverview.setTipoFilter(tipo);
+              window.crossfilterOverview.setTipoFilter(tipo, multiSelect);
               window.crossfilterOverview.notifyListeners();
+              
+              // Reset após uso
+              lastClickCtrlState = false;
             }
           }
         };
@@ -1869,6 +1985,15 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
           // CROSSFILTER: Adicionar handler de clique após criar o gráfico
           if (canaisChart && canaisChart.canvas) {
             canaisChart.canvas.style.cursor = 'pointer';
+            
+            // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
+            let lastClickCtrlState = false;
+            
+            canaisChart.canvas.addEventListener('click', (e) => {
+              lastClickCtrlState = e.ctrlKey || e.metaKey;
+              setTimeout(() => { lastClickCtrlState = false; }, 100);
+            }, true);
+            
             canaisChart.options.onClick = (event, elements) => {
               if (elements && elements.length > 0) {
                 const element = elements[0];
@@ -1877,11 +2002,19 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 const canalItem = topCanais[index];
                 const canal = canalItem?.channel || canalItem?._id || labels[index];
                 if (canal && window.crossfilterOverview) {
+                  const multiSelect = lastClickCtrlState;
+                  
                   if (window.Logger) {
-                    window.Logger.debug('📊 Clique no gráfico de Canais:', { canal, index, canalItem });
+                    window.Logger.debug('📊 Clique no gráfico de Canais:', { 
+                      canal, 
+                      index, 
+                      canalItem, 
+                      multiSelect
+                    });
                   }
-                  window.crossfilterOverview.setCanalFilter(canal);
+                  window.crossfilterOverview.setCanalFilter(canal, multiSelect);
                   window.crossfilterOverview.notifyListeners();
+                  lastClickCtrlState = false;
                 }
               }
             };
@@ -1952,6 +2085,15 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
           // CROSSFILTER: Adicionar handler de clique após criar o gráfico
           if (prioridadesChart && prioridadesChart.canvas) {
             prioridadesChart.canvas.style.cursor = 'pointer';
+            
+            // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
+            let lastClickCtrlState = false;
+            
+            prioridadesChart.canvas.addEventListener('click', (e) => {
+              lastClickCtrlState = e.ctrlKey || e.metaKey;
+              setTimeout(() => { lastClickCtrlState = false; }, 100);
+            }, true);
+            
             prioridadesChart.options.onClick = (event, elements) => {
               if (elements && elements.length > 0) {
                 const element = elements[0];
@@ -1960,11 +2102,19 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 const prioridadeItem = byPriority[index];
                 const prioridade = prioridadeItem?.priority || prioridadeItem?._id || labels[index];
                 if (prioridade && window.crossfilterOverview) {
+                  const multiSelect = lastClickCtrlState;
+                  
                   if (window.Logger) {
-                    window.Logger.debug('📊 Clique no gráfico de Prioridades:', { prioridade, index, prioridadeItem });
+                    window.Logger.debug('📊 Clique no gráfico de Prioridades:', { 
+                      prioridade, 
+                      index, 
+                      prioridadeItem, 
+                      multiSelect
+                    });
                   }
-                  window.crossfilterOverview.setPrioridadeFilter(prioridade);
+                  window.crossfilterOverview.setPrioridadeFilter(prioridade, multiSelect);
                   window.crossfilterOverview.notifyListeners();
+                  lastClickCtrlState = false;
                 }
               }
             };
@@ -3242,37 +3392,49 @@ function renderCrossfilterBanner() {
   title.textContent = `Filtros Ativos (${activeCount}):`;
   pillsContainer.appendChild(title);
   
-  // Criar pill para cada filtro ativo
+  // Criar pill para cada filtro ativo (suporta arrays para seleção múltipla)
   Object.entries(filters).forEach(([field, value]) => {
     if (value) {
       const emoji = window.crossfilterOverview.getFieldEmoji(field);
       const label = window.crossfilterOverview.getFieldLabel(field);
       
-      const pill = document.createElement('span');
-      pill.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm';
-      pill.style.cssText = 'background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(34, 211, 238, 0.3);';
+      // Suportar arrays (seleção múltipla) ou valores únicos
+      const values = Array.isArray(value) ? value : [value];
       
-      const labelEl = document.createElement('strong');
-      labelEl.style.color = '#22d3ee';
-      labelEl.textContent = `${label}: `;
-      
-      const valueEl = document.createElement('span');
-      valueEl.style.color = '#e2e8f0';
-      valueEl.textContent = value;
-      
-      const removeBtn = document.createElement('button');
-      removeBtn.textContent = '✕';
-      removeBtn.style.cssText = 'background: transparent; border: none; cursor: pointer; padding: 0; color: #94a3b8; margin-left: 4px; font-size: 16px; line-height: 1;';
-      removeBtn.title = 'Remover filtro';
-      removeBtn.addEventListener('click', () => {
-        window.crossfilterOverview.filters[field] = null;
-        window.crossfilterOverview.notifyListeners();
+      values.forEach((val, idx) => {
+        const pill = document.createElement('span');
+        pill.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm';
+        pill.style.cssText = 'background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(34, 211, 238, 0.3);';
+        
+        const labelEl = document.createElement('strong');
+        labelEl.style.color = '#22d3ee';
+        labelEl.textContent = idx === 0 ? `${label}: ` : '';
+        
+        const valueEl = document.createElement('span');
+        valueEl.style.color = '#e2e8f0';
+        valueEl.textContent = val;
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '✕';
+        removeBtn.style.cssText = 'background: transparent; border: none; cursor: pointer; padding: 0; color: #94a3b8; margin-left: 4px; font-size: 16px; line-height: 1;';
+        removeBtn.title = 'Remover filtro';
+        removeBtn.addEventListener('click', () => {
+          if (Array.isArray(value)) {
+            // Remover valor específico do array
+            const newArray = value.filter(v => String(v).toLowerCase() !== String(val).toLowerCase());
+            window.crossfilterOverview.filters[field] = newArray.length > 0 ? newArray : null;
+          } else {
+            // Remover filtro único
+            window.crossfilterOverview.filters[field] = null;
+          }
+          window.crossfilterOverview.notifyListeners();
+        });
+        
+        pill.appendChild(labelEl);
+        pill.appendChild(valueEl);
+        pill.appendChild(removeBtn);
+        pillsContainer.appendChild(pill);
       });
-      
-      pill.appendChild(labelEl);
-      pill.appendChild(valueEl);
-      pill.appendChild(removeBtn);
-      pillsContainer.appendChild(pill);
     }
   });
   

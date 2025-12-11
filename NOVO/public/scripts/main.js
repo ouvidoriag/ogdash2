@@ -9,21 +9,27 @@ function initPage() {
     window.filters?.updatePageTitle?.();
   }
   
+  const btnCentral = document.getElementById('btnSectionCentral');
   const btnOuvidoria = document.getElementById('btnSectionOuvidoria');
   const btnZeladoria = document.getElementById('btnSectionZeladoria');
   const btnEsic = document.getElementById('btnSectionEsic');
   
+  let isCentral = btnCentral?.classList.contains('active');
   let isOuvidoria = btnOuvidoria?.classList.contains('active');
   let isZeladoria = btnZeladoria?.classList.contains('active');
   let isEsic = btnEsic?.classList.contains('active');
   
   // Se nenhum estiver ativo, padrão é Ouvidoria
-  if (!isOuvidoria && !isZeladoria && !isEsic) {
+  if (!isCentral && !isOuvidoria && !isZeladoria && !isEsic) {
     isOuvidoria = true;
   }
   
-  const homePageId = isOuvidoria ? 'page-home' : (isZeladoria ? 'page-zeladoria-home' : 'page-esic-home');
-  const homePageData = isOuvidoria ? 'home' : (isZeladoria ? 'zeladoria-home' : 'esic-home');
+  const homePageId = isCentral ? 'page-central-dashboard' : 
+                     (isOuvidoria ? 'page-home' : 
+                     (isZeladoria ? 'page-zeladoria-home' : 'page-esic-home'));
+  const homePageData = isCentral ? 'central-dashboard' : 
+                      (isOuvidoria ? 'home' : 
+                      (isZeladoria ? 'zeladoria-home' : 'esic-home'));
   
   const allPages = document.getElementById('pages');
   if (allPages) {
@@ -34,9 +40,9 @@ function initPage() {
     });
   }
   
-  const activeMenu = isOuvidoria 
-    ? document.getElementById('sideMenuOuvidoria')
-    : (isZeladoria ? document.getElementById('sideMenuZeladoria') : document.getElementById('sideMenuEsic'));
+  const activeMenu = isCentral ? document.getElementById('sideMenuCentral') :
+                     (isOuvidoria ? document.getElementById('sideMenuOuvidoria') : 
+                     (isZeladoria ? document.getElementById('sideMenuZeladoria') : document.getElementById('sideMenuEsic')));
   
   if (activeMenu) {
     activeMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active'));
@@ -213,14 +219,20 @@ function getPageLoader(page) {
     'zeladoria-colab-criar': 'loadZeladoriaColabCriar',
     'zeladoria-colab-categorias': 'loadZeladoriaColabCategorias',
     'zeladoria-colab-mapa': 'loadZeladoriaColabMapa',
-    'zeladoria-cora-chat': 'loadZeladoriaCoraChat',
+    'zeladoria-cora-chat': 'loadCoraChat',
     // Páginas de E-SIC
     'esic-status': 'loadEsicStatus',
     'esic-tipo-informacao': 'loadEsicTipoInformacao',
     'esic-responsavel': 'loadEsicResponsavel',
     'esic-unidade': 'loadEsicUnidade',
     'esic-canal': 'loadEsicCanal',
-    'esic-mensal': 'loadEsicMensal'
+    'esic-mensal': 'loadEsicMensal',
+    // Páginas do Painel Central
+    'central-dashboard': 'loadCentralDashboard',
+    'central-zeladoria': 'loadCentralZeladoria',
+    'central-ouvidoria': 'loadCentralOuvidoria',
+    'central-esic': 'loadCentralEsic',
+    'central-cora': 'loadCentralCora'
   };
   
   const funcName = loaderMap[page];
@@ -272,6 +284,7 @@ async function loadSection(page) {
     return;
   }
   
+  // Esconder TODAS as páginas (incluindo as que estão fora do container #pages)
   const allPages = document.getElementById('pages');
   if (allPages) {
     Array.from(allPages.children).forEach(p => {
@@ -281,16 +294,31 @@ async function loadSection(page) {
     });
   }
   
+  // Também esconder páginas que possam estar fora do container #pages
+  document.querySelectorAll('section[id^="page-"]').forEach(section => {
+    section.style.display = 'none';
+  });
+  
+  // Mostrar a página solicitada
   const pageElement = document.getElementById(`page-${page}`);
   if (pageElement) {
     pageElement.style.display = 'block';
+    if (window.Logger) {
+      window.Logger.debug(`✅ Página ${page} exibida`);
+    }
+  } else {
+    if (window.Logger) {
+      window.Logger.warn(`⚠️ Página page-${page} não encontrada`);
+    }
   }
   
-  const activeMenu = document.getElementById('sideMenuOuvidoria')?.style.display !== 'none'
+  const activeMenu = document.getElementById('sideMenuCentral')?.style.display !== 'none'
+    ? document.getElementById('sideMenuCentral')
+    : (document.getElementById('sideMenuOuvidoria')?.style.display !== 'none'
     ? document.getElementById('sideMenuOuvidoria')
     : (document.getElementById('sideMenuZeladoria')?.style.display !== 'none'
       ? document.getElementById('sideMenuZeladoria')
-      : document.getElementById('sideMenuEsic'));
+        : document.getElementById('sideMenuEsic')));
   
   if (activeMenu) {
     activeMenu.querySelectorAll('div[data-page]').forEach(b => b.classList.remove('active'));
@@ -389,28 +417,32 @@ function initSectionSelector() {
 
   // Aguardar elementos críticos estarem disponíveis
   Promise.all([
+    waitForElement(() => document.getElementById('btnSectionCentral')),
     waitForElement(() => document.getElementById('btnSectionOuvidoria')),
     waitForElement(() => document.getElementById('btnSectionZeladoria')),
     waitForElement(() => document.getElementById('btnSectionEsic')),
+    waitForElement(() => document.getElementById('sideMenuCentral')),
     waitForElement(() => document.getElementById('sideMenuOuvidoria')),
     waitForElement(() => document.getElementById('sideMenuZeladoria')),
     waitForElement(() => document.getElementById('sideMenuEsic')),
     waitForElement(() => document.getElementById('sectionTitle'))
-  ]).then(([btnOuvidoria, btnZeladoria, btnEsic, menuOuvidoria, menuZeladoria, menuEsic, sectionTitle]) => {
+  ]).then(([btnCentralEl, btnOuvidoriaEl, btnZeladoriaEl, btnEsicEl, menuCentralEl, menuOuvidoriaEl, menuZeladoriaEl, menuEsicEl, sectionTitleEl]) => {
     // Debug: verificar elementos encontrados
     if (window.Logger) {
       window.Logger.debug('Inicializando seletor de seções:', {
-        btnOuvidoria: !!btnOuvidoria,
-        btnZeladoria: !!btnZeladoria,
-        btnEsic: !!btnEsic,
-        menuOuvidoria: !!menuOuvidoria,
-        menuZeladoria: !!menuZeladoria,
-        menuEsic: !!menuEsic
+        btnCentral: !!btnCentralEl,
+        btnOuvidoria: !!btnOuvidoriaEl,
+        btnZeladoria: !!btnZeladoriaEl,
+        btnEsic: !!btnEsicEl,
+        menuCentral: !!menuCentralEl,
+        menuOuvidoria: !!menuOuvidoriaEl,
+        menuZeladoria: !!menuZeladoriaEl,
+        menuEsic: !!menuEsicEl
       });
     }
     
     // Verificar elementos mínimos necessários
-    if (!btnOuvidoria || !btnZeladoria || !menuOuvidoria || !menuZeladoria) {
+    if (!btnOuvidoriaEl || !btnZeladoriaEl || !menuOuvidoriaEl || !menuZeladoriaEl) {
       if (window.Logger) {
         window.Logger.warn('Elementos básicos não encontrados para initSectionSelector, tentando novamente...');
       }
@@ -418,21 +450,57 @@ function initSectionSelector() {
       setTimeout(initSectionSelector, 1000);
       return;
     }
+    
+    // Variáveis locais para uso no switchSection
+    let btnCentral = btnCentralEl;
+    let btnOuvidoria = btnOuvidoriaEl;
+    let btnZeladoria = btnZeladoriaEl;
+    let btnEsic = btnEsicEl;
+    let menuCentral = menuCentralEl;
+    let menuOuvidoria = menuOuvidoriaEl;
+    let menuZeladoria = menuZeladoriaEl;
+    let menuEsic = menuEsicEl;
+    let sectionTitle = sectionTitleEl;
   
   function switchSection(section) {
     console.log('🔄 switchSection chamado com:', section);
     
     // Remover active de todos os botões (se existirem)
+    if (btnCentral) btnCentral.classList.remove('active');
     if (btnOuvidoria) btnOuvidoria.classList.remove('active');
     if (btnZeladoria) btnZeladoria.classList.remove('active');
     if (btnEsic) btnEsic.classList.remove('active');
     
     // Esconder todos os menus (se existirem)
+    if (menuCentral) menuCentral.style.display = 'none';
     if (menuOuvidoria) menuOuvidoria.style.display = 'none';
     if (menuZeladoria) menuZeladoria.style.display = 'none';
     if (menuEsic) menuEsic.style.display = 'none';
     
-    if (section === 'ouvidoria') {
+    if (section === 'central') {
+      console.log('✅ Ativando seção Painel Central');
+      if (btnCentral) {
+        btnCentral.classList.add('active');
+        console.log('✅ Botão Central marcado como active');
+      } else {
+        console.error('❌ btnCentral não encontrado');
+      }
+      if (menuCentral) {
+        menuCentral.style.display = 'block';
+        console.log('✅ Menu Central exibido');
+      } else {
+        console.error('❌ menuCentral não encontrado');
+      }
+      if (sectionTitle) {
+        sectionTitle.textContent = '🏙️ Painel Central';
+        console.log('✅ Título atualizado para Painel Central');
+      }
+      loadSection('central-dashboard');
+      
+      if (window.Logger) {
+        window.Logger.info('Seção Painel Central ativada');
+      }
+    } else if (section === 'ouvidoria') {
       if (btnOuvidoria) btnOuvidoria.classList.add('active');
       if (menuOuvidoria) menuOuvidoria.style.display = 'block';
       if (sectionTitle) sectionTitle.textContent = 'Ouvidoria';
@@ -494,6 +562,12 @@ function initSectionSelector() {
     }
     
     // Adicionar event listeners de forma robusta
+    const handlerCentral = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      switchSection('central');
+    };
+    
     const handlerOuvidoria = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -514,6 +588,10 @@ function initSectionSelector() {
       }
       switchSection('esic');
     };
+    
+    if (btnCentral) {
+      btnCentral = addClickListener(btnCentral, handlerCentral, 'btnSectionCentral');
+    }
     
     if (btnOuvidoria) {
       btnOuvidoria = addClickListener(btnOuvidoria, handlerOuvidoria, 'btnSectionOuvidoria');

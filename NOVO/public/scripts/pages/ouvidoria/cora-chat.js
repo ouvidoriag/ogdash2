@@ -1,22 +1,110 @@
 /**
- * Página: Cora Chat
+ * Página: Cora Chat - UNIFICADO
  * Interface de chat com assistente virtual
  * 
- * Permite interação com assistente AI para análise de dados
+ * Sistema unificado que funciona em qualquer contexto (Ouvidoria, Zeladoria, etc.)
+ * Detecta automaticamente o contexto baseado na página ativa
  */
 
 let chatMessages = [];
+let currentContext = 'ouvidoria'; // Contexto padrão
+let chatConfig = null; // Configuração dinâmica do chat
 
 /**
- * Carregar página de chat
+ * Detectar contexto e configuração do chat baseado na página ativa
+ */
+function detectChatConfig() {
+  // Tentar encontrar qualquer página de chat visível
+  const possiblePages = [
+    'page-cora-chat',
+    'page-zeladoria-cora-chat',
+    'page-central-cora'
+  ];
+  
+  let activePage = null;
+  let pageId = null;
+  
+  for (const pageIdCandidate of possiblePages) {
+    const page = document.getElementById(pageIdCandidate);
+    if (page && page.style.display !== 'none') {
+      activePage = page;
+      pageId = pageIdCandidate;
+      break;
+    }
+  }
+  
+  if (!activePage) {
+    // Fallback: tentar encontrar qualquer elemento de chat
+    const anyChatForm = document.querySelector('form[id*="chat"], form[id*="Chat"]');
+    if (anyChatForm) {
+      activePage = anyChatForm.closest('section');
+      if (activePage) {
+        pageId = activePage.id;
+      }
+    }
+  }
+  
+  // Detectar contexto baseado no ID da página ou seção
+  if (pageId) {
+    if (pageId.includes('zeladoria')) {
+      currentContext = 'zeladoria';
+    } else if (pageId.includes('central')) {
+      currentContext = 'central';
+    } else {
+      currentContext = 'ouvidoria';
+    }
+  }
+  
+  // Tentar encontrar elementos do chat (múltiplos padrões de ID)
+  const form = document.getElementById('chatForm') || 
+              document.getElementById('zeladoria-cora-chat-form') ||
+              document.querySelector('form[id*="chat"]');
+  
+  const input = document.getElementById('chatInput') || 
+                document.getElementById('zeladoria-cora-chat-input') ||
+                form?.querySelector('input[type="text"]');
+  
+  const submitBtn = document.getElementById('chatSubmitBtn') || 
+                    document.getElementById('zeladoria-cora-chat-submit-btn') ||
+                    form?.querySelector('button[type="button"]');
+  
+  const messagesContainer = document.getElementById('chatMessages') || 
+                            document.getElementById('zeladoria-cora-chat-messages') ||
+                            activePage?.querySelector('[id*="messages"]');
+  
+  return {
+    page: activePage,
+    pageId: pageId,
+    context: currentContext,
+    form: form,
+    input: input,
+    submitBtn: submitBtn,
+    messagesContainer: messagesContainer
+  };
+}
+
+/**
+ * Carregar página de chat (unificado para todos os contextos)
  */
 async function loadCoraChat() {
   if (window.Logger) {
-    window.Logger.debug('💬 loadCoraChat: Iniciando');
+    window.Logger.debug('💬 loadCoraChat: Iniciando (sistema unificado)');
   }
   
-  const page = document.getElementById('page-cora-chat');
-  if (!page || page.style.display === 'none') {
+  // Detectar configuração do chat
+  chatConfig = detectChatConfig();
+  
+  if (!chatConfig.page || !chatConfig.form || !chatConfig.input) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Elementos do chat não encontrados. Tentando novamente...');
+    }
+    // Aguardar um pouco e tentar novamente (pode estar carregando)
+    setTimeout(() => {
+      chatConfig = detectChatConfig();
+      if (chatConfig.form && chatConfig.input) {
+        initChat();
+      }
+    }, 500);
     return Promise.resolve();
   }
   
@@ -28,10 +116,10 @@ async function loadCoraChat() {
     renderMessages();
     
     // Inicializar formulário da página
-    initChatPage();
+    initChat();
     
     if (window.Logger) {
-      window.Logger.success('💬 loadCoraChat: Concluído');
+      window.Logger.success(`💬 loadCoraChat: Concluído (contexto: ${chatConfig.context})`);
     }
   } catch (error) {
     if (window.Logger) {
@@ -66,10 +154,16 @@ async function loadChatMessages() {
         createdAt: msg.createdAt || msg.timestamp || new Date().toISOString()
       }));
       
-      // Se não há mensagens, adicionar mensagem inicial
+      // Se não há mensagens, adicionar mensagem inicial baseada no contexto
       if (chatMessages.length === 0) {
+        const contextMessages = {
+          ouvidoria: 'Olá, Gestor Municipal! 👋 Sou a Cora, sua assistente virtual especialista em análises de ouvidoria. Como posso ajudar você hoje?',
+          zeladoria: 'Olá, Gestor Municipal! 👋 Sou a Cora, sua assistente virtual especialista em análises de zeladoria. Como posso ajudar você hoje?',
+          central: 'Olá, Gestor Municipal! 👋 Sou a Cora, sua assistente virtual. Posso ajudar com análises de Ouvidoria, Zeladoria e e-SIC. Como posso ajudar você hoje?'
+        };
+        
         chatMessages.push({
-          text: 'Olá, Gestor Municipal! 👋 Sou a Cora, sua assistente virtual especialista em análises de ouvidoria. Como posso ajudar você hoje?',
+          text: contextMessages[chatConfig?.context || 'ouvidoria'] || contextMessages.ouvidoria,
           sender: 'cora',
           createdAt: new Date().toISOString()
         });
@@ -119,8 +213,18 @@ function formatChatTime(date) {
  * Renderizar mensagens na tela
  */
 function renderMessages() {
-  const container = document.getElementById('chatMessages');
-  if (!container) return;
+  if (!chatConfig || !chatConfig.messagesContainer) {
+    // Tentar detectar novamente
+    chatConfig = detectChatConfig();
+    if (!chatConfig || !chatConfig.messagesContainer) {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Container de mensagens não encontrado');
+      }
+      return;
+    }
+  }
+  
+  const container = chatConfig.messagesContainer;
   
   if (!chatMessages || chatMessages.length === 0) {
     container.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhuma mensagem ainda</div>';
@@ -160,7 +264,7 @@ function renderMessages() {
  */
 async function sendMessage(text) {
   if (window.Logger) {
-    window.Logger.debug('🚀 sendMessage chamada', { text });
+    window.Logger.debug('🚀 sendMessage chamada', { text, context: chatConfig?.context });
   }
   
   if (!text.trim()) {
@@ -185,23 +289,25 @@ async function sendMessage(text) {
   renderMessages();
   
   // Limpar input
-  const input = document.getElementById('chatInput');
-  if (input) {
-    input.value = '';
-    input.focus();
+  if (chatConfig && chatConfig.input) {
+    chatConfig.input.value = '';
+    chatConfig.input.focus();
   }
   
   try {
     if (window.Logger) {
-      window.Logger.debug('📡 Enviando para backend...', { text: text.trim() });
+      window.Logger.debug('📡 Enviando para backend...', { text: text.trim(), context: chatConfig?.context });
     }
     
-    // Enviar para backend
+    // Enviar para backend com contexto
     const response = await fetch('/api/chat/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // Enviar cookies de sessão
-      body: JSON.stringify({ text: text.trim() })
+      body: JSON.stringify({ 
+        text: text.trim(),
+        context: chatConfig?.context || 'ouvidoria'
+      })
     });
     
     if (window.Logger) {
@@ -213,6 +319,19 @@ async function sendMessage(text) {
       if (window.Logger) {
         window.Logger.error('❌ Erro na resposta do backend', response.status, errorText);
       }
+      
+      // Tratamento especial para erro 401 (não autenticado)
+      if (response.status === 401) {
+        const errorMsg = {
+          text: 'Sua sessão expirou. Por favor, faça login novamente.',
+          sender: 'cora',
+          createdAt: new Date().toISOString()
+        };
+        chatMessages.push(errorMsg);
+        renderMessages();
+        return; // Não fazer throw para evitar qualquer comportamento inesperado
+      }
+      
       throw new Error(`Erro ao enviar mensagem: ${response.status}`);
     }
     
@@ -275,12 +394,15 @@ async function sendMessage(text) {
 }
 
 /**
- * Inicializar formulário da página
+ * Inicializar chat (unificado)
  */
-function initChatPage() {
-  const form = document.getElementById('chatForm');
-  const input = document.getElementById('chatInput');
-  const submitBtn = document.getElementById('chatSubmitBtn');
+function initChat() {
+  // Re-detectar configuração se necessário
+  if (!chatConfig || !chatConfig.form || !chatConfig.input) {
+    chatConfig = detectChatConfig();
+  }
+  
+  const { form, input, submitBtn } = chatConfig || {};
   
   if (!form || !input) {
     if (window.Logger) {
@@ -290,7 +412,22 @@ function initChatPage() {
   }
   
   if (window.Logger) {
-    window.Logger.debug('✅ Elementos encontrados', { form: !!form, input: !!input, submitBtn: !!submitBtn });
+    window.Logger.debug('✅ Elementos encontrados', { form: !!form, input: !!input, submitBtn: !!submitBtn, context: chatConfig?.context });
+  }
+  
+  // Garantir que o formulário não tenha action ou method que possam causar submit
+  if (form) {
+    form.setAttribute('action', 'javascript:void(0);');
+    form.setAttribute('method', 'get');
+    form.setAttribute('novalidate', 'novalidate');
+    if (!form.hasAttribute('onsubmit')) {
+      form.setAttribute('onsubmit', 'return false;');
+    }
+  }
+  
+  // Garantir que o botão não seja do tipo submit
+  if (submitBtn && submitBtn.type !== 'button') {
+    submitBtn.type = 'button';
   }
   
   const sendPageMessage = (e) => {
@@ -298,9 +435,11 @@ function initChatPage() {
       window.Logger.debug('📤 Tentando enviar mensagem', input.value);
     }
     
+    // SEMPRE prevenir comportamento padrão
     if (e) {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
     }
     
     const text = input.value.trim();
@@ -321,32 +460,76 @@ function initChatPage() {
     return false;
   };
   
-  // Adicionar listeners
-  form.onsubmit = sendPageMessage;
+  // Remover listeners antigos se existirem (evitar duplicação)
+  const oldSubmitHandler = form._submitHandler;
+  const oldClickHandler = submitBtn?._clickHandler;
+  const oldKeydownHandler = input._keydownHandler;
   
-  if (submitBtn) {
-    submitBtn.onclick = (e) => {
-      if (window.Logger) {
-        window.Logger.debug('🖱️ Botão Enviar clicado');
-      }
-      sendPageMessage(e);
-    };
+  if (oldSubmitHandler) {
+    form.removeEventListener('submit', oldSubmitHandler);
+  }
+  if (oldClickHandler && submitBtn) {
+    submitBtn.removeEventListener('click', oldClickHandler);
+  }
+  if (oldKeydownHandler) {
+    input.removeEventListener('keydown', oldKeydownHandler);
   }
   
-  input.onkeydown = (e) => {
+  // Criar novos handlers e armazenar referências
+  const submitHandler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    sendPageMessage(e);
+    return false;
+  };
+  
+  const clickHandler = (e) => {
+    if (window.Logger) {
+      window.Logger.debug('🖱️ Botão Enviar clicado');
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    sendPageMessage(e);
+    return false;
+  };
+  
+  const keydownHandler = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       if (window.Logger) {
         window.Logger.debug('⌨️ Enter pressionado');
       }
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
       sendPageMessage(e);
+      return false;
     }
   };
+  
+  // Armazenar referências para possível remoção futura
+  form._submitHandler = submitHandler;
+  if (submitBtn) {
+    submitBtn._clickHandler = clickHandler;
+  }
+  input._keydownHandler = keydownHandler;
+  
+  // Adicionar listeners usando addEventListener (mais confiável)
+  form.addEventListener('submit', submitHandler, { capture: true, passive: false });
+  
+  if (submitBtn) {
+    submitBtn.addEventListener('click', clickHandler, { capture: true });
+  }
+  
+  input.addEventListener('keydown', keydownHandler, { capture: true });
   
   // Focar no input
   input.focus();
 }
 
+// Exportar função globalmente
 window.loadCoraChat = loadCoraChat;
 
+// Também exportar como loadZeladoriaCoraChat para compatibilidade
+window.loadZeladoriaCoraChat = loadCoraChat;

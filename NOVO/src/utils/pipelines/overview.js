@@ -126,9 +126,20 @@ function buildMatchFromFilters(filters = {}) {
   
   for (const field of filterFields) {
     if (filters[field] !== undefined && filters[field] !== null) {
+      // Suportar objetos MongoDB como { $in: [...] } para seleção múltipla
       if (typeof filters[field] === 'object' && !Array.isArray(filters[field]) && filters[field].constructor === Object) {
-        match[field] = filters[field];
+        // Se for um objeto MongoDB (ex: { $in: [...] }), usar diretamente
+        if (filters[field].$in || filters[field].$regex || filters[field].$gte || filters[field].$lte) {
+          match[field] = filters[field];
+        } else {
+          // Objeto simples, usar como está
+          match[field] = filters[field];
+        }
+      } else if (Array.isArray(filters[field])) {
+        // Se for array, converter para $in
+        match[field] = { $in: filters[field] };
       } else {
+        // Valor simples
         match[field] = filters[field];
       }
     }

@@ -90,10 +90,30 @@ export async function withCache(key, ttlSeconds, res, fn, memoryCache = null, ti
       });
     }
     
-    logger.error(`Erro em ${key}:`, { error: error.message, stack: error.stack });
+    // Evitar estruturas circulares ao logar erros
+    const errorInfo = {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      codeName: error.codeName
+    };
+    
+    // Adicionar stack apenas se não for objeto MongoDB complexo
+    if (error.stack && typeof error.stack === 'string') {
+      errorInfo.stack = error.stack.substring(0, 500); // Limitar tamanho
+    }
+    
+    logger.error(`Erro em ${key}:`, errorInfo);
+    
+    // Verificar se a resposta já foi enviada
+    if (res.headersSent) {
+      logger.warn(`Tentativa de enviar resposta duplicada para ${key}`);
+      return;
+    }
+    
     return res.status(500).json({ 
       error: 'Erro interno do servidor',
-      message: error.message 
+      message: error.message || 'Erro desconhecido'
     });
   }
 }

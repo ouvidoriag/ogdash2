@@ -32,6 +32,7 @@ import dataSyncRoutes from './dataSync.js';
 import colabRoutes from './colab.js';
 import batchRoutes from './batch.js';
 import metricsRoutes from './metrics.js';
+import centralRoutes from './central.js';
 
 export default function apiRoutes(prisma, getMongoClient) {
   const router = express.Router();
@@ -54,7 +55,8 @@ export default function apiRoutes(prisma, getMongoClient) {
     dataSync: '/api/data-sync/*',
     colab: '/api/colab/*',
     batch: '/api/batch/*',
-    metrics: '/api/metrics/*'
+    metrics: '/api/metrics/*',
+    central: '/api/central/*'
   };
   
   // Rotas de agregação - Análises e agregações de dados
@@ -106,6 +108,9 @@ export default function apiRoutes(prisma, getMongoClient) {
   // Rotas de Métricas - Monitoramento do sistema
   // REFATORAÇÃO: Prisma → Mongoose (prisma não usado mais)
   router.use('/metrics', metricsRoutes(null));
+  
+  // Rotas do Painel Central - Dados consolidados de todos os sistemas
+  router.use('/central', centralRoutes());
   
   // Log de carregamento das rotas (apenas em desenvolvimento)
   if (process.env.NODE_ENV === 'development') {

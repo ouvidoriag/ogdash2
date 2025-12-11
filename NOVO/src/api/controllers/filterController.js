@@ -49,7 +49,17 @@ export async function filterRecords(req, res, getMongoClient) {
       // Se o campo está normalizado no schema, tentar usar $match
       if (col && f.op === 'eq') {
         // Tentar filtrar pelo campo normalizado
-        mongoFilter[col] = f.value;
+        // Se o valor for array, usar $in automaticamente
+        if (Array.isArray(f.value)) {
+          mongoFilter[col] = { $in: f.value };
+        } else {
+          mongoFilter[col] = f.value;
+        }
+        fieldsNeeded.add(col);
+      } else if (col && f.op === 'in') {
+        // Operador 'in' explícito para seleção múltipla
+        const values = Array.isArray(f.value) ? f.value : [f.value];
+        mongoFilter[col] = { $in: values };
         fieldsNeeded.add(col);
       } else if (col && f.op === 'contains') {
         // Para campos de data, usar regex se o valor for no formato YYYY-MM
@@ -206,10 +216,26 @@ export async function filterRecords(req, res, getMongoClient) {
           // Aplicar operação de filtro
           if (f.op === 'eq') {
             // Comparação exata (case-insensitive)
+            // Suportar arrays para seleção múltipla
+            const filterValues = Array.isArray(f.value) ? f.value : [f.value];
             const valueStr = `${value}`.trim().toLowerCase();
-            const filterStr = `${f.value}`.trim().toLowerCase();
-            if (valueStr !== filterStr) {
-              return false; // Não corresponde, excluir registro
+            const matches = filterValues.some(filterVal => {
+              const filterStr = `${filterVal}`.trim().toLowerCase();
+              return valueStr === filterStr;
+            });
+            if (!matches) {
+              return false; // Não corresponde a nenhum valor, excluir registro
+            }
+          } else if (f.op === 'in') {
+            // Operador 'in' explícito (mesma lógica do 'eq' com array)
+            const filterValues = Array.isArray(f.value) ? f.value : [f.value];
+            const valueStr = `${value}`.trim().toLowerCase();
+            const matches = filterValues.some(filterVal => {
+              const filterStr = `${filterVal}`.trim().toLowerCase();
+              return valueStr === filterStr;
+            });
+            if (!matches) {
+              return false; // Não corresponde a nenhum valor, excluir registro
             }
           } else if (f.op === 'contains') {
             // Contém (case-insensitive)
@@ -351,15 +377,44 @@ export async function filterAndAggregate(req, res, getMongoClient) {
     for (const f of filters) {
       const col = getNormalizedField(f.field);
       
+      logger.debug(`/api/filter/aggregated: Processando filtro:`, {
+        originalField: f.field,
+        normalizedField: col,
+        operator: f.op,
+        valueType: Array.isArray(f.value) ? 'array' : typeof f.value,
+        valueLength: Array.isArray(f.value) ? f.value.length : 1,
+        value: Array.isArray(f.value) ? f.value.slice(0, 5) : f.value
+      });
+      
       if (!col) {
         // Campo não normalizado - pular (será filtrado em memória se necessário)
+        logger.warn(`/api/filter/aggregated: Campo não normalizado, ignorando: ${f.field}`);
         continue;
       }
       
       // Aplicar operador
       if (f.op === 'eq') {
         // Igualdade exata
-        mongoFilter[col] = f.value;
+        // Se o valor for array, usar $in automaticamente
+        if (Array.isArray(f.value)) {
+          mongoFilter[col] = { $in: f.value };
+        } else {
+          mongoFilter[col] = f.value;
+        }
+      } else if (f.op === 'in') {
+        // Operador 'in' explícito para seleção múltipla
+        // Garantir que o valor é um array
+        const values = Array.isArray(f.value) ? f.value : [f.value];
+        if (values.length > 0) {
+          mongoFilter[col] = { $in: values };
+          logger.debug(`/api/filter/aggregated: Aplicando filtro $in para ${col}:`, { 
+            values, 
+            count: values.length,
+            sample: values.slice(0, 3)
+          });
+        } else {
+          logger.warn(`/api/filter/aggregated: Array vazio para ${col}, ignorando filtro`);
+        }
       } else if (f.op === 'contains') {
         // Contém (regex case-insensitive)
         if ((col === 'dataDaCriacao' || col === 'dataCriacaoIso') && /^\d{4}-\d{2}$/.test(f.value)) {
@@ -390,7 +445,14 @@ export async function filterAndAggregate(req, res, getMongoClient) {
     
     logger.debug('/api/filter/aggregated: Filtro MongoDB construído', {
       mongoFilterKeys: Object.keys(mongoFilter),
-      mongoFilter: mongoFilter
+      mongoFilter: mongoFilter,
+      filtersReceived: filters.map(f => ({ 
+        field: f.field, 
+        op: f.op, 
+        valueType: Array.isArray(f.value) ? 'array' : typeof f.value,
+        valueLength: Array.isArray(f.value) ? f.value.length : 1,
+        valueSample: Array.isArray(f.value) ? f.value.slice(0, 3) : f.value
+      }))
     });
     
     // Usar getOverviewData com os filtros construídos
@@ -403,20 +465,23 @@ export async function filterAndAggregate(req, res, getMongoClient) {
     const { buildOverviewPipeline } = await import('../../utils/pipelines/overview.js');
     const { executeAggregation, formatOverviewData } = await import('../../utils/dbAggregations.js');
     
-    // Construir pipeline base de overview (sem filtros, pois vamos adicionar depois)
-    const basePipeline = buildOverviewPipeline({});
+    // CORREÇÃO: Passar os filtros MongoDB diretamente para buildOverviewPipeline
+    // A função buildMatchFromFilters dentro do pipeline já suporta objetos MongoDB como { $in: [...] }
+    const pipeline = buildOverviewPipeline(mongoFilter);
     
-    // Construir pipeline final
-    const pipeline = [];
+    logger.debug('/api/filter/aggregated: Pipeline construído com filtros:', {
+      mongoFilterKeys: Object.keys(mongoFilter),
+      mongoFilter: mongoFilter,
+      hasInOperator: Object.values(mongoFilter).some(v => v && typeof v === 'object' && v.$in),
+      pipelineLength: pipeline.length,
+      firstStage: pipeline[0]
+    });
     
-    // Se há filtros, adicionar $match no início ANTES do pipeline base
-    if (Object.keys(mongoFilter).length > 0) {
-      pipeline.push({ $match: mongoFilter });
-    }
-    
-    // Adicionar todo o pipeline base (que já tem seu próprio $match interno se necessário)
-    // O $match do pipeline base será aplicado APÓS o nosso $match (MongoDB aplica em sequência)
-    pipeline.push(...basePipeline);
+    logger.debug('/api/filter/aggregated: Pipeline final construído:', {
+      totalStages: pipeline.length,
+      firstStage: pipeline[0],
+      hasMatch: pipeline[0]?.$match ? true : false
+    });
     
     // Executar agregação
     const startTime = Date.now();

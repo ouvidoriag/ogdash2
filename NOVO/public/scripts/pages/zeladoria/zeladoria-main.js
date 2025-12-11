@@ -59,13 +59,13 @@ function getPageLoader(page) {
     'criar': window.loadZeladoriaColabCriar || (() => Promise.resolve()),
     'categorias': window.loadZeladoriaColabCategorias || (() => Promise.resolve()),
     'mapa': window.loadZeladoriaMapa || (() => Promise.resolve()),
-    'cora': window.loadZeladoriaCoraChat || (() => Promise.resolve()),
+    'cora': window.loadCoraChat || (() => Promise.resolve()),
     // IDs novos (dashboard unificado)
     'zeladoria-colab-demandas': window.loadColabDemandas || (() => Promise.resolve()),
     'zeladoria-colab-criar': window.loadZeladoriaColabCriar || (() => Promise.resolve()),
     'zeladoria-colab-categorias': window.loadZeladoriaColabCategorias || (() => Promise.resolve()),
     'zeladoria-colab-mapa': window.loadZeladoriaColabMapa || (() => Promise.resolve()),
-    'zeladoria-cora-chat': window.loadZeladoriaCoraChat || (() => Promise.resolve())
+    'zeladoria-cora-chat': window.loadCoraChat || (() => Promise.resolve())
   };
   
   return loaderMap[page] || null;
