@@ -2,10 +2,16 @@
  * Sistema de Legenda Interativa para Gráficos
  * Permite marcar/desmarcar datasets em gráficos de linha múltipla
  *
+ * REFATORAÇÃO FASE 5: Mantido como wrapper para compatibilidade
+ * A lógica principal está integrada no chartFactory
+ * 
  * Sistema modular e robusto para controle de visibilidade de datasets
  * MIGRAÇÃO: Migrado para TypeScript
- * Data: 03/12/2025
+ * Data: 03/12/2025 (Refatorado: 09/12/2025)
  * CÉREBRO X-3
+ * 
+ * ⚠️ DEPRECADO: Use chartFactory com opção createLegend: true
+ * Este arquivo é mantido apenas para compatibilidade com código antigo
  */
 /// <reference path="./chart-communication/global.d.ts" />
 /**

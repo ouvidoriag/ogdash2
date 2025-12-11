@@ -14,16 +14,16 @@
 (function() {
   'use strict';
 
-  // Usar eventBus global se disponível
-  const eventBus: EventBus = (window as Window & { eventBus?: EventBus }).eventBus || {
-    listeners: new Map(),
-    emit: () => {},
-    on: () => () => {},
-    off: () => {},
-    clear: () => {},
-    listenerCount: () => 0,
-    getEvents: () => []
-  };
+  // REFATORAÇÃO FASE 3: Usar APENAS window.eventBus global (único event bus)
+  // event-bus.js é carregado antes deste módulo no HTML
+  const win = window as Window & { eventBus?: EventBus };
+  if (!win.eventBus) {
+    if ((window as any).Logger) {
+      (window as any).Logger.error('eventBus global não encontrado. Verifique se event-bus.js está carregado antes de global-filters.js');
+    }
+    throw new Error('eventBus global não encontrado. Carregue event-bus.js antes de global-filters.js');
+  }
+  const eventBus: EventBus = win.eventBus;
 
   // ============================================
   // GLOBAL FILTERS - Sistema de Filtros Globais

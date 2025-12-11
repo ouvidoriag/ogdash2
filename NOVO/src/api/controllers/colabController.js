@@ -107,6 +107,8 @@ export async function getCategories(req, res) {
  */
 export async function getPosts(req, res) {
   try {
+    const { start_date, end_date, status, category_id, category, page, perPage } = req.query;
+    
     logger.info('Buscando posts do Colab', { category, page, perPage });
     const headers = getColabHeaders();
     if (!headers) {
@@ -120,8 +122,6 @@ export async function getPosts(req, res) {
         message: 'Configure as variáveis de ambiente: COLAB_APPLICATION_ID, COLAB_REST_API_KEY, COLAB_ADMIN_USER_AUTH_TICKET'
       });
     }
-    
-    const { start_date, end_date, status, category_id } = req.query;
     
     if (!start_date || !end_date) {
       return res.status(400).json({ 

@@ -32,28 +32,8 @@ async function loadOverview(forceRefresh = false) {
     return Promise.resolve();
   }
   
-  // OTIMIZAÇÃO: Mostrar indicador de carregamento
-  const loadingIndicator = document.getElementById('overview-loading');
-  if (loadingIndicator) {
-    loadingIndicator.style.display = 'flex';
-  } else {
-    // Criar indicador se não existir
-    const loader = document.createElement('div');
-    loader.id = 'overview-loading';
-    loader.className = 'fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center';
-    loader.innerHTML = `
-      <div class="bg-slate-800 rounded-lg p-6 shadow-xl">
-        <div class="flex items-center gap-4">
-          <div class="animate-spin text-4xl">⏳</div>
-          <div>
-            <div class="text-lg font-semibold text-cyan-300 mb-1">Carregando Dashboard...</div>
-            <div class="text-sm text-slate-400">Aguarde enquanto os dados são carregados</div>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(loader);
-  }
+  // PRIORIDADE 2: Usar loadingManager global
+  window.loadingManager?.show('Carregando dashboard...');
   
   try {
     let dashboardData = {};
@@ -79,120 +59,28 @@ async function loadOverview(forceRefresh = false) {
       }) || {};
     }
     
-    // CÓDIGO ANTIGO DE FILTROS (mantido para referência, mas não usado)
-    if (false) {
-      try {
-        const filterRequest = {
-          filters: activeFilters,
-          originalUrl: window.location.pathname
-        };
-        
-        // OTIMIZAÇÃO: Adicionar timeout para evitar travamentos
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
-        
-        const response = await fetch('/api/filter', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include', // Enviar cookies de sessão
-          body: JSON.stringify(filterRequest),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const filteredRows = await response.json();
-          
-          // Debug: verificar dados recebidos
-          if (window.Logger) {
-            window.Logger.debug('📊 loadOverview: Dados filtrados recebidos do /api/filter', {
-              totalRows: filteredRows?.length || 0,
-              sampleRow: filteredRows?.[0] ? {
-                keys: Object.keys(filteredRows[0]).slice(0, 10),
-                hasData: !!filteredRows[0].data,
-                hasPrioridade: !!(filteredRows[0].prioridade || filteredRows[0].Prioridade || filteredRows[0].data?.prioridade || filteredRows[0].data?.Prioridade)
-              } : null
-            });
-          }
-          
-          // Validar que filteredRows é um array
-          if (!Array.isArray(filteredRows)) {
-            throw new Error('Dados filtrados não são um array');
-          }
-          
-          // OTIMIZAÇÃO: Limitar quantidade de registros processados se houver muitos
-          // Processar no máximo 50000 registros para manter performance
-          const rowsToProcess = filteredRows.length > 50000 
-            ? filteredRows.slice(0, 50000) 
-            : filteredRows;
-          
-          if (filteredRows.length > 50000 && window.Logger) {
-            window.Logger.warn(`📊 Muitos registros filtrados (${filteredRows.length}), processando apenas os primeiros 50000 para manter performance`);
-          }
-          
-          // Agregar dados localmente
-          dashboardData = aggregateFilteredData(rowsToProcess);
-          
-          if (window.Logger) {
-            window.Logger.debug('📊 loadOverview: Dados agregados localmente com filtros', {
-              total: dashboardData.totalManifestations,
-              byStatus: dashboardData.manifestationsByStatus?.length || 0,
-              byMonth: dashboardData.manifestationsByMonth?.length || 0,
-              byDay: dashboardData.manifestationsByDay?.length || 0,
-              byTheme: dashboardData.manifestationsByTheme?.length || 0,
-              byOrgan: dashboardData.manifestationsByOrgan?.length || 0,
-              sampleStatus: dashboardData.manifestationsByStatus?.[0],
-              sampleMonth: dashboardData.manifestationsByMonth?.[0],
-              sampleDay: dashboardData.manifestationsByDay?.[0]
-            });
-          }
-        } else {
-          throw new Error(`Erro ao buscar dados filtrados: ${response.statusText}`);
-        }
-      } catch (filterError) {
-        if (window.Logger) {
-          window.Logger.error('Erro ao aplicar filtros no overview, carregando sem filtros:', filterError);
-        }
-        // Em caso de erro, carregar sem filtros
-        // OTIMIZAÇÃO: Aumentar TTL para melhor performance
-        dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
-          useDataStore: !forceRefresh,
-          ttl: 5 * 60 * 1000 // 5 minutos ao invés de 5 segundos
-        }) || {};
+    // PRIORIDADE 1: Validar dados recebidos
+    const validation = window.dataValidator?.validateApiResponse(dashboardData, {
+      types: {
+        totalManifestations: 'number',
+        manifestationsByMonth: 'array',
+        manifestationsByDay: 'array',
+        manifestationsByStatus: 'array'
       }
-    } else {
-      // Sem filtros, usar endpoint normal
-      // OTIMIZAÇÃO: Aumentar TTL para 5 minutos (300000ms) para melhor performance
-      dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
-        useDataStore: !forceRefresh,
-        ttl: 5 * 60 * 1000 // 5 minutos ao invés de 5 segundos
-      }) || {};
-    }
-    
-    // Debug: verificar dados recebidos
-    console.log('📊 Dashboard Data recebido:', {
-      total: dashboardData.totalManifestations,
-      byMonth: dashboardData.manifestationsByMonth?.length || 0,
-      byDay: dashboardData.manifestationsByDay?.length || 0,
-      byStatus: dashboardData.manifestationsByStatus?.length || 0,
-      byTheme: dashboardData.manifestationsByTheme?.length || 0,
-      byOrgan: dashboardData.manifestationsByOrgan?.length || 0,
-      byType: dashboardData.manifestationsByType?.length || 0,
-      byChannel: dashboardData.manifestationsByChannel?.length || 0,
-      byPriority: dashboardData.manifestationsByPriority?.length || 0,
-      byUnit: dashboardData.manifestationsByUnit?.length || 0,
-      sampleMonth: dashboardData.manifestationsByMonth?.[0],
-      sampleDay: dashboardData.manifestationsByDay?.[0],
-      sampleStatus: dashboardData.manifestationsByStatus?.[0],
-      sampleTheme: dashboardData.manifestationsByTheme?.[0],
-      sampleOrgan: dashboardData.manifestationsByOrgan?.[0]
     });
     
+    if (!validation.valid && window.Logger) {
+      window.Logger.warn('⚠️ Dados do dashboard podem estar incompletos:', validation.error);
+    }
+    
     if (window.Logger) {
-      window.Logger.debug('📊 Dashboard Data recebido:', dashboardData);
+      window.Logger.debug('📊 Dashboard Data recebido:', {
+        total: dashboardData.totalManifestations,
+        byMonth: dashboardData.manifestationsByMonth?.length || 0,
+        byDay: dashboardData.manifestationsByDay?.length || 0,
+        byStatus: dashboardData.manifestationsByStatus?.length || 0,
+        valid: validation.valid
+      });
     }
     
     // Extrair dados
@@ -214,13 +102,6 @@ async function loadOverview(forceRefresh = false) {
         totalManifestations: dashboardData.totalManifestations,
         total: dashboardData.total,
         count: dashboardData.count
-      });
-    } else {
-      console.log('📊 Dados do summary:', {
-        total: summary.total,
-        last7: summary.last7,
-        last30: summary.last30,
-        dashboardDataKeys: Object.keys(dashboardData).slice(0, 20)
       });
     }
     
@@ -310,11 +191,13 @@ async function loadOverview(forceRefresh = false) {
               }
               
               // LOG CRÍTICO: Confirmar que está usando o endpoint correto
-              console.log('🚀🚀🚀 CHAMANDO /api/filter/aggregated (NÃO /api/filter)', {
-                filters: apiFilters,
-                endpoint: '/api/filter/aggregated',
-                timestamp: new Date().toISOString()
-              });
+              if (window.Logger) {
+                window.Logger.debug('🚀 CHAMANDO /api/filter/aggregated', {
+                  filters: apiFilters,
+                  endpoint: '/api/filter/aggregated',
+                  timestamp: new Date().toISOString()
+                });
+              }
               
               const response = await fetch('/api/filter/aggregated', {
                 method: 'POST',
@@ -322,12 +205,14 @@ async function loadOverview(forceRefresh = false) {
                 body: JSON.stringify({ filters: apiFilters })
               });
               
-              console.log('📡 Resposta recebida:', {
-                ok: response.ok,
-                status: response.status,
-                url: response.url,
-                endpoint: '/api/filter/aggregated'
-              });
+              if (window.Logger) {
+                window.Logger.debug('📡 Resposta recebida:', {
+                  ok: response.ok,
+                  status: response.status,
+                  url: response.url,
+                  endpoint: '/api/filter/aggregated'
+                });
+              }
               
               if (window.Logger) {
                 window.Logger.debug('📡 Resposta da API /api/filter/aggregated:', {
@@ -594,11 +479,12 @@ async function loadOverview(forceRefresh = false) {
     // OTIMIZAÇÃO: Renderizar KPIs primeiro (mais rápido, feedback imediato)
     await renderKPIs(summary, byDay, byMonth);
     
+    // CORREÇÃO: Renderizar Status Atual (seção que estava faltando)
+    await renderStatusOverview();
+    
     // OTIMIZAÇÃO: Ocultar indicador de carregamento após KPIs (feedback mais rápido)
-    const loadingIndicator = document.getElementById('overview-loading');
-    if (loadingIndicator) {
-      loadingIndicator.style.display = 'none';
-    }
+    // PRIORIDADE 2: Esconder loading usando loadingManager
+    window.loadingManager?.hide();
     
     // OTIMIZAÇÃO: Renderizar gráficos principais de forma incremental (não bloqueia UI)
     // Usar requestAnimationFrame para não bloquear a thread principal
@@ -614,37 +500,179 @@ async function loadOverview(forceRefresh = false) {
     
     // Indicador já foi ocultado após renderizar KPIs
   } catch (error) {
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar overview:', error);
-    }
+    // PRIORIDADE 1: Usar errorHandler para tratamento de erros
+    window.errorHandler?.handleError(error, 'loadOverview', {
+      showToUser: true
+    });
     
-    // OTIMIZAÇÃO: Mostrar mensagem de erro ao usuário
-    const pageMain = document.getElementById('page-main');
-    if (pageMain) {
-      const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50';
-      errorMessage.innerHTML = `
-        <div class="flex items-center gap-2">
-          <span>❌</span>
-          <span>Erro ao carregar dados. Tente recarregar a página.</span>
-        </div>
-      `;
-      document.body.appendChild(errorMessage);
-      
-      // Remover mensagem após 5 segundos
-      setTimeout(() => {
-        errorMessage.remove();
-      }, 5000);
-    }
-    
-    // OTIMIZAÇÃO: Ocultar indicador de carregamento mesmo em caso de erro
-    const loadingIndicator = document.getElementById('overview-loading');
-    if (loadingIndicator) {
-      loadingIndicator.style.display = 'none';
-    }
+    // PRIORIDADE 2: Esconder loading em caso de erro
+    window.loadingManager?.hide();
     
     // Re-throw para que o erro seja visível no console
     throw error;
+  }
+}
+
+/**
+ * Renderizar Status Atual (seção que estava faltando)
+ * CORREÇÃO: Esta função estava faltando, causando o problema de carregamento infinito
+ */
+async function renderStatusOverview() {
+  const statusContainer = document.getElementById('statusOverviewCards');
+  if (!statusContainer) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ statusOverviewCards não encontrado');
+    }
+    return;
+  }
+  
+  try {
+    // Mostrar loading
+    statusContainer.innerHTML = '<div class="text-center text-slate-400 py-4">Carregando status...</div>';
+    
+    // CORREÇÃO: Usar endpoint /api/summary que retorna statusCounts
+    // ou /api/aggregate/count-by?field=status
+    let statusData = await window.dataLoader?.load('/api/summary', {
+      useDataStore: true,
+      ttl: 5 * 60 * 1000 // 5 minutos
+    }) || {};
+    
+    // Extrair dados de status do summary
+    let statusCounts = statusData.statusCounts || statusData.byStatus || [];
+    let total = statusData.total || 0;
+    
+    // Se não tiver statusCounts no summary, tentar endpoint de agregação
+    if (!Array.isArray(statusCounts) || statusCounts.length === 0) {
+      if (window.Logger) {
+        window.Logger.debug('📊 Tentando endpoint alternativo para status...');
+      }
+      
+      const aggregateData = await window.dataLoader?.load('/api/aggregate/count-by?field=status', {
+        useDataStore: true,
+        ttl: 5 * 60 * 1000
+      }) || [];
+      
+      if (Array.isArray(aggregateData) && aggregateData.length > 0) {
+        statusCounts = aggregateData.map(item => ({
+          status: item.status || item._id || item.key || 'Não informado',
+          count: item.count || 0
+        }));
+        total = statusCounts.reduce((sum, item) => sum + (item.count || 0), 0);
+      }
+    }
+    
+    if (window.Logger) {
+      window.Logger.debug('📊 Status Overview Data:', {
+        statusCounts: statusCounts.length,
+        total,
+        statusCounts
+      });
+    }
+    
+    if (!Array.isArray(statusCounts) || statusCounts.length === 0) {
+      statusContainer.innerHTML = '<div class="text-center text-slate-400 py-4">Nenhum dado de status disponível</div>';
+      return;
+    }
+    
+    // Mapear cores para status comuns
+    const statusColors = {
+      'CONCLUÍDO': 'emerald',
+      'CONCLUIDO': 'emerald',
+      'FECHADO': 'emerald',
+      'RESOLVIDO': 'emerald',
+      'EM ANDAMENTO': 'cyan',
+      'EM_ANDAMENTO': 'cyan',
+      'EM ATENDIMENTO': 'cyan',
+      'ATENDIMENTO': 'cyan',
+      'ABERTO': 'amber',
+      'NOVO': 'amber',
+      'PENDENTE': 'amber',
+      'AGUARDANDO': 'amber',
+      'CANCELADO': 'rose',
+      'CANCELADA': 'rose',
+      'ARQUIVADO': 'slate',
+      'ARQUIVADA': 'slate'
+    };
+    
+    // Função para obter cor do status
+    function getStatusColor(status) {
+      const statusUpper = (status || '').toUpperCase().trim();
+      for (const [key, color] of Object.entries(statusColors)) {
+        if (statusUpper.includes(key)) {
+          return color;
+        }
+      }
+      return 'violet'; // Cor padrão
+    }
+    
+    // Renderizar cards de status
+    const cardsHTML = statusCounts.map((item, index) => {
+      const status = item.status || item._id || item.key || 'Não informado';
+      const count = item.count || 0;
+      const percent = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+      const color = getStatusColor(status);
+      
+      // Classes de cor dinâmicas
+      const colorClasses = {
+        emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+        cyan: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
+        amber: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+        rose: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+        slate: 'border-slate-500/30 bg-slate-500/10 text-slate-300',
+        violet: 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+      };
+      
+      const classes = colorClasses[color] || colorClasses.violet;
+      
+      // Escapar aspas no status para evitar problemas no HTML
+      const statusEscaped = (status || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      
+      return `
+        <div class="glass rounded-xl p-4 border ${classes} hover:bg-opacity-20 transition-all cursor-pointer status-card" 
+             data-status="${statusEscaped}"
+             title="Clique para filtrar por ${status}">
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-semibold text-lg">${status}</div>
+            <div class="text-2xl font-bold">${count.toLocaleString('pt-BR')}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="flex-1 h-2 bg-slate-800/50 rounded-full overflow-hidden">
+              <div class="h-full bg-current rounded-full transition-all" style="width: ${percent}%"></div>
+            </div>
+            <div class="text-xs font-medium">${percent}%</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    statusContainer.innerHTML = cardsHTML;
+    
+    // Adicionar event listeners para os cards (melhor que onclick inline)
+    const statusCards = statusContainer.querySelectorAll('.status-card');
+    statusCards.forEach(card => {
+      card.addEventListener('click', () => {
+        const status = card.dataset.status;
+        if (status && window.crossfilterOverview) {
+          window.crossfilterOverview.setStatusFilter(status);
+          window.crossfilterOverview.notifyListeners();
+        }
+      });
+    });
+    
+    if (window.Logger) {
+      window.Logger.success('✅ Status Overview renderizado com sucesso');
+    }
+  } catch (error) {
+    window.errorHandler?.handleError(error, 'renderStatusOverview', {
+      showToUser: false
+    });
+    
+    statusContainer.innerHTML = `
+      <div class="text-center text-rose-400 py-4">
+        <div class="text-sm font-semibold mb-1">Erro ao carregar status</div>
+        <div class="text-xs text-slate-500">${error.message || 'Erro desconhecido'}</div>
+      </div>
+    `;
   }
 }
 
@@ -866,7 +894,11 @@ window.renderStandardDoughnutLegend = renderStandardDoughnutLegend;
 async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit, forceRefresh = false) {
   // Verificar se chartFactory está disponível
   if (!window.chartFactory) {
-    console.error('❌ chartFactory não está disponível!');
+    window.errorHandler?.handleError(
+      new Error('chartFactory não está disponível'),
+      'renderMainCharts',
+      { showToUser: false }
+    );
     if (window.Logger) {
       window.Logger.error('chartFactory não está disponível');
     }
@@ -1068,7 +1100,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             trendChart.update('none');
           }
         } catch (error) {
-          console.error('Erro ao criar chartTrend:', error);
+          window.errorHandler?.handleError(error, 'renderMainCharts (chartTrend)', {
+            showToUser: false
+          });
           if (window.Logger) {
             window.Logger.error('Erro ao criar chartTrend:', error);
           }
@@ -1171,7 +1205,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             statusChart.update('none');
           }
         } catch (error) {
-          console.error('Erro ao criar chartFunnelStatus:', error);
+          window.errorHandler?.handleError(error, 'renderMainCharts (chartFunnelStatus)', {
+            showToUser: false
+          });
           if (window.Logger) {
             window.Logger.error('Erro ao criar chartFunnelStatus:', error);
           }
@@ -1273,7 +1309,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         if (window.Logger) {
           window.Logger.warn('⚠️ Canvas chartDailyDistribution não encontrado no DOM');
         }
-        console.warn('⚠️ Canvas chartDailyDistribution não encontrado');
+        if (window.Logger) {
+          window.Logger.warn('⚠️ Canvas chartDailyDistribution não encontrado');
+        }
         return;
       }
       
@@ -1304,11 +1342,13 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         });
       }
       
-      console.log('📅 Criando gráfico de distribuição diária:', { 
-        labels: labels.slice(0, 5), 
-        values: values.slice(0, 5),
-        total: total
-      });
+      if (window.Logger) {
+        window.Logger.debug('📅 Criando gráfico de distribuição diária:', { 
+          labels: labels.slice(0, 5), 
+          values: values.slice(0, 5),
+          total: total
+        });
+      }
       
       // CROSSFILTER: Adicionar wrapper para clique direito
       const dailyChartContainer = canvas.parentElement;
@@ -1382,9 +1422,13 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       if (window.Logger) {
         window.Logger.success('✅ Gráfico de distribuição diária criado com sucesso');
       }
-      console.log('✅ Gráfico de distribuição diária criado com sucesso');
+      if (window.Logger) {
+        window.Logger.debug('✅ Gráfico de distribuição diária criado com sucesso');
+      }
     } catch (error) {
-      console.error('❌ Erro ao criar chartDailyDistribution:', error);
+      window.errorHandler?.handleError(error, 'renderDailyDistributionChart', {
+        showToUser: false
+      });
       if (window.Logger) {
         window.Logger.error('Erro ao criar chartDailyDistribution:', error);
       }
@@ -1395,7 +1439,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     if (window.Logger) {
       window.Logger.warn('⚠️ Sem dados diários para chartDailyDistribution. byDay:', byDay);
     }
-    console.warn('⚠️ Sem dados diários. byDay:', byDay);
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Sem dados diários. byDay:', byDay);
+    }
     // Mostrar mensagem de "sem dados" no canvas
     const canvas = document.getElementById('chartDailyDistribution');
     if (canvas) {
@@ -1521,7 +1567,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         
         return orgaosChart;
       })().catch(error => {
-        console.error('Erro ao criar chartTopOrgaos:', error);
+        window.errorHandler?.handleError(error, 'renderMainCharts (chartTopOrgaos)', {
+          showToUser: false
+        });
         if (window.Logger) {
           window.Logger.error('Erro ao criar chartTopOrgaos:', error);
         }
@@ -1627,7 +1675,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         
         return temasChart;
       })().catch(error => {
-        console.error('Erro ao criar chartTopTemas:', error);
+        window.errorHandler?.handleError(error, 'renderMainCharts (chartTopTemas)', {
+          showToUser: false
+        });
         if (window.Logger) {
           window.Logger.error('Erro ao criar chartTopTemas:', error);
         }
@@ -1753,7 +1803,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         tiposChart.update('none');
       }
     } catch (error) {
-      console.error('Erro ao criar chartTiposManifestacao:', error);
+      window.errorHandler?.handleError(error, 'renderMainCharts (chartTiposManifestacao)', {
+        showToUser: false
+      });
     }
   }
   
@@ -1836,7 +1888,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             canaisChart.update('none');
           }
         } catch (error) {
-          console.error('Erro ao criar chartCanais:', error);
+          window.errorHandler?.handleError(error, 'renderMainCharts (chartCanais)', {
+            showToUser: false
+          });
         }
       })()
     );
@@ -1917,7 +1971,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             prioridadesChart.update('none');
           }
         } catch (error) {
-          console.error('Erro ao criar chartPrioridades:', error);
+          window.errorHandler?.handleError(error, 'renderMainCharts (chartPrioridades)', {
+            showToUser: false
+          });
         }
       })()
     );
@@ -1998,7 +2054,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         
         return unidadesChart;
       })().catch(error => {
-        console.error('Erro ao criar chartUnidadesCadastro:', error);
+        window.errorHandler?.handleError(error, 'renderMainCharts (chartUnidadesCadastro)', {
+          showToUser: false
+        });
       })
     );
   }
@@ -2126,7 +2184,9 @@ async function renderSLAChart(slaData) {
     if (window.Logger) {
       window.Logger.error('Erro ao criar chartSLA:', error);
     }
-    console.error('Erro ao criar chartSLA:', error);
+    window.errorHandler?.handleError(error, 'renderMainCharts (chartSLA)', {
+      showToUser: false
+    });
   }
 }
 
@@ -2339,20 +2399,22 @@ function calculateSLAFromRows(rows) {
 
 function aggregateFilteredData(rows) {
   // CORREÇÃO CRÍTICA: Console.log DIRETO para garantir que aparece
-  console.log('🚀🚀🚀 aggregateFilteredData CHAMADA!', {
-    rowsCount: rows?.length,
-    isArray: Array.isArray(rows),
-    functionName: 'aggregateFilteredData',
-    timestamp: new Date().toISOString()
-  });
+  if (window.Logger) {
+    window.Logger.debug('🚀 aggregateFilteredData CHAMADA!', {
+      rowsCount: rows?.length,
+      isArray: Array.isArray(rows),
+      functionName: 'aggregateFilteredData',
+      timestamp: new Date().toISOString()
+    });
+  }
   
   // CORREÇÃO CRÍTICA: Validar entrada imediatamente
   if (!rows || !Array.isArray(rows)) {
-    console.error('❌ aggregateFilteredData: rows não é um array válido!', {
-      type: typeof rows,
-      isArray: Array.isArray(rows),
-      value: rows
-    });
+    window.errorHandler?.handleError(
+      new Error('rows não é um array válido'),
+      'aggregateFilteredData',
+      { showToUser: false }
+    );
     if (window.Logger) {
       window.Logger.error('❌ aggregateFilteredData: rows não é um array válido!', {
         type: typeof rows,
@@ -2377,7 +2439,9 @@ function aggregateFilteredData(rows) {
   }
   
   // CORREÇÃO CRÍTICA: Log imediato para confirmar que a função está sendo executada
-  console.log('📊 aggregateFilteredData: Iniciando processamento...', rows.length);
+  if (window.Logger) {
+    window.Logger.debug('📊 aggregateFilteredData: Iniciando processamento...', rows.length);
+  }
   if (window.Logger) {
     window.Logger.debug('🚀 aggregateFilteredData: FUNÇÃO REAL EXECUTADA!', {
       totalRows: rows.length,

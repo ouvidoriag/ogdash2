@@ -1,0 +1,33 @@
+{
+  "inicio": "2025-12-11T17:32:58.219Z",
+  "fim": "2025-12-11T17:32:59.182Z",
+  "total": 9,
+  "passou": 1,
+  "falhou": 2,
+  "pulou": 8,
+  "detalhes": [
+    {
+      "teste": "Validação de Sintaxe JavaScript",
+      "status": "PASSOU",
+      "total": 0
+    },
+    {
+      "teste": "Teste de Conexão MongoDB",
+      "status": "FALHOU",
+      "erro": "Command failed: node scripts/test/test-mongoose-connection.js\nnode:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\501379\\Desktop\\DRIVE\\Dashboard\\NOVO\\scripts\\scripts\\test\\test-mongoose-connection.js'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\r\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\r\n    at node:internal/main/run_main_module:36:49 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v22.21.0\r\n",
+      "output": ""
+    },
+    {
+      "teste": "Teste de Google Sheets",
+      "status": "FALHOU",
+      "erro": "Command failed: node scripts/test/testGoogleSheets.js\nnode:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\501379\\Desktop\\DRIVE\\Dashboard\\NOVO\\scripts\\scripts\\test\\testGoogleSheets.js'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\r\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\r\n    at node:internal/main/run_main_module:36:49 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v22.21.0\r\n",
+      "output": ""
+    },
+    {
+      "teste": "Teste de Chaves Gemini",
+      "status": "FALHOU",
+      "erro": "Command failed: node scripts/test/testGeminiKeys.js\nnode:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\501379\\Desktop\\DRIVE\\Dashboard\\NOVO\\scripts\\scripts\\test\\testGeminiKeys.js'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\r\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\r\n    at node:internal/main/run_main_module:36:49 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v22.21.0\r\n",
+      "output": ""
+    }
+  ]
+}

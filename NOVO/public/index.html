@@ -5,13 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ouvidoria - Duque de Caxias - Dashboard</title>
     <link rel="icon" type="image/png" href="/dc-logo.png" />
-    <!-- Tailwind CSS CDN - Aviso de produção pode ser ignorado, funciona perfeitamente -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind CSS via CDN (apenas para desenvolvimento) -->
+    <!-- Em produção, usar build process ou CSS compilado -->
     <script>
-      // Silenciar aviso do Tailwind CDN em produção (funciona perfeitamente)
-      if (window.tailwind) {
-        window.tailwind.config = window.tailwind.config || {};
-        window.tailwind.config.silent = true;
+      // Carregar Tailwind CSS apenas se não estiver em produção
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        const tailwindScript = document.createElement('script');
+        tailwindScript.src = 'https://cdn.tailwindcss.com';
+        tailwindScript.onload = () => {
+          if (window.tailwind) {
+            window.tailwind.config = window.tailwind.config || {};
+            window.tailwind.config.silent = true;
+          }
+        };
+        document.head.appendChild(tailwindScript);
+      } else {
+        // Em produção, usar CSS compilado (adicionar link para arquivo CSS compilado)
+        const tailwindCSS = document.createElement('link');
+        tailwindCSS.rel = 'stylesheet';
+        tailwindCSS.href = '/styles/tailwind.css'; // Arquivo CSS compilado
+        document.head.appendChild(tailwindCSS);
       }
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
@@ -729,6 +742,13 @@
           </div>
           
           <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🏗️ Colab</div>
+            <div data-page="zeladoria-colab-demandas" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📋 Demandas</div>
+            <div data-page="zeladoria-colab-criar" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">➕ Criar Demanda</div>
+            <div data-page="zeladoria-colab-categorias" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏷️ Categorias</div>
+          </div>
+          
+          <div class="space-y-1 pt-2 border-t border-white/10">
             <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📊 Análises Principais</div>
             <div data-page="zeladoria-status" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📊 Por Status</div>
             <div data-page="zeladoria-categoria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📂 Por Categoria</div>
@@ -744,6 +764,12 @@
             <div data-page="zeladoria-mensal" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📅 Análise Mensal</div>
             <div data-page="zeladoria-geografica" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🗺️ Análise Geográfica</div>
             <div data-page="zeladoria-mapa" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🗺️ Mapa Interativo</div>
+            <div data-page="zeladoria-colab-mapa" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🗺️ Mapa Colab</div>
+          </div>
+          
+          <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">🤖 IA</div>
+            <div data-page="zeladoria-cora-chat" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">💬 Cora - Chat</div>
           </div>
         </nav>
         
@@ -1716,10 +1742,33 @@
           <!-- Gráficos Principais -->
           <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 lg:col-span-8 glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-3 text-violet-400">Distribuição por Tema</h3>
-              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold text-violet-400">Distribuição por Tema</h3>
+                <div class="flex items-center gap-2 text-xs text-slate-400">
+                  <span class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                    Top 10
+                  </span>
+                  <span class="text-slate-500">•</span>
+                  <span class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                    Clique para filtrar
+                  </span>
+                </div>
+              </div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3" style="min-height: 400px;">
                 <canvas id="chartTema"></canvas>
               </div>
+              <p class="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Clique em uma barra para filtrar por tema. Clique com botão direito para limpar filtros.
+              </p>
             </div>
             <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-3 text-violet-400">Status Geral</h3>
@@ -3385,6 +3434,159 @@
           </div>
         </section>
         
+        <!-- Páginas do Colab - Zeladoria -->
+        <section id="page-zeladoria-colab-demandas" style="display: none;">
+          <div class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-2xl font-bold">📋 Demandas do Colab</h2>
+              <button onclick="loadSection('zeladoria-colab-criar')" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-sm font-semibold transition-colors">
+                ➕ Nova Demanda
+              </button>
+            </div>
+            <div class="flex gap-4 mb-4 flex-wrap">
+              <select id="zeladoria-colab-filter-status" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="">Todos os Status</option>
+                <option value="NOVO">Novo</option>
+                <option value="ABERTO">Aberto</option>
+                <option value="ATENDIMENTO">Em Atendimento</option>
+                <option value="ATENDIDO">Atendido</option>
+                <option value="FECHADO">Fechado</option>
+                <option value="RECUSADO">Recusado</option>
+              </select>
+              <input type="date" id="zeladoria-colab-filter-start-date" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+              <input type="date" id="zeladoria-colab-filter-end-date" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+              <button onclick="loadColabDemandas()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-sm font-semibold transition-colors">
+                🔍 Buscar
+              </button>
+            </div>
+          </div>
+          <div id="zeladoria-colab-lista-demandas" class="space-y-4">
+            <div class="glass rounded-xl p-6 text-center text-slate-400">
+              Carregando demandas...
+            </div>
+          </div>
+        </section>
+        
+        <section id="page-zeladoria-colab-criar" style="display: none;">
+          <div class="glass rounded-2xl p-6 mb-6">
+            <h2 class="neon text-2xl font-bold mb-4">➕ Criar Nova Demanda</h2>
+            <form id="zeladoria-colab-form-criar" class="space-y-4">
+              <div>
+                <label class="block text-sm text-slate-400 mb-2">Descrição *</label>
+                <textarea id="zeladoria-colab-descricao" required class="w-full px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-sm" rows="4" placeholder="Descreva a demanda detalhadamente..."></textarea>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm text-slate-400 mb-2">Endereço *</label>
+                  <input type="text" id="zeladoria-colab-endereco" required class="w-full px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-sm" placeholder="Rua, número...">
+                </div>
+                <div>
+                  <label class="block text-sm text-slate-400 mb-2">Bairro</label>
+                  <input type="text" id="zeladoria-colab-bairro" class="w-full px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-sm" placeholder="Nome do bairro">
+                </div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm text-slate-400 mb-2">Latitude *</label>
+                  <input type="number" id="zeladoria-colab-latitude" required step="any" class="w-full px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-sm" placeholder="-22.7855">
+                </div>
+                <div>
+                  <label class="block text-sm text-slate-400 mb-2">Longitude *</label>
+                  <input type="number" id="zeladoria-colab-longitude" required step="any" class="w-full px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-sm" placeholder="-43.3093">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm text-slate-400 mb-2">Categoria *</label>
+                <select id="zeladoria-colab-categoria-id" required class="w-full px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-sm">
+                  <option value="">Carregando categorias...</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm text-slate-400 mb-2">URLs de Imagens (separadas por vírgula)</label>
+                <input type="text" id="zeladoria-colab-imagens" class="w-full px-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-sm" placeholder="https://exemplo.com/img1.jpg, https://exemplo.com/img2.jpg">
+              </div>
+              <div class="flex gap-4">
+                <button type="submit" class="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg font-semibold transition-colors">
+                  ✅ Criar Demanda
+                </button>
+                <button type="button" onclick="loadSection('zeladoria-colab-demandas')" class="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+        
+        <section id="page-zeladoria-colab-categorias" style="display: none;">
+          <div class="glass rounded-2xl p-6 mb-6">
+            <h2 class="neon text-2xl font-bold mb-4">🏷️ Categorias do Colab</h2>
+          </div>
+          <div id="zeladoria-colab-lista-categorias" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="glass rounded-xl p-6 text-center text-slate-400">
+              Carregando categorias...
+            </div>
+          </div>
+        </section>
+        
+        <section id="page-zeladoria-colab-mapa" style="display: none;">
+          <div class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="neon text-2xl font-bold">🗺️ Mapa Interativo - Demandas Colab</h2>
+            </div>
+            <div id="zeladoria-colab-mapa-stats" class="mb-4">
+              <div class="glass rounded-lg p-3 text-center text-slate-400">Carregando estatísticas...</div>
+            </div>
+            <div class="flex gap-4 mb-4 flex-wrap">
+              <select id="zeladoria-colab-mapa-filter-status" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="">Carregando status...</option>
+              </select>
+              <select id="zeladoria-colab-mapa-filter-categoria" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="">Carregando categorias...</option>
+              </select>
+              <select id="zeladoria-colab-mapa-theme-select" class="px-4 py-2 bg-slate-800 rounded-lg text-sm border border-slate-700">
+                <option value="osm">OpenStreetMap</option>
+              </select>
+              <button id="zeladoria-colab-mapa-clear-filters" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-semibold transition-colors">
+                🔄 Limpar Filtros
+              </button>
+            </div>
+          </div>
+          <div id="zeladoria-colab-mapa-content" class="glass rounded-2xl p-6">
+            <div id="zeladoria-colab-map-container" style="height: 600px; width: 100%; border-radius: 12px; overflow: hidden;"></div>
+          </div>
+        </section>
+        
+        <section id="page-zeladoria-cora-chat" style="display: none;">
+          <div class="glass rounded-2xl p-6 mb-6">
+            <h2 class="neon text-2xl font-bold mb-4">💬 Cora - Assistente Virtual</h2>
+          </div>
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <div class="flex flex-col h-[600px]">
+                <div id="zeladoria-cora-chat-messages" class="flex-1 overflow-y-auto mb-4 space-y-4 p-4 bg-slate-900/30 rounded-lg">
+                  <div class="text-center text-slate-400 py-4">Carregando mensagens...</div>
+                </div>
+                <form id="zeladoria-cora-chat-form" class="flex gap-2">
+                  <input 
+                    type="text" 
+                    id="zeladoria-cora-chat-input" 
+                    placeholder="Digite sua mensagem..." 
+                    class="flex-1 bg-slate-800/60 border border-white/10 rounded-lg px-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    autocomplete="off"
+                  />
+                  <button 
+                    type="button" 
+                    id="zeladoria-cora-chat-submit-btn"
+                    class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white font-semibold hover:from-purple-600 hover:to-pink-600 transition-all glow-ring"
+                  >
+                    Enviar
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+        
         <!-- Páginas de E-SIC -->
         <section id="page-esic-home" style="display: none;">
           <div class="glass rounded-2xl p-8 md:p-12 text-center">
@@ -3668,9 +3870,14 @@
     <!-- Scripts -->
     <script src="/scripts/utils/lazy-libraries.js"></script>
     <script src="/scripts/utils/logger.js"></script>
+    <script src="/scripts/utils/errorHandler.js"></script>
+    <script src="/scripts/utils/dataValidator.js"></script>
+    <script src="/scripts/utils/loadingManager.js"></script>
+    <script src="/scripts/utils/pageHelper.js"></script>
     <script src="/scripts/utils/timerManager.js"></script>
     <script src="/scripts/utils/dateUtils.js" defer></script>
     <script src="/scripts/core/config.js"></script>
+    <script src="/scripts/core/cache-config.js"></script>
     <script src="/scripts/core/dataLoader.js"></script>
     <script src="/scripts/core/global-store.js" defer></script>
     <!-- Chart Communication - Módulos (ordem importa) -->
@@ -3691,7 +3898,7 @@
     <script src="/scripts/core/chart-factory.js" defer></script>
     <script src="/scripts/modules/data-tables.js" defer></script>
     <!-- Páginas Ouvidoria -->
-    <script src="/scripts/core/month-filter-helper.js"></script>
+    <script src="/scripts/core/month-filter-helper.js" defer></script>
     <script src="/scripts/pages/ouvidoria/overview.js" defer></script>
     <script src="/scripts/pages/ouvidoria/orgao-mes.js" defer></script>
     <script src="/scripts/pages/ouvidoria/tempo-medio.js" defer></script>
@@ -3726,6 +3933,8 @@
     <script src="/scripts/pages/zeladoria/zeladoria-mensal.js" defer></script>
     <script src="/scripts/pages/zeladoria/zeladoria-geografica.js" defer></script>
     <script src="/scripts/pages/zeladoria/zeladoria-mapa.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-colab.js" defer></script>
+    <script src="/scripts/pages/zeladoria/zeladoria-cora-chat.js" defer></script>
     <script src="/scripts/pages/esic/esic-overview.js" defer></script>
     <script src="/scripts/pages/esic/esic-status.js" defer></script>
     <script src="/scripts/pages/esic/esic-tipo-informacao.js" defer></script>

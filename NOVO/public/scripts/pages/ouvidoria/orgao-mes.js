@@ -141,17 +141,46 @@ function aggregateFilteredData(filteredData) {
 }
 
 async function loadOrgaoMes(forceRefresh = false) {
+  // PRIORIDADE 1: Verificar dependências críticas
+  const dependencies = window.errorHandler?.requireDependencies(
+    ['dataLoader', 'chartFactory', 'dataStore'],
+    () => {
+      window.errorHandler?.showNotification(
+        'Sistemas não carregados. Recarregue a página.',
+        'warning'
+      );
+      return null;
+    }
+  );
+  
+  if (!dependencies) {
+    return Promise.resolve();
+  }
+  
+  const { dataLoader, chartFactory, dataStore } = dependencies;
+  
   if (window.Logger) {
     window.Logger.debug('🏢 loadOrgaoMes: Iniciando');
   }
   
   const page = document.getElementById('page-orgao-mes');
   if (!page || page.style.display === 'none') {
+    if (window.Logger) {
+      window.Logger.debug('🏢 loadOrgaoMes: Página não visível, pulando carregamento');
+    }
     return Promise.resolve();
   }
   
+  // Garantir que a página esteja visível
+  if (page.style.display === 'none') {
+    page.style.display = '';
+  }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.show('Carregando dados de órgãos...');
+  
+  // PRIORIDADE 1: Usar safeAsync para tratamento de erros
+  return await window.errorHandler?.safeAsync(async () => {
     // Coletar filtros da página (mês e status)
     const pageFilters = collectPageFilters();
     
@@ -177,8 +206,8 @@ async function loadOrgaoMes(forceRefresh = false) {
     if (activeFilters && activeFilters.length > 0) {
       try {
         // Invalidar cache quando há filtros ativos
-        if (window.dataStore && forceRefresh) {
-          window.dataStore.invalidate?.();
+        if (dataStore && forceRefresh) {
+          dataStore.invalidate?.();
         }
         
         // Converter filtros para formato da API
@@ -204,8 +233,29 @@ async function loadOrgaoMes(forceRefresh = false) {
           body: JSON.stringify({ filters: apiFilters })
         });
         
-        if (response.ok) {
-          const aggregatedData = await response.json();
+        if (!response.ok) {
+          throw new Error(`API retornou status ${response.status}: ${response.statusText}`);
+        }
+        
+        const aggregatedData = await response.json();
+        
+        // PRIORIDADE 1: Validar dados recebidos
+        const validation = window.dataValidator?.validateApiResponse(aggregatedData, {
+          arrays: {
+            manifestationsByOrgan: {
+              required: ['organ', 'count'],
+              types: { organ: 'string', count: 'number' }
+            },
+            manifestationsByMonth: {
+              required: ['month', 'count'],
+              types: { month: 'string', count: 'number' }
+            }
+          }
+        });
+        
+        if (!validation.valid) {
+          throw new Error(`Dados inválidos: ${validation.error}`);
+        }
           
           if (window.Logger) {
             window.Logger.debug('📡 loadOrgaoMes: Dados agregados recebidos', { 
@@ -240,31 +290,44 @@ async function loadOrgaoMes(forceRefresh = false) {
               totalMeses: dataMensal.reduce((sum, m) => sum + (m.count || 0), 0)
             });
           }
-        } else {
-          const errorText = await response.text();
-          if (window.Logger) {
-            window.Logger.error('❌ Erro na resposta da API /api/filter/aggregated:', {
-              status: response.status,
-              statusText: response.statusText,
-              error: errorText
-            });
-          }
-          throw new Error(`Erro ao buscar dados agregados: ${response.statusText}`);
-        }
       } catch (filterError) {
-        if (window.Logger) {
-          window.Logger.warn('Erro ao aplicar filtros, carregando sem filtros:', filterError);
-        }
-        // Em caso de erro, carregar sem filtros
-        dataOrgaos = await window.dataLoader?.load('/api/aggregate/count-by?field=Orgaos', {
-          useDataStore: !forceRefresh,
-          ttl: 10 * 60 * 1000
-        }) || [];
+        // PRIORIDADE 1: Tratamento de erro com fallback
+        window.errorHandler?.handleError(filterError, 'loadOrgaoMes (com filtros)', {
+          showToUser: false, // Não mostrar erro, vamos tentar sem filtros
+          fallback: async () => {
+            // Fallback: carregar sem filtros
+            const fallbackOrgaos = await dataLoader?.load('/api/aggregate/count-by?field=Orgaos', {
+              useDataStore: !forceRefresh,
+              ttl: 10 * 60 * 1000
+            }) || [];
+            
+            const fallbackMensal = await dataLoader?.load('/api/aggregate/by-month', {
+              useDataStore: !forceRefresh,
+              ttl: 10 * 60 * 1000
+            }) || [];
+            
+            return { dataOrgaos: fallbackOrgaos, dataMensal: fallbackMensal };
+          }
+        });
         
-        dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', {
-          useDataStore: !forceRefresh,
-          ttl: 10 * 60 * 1000
-        }) || [];
+        // Tentar fallback
+        const fallbackResult = await window.errorHandler?.safeAsync(async () => {
+          return {
+            dataOrgaos: await dataLoader?.load('/api/aggregate/count-by?field=Orgaos', {
+              useDataStore: !forceRefresh,
+              ttl: 10 * 60 * 1000
+            }) || [],
+            dataMensal: await dataLoader?.load('/api/aggregate/by-month', {
+              useDataStore: !forceRefresh,
+              ttl: 10 * 60 * 1000
+            }) || []
+          };
+        }, 'loadOrgaoMes (fallback sem filtros)');
+        
+        if (fallbackResult) {
+          dataOrgaos = fallbackResult.dataOrgaos;
+          dataMensal = fallbackResult.dataMensal;
+        }
         
         // Normalizar formato de dataMensal
         dataMensal = dataMensal.map(m => ({
@@ -274,21 +337,102 @@ async function loadOrgaoMes(forceRefresh = false) {
       }
     } else {
       // Sem filtros, carregar dados agregados normalmente
-      dataOrgaos = await window.dataLoader?.load('/api/aggregate/count-by?field=Orgaos', {
+      if (window.Logger) {
+        window.Logger.debug('🏢 loadOrgaoMes: Carregando dados sem filtros');
+      }
+      
+      // PRIORIDADE 1: Carregar dados com validação
+      const orgaosData = await dataLoader?.load('/api/aggregate/count-by?field=Orgaos', {
         useDataStore: !forceRefresh,
         ttl: 10 * 60 * 1000
       }) || [];
       
-      dataMensal = await window.dataLoader?.load('/api/aggregate/by-month', {
+      // Validar dados de órgãos
+      const orgaosValidation = window.dataValidator?.validateApiResponse(orgaosData, {
+        arrayItem: {
+          required: ['key', 'count'],
+          types: { key: 'string', count: 'number' }
+        }
+      });
+      
+      if (orgaosValidation.valid) {
+        dataOrgaos = (orgaosData || []).map(item => ({
+          key: item.key || item.organ || item._id || item.name || 'Não informado',
+          count: Number(item.count || item.value || 0)
+        })).filter(item => item.key && item.key !== 'Não informado');
+      } else {
+        window.errorHandler?.handleError(
+          new Error(`Dados de órgãos inválidos: ${orgaosValidation.error}`),
+          'loadOrgaoMes (validação órgãos)',
+          { showToUser: false }
+        );
+        dataOrgaos = [];
+      }
+      
+      const mensalData = await dataLoader?.load('/api/aggregate/by-month', {
         useDataStore: !forceRefresh,
         ttl: 10 * 60 * 1000
       }) || [];
       
-      // Normalizar formato de dataMensal (pode vir como { month, count } ou { ym, count })
-      dataMensal = dataMensal.map(m => ({
-        ym: m.month || m.ym || m._id,
-        count: m.count || 0
-      })).filter(m => m.ym);
+      // Validar dados mensais
+      const mensalValidation = window.dataValidator?.validateApiResponse(mensalData, {
+        arrayItem: {
+          required: ['ym', 'count'],
+          types: { ym: 'string', count: 'number' }
+        }
+      });
+      
+      if (mensalValidation.valid) {
+        dataMensal = (mensalData || []).map(m => ({
+          ym: m.month || m.ym || m._id || '',
+          count: Number(m.count || m.value || 0)
+        })).filter(m => m.ym);
+      } else {
+        window.errorHandler?.handleError(
+          new Error(`Dados mensais inválidos: ${mensalValidation.error}`),
+          'loadOrgaoMes (validação mensal)',
+          { showToUser: false }
+        );
+        dataMensal = [];
+      }
+    }
+    
+    // Normalizar dados de órgãos (garantir formato consistente)
+    dataOrgaos = (dataOrgaos || []).map(item => ({
+      key: item.key || item.organ || item._id || item.name || 'Não informado',
+      count: Number(item.count || item.value || 0)
+    })).filter(item => {
+      // Manter apenas itens válidos (com key válido e count numérico)
+      return item.key && 
+             item.key !== 'Não informado' && 
+             item.key !== 'null' && 
+             item.key !== 'undefined' &&
+             !isNaN(item.count);
+      // Não filtrar por count > 0 aqui, pois queremos mostrar todos os órgãos
+    });
+    
+    // Normalizar dados mensais (garantir formato consistente)
+    dataMensal = (dataMensal || []).map(item => ({
+      ym: item.ym || item.month || item._id || '',
+      count: Number(item.count || item.value || 0)
+    })).filter(item => {
+      // Manter apenas itens com ym válido
+      return item.ym && 
+             item.ym !== 'null' && 
+             item.ym !== 'undefined' &&
+             !isNaN(item.count);
+      // Não filtrar por count > 0 aqui
+    });
+    
+    if (window.Logger) {
+      window.Logger.debug('🏢 loadOrgaoMes: Dados normalizados', {
+        orgaosCount: dataOrgaos.length,
+        mesesCount: dataMensal.length,
+        totalOrgaos: dataOrgaos.reduce((sum, o) => sum + (o.count || 0), 0),
+        totalMeses: dataMensal.reduce((sum, m) => sum + (m.count || 0), 0),
+        sampleOrgao: dataOrgaos[0],
+        sampleMes: dataMensal[0]
+      });
     }
     
     // Armazenar dados globalmente para busca e ordenação
@@ -309,14 +453,30 @@ async function loadOrgaoMes(forceRefresh = false) {
     // Renderizar lista de órgãos (atualizar após renderizar para garantir destaque visual)
     renderOrgaosList(dataOrgaos);
     
+    // PRIORIDADE 1: Verificar chartFactory antes de renderizar
+    if (!chartFactory) {
+      throw new Error('chartFactory não disponível');
+    }
+    
     // Renderizar gráfico mensal
     await renderOrgaoMesChart(dataMensal);
     
     // Renderizar gráfico de barras dos top órgãos
     await renderTopOrgaosBarChart(dataOrgaos);
     
-    // Atualizar KPIs
+    // Atualizar KPIs - tentar múltiplas vezes para garantir que funcione
+    // Primeira tentativa imediata
     updateKPIs(dataOrgaos, dataMensal);
+    
+    // Segunda tentativa após pequeno delay (DOM pode não estar pronto)
+    setTimeout(() => {
+      updateKPIs(dataOrgaos, dataMensal);
+    }, 100);
+    
+    // Terceira tentativa após delay maior (garantir que tudo esteja carregado)
+    setTimeout(() => {
+      updateKPIs(dataOrgaos, dataMensal);
+    }, 500);
     
     // CROSSFILTER: Renderizar banner de filtros ativos
     renderOrgaoMesFilterBanner();
@@ -341,12 +501,25 @@ async function loadOrgaoMes(forceRefresh = false) {
     if (window.Logger) {
       window.Logger.success('🏢 loadOrgaoMes: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar OrgaoMes:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar OrgaoMes:', error);
+    
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hide();
+    
+    return { success: true, dataOrgaos, dataMensal };
+  }, 'loadOrgaoMes', {
+    showToUser: true,
+    fallback: () => {
+      // PRIORIDADE 2: Esconder loading em caso de erro
+      window.loadingManager?.hide();
+      
+      // Fallback: mostrar página vazia
+      const listaOrgaos = document.getElementById('listaOrgaos');
+      if (listaOrgaos) {
+        listaOrgaos.innerHTML = '<div class="text-center text-slate-400 py-4">Erro ao carregar dados. Tente recarregar a página.</div>';
+      }
+      return { success: false, dataOrgaos: [], dataMensal: [] };
     }
-  }
+  });
 }
 
 function renderOrgaosList(dataOrgaos) {
@@ -416,9 +589,13 @@ function renderOrgaosList(dataOrgaos) {
 }
 
 async function renderOrgaoMesChart(dataMensal) {
+  // PRIORIDADE 1: Verificar dependências
+  const chartFactory = window.errorHandler?.requireDependency('chartFactory');
+  if (!chartFactory) return;
+  
   // Destruir gráfico existente antes de criar novo
-  if (window.chartFactory?.destroyCharts) {
-    window.chartFactory.destroyCharts(['chartOrgaoMes']);
+  if (chartFactory.destroyCharts) {
+    chartFactory.destroyCharts(['chartOrgaoMes']);
   }
   
   if (!dataMensal || dataMensal.length === 0) {
@@ -474,7 +651,7 @@ async function renderOrgaoMesChart(dataMensal) {
   window._orgaoMesDataMensal = dataMensal;
   window._orgaoMesLabelToYmMap = labelToYmMap;
   
-  const chart = await window.chartFactory?.createBarChart('chartOrgaoMes', labels, values, {
+  const chart = await chartFactory.createBarChart('chartOrgaoMes', labels, values, {
     horizontal: false, // Gráfico vertical
     colorIndex: 1,
     label: 'Manifestações',
@@ -554,9 +731,13 @@ async function renderOrgaoMesChart(dataMensal) {
  * Renderizar gráfico de barras dos top órgãos
  */
 async function renderTopOrgaosBarChart(dataOrgaos) {
+  // PRIORIDADE 1: Verificar dependências
+  const chartFactory = window.errorHandler?.requireDependency('chartFactory');
+  if (!chartFactory) return;
+  
   // Destruir gráfico existente antes de criar novo
-  if (window.chartFactory?.destroyCharts) {
-    window.chartFactory.destroyCharts(['chartTopOrgaosBar']);
+  if (chartFactory.destroyCharts) {
+    chartFactory.destroyCharts(['chartTopOrgaosBar']);
   }
   
   if (!dataOrgaos || dataOrgaos.length === 0) {
@@ -588,7 +769,7 @@ async function renderTopOrgaosBarChart(dataOrgaos) {
     });
   }
   
-  const chart = await window.chartFactory?.createBarChart('chartTopOrgaosBar', labels, values, {
+  const chart = await chartFactory.createBarChart('chartTopOrgaosBar', labels, values, {
     horizontal: true,
     colorIndex: 2,
     label: 'Manifestações',
@@ -647,35 +828,125 @@ async function renderTopOrgaosBarChart(dataOrgaos) {
  * Atualizar KPIs da página
  */
 function updateKPIs(dataOrgaos, dataMensal) {
-  const total = dataOrgaos.reduce((sum, item) => sum + (item.count || 0), 0);
-  const orgaosUnicos = dataOrgaos.length;
+  // Validar e normalizar dados
+  const safeDataOrgaos = Array.isArray(dataOrgaos) ? dataOrgaos : [];
+  const safeDataMensal = Array.isArray(dataMensal) ? dataMensal : [];
+  
+  if (window.Logger) {
+    window.Logger.debug('📊 updateKPIs: Atualizando KPIs', {
+      orgaosCount: safeDataOrgaos.length,
+      mesesCount: safeDataMensal.length,
+      sampleOrgao: safeDataOrgaos[0],
+      sampleMes: safeDataMensal[0]
+    });
+  }
+  
+  // Calcular totais - usar dados mensais se disponíveis (mais preciso), senão usar órgãos
+  let total = 0;
+  if (safeDataMensal && safeDataMensal.length > 0) {
+    // Total = soma de todas as manifestações por mês (mais preciso)
+    total = safeDataMensal.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+  } else if (safeDataOrgaos && safeDataOrgaos.length > 0) {
+    // Fallback: soma por órgão
+    total = safeDataOrgaos.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+  }
+  
+  const orgaosUnicos = safeDataOrgaos.length;
   const mediaOrgao = orgaosUnicos > 0 ? Math.round(total / orgaosUnicos) : 0;
   
   // Calcular período
   let periodo = '—';
-  if (dataMensal && dataMensal.length > 0) {
-    const sorted = [...dataMensal].sort((a, b) => (a.ym || '').localeCompare(b.ym || ''));
+  if (safeDataMensal && safeDataMensal.length > 0) {
+    const sorted = [...safeDataMensal].sort((a, b) => {
+      const ymA = a.ym || a.month || a._id || '';
+      const ymB = b.ym || b.month || b._id || '';
+      return ymA.localeCompare(ymB);
+    });
     const primeiro = sorted[0];
     const ultimo = sorted[sorted.length - 1];
     if (primeiro && ultimo) {
-      const primeiroLabel = window.dateUtils?.formatMonthYear?.(primeiro.ym || primeiro.month) || primeiro.ym || '';
-      const ultimoLabel = window.dateUtils?.formatMonthYear?.(ultimo.ym || ultimo.month) || ultimo.ym || '';
-      periodo = `${primeiroLabel} - ${ultimoLabel}`;
+      const primeiroYm = primeiro.ym || primeiro.month || primeiro._id || '';
+      const ultimoYm = ultimo.ym || ultimo.month || ultimo._id || '';
+      
+      const primeiroLabel = window.dateUtils?.formatMonthYear?.(primeiroYm) || primeiroYm || '';
+      const ultimoLabel = window.dateUtils?.formatMonthYear?.(ultimoYm) || ultimoYm || '';
+      
+      if (primeiroLabel && ultimoLabel) {
+        periodo = primeiroLabel === ultimoLabel ? primeiroLabel : `${primeiroLabel} - ${ultimoLabel}`;
+      }
     }
   }
   
-  // Atualizar elementos
+  // Atualizar elementos DOM
   const totalEl = document.getElementById('totalOrgaos');
   const kpiTotalEl = document.getElementById('kpiTotalOrgaos');
   const kpiUnicosEl = document.getElementById('kpiOrgaosUnicos');
   const kpiMediaEl = document.getElementById('kpiMediaOrgao');
   const kpiPeriodoEl = document.getElementById('kpiPeriodo');
   
-  if (totalEl) totalEl.textContent = total.toLocaleString('pt-BR');
-  if (kpiTotalEl) kpiTotalEl.textContent = total.toLocaleString('pt-BR');
-  if (kpiUnicosEl) kpiUnicosEl.textContent = orgaosUnicos.toLocaleString('pt-BR');
-  if (kpiMediaEl) kpiMediaEl.textContent = mediaOrgao.toLocaleString('pt-BR');
-  if (kpiPeriodoEl) kpiPeriodoEl.textContent = periodo;
+  // Verificar se os elementos existem
+  if (!kpiTotalEl || !kpiUnicosEl || !kpiMediaEl || !kpiPeriodoEl) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ updateKPIs: Alguns elementos DOM não foram encontrados', {
+        kpiTotalEl: !!kpiTotalEl,
+        kpiUnicosEl: !!kpiUnicosEl,
+        kpiMediaEl: !!kpiMediaEl,
+        kpiPeriodoEl: !!kpiPeriodoEl
+      });
+    }
+    // Tentar novamente após um pequeno delay (pode ser problema de timing)
+    setTimeout(() => updateKPIs(safeDataOrgaos, safeDataMensal), 200);
+    return;
+  }
+  
+  // Atualizar valores (sempre mostrar números, mesmo que sejam 0)
+  if (totalEl) {
+    totalEl.textContent = total.toLocaleString('pt-BR');
+  }
+  
+  // Forçar atualização dos KPIs - sempre mostrar valores, mesmo que sejam 0
+  if (kpiTotalEl) {
+    kpiTotalEl.textContent = total.toLocaleString('pt-BR');
+  }
+  
+  if (kpiUnicosEl) {
+    kpiUnicosEl.textContent = orgaosUnicos.toLocaleString('pt-BR');
+  }
+  
+  if (kpiMediaEl) {
+    kpiMediaEl.textContent = mediaOrgao.toLocaleString('pt-BR');
+  }
+  
+  if (kpiPeriodoEl) {
+    kpiPeriodoEl.textContent = periodo;
+  }
+  
+  // Log para debug
+  if (window.Logger) {
+    window.Logger.debug('📊 updateKPIs executado:', {
+      total,
+      orgaosUnicos,
+      mediaOrgao,
+      periodo,
+      elementosEncontrados: {
+        kpiTotalEl: !!kpiTotalEl,
+        kpiUnicosEl: !!kpiUnicosEl,
+        kpiMediaEl: !!kpiMediaEl,
+        kpiPeriodoEl: !!kpiPeriodoEl
+      },
+      dadosOrgaos: safeDataOrgaos.length,
+      dadosMensal: safeDataMensal.length
+    });
+  }
+  
+  if (window.Logger) {
+    window.Logger.success('✅ updateKPIs: KPIs atualizados', {
+      total,
+      orgaosUnicos,
+      mediaOrgao,
+      periodo
+    });
+  }
 }
 
 /**
@@ -768,7 +1039,9 @@ function initOrgaoMesFilterListeners() {
         // Recarregar dados quando filtros mudarem (isso vai atualizar os gráficos)
         await loadOrgaoMes(true); // forceRefresh = true para garantir dados atualizados
       } catch (err) {
-        console.error('❌ Erro ao recarregar com filtros:', err);
+        window.errorHandler?.handleError(err, 'loadOrgaoMes (recarregar com filtros)', {
+          showToUser: false
+        });
         if (window.Logger) {
           window.Logger.error('Erro ao recarregar OrgaoMes com filtros:', err);
         }

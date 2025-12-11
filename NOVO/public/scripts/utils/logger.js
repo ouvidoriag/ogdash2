@@ -3,17 +3,19 @@
  * Permite controlar logs em produção vs desenvolvimento
  */
 
+// PRIORIDADE 3: Otimização de logs em produção
 const LOG_CONFIG = {
   environment: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
     ? 'development' 
     : 'production',
   
+  // PRIORIDADE 3: Em produção, apenas erros e warnings
   levels: {
     error: true,
     warn: true,
-    info: false,
-    debug: false,
-    log: false
+    info: false, // Desabilitado em produção
+    debug: false, // Desabilitado em produção
+    log: false // Desabilitado em produção
   },
   
   prefixes: {

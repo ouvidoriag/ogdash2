@@ -54,10 +54,18 @@ function getPageLoader(page) {
       return Promise.resolve();
     },
     'overview': window.loadZeladoriaOverview || (() => Promise.resolve()),
+    // IDs antigos (compatibilidade com zeladoria.html deprecado)
     'demandas': window.loadColabDemandas || (() => Promise.resolve()),
     'criar': window.loadZeladoriaColabCriar || (() => Promise.resolve()),
     'categorias': window.loadZeladoriaColabCategorias || (() => Promise.resolve()),
-    'mapa': window.loadZeladoriaMapa || (() => Promise.resolve())
+    'mapa': window.loadZeladoriaMapa || (() => Promise.resolve()),
+    'cora': window.loadZeladoriaCoraChat || (() => Promise.resolve()),
+    // IDs novos (dashboard unificado)
+    'zeladoria-colab-demandas': window.loadColabDemandas || (() => Promise.resolve()),
+    'zeladoria-colab-criar': window.loadZeladoriaColabCriar || (() => Promise.resolve()),
+    'zeladoria-colab-categorias': window.loadZeladoriaColabCategorias || (() => Promise.resolve()),
+    'zeladoria-colab-mapa': window.loadZeladoriaColabMapa || (() => Promise.resolve()),
+    'zeladoria-cora-chat': window.loadZeladoriaCoraChat || (() => Promise.resolve())
   };
   
   return loaderMap[page] || null;

@@ -399,7 +399,7 @@ process.on('SIGTERM', async () => {
     // Inicializar scheduler de atualização automática de dados
     // ============================================
     try {
-      iniciarSchedulerAtualizacao();
+      await iniciarSchedulerAtualizacao();
       logger.info('📊 Scheduler de atualização automática de dados iniciado (execução diária às 10h)');
     } catch (error) {
       logger.warn('⚠️ Erro ao iniciar scheduler de atualização de dados:', error.message);

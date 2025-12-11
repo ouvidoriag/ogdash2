@@ -14,13 +14,35 @@ import { logger } from '../../utils/logger.js';
 /**
  * GET /api/dashboard-data
  * 
+ * PRIORIDADE 3: Documentação completa
  * REFATORAÇÃO: Prisma → Mongoose
  * Data: 03/12/2025
  * CÉREBRO X-3
  * 
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Endpoint centralizado que retorna todos os datasets fundamentais pré-agregados
+ * em uma única requisição para máxima performance do dashboard.
+ * 
+ * @route GET /api/dashboard-data
+ * @param {string} [req.query.servidor] - Filtrar por servidor (opcional)
+ * @param {string} [req.query.unidadeCadastro] - Filtrar por unidade de cadastro (opcional)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB nativo
+ * @returns {Promise<Object>} Objeto com todos os datasets agregados:
+ *   - totalManifestations: number
+ *   - manifestationsByMonth: Array
+ *   - manifestationsByStatus: Array
+ *   - manifestationsByTheme: Array
+ *   - manifestationsByOrgan: Array
+ *   - manifestationsByType: Array
+ *   - manifestationsByChannel: Array
+ *   - manifestationsByPriority: Array
+ *   - manifestationsByUnit: Array
+ * 
+ * @example
+ * // GET /api/dashboard-data
+ * // Retorna: {totalManifestations: 1000, manifestationsByMonth: [...], ...}
+ * 
+ * @cache TTL: 18000 segundos (5 horas)
+ * @performance Usa MongoDB Native com pipeline $facet (3-10x mais rápido)
  */
 export async function getDashboardData(req, res, getMongoClient) {
   const servidor = req.query.servidor;

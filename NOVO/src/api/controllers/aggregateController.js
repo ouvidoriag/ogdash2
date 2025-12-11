@@ -23,7 +23,20 @@ import { logger } from '../../utils/logger.js';
  * GET /api/aggregate/count-by
  * Contagem por campo
  * 
+ * PRIORIDADE 3: Documentação completa
  * REFATORAÇÃO: Prisma → Mongoose
+ * 
+ * @route GET /api/aggregate/count-by
+ * @param {string} req.query.field - Campo para agregação (obrigatório)
+ * @param {string} [req.query.servidor] - Filtrar por servidor (opcional)
+ * @param {string} [req.query.unidadeCadastro] - Filtrar por unidade de cadastro (opcional)
+ * @returns {Promise<Array>} Array de objetos {key: string, count: number} ordenado por count decrescente
+ * @example
+ * // GET /api/aggregate/count-by?field=statusDemanda
+ * // Retorna: [{key: "Em Andamento", count: 150}, {key: "Concluído", count: 200}]
+ * 
+ * @cache TTL: 3600 segundos (1 hora)
+ * @performance Usa agregação MongoDB nativa para máxima performance
  */
 export async function countBy(req, res) {
   const field = String(req.query.field ?? '').trim();
@@ -187,42 +200,42 @@ export async function byTheme(req, res, getMongoClient) {
   // Validar filtros
   const sanitizedFilters = sanitizeFilters(filters);
   
-  // Cache inteligente
-  const cacheKey = servidor ? `byTheme:servidor:${servidor}:v4` :
-                    unidadeCadastro ? `byTheme:uac:${unidadeCadastro}:v4` :
-                    'byTheme:v4';
-  
-  return withCache(cacheKey, 3600, res, async () => {
-    try {
-      // Usar cache inteligente com Mongoose
-      if (getMongoClient) {
-        return await withSmartCache(
-          'tema',
-          sanitizedFilters,
-          async () => {
-            const pipeline = buildTemaPipeline(sanitizedFilters, 50);
-            const result = await executeAggregation(getMongoClient, pipeline);
-            return formatGroupByResult(result, '_id', 'count');
-          },
-          null,
-          [] // Fallback seguro: lista vazia
-        );
-      }
-      
-      // Fallback para Mongoose aggregation
-      const pipeline = [
-        ...(Object.keys(sanitizedFilters).length > 0 ? [{ $match: sanitizedFilters }] : []),
-        { $group: { _id: '$tema', count: { $sum: 1 } } },
-        { $sort: { count: -1 } }
-      ];
-      
-      const rows = await Record.aggregate(pipeline);
-      return formatGroupByResult(rows.map(r => ({ _id: r._id ?? 'Não informado', count: r.count })));
-    } catch (error) {
-      logger.error('Erro ao buscar dados por tema:', { error: error.message });
-      throw error;
+  // REFATORAÇÃO FASE 4: Remover cache duplo - usar APENAS withSmartCache para filtros dinâmicos
+  // Não usar withCache() + withSmartCache() (cache duplo)
+  try {
+    // Usar cache inteligente com Mongoose (único cache)
+    if (getMongoClient) {
+      const result = await withSmartCache(
+        'tema',
+        sanitizedFilters,
+        async () => {
+          const pipeline = buildTemaPipeline(sanitizedFilters, 50);
+          const result = await executeAggregation(getMongoClient, pipeline);
+          return formatGroupByResult(result, '_id', 'count');
+        },
+        null,
+        [] // Fallback seguro: lista vazia
+      );
+      return res.json(result);
     }
-  });
+    
+    // Fallback para Mongoose aggregation
+    const pipeline = [
+      ...(Object.keys(sanitizedFilters).length > 0 ? [{ $match: sanitizedFilters }] : []),
+      { $group: { _id: '$tema', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ];
+    
+    const rows = await Record.aggregate(pipeline);
+    const result = formatGroupByResult(rows.map(r => ({ _id: r._id ?? 'Não informado', count: r.count })));
+    return res.json(result);
+  } catch (error) {
+    logger.error('Erro ao buscar dados por tema:', { error: error.message });
+    return res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      message: error.message 
+    });
+  }
 }
 
 /**
@@ -244,42 +257,42 @@ export async function bySubject(req, res, getMongoClient) {
   // Validar filtros
   const sanitizedFilters = sanitizeFilters(filters);
   
-  // Cache inteligente
-  const cacheKey = servidor ? `bySubject:servidor:${servidor}:v4` :
-                    unidadeCadastro ? `bySubject:uac:${unidadeCadastro}:v4` :
-                    'bySubject:v4';
-  
-  return withCache(cacheKey, 3600, res, async () => {
-    try {
-      // Usar cache inteligente com Mongoose
-      if (getMongoClient) {
-        return await withSmartCache(
-          'assunto',
-          sanitizedFilters,
-          async () => {
-            const pipeline = buildAssuntoPipeline(sanitizedFilters, 50);
-            const result = await executeAggregation(getMongoClient, pipeline);
-            return formatGroupByResult(result, '_id', 'count');
-          },
-          null,
-          [] // Fallback seguro
-        );
-      }
-      
-      // Fallback para Mongoose aggregation
-      const pipeline = [
-        ...(Object.keys(sanitizedFilters).length > 0 ? [{ $match: sanitizedFilters }] : []),
-        { $group: { _id: '$assunto', count: { $sum: 1 } } },
-        { $sort: { count: -1 } }
-      ];
-      
-      const rows = await Record.aggregate(pipeline);
-      return formatGroupByResult(rows.map(r => ({ _id: r._id ?? 'Não informado', count: r.count })));
-    } catch (error) {
-      logger.error('Erro ao buscar dados por assunto:', { error: error.message });
-      throw error;
+  // REFATORAÇÃO FASE 4: Remover cache duplo - usar APENAS withSmartCache para filtros dinâmicos
+  // Não usar withCache() + withSmartCache() (cache duplo)
+  try {
+    // Usar cache inteligente com Mongoose (único cache)
+    if (getMongoClient) {
+      const result = await withSmartCache(
+        'assunto',
+        sanitizedFilters,
+        async () => {
+          const pipeline = buildAssuntoPipeline(sanitizedFilters, 50);
+          const result = await executeAggregation(getMongoClient, pipeline);
+          return formatGroupByResult(result, '_id', 'count');
+        },
+        null,
+        [] // Fallback seguro
+      );
+      return res.json(result);
     }
-  });
+    
+    // Fallback para Mongoose aggregation
+    const pipeline = [
+      ...(Object.keys(sanitizedFilters).length > 0 ? [{ $match: sanitizedFilters }] : []),
+      { $group: { _id: '$assunto', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ];
+    
+    const rows = await Record.aggregate(pipeline);
+    const result = formatGroupByResult(rows.map(r => ({ _id: r._id ?? 'Não informado', count: r.count })));
+    return res.json(result);
+  } catch (error) {
+    logger.error('Erro ao buscar dados por assunto:', { error: error.message });
+    return res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      message: error.message 
+    });
+  }
 }
 
 /**
@@ -818,6 +831,24 @@ export async function countByStatusMes(req, res) {
  * OTIMIZAÇÃO: Usa pipeline MongoDB nativo com cache inteligente
  * 
  * REFATORAÇÃO: Prisma → Mongoose
+ */
+/**
+ * GET /api/aggregate/count-by-orgao-mes
+ * Agregação por órgão e mês
+ * 
+ * PRIORIDADE 3: Documentação completa
+ * 
+ * @route GET /api/aggregate/count-by-orgao-mes
+ * @param {string} [req.query.servidor] - Filtrar por servidor (opcional)
+ * @param {string} [req.query.unidadeCadastro] - Filtrar por unidade de cadastro (opcional)
+ * @param {Function} getMongoClient - Cliente MongoDB nativo
+ * @returns {Promise<Object>} Objeto com {orgaos: Array, mensal: Array}
+ * @example
+ * // GET /api/aggregate/count-by-orgao-mes
+ * // Retorna: {orgaos: [{key: "Secretaria X", count: 50}], mensal: [{ym: "2024-01", count: 100}]}
+ * 
+ * @cache TTL: 3600 segundos (1 hora)
+ * @performance Usa pipeline MongoDB otimizado com $facet
  */
 export async function countByOrgaoMes(req, res, getMongoClient) {
   const servidor = req.query.servidor;

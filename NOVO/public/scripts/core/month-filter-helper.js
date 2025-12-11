@@ -53,65 +53,119 @@ window.MonthFilterHelper.coletarFiltrosMes = function(selectId) {
  */
 window.MonthFilterHelper.popularSelectMeses = async function(selectId, endpoint, mesSelecionado = '') {
   const selectMes = document.getElementById(selectId);
-  if (!selectMes) return;
+  if (!selectMes) {
+    if (window.Logger) {
+      window.Logger.warn(`Select ${selectId} não encontrado para popular meses`);
+    }
+    return;
+  }
   
-  try {
-    // Carregar dados mensais para obter meses disponíveis
-    const dataMes = await window.dataLoader?.load(endpoint, {
-      useDataStore: true,
-      ttl: 10 * 60 * 1000,
-      fallback: []
-    }) || [];
-    
-    // Limpar opções existentes (exceto "Todos os meses")
-    while (selectMes.children.length > 1) {
-      selectMes.removeChild(selectMes.lastChild);
+  // Aguardar dataLoader estar disponível (máximo 5 tentativas)
+  let tentativas = 0;
+  const maxTentativas = 5;
+  
+  const aguardarECarregar = async () => {
+    if (!window.dataLoader) {
+      if (tentativas < maxTentativas) {
+        tentativas++;
+        if (window.Logger) {
+          window.Logger.debug(`Aguardando dataLoader... (tentativa ${tentativas}/${maxTentativas})`);
+        }
+        setTimeout(aguardarECarregar, 200);
+        return;
+      } else {
+        if (window.Logger) {
+          window.Logger.error('dataLoader não está disponível após várias tentativas');
+        }
+        console.error('❌ dataLoader não está disponível');
+        return;
+      }
     }
     
-    // Adicionar meses disponíveis (ordenados do mais recente para o mais antigo)
-    const meses = dataMes
-      .map(d => d.month || d.ym || d._id)
-      .filter(m => m)
-      .sort()
-      .reverse();
-    
-    meses.forEach(mes => {
-      const option = document.createElement('option');
-      option.value = mes;
-      
-      // Formatar para nome do mês (ex: "Janeiro 2025")
-      let nomeMes = mes;
-      try {
-        if (mes && mes.includes('-')) {
-          const [ano, mesNum] = mes.split('-');
-          const mesesNomes = [
-            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-          ];
-          const mesIndex = parseInt(mesNum) - 1;
-          if (mesIndex >= 0 && mesIndex < 12) {
-            nomeMes = `${mesesNomes[mesIndex]} ${ano}`;
-          }
-        }
-      } catch (e) {
-        // Se der erro, usar formatação padrão
-        nomeMes = window.dateUtils?.formatMonthYearShort(mes) || mes;
+    try {
+      if (window.Logger) {
+        window.Logger.debug(`📅 Carregando meses do endpoint: ${endpoint}`);
       }
       
-      option.textContent = nomeMes;
-      selectMes.appendChild(option);
-    });
-    
-    // Restaurar seleção anterior se existir
-    if (mesSelecionado) {
-      selectMes.value = mesSelecionado;
+      // Carregar dados mensais para obter meses disponíveis
+      const dataMes = await window.dataLoader.load(endpoint, {
+        useDataStore: true,
+        ttl: 10 * 60 * 1000,
+        fallback: []
+      }) || [];
+      
+      if (window.Logger) {
+        window.Logger.debug(`📅 Dados recebidos: ${dataMes.length} registros`, dataMes.slice(0, 3));
+      }
+      
+      // Limpar opções existentes (exceto "Todos os meses")
+      while (selectMes.children.length > 1) {
+        selectMes.removeChild(selectMes.lastChild);
+      }
+      
+      // Adicionar meses disponíveis (ordenados do mais recente para o mais antigo)
+      const meses = dataMes
+        .map(d => d.month || d.ym || d._id)
+        .filter(m => m)
+        .sort()
+        .reverse();
+      
+      if (window.Logger) {
+        window.Logger.debug(`📅 Meses extraídos: ${meses.length}`, meses.slice(0, 5));
+      }
+      
+      if (meses.length === 0) {
+        if (window.Logger) {
+          window.Logger.warn(`Nenhum mês encontrado no endpoint ${endpoint}`);
+        }
+        return;
+      }
+      
+      meses.forEach(mes => {
+        const option = document.createElement('option');
+        option.value = mes;
+        
+        // Formatar para nome do mês (ex: "Janeiro 2025")
+        let nomeMes = mes;
+        try {
+          if (mes && mes.includes('-')) {
+            const [ano, mesNum] = mes.split('-');
+            const mesesNomes = [
+              'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+              'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+            ];
+            const mesIndex = parseInt(mesNum) - 1;
+            if (mesIndex >= 0 && mesIndex < 12) {
+              nomeMes = `${mesesNomes[mesIndex]} ${ano}`;
+            }
+          }
+        } catch (e) {
+          // Se der erro, usar formatação padrão
+          nomeMes = window.dateUtils?.formatMonthYearShort(mes) || mes;
+        }
+        
+        option.textContent = nomeMes;
+        selectMes.appendChild(option);
+      });
+      
+      // Restaurar seleção anterior se existir
+      if (mesSelecionado) {
+        selectMes.value = mesSelecionado;
+      }
+      
+      if (window.Logger) {
+        window.Logger.success(`✅ Select ${selectId} populado com ${meses.length} meses`);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao popular select de meses:', error);
+      if (window.Logger) {
+        window.Logger.error('Erro ao popular select de meses:', error);
+      }
     }
-  } catch (error) {
-    console.error('❌ Erro ao popular select de meses:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao popular select de meses:', error);
-    }
-  }
+  };
+  
+  // Iniciar processo
+  aguardarECarregar();
 };
 
 /**

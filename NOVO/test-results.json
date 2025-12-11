@@ -1,0 +1,32 @@
+{
+  "inicio": "2025-12-11T17:34:44.034Z",
+  "fim": "2025-12-11T17:35:19.406Z",
+  "total": 10,
+  "passou": 2,
+  "falhou": 0,
+  "pulou": 9,
+  "detalhes": [
+    {
+      "teste": "Validação de Sintaxe JavaScript",
+      "status": "PASSOU",
+      "total": 201
+    },
+    {
+      "teste": "Teste de Conexão MongoDB",
+      "status": "PASSOU",
+      "output": "14:35:09 [\u001b[32mdebug\u001b[39m]: Logger inicializado {\n  \"environment\": \"development\"\n}\r\n🧪 TESTE DE CONEXÃO MONGOOSE\n\n============================================================\n\n1️⃣ Testando conexão...\n14:35:10 [\u001b[32minfo\u001b[39m]: ✅ Mongoose conectado ao MongoDB Atlas com sucesso\r\n✅ Mongoose conectado com sucesso!\n\n2️⃣ Status da conexão:\n{\n  \"state\": \"connected\",\n  \"readyState\": 1,\n  \"host\": \"ac-fqrlqyy-shard-00-00.gk8g0dq.mongodb.net\",\n  \"port\": 27017,\n  \"name\": \"ouvidoria\"\n}\n\n3️⃣ Testando models.."
+    },
+    {
+      "teste": "Teste de Google Sheets",
+      "status": "FALHOU",
+      "erro": "Command failed: node scripts/test/testGoogleSheets.js\n\n❌❌❌ ERRO NO TESTE ❌❌❌\n\n❌ Erro de credenciais!\n   - Verifique se o arquivo de credenciais existe\n   - Verifique se o GOOGLE_CREDENTIALS_FILE está correto no .env\n\n💡 Dicas:\n   1. Verifique se todas as variáveis estão no .env\n   2. Verifique se a planilha foi compartilhada com o Service Account\n   3. Verifique se a Google Sheets API está habilitada\n   4. Consulte GOOGLE_SHEETS_SETUP.md para mais detalhes\n\n",
+      "output": "🧪 Testando conexão com Google Sheets...\n\n📋 Verificando configurações...\n✅ GOOGLE_SHEET_ID: 1aF0I8pxABXhqyO2DmzBV9aoWHQN2h7LpTN-qdkGLc_g\n\n🔐 Autenticando...\n"
+    },
+    {
+      "teste": "Teste de Chaves Gemini",
+      "status": "FALHOU",
+      "erro": "Command failed: node scripts/test/testGeminiKeys.js\n",
+      "output": "🧪 Teste de Chaves da API Gemini\n\n============================================================\n\n📊 Total de chaves encontradas: 4\n\n\n🔑 Testando Chave 1/4...\n   Prefixo: AIzaSyDfOLsRs4J...\n   Tamanho: 39 caracteres\n   ❌ ERRO 403 (1095ms)\n   📝 Mensagem: Your API key was reported as leaked. Please use another API key.\n   ⚠️  Permissão negada - verifique se a API está habilitada\n\n🔑 Testando Chave 2/4...\n   Prefixo: AIzaSyBwahD5BNc...\n   Tamanho: 39 caracteres\n   ❌ ERRO 403 (185ms)\n   📝 Mensagem: Your API key was reported as leaked. Please use another API key.\n   ⚠️  Permissão negada - verifique se a API está habilitada\n\n🔑 Testando Chave 3/4...\n   Prefixo: AIzaSyC3BGErwH-...\n   Tamanho: 39 caracteres\n   ❌ ERRO 403 (183ms)\n   📝 Mensagem: Your API key was reported as leaked. Please use another API key.\n   ⚠️  Permissão negada - verifique se a API está habilitada\n\n🔑 Testando Chave 4/4...\n   Prefixo: AIzaSyDNpqk0rkU...\n   Tamanho: 39 caracteres\n   ❌ ERRO 403 (190ms)\n   📝 Mensagem: Your A"
+    }
+  ]
+}

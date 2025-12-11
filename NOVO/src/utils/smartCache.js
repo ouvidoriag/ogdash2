@@ -13,9 +13,12 @@
 import crypto from 'crypto';
 import AggregationCache from '../models/AggregationCache.model.js';
 import { logger } from './logger.js';
+import { getTTLByType, getDefaultTTL } from '../config/cache-ttls.js';
 
 /**
  * TTL por tipo de endpoint (em segundos)
+ * REFATORAÇÃO: Agora usa cache-ttls.js centralizado
+ * Mantido para compatibilidade, mas usa getTTLByType() internamente
  */
 const TTL_CONFIG = {
   overview: 5,           // 5 segundos - dados muito dinâmicos
@@ -67,9 +70,17 @@ export function generateCacheKey(endpoint, filters = {}, version = 'v1') {
  * Obter TTL para um endpoint
  * @param {string} endpoint - Tipo de endpoint
  * @returns {number} TTL em segundos
+ * REFATORAÇÃO: Agora usa cache-ttls.js centralizado
  */
 export function getTTL(endpoint) {
-  return TTL_CONFIG[endpoint] || TTL_CONFIG.default;
+  // Usar TTL centralizado se disponível
+  try {
+    return getTTLByType(endpoint);
+  } catch (error) {
+    // Fallback para configuração antiga (compatibilidade)
+    logger.warn(`Erro ao obter TTL centralizado para ${endpoint}, usando fallback:`, error.message);
+    return TTL_CONFIG[endpoint] || TTL_CONFIG.default;
+  }
 }
 
 /**
@@ -113,10 +124,17 @@ export async function setCachedAggregation(key, data, ttlSeconds) {
 /**
  * Executar função com cache inteligente
  * 
+ * REFATORAÇÃO FASE 4: Documentação de uso
+ * 
+ * ⚠️ IMPORTANTE: Use APENAS para endpoints com filtros dinâmicos
+ * - Se não tem filtros, use withCache() em vez disso
+ * - NÃO use dentro de withCache() (evitar cache duplo)
+ * - Ver: docs/system/GUIA_DECISAO_CACHE.md
+ * 
  * @param {string} endpoint - Tipo de endpoint
- * @param {Object} filters - Filtros aplicados
+ * @param {Object} filters - Filtros aplicados (obrigatório - varia por requisição)
  * @param {Function} fn - Função para executar se cache não existir
- * @param {number} customTTL - TTL customizado (opcional)
+ * @param {number} customTTL - TTL customizado (opcional, usa cache-ttls.js se null)
  * @param {*} fallback - Valor de fallback em caso de erro (opcional)
  * @returns {Promise<Object>} Dados (do cache, da função ou do fallback)
  */

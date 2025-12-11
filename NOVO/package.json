@@ -43,6 +43,7 @@
     "test:filters": "node scripts/test/test-filters.js",
     "test:validate": "node scripts/test/validate-endpoints.js",
     "test:all-endpoints": "npm run test:validate && npm run test:apis && npm run test:kpis && npm run test:filters",
+    "test:completo": "node scripts/test/test-completo-sistema.js",
     "gmail:auth": "node scripts/email/autorizar-gmail.js",
     "email:saude": "node scripts/email/enviar-email-saude.js",
     "email:real": "node scripts/email/enviar-email-real.js",

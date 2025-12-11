@@ -4,110 +4,6 @@
  */
 
 /**
- * Carregar página Overview da Zeladoria
- */
-async function loadZeladoriaOverview() {
-  if (window.Logger) {
-    window.Logger.debug('🏗️ loadZeladoriaOverview: Iniciando');
-  }
-  
-  const page = document.getElementById('page-zeladoria-overview');
-  if (!page || page.style.display === 'none') {
-    return Promise.resolve();
-  }
-  
-  try {
-    // Calcular datas (últimos 30 dias)
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
-    
-    const startDateStr = startDate.toISOString().replace('T', ' ').substring(0, 19) + '.0000';
-    const endDateStr = endDate.toISOString().replace('T', ' ').substring(0, 19) + '.9999';
-    
-    // Buscar demandas
-    const demandas = await window.dataLoader?.load(
-      `/api/colab/posts?start_date=${encodeURIComponent(startDateStr)}&end_date=${encodeURIComponent(endDateStr)}`,
-      { useDataStore: true, ttl: 5 * 60 * 1000 }
-    ) || [];
-    
-    if (window.Logger) {
-      window.Logger.debug(`🏗️ Demandas carregadas: ${demandas.length}`);
-    }
-    
-    // Calcular estatísticas
-    const stats = {
-      total: demandas.length,
-      emAtendimento: demandas.filter(d => d.status === 'ATENDIMENTO').length,
-      finalizadas: demandas.filter(d => d.status === 'FECHADO' || d.status === 'ATENDIDO').length,
-      novas: demandas.filter(d => d.status === 'NOVO' || d.status === 'ABERTO').length
-    };
-    
-    // Atualizar KPIs
-    document.getElementById('totalDemandas').textContent = stats.total.toLocaleString('pt-BR');
-    document.getElementById('emAtendimento').textContent = stats.emAtendimento.toLocaleString('pt-BR');
-    document.getElementById('finalizadas').textContent = stats.finalizadas.toLocaleString('pt-BR');
-    document.getElementById('novas').textContent = stats.novas.toLocaleString('pt-BR');
-    
-    // Gráfico de Status
-    const statusCounts = {};
-    demandas.forEach(d => {
-      statusCounts[d.status] = (statusCounts[d.status] || 0) + 1;
-    });
-    
-    if (Object.keys(statusCounts).length > 0) {
-      await window.chartFactory?.createDoughnutChart('chartZeladoriaStatus', 
-        Object.keys(statusCounts), 
-        Object.values(statusCounts),
-        { 
-          type: 'doughnut',
-          onClick: false
-        }
-      );
-    }
-    
-    // Buscar categorias para o gráfico
-    const categorias = await window.dataLoader?.load('/api/colab/categories?type=post', {
-      useDataStore: true,
-      ttl: 10 * 60 * 1000
-    }) || { categories: [] };
-    
-    // Agrupar por categoria
-    const categoriaCounts = {};
-    demandas.forEach(d => {
-      const catId = d.category_id;
-      const categoria = categorias.categories?.find(c => c.id === catId);
-      const catName = categoria?.name || `Categoria ${catId}`;
-      categoriaCounts[catName] = (categoriaCounts[catName] || 0) + 1;
-    });
-    
-    if (Object.keys(categoriaCounts).length > 0) {
-      const topCategorias = Object.entries(categoriaCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-      
-      await window.chartFactory?.createBarChart('chartZeladoriaCategoria',
-        topCategorias.map(c => c[0]),
-        topCategorias.map(c => c[1]),
-        { 
-          horizontal: true, 
-          colorIndex: 1,
-          onClick: false
-        }
-      );
-    }
-    
-    if (window.Logger) {
-      window.Logger.success('🏗️ loadZeladoriaOverview: Concluído');
-    }
-  } catch (error) {
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar Overview Zeladoria:', error);
-    }
-  }
-}
-
-/**
  * Carregar lista de demandas
  */
 async function loadColabDemandas() {
@@ -121,15 +17,15 @@ async function loadColabDemandas() {
   }
   
   try {
-    const listaEl = document.getElementById('listaDemandas');
+    const listaEl = document.getElementById('zeladoria-colab-lista-demandas');
     if (!listaEl) return;
     
     listaEl.innerHTML = '<div class="glass rounded-xl p-6 text-center text-slate-400">Carregando demandas...</div>';
     
     // Obter filtros
-    const status = document.getElementById('filterStatus')?.value || '';
-    const startDate = document.getElementById('filterStartDate')?.value;
-    const endDate = document.getElementById('filterEndDate')?.value;
+    const status = document.getElementById('zeladoria-colab-filter-status')?.value || '';
+    const startDate = document.getElementById('zeladoria-colab-filter-start-date')?.value;
+    const endDate = document.getElementById('zeladoria-colab-filter-end-date')?.value;
     
     // Se não tiver datas, usar últimos 30 dias
     let startDateStr, endDateStr;
@@ -218,7 +114,7 @@ async function loadColabDemandas() {
       window.Logger.success(`📋 loadColabDemandas: ${demandas.length} demandas carregadas`);
     }
   } catch (error) {
-    const listaEl = document.getElementById('listaDemandas');
+    const listaEl = document.getElementById('zeladoria-colab-lista-demandas');
     if (listaEl) {
       listaEl.innerHTML = `<div class="glass rounded-xl p-6 text-center text-rose-400">Erro ao carregar demandas: ${error.message}</div>`;
     }
@@ -244,7 +140,7 @@ async function loadZeladoriaColabCriar() {
       ttl: 10 * 60 * 1000
     }) || { categories: [] };
     
-    const selectEl = document.getElementById('categoriaId');
+    const selectEl = document.getElementById('zeladoria-colab-categoria-id');
     if (selectEl && categorias.categories) {
       selectEl.innerHTML = '<option value="">Selecione uma categoria</option>' +
         categorias.categories.map(cat => 
@@ -253,7 +149,7 @@ async function loadZeladoriaColabCriar() {
     }
     
     // Configurar formulário
-    const form = document.getElementById('formCriarDemanda');
+    const form = document.getElementById('zeladoria-colab-form-criar');
     if (form) {
       form.onsubmit = async (e) => {
         e.preventDefault();
@@ -272,13 +168,13 @@ async function loadZeladoriaColabCriar() {
  */
 async function criarDemanda() {
   try {
-    const descricao = document.getElementById('descricao')?.value;
-    const endereco = document.getElementById('endereco')?.value;
-    const bairro = document.getElementById('bairro')?.value;
-    const latitude = parseFloat(document.getElementById('latitude')?.value);
-    const longitude = parseFloat(document.getElementById('longitude')?.value);
-    const categoriaId = parseInt(document.getElementById('categoriaId')?.value);
-    const imagens = document.getElementById('imagens')?.value;
+    const descricao = document.getElementById('zeladoria-colab-descricao')?.value;
+    const endereco = document.getElementById('zeladoria-colab-endereco')?.value;
+    const bairro = document.getElementById('zeladoria-colab-bairro')?.value;
+    const latitude = parseFloat(document.getElementById('zeladoria-colab-latitude')?.value);
+    const longitude = parseFloat(document.getElementById('zeladoria-colab-longitude')?.value);
+    const categoriaId = parseInt(document.getElementById('zeladoria-colab-categoria-id')?.value);
+    const imagens = document.getElementById('zeladoria-colab-imagens')?.value;
     
     if (!descricao || !endereco || isNaN(latitude) || isNaN(longitude) || !categoriaId) {
       alert('Preencha todos os campos obrigatórios');
@@ -311,7 +207,11 @@ async function criarDemanda() {
     }
     
     alert('✅ Demanda criada com sucesso!');
-    loadSection('zeladoria-colab-demandas');
+    if (typeof window.loadSection === 'function') {
+      window.loadSection('zeladoria-colab-demandas');
+    } else if (typeof loadSection === 'function') {
+      loadSection('zeladoria-colab-demandas');
+    }
   } catch (error) {
     alert(`❌ Erro: ${error.message}`);
     if (window.Logger) {
@@ -335,7 +235,7 @@ async function loadZeladoriaColabCategorias() {
       ttl: 10 * 60 * 1000
     }) || { categories: [] };
     
-    const listaEl = document.getElementById('listaCategorias');
+    const listaEl = document.getElementById('zeladoria-colab-lista-categorias');
     if (!listaEl) return;
     
     if (categorias.categories.length === 0) {
@@ -371,7 +271,9 @@ window.aceitarDemanda = async (id, type) => {
     if (!response.ok) throw new Error('Erro ao aceitar demanda');
     
     alert('✅ Demanda aceita com sucesso!');
-    loadColabDemandas();
+    if (window.loadColabDemandas) {
+      window.loadColabDemandas();
+    }
   } catch (error) {
     alert(`❌ Erro: ${error.message}`);
   }
@@ -392,7 +294,9 @@ window.finalizarDemanda = async (id, type) => {
     if (!response.ok) throw new Error('Erro ao finalizar demanda');
     
     alert('✅ Demanda finalizada com sucesso!');
-    loadColabDemandas();
+    if (window.loadColabDemandas) {
+      window.loadColabDemandas();
+    }
   } catch (error) {
     alert(`❌ Erro: ${error.message}`);
   }
@@ -469,7 +373,6 @@ if (window.chartCommunication && window.chartCommunication.createPageFilterListe
 }
 
 // Exportar funções
-window.loadZeladoriaOverview = loadZeladoriaOverview;
 window.loadColabDemandas = loadColabDemandas;
 window.loadZeladoriaColabCriar = loadZeladoriaColabCriar;
 window.loadZeladoriaColabCategorias = loadZeladoriaColabCategorias;

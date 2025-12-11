@@ -28,6 +28,24 @@ let paginaAtual = 0;
  * Carregar dados de vencimento
  */
 async function loadVencimento(forceRefresh = false) {
+  // PRIORIDADE 1: Verificar dependências críticas
+  const dependencies = window.errorHandler?.requireDependencies(
+    ['dataLoader'],
+    () => {
+      window.errorHandler?.showNotification(
+        'Sistema não carregado. Recarregue a página.',
+        'warning'
+      );
+      return null;
+    }
+  );
+  
+  if (!dependencies) {
+    return Promise.resolve();
+  }
+  
+  const { dataLoader } = dependencies;
+  
   if (window.Logger) {
     window.Logger.debug('⏰ loadVencimento: Iniciando');
   }
@@ -37,7 +55,11 @@ async function loadVencimento(forceRefresh = false) {
     return Promise.resolve();
   }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.showInElement('tableVencimento', 'Carregando protocolos de vencimento...');
+  
+  // PRIORIDADE 1: Usar safeAsync para tratamento de erros
+  return await window.errorHandler?.safeAsync(async () => {
     // Garantir que o dropdown está populado ANTES de obter os valores
     const selectSecretaria = document.getElementById('selectSecretariaVencimento');
     if (selectSecretaria && selectSecretaria.options.length <= 1) {
@@ -60,14 +82,6 @@ async function loadVencimento(forceRefresh = false) {
       url += `&secretaria=${encodeURIComponent(secretariaFiltro)}`;
     }
     
-    // Debug: log dos valores antes de enviar
-    console.log('⏰ Frontend - Valores dos filtros:', {
-      filtro,
-      secretaria,
-      secretariaFiltro,
-      url
-    });
-    
     if (window.Logger) {
       window.Logger.debug(`⏰ Carregando vencimentos: filtro=${filtro}, secretaria=${secretariaFiltro || 'todas'}, url=${url}`);
     }
@@ -75,17 +89,27 @@ async function loadVencimento(forceRefresh = false) {
     // Carregar dados (sempre forçar refresh quando há filtro de secretaria)
     const forceRefreshComFiltros = forceRefresh || !!secretariaFiltro;
     
-    // Verificar se dataLoader está disponível
-    if (!window.dataLoader || !window.dataLoader.load) {
-      console.error('❌ dataLoader não está disponível');
-      throw new Error('dataLoader não está disponível');
-    }
-    
-    const data = await window.dataLoader.load(url, {
+    const dataRaw = await dataLoader.load(url, {
       useDataStore: !forceRefreshComFiltros,
       ttl: 2 * 60 * 1000, // Cache de 2 minutos
       fallback: { total: 0, filtro, protocolos: [] }
     }) || { total: 0, filtro, protocolos: [] };
+    
+    // PRIORIDADE 1: Validar dados recebidos
+    const validation = window.dataValidator?.validateDataStructure(dataRaw, {
+      required: ['total', 'filtro', 'protocolos'],
+      types: {
+        total: 'number',
+        filtro: 'string',
+        protocolos: 'array'
+      }
+    });
+    
+    if (!validation.valid) {
+      throw new Error(`Dados inválidos: ${validation.error}`);
+    }
+    
+    const data = validation.data;
     
     if (window.Logger) {
       window.Logger.debug(`⏰ Dados recebidos: ${data.total} protocolos`);
@@ -104,24 +128,31 @@ async function loadVencimento(forceRefresh = false) {
     if (window.Logger) {
       window.Logger.success('⏰ loadVencimento: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar vencimentos:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar vencimentos:', error);
-    }
     
-    // Mostrar mensagem de erro
-    const tableContainer = document.getElementById('tableVencimento');
-    if (tableContainer) {
-      tableContainer.innerHTML = `
-        <div class="text-center py-8 text-red-400">
-          <div class="text-2xl mb-2">❌</div>
-          <div>Erro ao carregar dados de vencimento</div>
-          <div class="text-sm text-slate-400 mt-2">${error.message || 'Erro desconhecido'}</div>
-        </div>
-      `;
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hideInElement('tableVencimento');
+    
+    return { success: true, data };
+  }, 'loadVencimento', {
+    showToUser: true,
+    fallback: () => {
+      // PRIORIDADE 2: Esconder loading em caso de erro
+      window.loadingManager?.hideInElement('tableVencimento');
+      
+      // Mostrar mensagem de erro
+      const tableContainer = document.getElementById('tableVencimento');
+      if (tableContainer) {
+        tableContainer.innerHTML = `
+          <div class="text-center py-8 text-red-400">
+            <div class="text-2xl mb-2">❌</div>
+            <div>Erro ao carregar dados de vencimento</div>
+            <div class="text-sm text-slate-400 mt-2">Tente recarregar a página</div>
+          </div>
+        `;
+      }
+      return { success: false, data: { total: 0, filtro: 'vencidos', protocolos: [] } };
     }
-  }
+  });
 }
 
 /**
@@ -413,10 +444,9 @@ async function popularDropdownSecretarias() {
         }
       }
     } catch (error) {
-      console.error('❌ Erro ao buscar secretarias:', error);
-      if (window.Logger) {
-        window.Logger.error('Erro ao buscar secretarias:', error);
-      }
+      window.errorHandler?.handleError(error, 'popularDropdownSecretarias (buscar secretarias)', {
+        showToUser: false
+      });
     }
     
     // Remover duplicatas
@@ -441,10 +471,9 @@ async function popularDropdownSecretarias() {
       window.Logger.debug(`✅ Dropdown de secretarias populado com ${secretarias.length} secretarias`);
     }
   } catch (error) {
-    console.error('❌ Erro ao popular dropdown de secretarias:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao popular dropdown de secretarias:', error);
-    }
+    window.errorHandler?.handleError(error, 'popularDropdownSecretarias', {
+      showToUser: false
+    });
   }
 }
 
@@ -515,14 +544,11 @@ async function recarregarVencimentos() {
   }
   
   // Recarregar dados
-  try {
-    await loadVencimento(true);
-  } catch (error) {
-    console.error('❌ Erro ao atualizar vencimentos:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao atualizar vencimentos:', error);
-    }
-  }
+  await window.errorHandler?.safeAsync(
+    async () => await loadVencimento(true),
+    'recarregarVencimentos',
+    { showToUser: false }
+  );
 }
 
 // Exportar função globalmente - GARANTIR que sempre seja exportada
@@ -534,12 +560,21 @@ async function recarregarVencimentos() {
     // Exportar função imediatamente
     if (typeof loadVencimento === 'function') {
       window.loadVencimento = loadVencimento;
-      console.log('✅ loadVencimento exportada');
+      if (window.Logger) {
+        window.Logger.debug('✅ loadVencimento exportada');
+      }
     } else {
-      console.error('❌ loadVencimento não é uma função');
+      window.errorHandler?.handleError(
+        new Error('loadVencimento não é uma função'),
+        'vencimento.js (export)',
+        { showToUser: false, silent: true }
+      );
     }
   } catch (error) {
-    console.error('❌ Erro ao exportar loadVencimento:', error);
+    window.errorHandler?.handleError(error, 'vencimento.js (export)', {
+      showToUser: false,
+      silent: true
+    });
   }
   
   // Função auxiliar para inicializar quando tudo estiver pronto
@@ -558,11 +593,12 @@ async function recarregarVencimentos() {
       
       if (window.Logger) {
         window.Logger.debug('✅ Página Vencimento inicializada');
-      } else {
-        console.log('✅ Página Vencimento inicializada');
       }
     } catch (error) {
-      console.error('❌ Erro ao inicializar página Vencimento:', error);
+      window.errorHandler?.handleError(error, 'initWhenReady (vencimento)', {
+        showToUser: false,
+        silent: true
+      });
     }
   }
   
@@ -579,8 +615,6 @@ async function recarregarVencimentos() {
   // Log de carregamento
   if (window.Logger) {
     window.Logger.debug('✅ Script vencimento.js carregado');
-  } else {
-    console.log('✅ Script vencimento.js carregado');
   }
   
   // Conectar ao sistema global de filtros

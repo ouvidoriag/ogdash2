@@ -91,6 +91,24 @@ function coletarFiltrosTempoMedio() {
 }
 
 async function loadTempoMedio(forceRefresh = false) {
+  // PRIORIDADE 1: Verificar dependências críticas
+  const dependencies = window.errorHandler?.requireDependencies(
+    ['dataLoader', 'chartFactory'],
+    () => {
+      window.errorHandler?.showNotification(
+        'Sistemas não carregados. Recarregue a página.',
+        'warning'
+      );
+      return null;
+    }
+  );
+  
+  if (!dependencies) {
+    return Promise.resolve();
+  }
+  
+  const { dataLoader, chartFactory } = dependencies;
+  
   if (window.Logger) {
     window.Logger.debug('⏱️ loadTempoMedio: Iniciando');
   }
@@ -100,7 +118,11 @@ async function loadTempoMedio(forceRefresh = false) {
     return Promise.resolve();
   }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.show('Carregando dados de tempo médio...');
+  
+  // PRIORIDADE 1: Usar safeAsync para tratamento de erros
+  return await window.errorHandler?.safeAsync(async () => {
     // Coletar filtros da página
     const filtrosPagina = coletarFiltrosTempoMedio();
     
@@ -120,11 +142,20 @@ async function loadTempoMedio(forceRefresh = false) {
     }
     
     // Carregar dados por mês (para gráfico de evolução)
-    const dataMes = await window.dataLoader?.load('/api/stats/average-time/by-month', {
+    const dataMesRaw = await dataLoader.load('/api/stats/average-time/by-month', {
       fallback: [], // Fallback para erro 502
       useDataStore: true,
       ttl: 5 * 60 * 1000
     }) || [];
+    
+    // PRIORIDADE 1: Validar dados mensais
+    const mesValidation = window.dataValidator?.validateApiResponse(dataMesRaw, {
+      arrayItem: {
+        types: { month: 'string', average: 'number' }
+      }
+    });
+    
+    const dataMes = mesValidation.valid ? mesValidation.data : [];
     
     // Usar filtro de mês selecionado
     const mesSelecionado = filtroMesTempoMedio || '';
@@ -199,11 +230,24 @@ async function loadTempoMedio(forceRefresh = false) {
         window.Logger.debug(`⏱️ Carregando stats de: ${statsUrl}`);
       }
       
-      stats = await window.dataLoader?.load(statsUrl, {
+      const statsRaw = await dataLoader.load(statsUrl, {
         useDataStore: !forceRefresh, // Não usar cache se for refresh forçado
         ttl: 5 * 60 * 1000,
         fallback: { media: 0, mediana: 0, minimo: 0, maximo: 0, total: 0 } // Fallback para erro 502
       }) || {};
+      
+      // PRIORIDADE 1: Validar stats
+      const statsValidation = window.dataValidator?.validateDataStructure(statsRaw, {
+        types: {
+          media: 'number',
+          mediana: 'number',
+          minimo: 'number',
+          maximo: 'number',
+          total: 'number'
+        }
+      });
+      
+      stats = statsValidation.valid ? statsValidation.data : { media: 0, mediana: 0, minimo: 0, maximo: 0, total: 0 };
     }
     
     if (window.Logger) {
@@ -222,12 +266,11 @@ async function loadTempoMedio(forceRefresh = false) {
     
     // Carregar dados secundários (AGUARDAR conclusão para garantir que TUDO seja atualizado)
     // Quando há refresh forçado, todos os dados devem ser recarregados
-    await loadSecondaryTempoMedioData('', forceRefresh).catch(err => {
-      console.error('❌ Erro ao carregar dados secundários de tempo médio:', err);
-      if (window.Logger) {
-        window.Logger.error('Erro ao carregar dados secundários:', err);
-      }
-    });
+    await window.errorHandler?.safeAsync(
+      async () => await loadSecondaryTempoMedioData('', forceRefresh),
+      'loadTempoMedio (dados secundários)',
+      { showToUser: false }
+    );
     
     if (window.Logger && forceRefresh) {
       window.Logger.debug(`✅ Todos os cards, gráficos e dados atualizados com sucesso`);
@@ -236,12 +279,20 @@ async function loadTempoMedio(forceRefresh = false) {
     if (window.Logger) {
       window.Logger.success('⏱️ loadTempoMedio: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar TempoMedio:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar TempoMedio:', error);
+    
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hide();
+    
+    return { success: true, stats, dataMes };
+  }, 'loadTempoMedio', {
+    showToUser: true,
+    fallback: () => {
+      // PRIORIDADE 2: Esconder loading em caso de erro
+      window.loadingManager?.hide();
+      
+      return { success: false, stats: { media: 0, mediana: 0, minimo: 0, maximo: 0, total: 0 }, dataMes: [] };
     }
-  }
+  });
 }
 
 // Função removida - filtro por mês não está mais disponível
@@ -314,12 +365,14 @@ function renderTempoMedioStats(stats) {
   }
   
   // Confirmar visualmente que os cards foram atualizados
-  console.log('✅ Cards atualizados:', {
-    Média: media.toFixed(1),
-    Mediana: mediana.toFixed(1),
-    Mínimo: minimo.toFixed(1),
-    Máximo: maximo.toFixed(1)
-  });
+  if (window.Logger) {
+    window.Logger.debug('✅ Cards atualizados:', {
+      Média: media.toFixed(1),
+      Mediana: mediana.toFixed(1),
+      Mínimo: minimo.toFixed(1),
+      Máximo: maximo.toFixed(1)
+    });
+  }
 }
 
 async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', forceRefresh = false) {
@@ -359,7 +412,9 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', force
       }
       
       // Log para debug
-      console.log(`📊 Gráfico Tempo Médio: Exibindo exatamente ${finalLabels.length} unidades`);
+      if (window.Logger) {
+        window.Logger.debug(`📊 Gráfico Tempo Médio: Exibindo exatamente ${finalLabels.length} unidades`);
+      }
       
       if (finalLabels.length > 0 && finalValues.length > 0) {
         // Destruir gráfico existente antes de criar novo
@@ -523,7 +578,9 @@ async function renderTempoMedioCharts(stats, dataMes, mesSelecionado = '', force
       }
     }
   } catch (error) {
-    console.error('❌ Erro ao renderizar gráficos de Tempo Médio:', error);
+    window.errorHandler?.handleError(error, 'renderTempoMedioCharts', {
+      showToUser: false
+    });
     if (window.Logger) {
       window.Logger.error('Erro ao renderizar gráficos de Tempo Médio:', error);
     }
@@ -754,7 +811,9 @@ async function loadSecondaryTempoMedioData(mesSelecionado = '', forceRefresh = f
       }
     }
   } catch (error) {
-    console.error('❌ Erro ao carregar dados secundários de tempo médio:', error);
+    window.errorHandler?.handleError(error, 'loadSecondaryTempoMedioData', {
+      showToUser: false
+    });
     if (window.Logger) {
       window.Logger.error('Erro ao carregar dados secundários de tempo médio:', error);
     }
@@ -783,7 +842,9 @@ function atualizarOrdenacaoTempoMedio(novaOrdenacao) {
   
   // Recarregar dados para aplicar nova ordenação
   loadTempoMedio(false).catch(err => {
-    console.error('❌ Erro ao recarregar com nova ordenação:', err);
+    window.errorHandler?.handleError(err, 'recarregarTempoMedioComOrdenacao', {
+      showToUser: false
+    });
   });
 }
 
@@ -869,7 +930,9 @@ async function popularSelectMesesTempoMedio() {
       selectMes.value = filtroMesTempoMedio;
     }
   } catch (error) {
-    console.error('❌ Erro ao popular select de meses:', error);
+    window.errorHandler?.handleError(error, 'popularSelectMesesTempoMedio', {
+      showToUser: false
+    });
   }
 }
 

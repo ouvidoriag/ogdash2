@@ -5,7 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>e-SIC - Duque de Caxias - Dashboard</title>
     <link rel="icon" type="image/png" href="/dc-logo.png" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind CSS via CDN (apenas para desenvolvimento) -->
+    <script>
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        const tailwindScript = document.createElement('script');
+        tailwindScript.src = 'https://cdn.tailwindcss.com';
+        document.head.appendChild(tailwindScript);
+      } else {
+        const tailwindCSS = document.createElement('link');
+        tailwindCSS.rel = 'stylesheet';
+        tailwindCSS.href = '/styles/tailwind.css';
+        document.head.appendChild(tailwindCSS);
+      }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <!-- Google Fonts - Rajdhani (mesma fonte do painel de login) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

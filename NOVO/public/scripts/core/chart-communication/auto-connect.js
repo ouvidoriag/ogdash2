@@ -11,16 +11,16 @@
 /// <reference path="./global.d.ts" />
 (function () {
     'use strict';
-    // Usar eventBus global se disponível
-    const eventBus = window.eventBus || {
-        listeners: new Map(),
-        emit: () => { },
-        on: () => () => { },
-        off: () => { },
-        clear: () => { },
-        listenerCount: () => 0,
-        getEvents: () => []
-    };
+    // REFATORAÇÃO FASE 3: Usar APENAS window.eventBus global (único event bus)
+    // event-bus.js é carregado antes deste módulo no HTML
+    if (!window.eventBus) {
+        if (window.Logger) {
+            window.Logger.error('eventBus global não encontrado. Verifique se event-bus.js está carregado antes de auto-connect.js');
+        }
+        // Fallback apenas para desenvolvimento - não deve acontecer em produção
+        throw new Error('eventBus global não encontrado. Carregue event-bus.js antes de auto-connect.js');
+    }
+    const eventBus = window.eventBus;
     // ============================================
     // PAGE FILTER LISTENER - Utilitário para páginas
     // ============================================

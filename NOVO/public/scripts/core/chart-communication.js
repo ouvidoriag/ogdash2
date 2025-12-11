@@ -18,6 +18,7 @@
 (function() {
   'use strict';
 
+  // REFATORAÇÃO FASE 3: Usar APENAS window.eventBus global (único event bus)
   // Aguardar que os módulos sejam carregados
   // Os módulos são carregados antes deste arquivo no HTML
   
@@ -32,10 +33,17 @@
 
   // Se os módulos não foram carregados, criar fallback básico
   if (!eventBus || !globalFilters || !chartRegistry) {
-            if (window.Logger) {
+    if (window.Logger) {
       window.Logger.error('Módulos do chart-communication não foram carregados. Verifique a ordem dos scripts no HTML.');
-        }
-        return;
+    }
+    return;
+  }
+  
+  // Verificar que estamos usando o eventBus global único
+  if (eventBus !== window.eventBus) {
+    if (window.Logger) {
+      window.Logger.warn('Atenção: eventBus não é o global. Usando window.eventBus.');
+    }
   }
 
   // ============================================

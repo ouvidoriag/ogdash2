@@ -58,6 +58,10 @@ let unidadesLista = [];
 let unidadeSelecionada = null;
 
 async function loadUnidadesSaude() {
+  // PRIORIDADE 1: Verificar dependências
+  const dataLoader = window.errorHandler?.requireDependency('dataLoader');
+  if (!dataLoader) return Promise.resolve();
+  
   if (window.Logger) {
     window.Logger.debug('🏥 loadUnidadesSaude: Iniciando');
   }
@@ -67,7 +71,10 @@ async function loadUnidadesSaude() {
     return Promise.resolve();
   }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.show('Carregando dados de unidades de saúde...');
+  
+  return await window.errorHandler?.safeAsync(async () => {
     // Popular dropdown se ainda não foi populado
     if (unidadesLista.length === 0) {
       popularDropdown();
@@ -84,12 +91,20 @@ async function loadUnidadesSaude() {
     if (window.Logger) {
       window.Logger.success('🏥 loadUnidadesSaude: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar Unidades de Saúde:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar Unidades de Saúde:', error);
+    
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hide();
+    
+    return { success: true };
+  }, 'loadUnidadesSaude', {
+    showToUser: true,
+    fallback: () => {
+      // PRIORIDADE 2: Esconder loading em caso de erro
+      window.loadingManager?.hide();
+      
+      return { success: false };
     }
-  }
+  });
 }
 
 function popularDropdown() {
@@ -222,7 +237,9 @@ async function carregarDadosUnidade(unidade) {
       window.Logger.success(`🏥 carregarDadosUnidade: ${unidade.nome} concluído`);
     }
   } catch (error) {
-    console.error(`❌ Erro ao carregar dados de ${unidade.nome}:`, error);
+    window.errorHandler?.handleError(error, `carregarDadosUnidade(${unidade.nome})`, {
+      showToUser: false
+    });
     container.innerHTML = `
       <div class="glass rounded-2xl p-12 text-center">
         <div class="text-6xl mb-4">❌</div>

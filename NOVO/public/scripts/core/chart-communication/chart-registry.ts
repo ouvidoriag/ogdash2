@@ -14,11 +14,16 @@
 (function() {
   'use strict';
 
-  // Usar eventBus global se disponível
-  const eventBus = window.eventBus || {
-    emit: () => {},
-    on: () => () => {}
-  };
+  // REFATORAÇÃO FASE 3: Usar APENAS window.eventBus global (único event bus)
+  // event-bus.js é carregado antes deste módulo no HTML
+  const win = window as Window & { eventBus?: EventBus };
+  if (!win.eventBus) {
+    if ((window as any).Logger) {
+      (window as any).Logger.error('eventBus global não encontrado. Verifique se event-bus.js está carregado antes de chart-registry.js');
+    }
+    throw new Error('eventBus global não encontrado. Carregue event-bus.js antes de chart-registry.js');
+  }
+  const eventBus: EventBus = win.eventBus;
 
   // ============================================
   // CHART FIELD MAP - Mapeamento de Campos

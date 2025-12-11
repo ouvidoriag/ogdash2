@@ -11,16 +11,16 @@
 /// <reference path="./global.d.ts" />
 (function () {
     'use strict';
-    // Usar eventBus global se disponível
-    const eventBus = window.eventBus || {
-        listeners: new Map(),
-        emit: () => { },
-        on: () => () => { },
-        off: () => { },
-        clear: () => { },
-        listenerCount: () => 0,
-        getEvents: () => []
-    };
+    // REFATORAÇÃO FASE 3: Usar APENAS window.eventBus global (único event bus)
+    // event-bus.js é carregado antes deste módulo no HTML
+    if (!window.eventBus) {
+        if (window.Logger) {
+            window.Logger.error('eventBus global não encontrado. Verifique se event-bus.js está carregado antes de global-filters.js');
+        }
+        // Fallback apenas para desenvolvimento - não deve acontecer em produção
+        throw new Error('eventBus global não encontrado. Carregue event-bus.js antes de global-filters.js');
+    }
+    const eventBus = window.eventBus;
     // ============================================
     // GLOBAL FILTERS - Sistema de Filtros Globais
     // ============================================
@@ -39,8 +39,9 @@
          * @param options - Opções adicionais
          */
         apply(field, value, chartId = null, options = {}) {
-            // OTIMIZAÇÃO: Debounce de 300ms para evitar múltiplas requisições
-            const debounceDelay = options.debounce !== undefined ? options.debounce : 300;
+            // REFATORAÇÃO FASE 6: Debounce otimizado (200-500ms)
+            // Usar 200ms para melhor responsividade, mas permitir customização
+            const debounceDelay = options.debounce !== undefined ? options.debounce : 200;
             // Cancelar timer anterior se existir
             if (this._debounceTimer && window.timerManager?.clearTimeout) {
                 window.timerManager.clearTimeout(this._debounceTimer);

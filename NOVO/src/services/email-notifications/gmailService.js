@@ -240,70 +240,147 @@ function createMessage(to, subject, htmlBody, textBody, fromEmail, fromName) {
 }
 
 /**
- * Enviar email com tratamento de erros de autenticação
+ * Verificar se erro é recuperável (pode tentar novamente)
+ * PRIORIDADE 2: Retry automático para erros temporários
+ */
+function isRetryableError(error) {
+  // Erros de rate limit (429)
+  if (error.code === 429 || (error.response && error.response.status === 429)) {
+    return true;
+  }
+  
+  // Erros de timeout (408, 504)
+  if (error.code === 408 || error.code === 504 || 
+      (error.response && (error.response.status === 408 || error.response.status === 504))) {
+    return true;
+  }
+  
+  // Erros de servidor temporário (500, 502, 503)
+  if (error.code === 500 || error.code === 502 || error.code === 503 ||
+      (error.response && [500, 502, 503].includes(error.response.status))) {
+    return true;
+  }
+  
+  // Erros de rede (ECONNRESET, ETIMEDOUT, etc)
+  if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Calcular delay para retry com backoff exponencial
+ * PRIORIDADE 2: Retry automático
+ */
+function getRetryDelay(attempt, baseDelay = 1000) {
+  // Backoff exponencial: baseDelay * (2 ^ attempt)
+  // Máximo de 30 segundos
+  return Math.min(baseDelay * Math.pow(2, attempt), 30000);
+}
+
+/**
+ * Enviar email com tratamento de erros de autenticação e retry automático
+ * PRIORIDADE 2: Retry automático para erros temporários
  * @param {string} to - Email do destinatário
  * @param {string} subject - Assunto do email
  * @param {string} htmlBody - Corpo HTML do email
  * @param {string} textBody - Corpo texto do email
  * @param {string} fromEmail - Email do remetente (opcional)
  * @param {string} fromName - Nome do remetente (opcional)
+ * @param {number} maxRetries - Número máximo de tentativas (padrão: 3)
  * @returns {Promise<{messageId: string, threadId: string}>}
  */
-export async function sendEmail(to, subject, htmlBody, textBody, fromEmail = null, fromName = null) {
-  try {
-    // Resetar cliente Gmail para forçar reinicialização se houver erro de auth
-    let gmailClient = initGmail();
-    
-    // Usar configurações padrão se não fornecidas
-    const emailRemetente = fromEmail || process.env.EMAIL_REMETENTE || 'ouvidoria@duquedecaxias.rj.gov.br';
-    const nomeRemetente = fromName || process.env.NOME_REMETENTE || 'Ouvidoria Geral de Duque de Caxias';
-    
-    const rawMessage = createMessage(to, subject, htmlBody, textBody, emailRemetente, nomeRemetente);
-    
-    const response = await gmailClient.users.messages.send({
-      userId: 'me',
-      requestBody: {
-        raw: rawMessage
+export async function sendEmail(to, subject, htmlBody, textBody, fromEmail = null, fromName = null, maxRetries = 3) {
+  let lastError = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Resetar cliente Gmail para forçar reinicialização se houver erro de auth
+      let gmailClient = initGmail();
+      
+      // Usar configurações padrão se não fornecidas
+      const emailRemetente = fromEmail || process.env.EMAIL_REMETENTE || 'ouvidoria@duquedecaxias.rj.gov.br';
+      const nomeRemetente = fromName || process.env.NOME_REMETENTE || 'Ouvidoria Geral de Duque de Caxias';
+      
+      const rawMessage = createMessage(to, subject, htmlBody, textBody, emailRemetente, nomeRemetente);
+      
+      const response = await gmailClient.users.messages.send({
+        userId: 'me',
+        requestBody: {
+          raw: rawMessage
+        }
+      });
+      
+      console.log('✅ Email enviado com sucesso:', {
+        to,
+        subject,
+        messageId: response.data.id,
+        threadId: response.data.threadId,
+        attempts: attempt + 1
+      });
+      
+      return {
+        messageId: response.data.id,
+        threadId: response.data.threadId
+      };
+    } catch (error) {
+      lastError = error;
+      
+      // PRIORIDADE 2: Tratar erros de autenticação (NÃO são recuperáveis)
+      if (error.code === 400 && error.message && error.message.includes('invalid_grant')) {
+        console.error('❌ Erro de autenticação (invalid_grant): Token expirado ou revogado');
+        console.error('   Solução: Execute a autorização novamente usando: npm run gmail:auth');
+        
+        // Resetar cliente Gmail para forçar nova inicialização na próxima tentativa
+        gmail = null;
+        
+        throw new Error('Token OAuth expirado ou revogado. É necessário reautorizar o serviço Gmail. Execute: npm run gmail:auth');
       }
-    });
-    
-    console.log('✅ Email enviado com sucesso:', {
-      to,
-      subject,
-      messageId: response.data.id,
-      threadId: response.data.threadId
-    });
-    
-    return {
-      messageId: response.data.id,
-      threadId: response.data.threadId
-    };
-  } catch (error) {
-    // Tratar erro de autenticação (invalid_grant)
-    if (error.code === 400 && error.message && error.message.includes('invalid_grant')) {
-      console.error('❌ Erro de autenticação (invalid_grant): Token expirado ou revogado');
-      console.error('   Solução: Execute a autorização novamente usando: npm run gmail:auth');
       
-      // Resetar cliente Gmail para forçar nova inicialização na próxima tentativa
-      gmail = null;
+      // Tratar outros erros de autenticação (NÃO são recuperáveis)
+      if (error.code === 401 || (error.response && error.response.status === 401)) {
+        console.error('❌ Erro de autenticação (401): Token inválido');
+        console.error('   Solução: Execute a autorização novamente usando: npm run gmail:auth');
+        
+        // Resetar cliente Gmail
+        gmail = null;
+        
+        throw new Error('Token OAuth inválido. É necessário reautorizar o serviço Gmail. Execute: npm run gmail:auth');
+      }
       
-      throw new Error('Token OAuth expirado ou revogado. É necessário reautorizar o serviço Gmail. Execute: npm run gmail:auth');
+      // PRIORIDADE 2: Retry automático para erros temporários
+      if (isRetryableError(error) && attempt < maxRetries) {
+        const delay = getRetryDelay(attempt);
+        console.warn(`⚠️ Erro temporário ao enviar email (tentativa ${attempt + 1}/${maxRetries + 1}):`, {
+          error: error.message,
+          code: error.code,
+          status: error.response?.status,
+          retryIn: `${delay}ms`
+        });
+        
+        // Aguardar antes de tentar novamente
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Resetar cliente Gmail para tentar novamente
+        gmail = null;
+        
+        continue; // Tentar novamente
+      }
+      
+      // Se não é recuperável ou esgotou tentativas, lançar erro
+      console.error('❌ Erro ao enviar email:', {
+        error: error.message,
+        code: error.code,
+        status: error.response?.status,
+        attempts: attempt + 1
+      });
+      throw error;
     }
-    
-    // Tratar outros erros de autenticação
-    if (error.code === 401 || (error.response && error.response.status === 401)) {
-      console.error('❌ Erro de autenticação (401): Token inválido');
-      console.error('   Solução: Execute a autorização novamente usando: npm run gmail:auth');
-      
-      // Resetar cliente Gmail
-      gmail = null;
-      
-      throw new Error('Token OAuth inválido. É necessário reautorizar o serviço Gmail. Execute: npm run gmail:auth');
-    }
-    
-    console.error('❌ Erro ao enviar email:', error);
-    throw error;
   }
+  
+  // Se chegou aqui, esgotou todas as tentativas
+  throw lastError || new Error('Falha ao enviar email após múltiplas tentativas');
 }
 
 /**

@@ -8,6 +8,24 @@
 let filtroMesTema = '';
 
 async function loadTema() {
+  // PRIORIDADE 1: Verificar dependências críticas
+  const dependencies = window.errorHandler?.requireDependencies(
+    ['dataLoader', 'chartFactory'],
+    () => {
+      window.errorHandler?.showNotification(
+        'Sistemas não carregados. Recarregue a página.',
+        'warning'
+      );
+      return null;
+    }
+  );
+  
+  if (!dependencies) {
+    return Promise.resolve();
+  }
+  
+  const { dataLoader, chartFactory } = dependencies;
+  
   if (window.Logger) {
     window.Logger.debug('📑 loadTema: Iniciando');
   }
@@ -17,7 +35,11 @@ async function loadTema() {
     return Promise.resolve();
   }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.show('Carregando dados de temas...');
+  
+  // PRIORIDADE 1: Usar safeAsync para tratamento de erros
+  return await window.errorHandler?.safeAsync(async () => {
     // Coletar filtros de mês
     const filtrosMes = window.MonthFilterHelper?.coletarFiltrosMes?.('filtroMesTema') || [];
     
@@ -29,8 +51,8 @@ async function loadTema() {
     }
     
     // Destruir gráficos existentes antes de criar novos
-    if (window.chartFactory?.destroyCharts) {
-      window.chartFactory.destroyCharts([
+    if (chartFactory?.destroyCharts) {
+      chartFactory.destroyCharts([
         'chartTema',
         'chartStatusTema',
         'chartTemaMes'
@@ -82,19 +104,28 @@ async function loadTema() {
     
     // Se não aplicou filtros ou deu erro, carregar normalmente
     if (!filtrosAplicados || dataTemasRaw.length === 0) {
-      dataTemasRaw = await window.dataLoader?.load('/api/aggregate/by-theme', {
+      dataTemasRaw = await dataLoader.load('/api/aggregate/by-theme', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
       }) || [];
     }
     
-    // Validar dados recebidos
-    if (!Array.isArray(dataTemasRaw)) {
-      if (window.Logger) {
-        window.Logger.warn('📑 loadTema: Dados não são um array', dataTemasRaw);
+    // PRIORIDADE 1: Validar dados recebidos
+    const validation = window.dataValidator?.validateApiResponse(dataTemasRaw, {
+      arrayItem: {
+        types: { tema: 'string', quantidade: 'number' }
       }
-      return;
+    });
+    
+    if (!validation.valid) {
+      throw new Error(`Dados inválidos: ${validation.error}`);
     }
+    
+    if (!Array.isArray(validation.data)) {
+      throw new Error('Dados não são um array válido');
+    }
+    
+    dataTemasRaw = validation.data;
     
     // Normalizar dados (endpoint retorna { tema, quantidade }, mas código espera { theme, count })
     const dataTemas = dataTemasRaw.map(item => ({
@@ -114,10 +145,19 @@ async function loadTema() {
     }
     
     // Carregar dados mensais de temas
-    const dataTemaMes = await window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Tema', {
+    const dataTemaMesRaw = await dataLoader.load('/api/aggregate/count-by-status-mes?field=Tema', {
       useDataStore: true,
       ttl: 10 * 60 * 1000
     }) || [];
+    
+    // PRIORIDADE 1: Validar dados mensais
+    const mensalValidation = window.dataValidator?.validateApiResponse(dataTemaMesRaw, {
+      arrayItem: {
+        types: { theme: 'string', count: 'number' }
+      }
+    });
+    
+    const dataTemaMes = mensalValidation.valid ? mensalValidation.data : [];
     
     // Renderizar gráfico principal
     await renderTemaChart(dataTemas);
@@ -137,12 +177,24 @@ async function loadTema() {
     if (window.Logger) {
       window.Logger.success('📑 loadTema: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar Tema:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar Tema:', error);
+    
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hide();
+    
+    return { success: true, dataTemas, dataTemaMes };
+  }, 'loadTema', {
+    showToUser: true,
+    fallback: () => {
+      // PRIORIDADE 2: Esconder loading em caso de erro
+      window.loadingManager?.hide();
+      
+      const listaTemas = document.getElementById('listaTemas');
+      if (listaTemas) {
+        listaTemas.innerHTML = '<div class="text-center text-slate-400 py-4">Erro ao carregar dados. Tente recarregar a página.</div>';
+      }
+      return { success: false, dataTemas: [], dataTemaMes: [] };
     }
-  }
+  });
 }
 
 /**
@@ -194,77 +246,218 @@ async function renderTemaChart(dataTemas) {
     return;
   }
   
-  const top5 = dataTemas.slice(0, 5);
-  const labels = top5.map(t => t.theme || t.tema || t._id || 'N/A');
-  const values = top5.map(t => t.count || t.quantidade || 0);
+  // Mostrar top 10 temas (ou todos se menos de 10)
+  const topTemas = dataTemas.slice(0, Math.min(10, dataTemas.length));
+  const labels = topTemas.map(t => t.theme || t.tema || t._id || 'N/A');
+  const values = topTemas.map(t => t.count || t.quantidade || 0);
+  
+  // Calcular total para percentuais
+  const total = dataTemas.reduce((sum, item) => sum + (item.count || item.quantidade || 0), 0);
   
   if (window.Logger) {
-    window.Logger.debug('📊 renderTemaChart:', { total: dataTemas.length, top5: top5.length, sample: top5[0] });
+    window.Logger.debug('📊 renderTemaChart:', { 
+      total: dataTemas.length, 
+      topTemas: topTemas.length, 
+      totalManifestacoes: total,
+      sample: topTemas[0] 
+    });
   }
   
-  // Criar labels com numeração para exibição
-  const labelsComNumeracao = labels.map((label, idx) => `${idx + 1}. ${label}`);
+  // Preparar cores vibrantes (violeta/roxo para temas)
+  const canvas = document.getElementById('chartTema');
+  if (!canvas) return;
+  const colorPalette = [
+    { bg: 'rgba(139, 92, 246, 0.8)', border: 'rgba(139, 92, 246, 1)' }, // violet-500
+    { bg: 'rgba(124, 58, 237, 0.8)', border: 'rgba(124, 58, 237, 1)' }, // violet-600
+    { bg: 'rgba(168, 85, 247, 0.8)', border: 'rgba(168, 85, 247, 1)' }, // purple-500
+    { bg: 'rgba(147, 51, 234, 0.8)', border: 'rgba(147, 51, 234, 1)' }, // purple-600
+    { bg: 'rgba(192, 132, 252, 0.8)', border: 'rgba(192, 132, 252, 1)' }, // purple-400
+    { bg: 'rgba(167, 139, 250, 0.8)', border: 'rgba(167, 139, 250, 1)' }, // violet-400
+    { bg: 'rgba(196, 181, 253, 0.8)', border: 'rgba(196, 181, 253, 1)' }, // violet-300
+    { bg: 'rgba(221, 214, 254, 0.8)', border: 'rgba(221, 214, 254, 1)' }, // violet-200
+    { bg: 'rgba(237, 233, 254, 0.8)', border: 'rgba(237, 233, 254, 1)' }, // violet-100
+    { bg: 'rgba(245, 243, 255, 0.8)', border: 'rgba(245, 243, 255, 1)' }  // violet-50
+  ];
   
-  await window.chartFactory?.createBarChart('chartTema', labelsComNumeracao, values, {
-    horizontal: false, // Vertical
+  const backgrounds = labels.map((_, idx) => {
+    const color = colorPalette[idx % colorPalette.length];
+    return color.bg;
+  });
+  
+  const borders = labels.map((_, idx) => {
+    const color = colorPalette[idx % colorPalette.length];
+    return color.border;
+  });
+  
+  // Criar gráfico de barras horizontais (melhor para muitos temas)
+  const chart = await window.chartFactory?.createBarChart('chartTema', labels, values, {
+    horizontal: true, // Barras horizontais
     colorIndex: 2,
     label: 'Manifestações',
-    onClick: false,
+    backgroundColor: backgrounds,
+    borderColor: borders,
+    onClick: true, // Habilitar interatividade
     chartOptions: {
-      indexAxis: 'x', // Vertical (barras verticais)
+      indexAxis: 'y', // Horizontal
+      responsive: true,
+      maintainAspectRatio: true,
+      animation: {
+        duration: 1000,
+        easing: 'easeOutQuart'
+      },
       scales: {
         x: {
+          beginAtZero: true,
           ticks: {
-            maxRotation: 45,
-            minRotation: 45,
-            callback: function(value, index) {
-              // Mostrar número e nome completo abaixo das barras
-              const label = labelsComNumeracao[index];
-              if (!label) return '';
-              // Truncar se muito longo
-              return label.length > 30 ? label.substring(0, 30) + '...' : label;
-            },
             font: {
-              size: 10
+              size: 11,
+              weight: '500'
+            },
+            color: 'rgba(148, 163, 184, 0.9)',
+            callback: function(value) {
+              return value.toLocaleString('pt-BR');
+            }
+          },
+          grid: {
+            color: 'rgba(148, 163, 184, 0.1)',
+            drawBorder: false
+          }
+        },
+        y: {
+          ticks: {
+            font: {
+              size: 11,
+              weight: '500'
+            },
+            color: 'rgba(148, 163, 184, 0.9)',
+            callback: function(value, index) {
+              const label = labels[index];
+              // Truncar labels muito longos
+              if (label && label.length > 40) {
+                return label.substring(0, 37) + '...';
+              }
+              return label || '';
             }
           },
           grid: {
             display: false
           }
-        },
-        y: {
-          beginAtZero: true,
-          ticks: {
-            font: {
-              size: 11
-            }
-          }
         }
       },
       plugins: {
         tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: 'rgba(196, 181, 253, 1)',
+          bodyColor: 'rgba(226, 232, 240, 1)',
+          borderColor: 'rgba(139, 92, 246, 0.5)',
+          borderWidth: 1,
+          padding: 12,
+          displayColors: true,
           callbacks: {
             title: function(context) {
-              // Mostrar nome completo no tooltip
               const label = context[0].label;
-              return label.replace(/^\d+\.\s*/, '');
+              return `📌 ${label}`;
             },
             label: function(context) {
-              return `Quantidade: ${context.parsed.y.toLocaleString('pt-BR')}`;
+              const value = context.parsed.x;
+              const percent = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+              return [
+                `Quantidade: ${value.toLocaleString('pt-BR')}`,
+                `Percentual: ${percent}%`,
+                `Posição: #${context.dataIndex + 1}`
+              ];
+            },
+            footer: function(tooltipItems) {
+              if (dataTemas.length > topTemas.length) {
+                const outros = dataTemas.slice(topTemas.length);
+                const totalOutros = outros.reduce((sum, item) => 
+                  sum + (item.count || item.quantidade || 0), 0);
+                const percentOutros = total > 0 ? ((totalOutros / total) * 100).toFixed(1) : 0;
+                return `\nOutros ${dataTemas.length - topTemas.length} temas: ${totalOutros.toLocaleString('pt-BR')} (${percentOutros}%)`;
+              }
+              return '';
             }
           }
         },
         legend: {
           display: false
+        },
+        datalabels: {
+          display: false // Desabilitar labels nas barras (vamos usar plugin customizado se necessário)
         }
       },
       layout: {
         padding: {
-          bottom: 20 // Espaço extra para os labels rotacionados
+          left: 10,
+          right: 10,
+          top: 10,
+          bottom: 10
         }
+      },
+      interaction: {
+        intersect: false,
+        mode: 'index'
       }
     }
   });
+  
+  // Adicionar interatividade de clique para filtrar (após criação do gráfico)
+  if (chart) {
+    // Configurar onClick no gráfico
+    chart.options.onClick = (event, elements) => {
+      if (elements && elements.length > 0) {
+        const element = elements[0];
+        const index = element.index;
+        const tema = labels[index];
+        
+        if (tema && window.chartCommunication && window.chartCommunication.filters) {
+          if (window.Logger) {
+            window.Logger.debug('📊 Clique no gráfico chartTema (tema):', { tema, index });
+          }
+          
+          // Adicionar filtro por tema
+          window.chartCommunication.filters.add({
+            field: 'tema',
+            operator: 'equals',
+            value: tema
+          });
+          
+          // Notificar mudanças
+          window.chartCommunication.notifyListeners();
+        }
+      }
+    };
+    
+    // Adicionar estilo de cursor pointer ao canvas e handlers de interação
+    if (chart.canvas) {
+      chart.canvas.style.cursor = 'pointer';
+      chart.canvas.title = 'Clique em uma barra para filtrar por tema | Clique com botão direito para limpar filtros';
+      
+      // Adicionar handler para hover (mudar cursor)
+      chart.canvas.addEventListener('mousemove', (e) => {
+        const elements = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
+        chart.canvas.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+      });
+      
+      // Adicionar handler para clique direito (limpar filtros)
+      const chartContainer = chart.canvas.parentElement;
+      if (chartContainer && !chartContainer.dataset.crossfilterEnabled) {
+        chartContainer.dataset.crossfilterEnabled = 'true';
+        chartContainer.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (window.chartCommunication && window.chartCommunication.filters) {
+            window.chartCommunication.filters.clear();
+            window.chartCommunication.notifyListeners();
+            if (window.Logger) {
+              window.Logger.debug('📊 Filtros limpos via clique direito no chartTema');
+            }
+          }
+        });
+      }
+    }
+  }
+  
+  return chart;
 }
 
 async function renderStatusTemaChart(dataTemas) {
@@ -407,7 +600,9 @@ async function atualizarGraficoTemaMes() {
     // Re-renderizar com temas selecionados
     await renderTemaMesChart(dataTemaMes, dataTemas);
   } catch (error) {
-    console.error('❌ Erro ao atualizar gráfico Temas por Mês:', error);
+    window.errorHandler?.handleError(error, 'renderTemaMesChart', {
+      showToUser: false
+    });
     if (window.Logger) {
       window.Logger.error('Erro ao atualizar gráfico Temas por Mês:', error);
     }

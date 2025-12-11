@@ -18,6 +18,10 @@
  * Carregar dados de protocolos com maior demora
  */
 async function loadProtocolosDemora(forceRefresh = false) {
+  // PRIORIDADE 1: Verificar dependências
+  const dataLoader = window.errorHandler?.requireDependency('dataLoader');
+  if (!dataLoader) return Promise.resolve();
+  
   if (window.Logger) {
     window.Logger.debug('⏳ loadProtocolosDemora: Iniciando');
   }
@@ -27,13 +31,24 @@ async function loadProtocolosDemora(forceRefresh = false) {
     return Promise.resolve();
   }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.showInElement('tableProtocolosDemora', 'Carregando protocolos com maior demora...');
+  
+  return await window.errorHandler?.safeAsync(async () => {
     // Carregar dados do endpoint
-    const data = await window.dataLoader?.load('/api/aggregate/top-protocolos-demora?limit=10', {
+    const dataRaw = await dataLoader.load('/api/aggregate/top-protocolos-demora?limit=10', {
       useDataStore: true,
-      ttl: 5 * 60 * 1000, // 5 minutos
+      ttl: 5 * 60 * 1000,
       forceRefresh: forceRefresh
     }) || { total: 0, protocolos: [] };
+    
+    // PRIORIDADE 1: Validar dados
+    const validation = window.dataValidator?.validateDataStructure(dataRaw, {
+      required: ['total', 'protocolos'],
+      types: { total: 'number', protocolos: 'array' }
+    });
+    
+    const data = validation.valid ? validation.data : { total: 0, protocolos: [] };
     
     if (window.Logger) {
       window.Logger.debug('⏳ loadProtocolosDemora: Dados carregados', { total: data.total });
@@ -48,23 +63,27 @@ async function loadProtocolosDemora(forceRefresh = false) {
     if (window.Logger) {
       window.Logger.success('⏳ loadProtocolosDemora: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar protocolos com maior demora:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar protocolos com maior demora:', error);
-    }
     
-    const tableContainer = document.getElementById('tableProtocolosDemora');
-    if (tableContainer) {
-      tableContainer.innerHTML = `
-        <div class="text-center py-12 text-red-400">
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hideInElement('tableProtocolosDemora');
+    
+    return { success: true, data };
+  }, 'loadProtocolosDemora', {
+    showToUser: true,
+    fallback: () => {
+      const tableContainer = document.getElementById('tableProtocolosDemora');
+      if (tableContainer) {
+        tableContainer.innerHTML = `
+          <div class="text-center py-12 text-red-400">
           <div class="text-4xl mb-4">❌</div>
           <div class="text-lg font-semibold mb-2">Erro ao carregar dados</div>
-          <div class="text-sm text-slate-400">${error.message || 'Erro desconhecido'}</div>
+          <div class="text-sm text-slate-400">Erro desconhecido</div>
         </div>
       `;
+      }
+      return null;
     }
-  }
+  });
 }
 
 /**

@@ -1,0 +1,46 @@
+# Render Configuration File
+# Deploy do Dashboard de Ouvidoria - Prefeitura de Duque de Caxias
+
+services:
+  - type: web
+    name: ouvidoria-dashboard
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: cd NOVO && npm install
+    startCommand: cd NOVO && npm start
+    rootDir: NOVO
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # MongoDB - Configure no dashboard do Render
+      - key: MONGODB_ATLAS_URL
+        sync: false
+      # Google Sheets - Configure no dashboard do Render
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: GOOGLE_CREDENTIALS_FILE
+        sync: false
+      - key: GOOGLE_SHEET_RANGE
+        sync: false
+      - key: GOOGLE_FOLDER_BRUTA
+        sync: false
+      # Email - Configure no dashboard do Render
+      - key: EMAIL_REMETENTE
+        sync: false
+      - key: NOME_REMETENTE
+        sync: false
+      - key: EMAIL_PADRAO_SECRETARIAS
+        sync: false
+      - key: EMAIL_OUVIDORIA_GERAL
+        sync: false
+      # Gemini AI - Configure no dashboard do Render
+      - key: GEMINI_API_KEY
+        sync: false
+      # Pipeline
+      - key: SKIP_PYTHON
+        value: true
+

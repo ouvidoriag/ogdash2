@@ -8,6 +8,18 @@
 let filtroMesAssunto = '';
 
 async function loadAssunto() {
+  // PRIORIDADE 1: Verificar dependências
+  const dependencies = window.errorHandler?.requireDependencies(
+    ['dataLoader', 'chartFactory'],
+    () => {
+      window.errorHandler?.showNotification('Sistemas não carregados. Recarregue a página.', 'warning');
+      return null;
+    }
+  );
+  
+  if (!dependencies) return Promise.resolve();
+  const { dataLoader, chartFactory } = dependencies;
+  
   if (window.Logger) {
     window.Logger.debug('📝 loadAssunto: Iniciando');
   }
@@ -17,7 +29,10 @@ async function loadAssunto() {
     return Promise.resolve();
   }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.show('Carregando dados de assuntos...');
+  
+  return await window.errorHandler?.safeAsync(async () => {
     // Coletar filtros de mês
     const filtrosMes = window.MonthFilterHelper?.coletarFiltrosMes?.('filtroMesAssunto') || [];
     
@@ -29,8 +44,8 @@ async function loadAssunto() {
     }
     
     // Destruir gráficos existentes antes de criar novos
-    if (window.chartFactory?.destroyCharts) {
-      window.chartFactory.destroyCharts([
+    if (chartFactory?.destroyCharts) {
+      chartFactory.destroyCharts([
         'chartAssunto',
         'chartStatusAssunto',
         'chartAssuntoMes'
@@ -83,19 +98,22 @@ async function loadAssunto() {
     
     // Se não aplicou filtros ou deu erro, carregar normalmente
     if (!filtrosAplicados || dataAssuntosRaw.length === 0) {
-      dataAssuntosRaw = await window.dataLoader?.load('/api/aggregate/by-subject', {
+      dataAssuntosRaw = await dataLoader.load('/api/aggregate/by-subject', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
       }) || [];
     }
     
-    // Validar dados recebidos
-    if (!Array.isArray(dataAssuntosRaw)) {
-      if (window.Logger) {
-        window.Logger.warn('📝 loadAssunto: Dados não são um array', dataAssuntosRaw);
-      }
-      return;
+    // PRIORIDADE 1: Validar dados
+    const validation = window.dataValidator?.validateApiResponse(dataAssuntosRaw, {
+      arrayItem: { types: { assunto: 'string', quantidade: 'number' } }
+    });
+    
+    if (!validation.valid) {
+      throw new Error(`Dados inválidos: ${validation.error}`);
     }
+    
+    dataAssuntosRaw = validation.data;
     
     // Normalizar dados (endpoint retorna { assunto, quantidade }, mas código espera { subject, count })
     const dataAssuntos = dataAssuntosRaw.map(item => ({
@@ -115,10 +133,16 @@ async function loadAssunto() {
     }
     
     // Carregar dados mensais de assuntos
-    const dataAssuntoMes = await window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=Assunto', {
+    const dataAssuntoMesRaw = await dataLoader.load('/api/aggregate/count-by-status-mes?field=Assunto', {
       useDataStore: true,
       ttl: 10 * 60 * 1000
     }) || [];
+    
+    const mensalValidation = window.dataValidator?.validateApiResponse(dataAssuntoMesRaw, {
+      arrayItem: { types: { subject: 'string', count: 'number' } }
+    });
+    
+    const dataAssuntoMes = mensalValidation.valid ? mensalValidation.data : [];
     
     // Renderizar gráfico principal
     await renderAssuntoChart(dataAssuntos);
@@ -138,12 +162,20 @@ async function loadAssunto() {
     if (window.Logger) {
       window.Logger.success('📝 loadAssunto: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar Assunto:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar Assunto:', error);
+    
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hide();
+    
+    return { success: true, dataAssuntos, dataAssuntoMes };
+  }, 'loadAssunto', {
+    showToUser: true,
+    fallback: () => {
+      // PRIORIDADE 2: Esconder loading em caso de erro
+      window.loadingManager?.hide();
+      
+      return { success: false, dataAssuntos: [], dataAssuntoMes: [] };
     }
-  }
+  });
 }
 
 /**

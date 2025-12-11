@@ -38,10 +38,12 @@ async function loadNotificacoes() {
     renderNotificacoes(notificacoesData);
 
     // Configurar filtros
-    setupFilters();
+    setupNotificacoesFilters();
 
-    // Configurar controle manual
-    setupControleManual();
+    // Configurar controle manual (com pequeno delay para garantir que o DOM está pronto)
+    setTimeout(() => {
+      setupControleManual();
+    }, 100);
 
     window.Logger?.info('Página de notificações carregada');
 
@@ -227,7 +229,7 @@ function renderNotificacoes(data) {
   }
 }
 
-function setupFilters() {
+function setupNotificacoesFilters() {
   const filtroTipo = document.getElementById('notificacoes-filtro-tipo');
   const filtroSecretaria = document.getElementById('notificacoes-filtro-secretaria');
   const filtroStatus = document.getElementById('notificacoes-filtro-status');
@@ -303,38 +305,115 @@ let vencimentosAtuais = null;
 let tipoVencimentoAtual = null;
 
 function setupControleManual() {
+  window.Logger?.debug('🔧 Configurando controle manual de envio...');
+  
   const btnHoje = document.getElementById('notificacoes-btn-hoje');
   const btn15 = document.getElementById('notificacoes-btn-15');
   const btn60 = document.getElementById('notificacoes-btn-60');
   const btnEnviar = document.getElementById('notificacoes-btn-enviar');
   const btnSelecionarTodos = document.getElementById('notificacoes-btn-selecionar-todos');
 
+  // Debug: verificar se os botões foram encontrados
+  window.Logger?.debug('Botões encontrados:', {
+    btnHoje: !!btnHoje,
+    btn15: !!btn15,
+    btn60: !!btn60,
+    btnEnviar: !!btnEnviar,
+    btnSelecionarTodos: !!btnSelecionarTodos
+  });
+
+  // Handlers nomeados
+  const handlerHoje = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.Logger?.info('Botão "Vencimento Hoje" clicado');
+    carregarVencimentos('hoje');
+  };
+
+  const handler15 = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.Logger?.info('Botão "15 Dias Antes" clicado');
+    carregarVencimentos('15');
+  };
+
+  const handler60 = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.Logger?.info('Botão "60+ Dias Vencido" clicado');
+    carregarVencimentos('60');
+  };
+
+  const handlerEnviar = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.Logger?.info('Botão "Enviar Emails" clicado');
+    enviarEmailsSelecionados();
+  };
+
+  // Armazenar handlers nos elementos para poder remover depois
   if (btnHoje) {
-    btnHoje.addEventListener('click', () => carregarVencimentos('hoje'));
+    // Remover handler anterior se existir
+    if (btnHoje._handlerHoje) {
+      btnHoje.removeEventListener('click', btnHoje._handlerHoje);
+    }
+    btnHoje._handlerHoje = handlerHoje;
+    btnHoje.addEventListener('click', handlerHoje);
+    window.Logger?.debug('✅ Listener adicionado ao botão "Vencimento Hoje"');
+  } else {
+    window.Logger?.warn('⚠️ Botão "notificacoes-btn-hoje" não encontrado!');
   }
 
   if (btn15) {
-    btn15.addEventListener('click', () => carregarVencimentos('15'));
+    if (btn15._handler15) {
+      btn15.removeEventListener('click', btn15._handler15);
+    }
+    btn15._handler15 = handler15;
+    btn15.addEventListener('click', handler15);
+    window.Logger?.debug('✅ Listener adicionado ao botão "15 Dias Antes"');
+  } else {
+    window.Logger?.warn('⚠️ Botão "notificacoes-btn-15" não encontrado!');
   }
 
   if (btn60) {
-    btn60.addEventListener('click', () => carregarVencimentos('60'));
+    if (btn60._handler60) {
+      btn60.removeEventListener('click', btn60._handler60);
+    }
+    btn60._handler60 = handler60;
+    btn60.addEventListener('click', handler60);
+    window.Logger?.debug('✅ Listener adicionado ao botão "60+ Dias Vencido"');
+  } else {
+    window.Logger?.warn('⚠️ Botão "notificacoes-btn-60" não encontrado!');
   }
 
   if (btnEnviar) {
-    btnEnviar.addEventListener('click', enviarEmailsSelecionados);
+    if (btnEnviar._handlerEnviar) {
+      btnEnviar.removeEventListener('click', btnEnviar._handlerEnviar);
+    }
+    btnEnviar._handlerEnviar = handlerEnviar;
+    btnEnviar.addEventListener('click', handlerEnviar);
+    window.Logger?.debug('✅ Listener adicionado ao botão "Enviar Emails"');
+  } else {
+    window.Logger?.warn('⚠️ Botão "notificacoes-btn-enviar" não encontrado!');
   }
 
   if (btnSelecionarTodos) {
-    btnSelecionarTodos.addEventListener('click', () => {
+    const handlerSelecionarTodos = () => {
       const checkboxes = document.querySelectorAll('#notificacoes-lista-emails input[type="checkbox"]:not(:disabled)');
       const todosSelecionados = Array.from(checkboxes).every(cb => cb.checked);
       checkboxes.forEach(cb => {
         cb.checked = !todosSelecionados;
       });
       atualizarContadorSelecionados();
-    });
+    };
+    btnSelecionarTodos.removeEventListener('click', handlerSelecionarTodos);
+    btnSelecionarTodos.addEventListener('click', handlerSelecionarTodos);
+    window.Logger?.debug('✅ Listener adicionado ao botão "Selecionar Todos"');
+  } else {
+    window.Logger?.warn('⚠️ Botão "notificacoes-btn-selecionar-todos" não encontrado!');
   }
+
+  window.Logger?.debug('✅ Controle manual configurado');
 }
 
 async function carregarVencimentos(tipo) {

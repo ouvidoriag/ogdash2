@@ -378,6 +378,22 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       window[canvasId].destroy();
     }
     
+    // PRIORIDADE 3: Otimização de performance - Limitar pontos
+    const maxPoints = options.maxPoints || window.config?.CHART_CONFIG?.PERFORMANCE?.MAX_POINTS || 100;
+    if (labels && labels.length > maxPoints) {
+      if (window.Logger) {
+        window.Logger.debug(`⚠️ Gráfico ${canvasId}: Limitando ${labels.length} pontos para ${maxPoints} para melhor performance`);
+      }
+      labels = labels.slice(0, maxPoints);
+      if (Array.isArray(values) && values.length > 0) {
+        if (Array.isArray(values[0])) {
+          values = values.map(v => v.slice(0, maxPoints));
+        } else {
+          values = values.slice(0, maxPoints);
+        }
+      }
+    }
+    
     const ctx = canvas.getContext('2d');
     const defaults = getChartDefaults(options.horizontal ? 'bar-horizontal' : 'bar');
     const palette = getColorPalette();
@@ -494,8 +510,14 @@ async function createBarChart(canvasId, labels, values, options = {}) {
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
     
-    // Criar legenda interativa se houver múltiplos datasets e container especificado
-    if (datasets.length > 1 && options.legendContainer) {
+    // REFATORAÇÃO FASE 5: Integração chartLegend × chartFactory
+    // Criar legenda interativa se solicitado
+    if (options.createLegend && options.legendContainer) {
+      if (datasets.length > 1 && window.chartLegend && window.chartLegend.createInteractiveLegend) {
+        window.chartLegend.createInteractiveLegend(canvasId, options.legendContainer, datasets, options);
+      }
+    } else if (datasets.length > 1 && options.legendContainer) {
+      // Compatibilidade: manter comportamento antigo se legendContainer estiver presente
       if (window.chartLegend && window.chartLegend.createInteractiveLegend) {
         window.chartLegend.createInteractiveLegend(canvasId, options.legendContainer, datasets, options);
       }
@@ -536,6 +558,22 @@ async function createLineChart(canvasId, labels, values, options = {}) {
     
     if (window[canvasId] instanceof Chart) {
       window[canvasId].destroy();
+    }
+    
+    // PRIORIDADE 3: Otimização de performance - Limitar pontos
+    const maxPoints = options.maxPoints || window.config?.CHART_CONFIG?.PERFORMANCE?.MAX_POINTS || 100;
+    if (labels && labels.length > maxPoints) {
+      if (window.Logger) {
+        window.Logger.debug(`⚠️ Gráfico ${canvasId}: Limitando ${labels.length} pontos para ${maxPoints} para melhor performance`);
+      }
+      labels = labels.slice(0, maxPoints);
+      if (Array.isArray(values) && values.length > 0) {
+        if (Array.isArray(values[0])) {
+          values = values.map(v => v.slice(0, maxPoints));
+        } else {
+          values = values.slice(0, maxPoints);
+        }
+      }
     }
     
     const ctx = canvas.getContext('2d');
@@ -596,8 +634,14 @@ async function createLineChart(canvasId, labels, values, options = {}) {
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
     
-    // Criar legenda interativa se houver múltiplos datasets e container especificado
-    if (datasets.length > 1 && options.legendContainer) {
+    // REFATORAÇÃO FASE 5: Integração chartLegend × chartFactory
+    // Criar legenda interativa se solicitado
+    if (options.createLegend && options.legendContainer) {
+      if (datasets.length > 1 && window.chartLegend && window.chartLegend.createInteractiveLegend) {
+        window.chartLegend.createInteractiveLegend(canvasId, options.legendContainer, datasets, options);
+      }
+    } else if (datasets.length > 1 && options.legendContainer) {
+      // Compatibilidade: manter comportamento antigo se legendContainer estiver presente
       if (window.chartLegend && window.chartLegend.createInteractiveLegend) {
         window.chartLegend.createInteractiveLegend(canvasId, options.legendContainer, datasets, options);
       }
@@ -728,10 +772,25 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
       chart.update('none'); // Atualizar sem animação para aplicar imediatamente
     }
     
-    // Criar legenda interativa se container especificado
-    if (options.legendContainer && labels && labels.length > 0) {
+    // REFATORAÇÃO FASE 5: Integração chartLegend × chartFactory
+    // Criar legenda interativa para gráficos de pizza/doughnut
+    if (options.createLegend && options.legendContainer && labels && labels.length > 0) {
       if (window.chartLegend && window.chartLegend.createDoughnutLegend) {
         // Aguardar um pouco para garantir que o gráfico está renderizado
+        setTimeout(() => {
+          window.chartLegend.createDoughnutLegend(
+            canvasId, 
+            options.legendContainer, 
+            labels, 
+            values, 
+            backgroundColor,
+            options
+          );
+        }, 100);
+      }
+    } else if (options.legendContainer && labels && labels.length > 0) {
+      // Compatibilidade: manter comportamento antigo se legendContainer estiver presente
+      if (window.chartLegend && window.chartLegend.createDoughnutLegend) {
         setTimeout(() => {
           window.chartLegend.createDoughnutLegend(
             canvasId, 

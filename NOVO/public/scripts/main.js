@@ -94,7 +94,20 @@ function createWaitForFunctionWrapper(funcName) {
           // Timeout - função não encontrada após todas as tentativas
           // Verificar se o script pode estar com erro
           const scripts = Array.from(document.querySelectorAll('script[src]'));
-          const scriptSrc = scripts.find(s => s.src && s.src.includes('vencimento.js'));
+          // Mapear funcName para nome do arquivo esperado
+          const funcToFileMap = {
+            'loadTempoMedio': 'tempo-medio.js',
+            'loadVencimento': 'vencimento.js',
+            'loadOverview': 'overview.js',
+            'loadOrgaoMes': 'orgao-mes.js',
+            'loadProtocolosDemora': 'protocolos-demora.js',
+            'loadTema': 'tema.js',
+            'loadAssunto': 'assunto.js',
+            'loadStatus': 'status.js',
+            'loadUnidadesSaude': 'unidades-saude.js'
+          };
+          const expectedFileName = funcToFileMap[funcName] || funcName.replace('load', '').toLowerCase() + '.js';
+          const scriptSrc = scripts.find(s => s.src && s.src.includes(expectedFileName));
           
           if (window.Logger) {
             const debugInfo = {
@@ -102,7 +115,8 @@ function createWaitForFunctionWrapper(funcName) {
               attempts,
               windowHasFunc: typeof window[funcName],
               scriptLoaded: !!scriptSrc,
-              scriptSrc: scriptSrc?.src || 'não encontrado'
+              scriptSrc: scriptSrc?.src || 'não encontrado',
+              expectedFile: expectedFileName
             };
             window.Logger.warn(`Função ${funcName} não encontrada após ${maxAttempts} tentativas`, debugInfo);
           }
@@ -195,6 +209,11 @@ function getPageLoader(page) {
     'zeladoria-mensal': 'loadZeladoriaMensal',
     'zeladoria-geografica': 'loadZeladoriaGeografica',
     'zeladoria-mapa': 'loadZeladoriaMapa',
+    'zeladoria-colab-demandas': 'loadColabDemandas',
+    'zeladoria-colab-criar': 'loadZeladoriaColabCriar',
+    'zeladoria-colab-categorias': 'loadZeladoriaColabCategorias',
+    'zeladoria-colab-mapa': 'loadZeladoriaColabMapa',
+    'zeladoria-cora-chat': 'loadZeladoriaCoraChat',
     // Páginas de E-SIC
     'esic-status': 'loadEsicStatus',
     'esic-tipo-informacao': 'loadEsicTipoInformacao',
@@ -543,6 +562,25 @@ async function preloadData() {
 function initUrlRouting() {
   // Verificar se há rota na URL
   const path = window.location.pathname;
+  const urlParams = new URLSearchParams(window.location.search);
+  const section = urlParams.get('section');
+  const hash = window.location.hash.replace('#', '');
+  
+  // Tratar parâmetro ?section=zeladoria, ?section=ouvidoria, ?section=esic
+  // OU hash #zeladoria, #ouvidoria, #esic (compatibilidade)
+  const sectionToLoad = section || (hash && ['zeladoria', 'ouvidoria', 'esic'].includes(hash) ? hash : null);
+  
+  if (sectionToLoad && ['zeladoria', 'ouvidoria', 'esic'].includes(sectionToLoad)) {
+    // Aguardar um pouco para garantir que switchSection está disponível
+    setTimeout(() => {
+      if (window.switchSection) {
+        window.switchSection(sectionToLoad);
+        // Limpar parâmetro da URL sem recarregar
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
+    }, 100);
+  }
   
   if (path === '/chat' || path === '/chat/') {
     // Carregar página de chat

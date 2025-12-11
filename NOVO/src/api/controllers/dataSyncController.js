@@ -44,9 +44,30 @@ export async function getDataSyncStatus(req, res) {
   try {
     const status = getStatusSchedulerAtualizacao();
     
+    // Adicionar informações adicionais
+    const agora = new Date();
+    const horaAtual = agora.getHours();
+    const minutoAtual = agora.getMinutes();
+    
+    let mensagem = '';
+    if (status.precisaCatchUp) {
+      mensagem = '⚠️ Execução perdida detectada! O servidor estava desligado às 10h. Execute manualmente ou reinicie o servidor.';
+    } else if (status.jaExecutouHoje) {
+      mensagem = '✅ Já executou hoje. Tudo certo!';
+    } else if (horaAtual < 10) {
+      const minutosRestantes = (10 - horaAtual) * 60 - minutoAtual;
+      mensagem = `⏳ Aguardando execução às 10h (em ${minutosRestantes} minutos)`;
+    } else if (horaAtual >= 10) {
+      mensagem = '⏰ Execução agendada para amanhã às 10h';
+    }
+    
     res.json({
       success: true,
-      status
+      status: {
+        ...status,
+        mensagem,
+        horaAtual: `${horaAtual.toString().padStart(2, '0')}:${minutoAtual.toString().padStart(2, '0')}`
+      }
     });
   } catch (error) {
     logger.error('❌ Erro ao obter status do scheduler:', error);

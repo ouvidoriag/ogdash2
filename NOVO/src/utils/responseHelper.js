@@ -2,26 +2,57 @@
  * Helper para respostas da API com cache
  * 
  * REFATORAÇÃO: Prisma → Mongoose
- * Data: 03/12/2025
+ * REFATORAÇÃO FASE 4: Documentação de uso
+ * Data: 03/12/2025 (Atualizado: 09/12/2025)
  * CÉREBRO X-3
+ * 
+ * GUIA DE USO:
+ * - Use para endpoints HTTP estáticos ou semi-estáticos
+ * - NÃO use se a função interna já usa withSmartCache (evitar cache duplo)
+ * - Ver: docs/system/GUIA_DECISAO_CACHE.md
  */
 
 import { withDbCache } from './dbCache.js';
 import { logger } from './logger.js';
 
 /**
+ * Verificar se função usa withSmartCache internamente (detectar cache duplo)
+ */
+function detectDoubleCache(fn) {
+  const fnString = fn.toString();
+  // Verificar se a função contém chamadas a withSmartCache
+  const hasWithSmartCache = fnString.includes('withSmartCache') || 
+                           fnString.includes('smartCache') ||
+                           fnString.includes('SmartCache');
+  
+  if (hasWithSmartCache) {
+    logger.warn(`⚠️ Possível cache duplo detectado em ${fn.name || 'função anônima'}. A função interna já usa withSmartCache.`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Wrapper para queries com cache e tratamento de erros
  * Adiciona timeout para evitar erros 502
+ * 
+ * ⚠️ IMPORTANTE: Não use se a função interna já usa withSmartCache (cache duplo)
  * 
  * @param {string} key - Chave do cache
  * @param {number} ttlSeconds - TTL em segundos
  * @param {Object} res - Response object do Express
- * @param {Function} fn - Função para executar
+ * @param {Function} fn - Função para executar (NÃO deve usar withSmartCache internamente)
  * @param {Object|null} memoryCache - Cache em memória opcional
  * @param {number} timeoutMs - Timeout em milissegundos (padrão: 30000)
  * @returns {Promise<Object>} - Resposta JSON
  */
 export async function withCache(key, ttlSeconds, res, fn, memoryCache = null, timeoutMs = 30000) {
+  // PRIORIDADE 2: Detectar cache duplo
+  if (detectDoubleCache(fn)) {
+    logger.warn(`⚠️ Cache duplo detectado em ${key}. A função já usa withSmartCache internamente.`);
+  }
+  
   try {
     let result;
     

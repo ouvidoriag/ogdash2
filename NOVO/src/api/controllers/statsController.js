@@ -633,40 +633,40 @@ export async function statusOverview(req, res, getMongoClient) {
               unidadeCadastro ? `statusOverview:uac:${unidadeCadastro}:v2` :
               'statusOverview:v2';
   
-  // Cache de 5 horas para visão geral de status
-  return withCache(key, 18000, res, async () => {
-    const filter = {};
-    if (servidor) filter.servidor = servidor;
-    if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
-    
-    const total = await Record.countDocuments(filter);
-    
-    // Construir filtros para pipeline
-    const filters = {};
-    if (servidor) filters.servidor = servidor;
-    if (unidadeCadastro) filters.unidadeCadastro = unidadeCadastro;
-    
-    try {
-      // Usar pipeline MongoDB nativo com Mongoose
-      let statusGroups;
-      if (getMongoClient) {
-        const { executeAggregation } = await import('../../utils/dbAggregations.js');
-        const { buildStatusPipeline } = await import('../../utils/pipelines/index.js');
-        const { formatGroupByResult } = await import('../../utils/dataFormatter.js');
-        const { sanitizeFilters } = await import('../../utils/validateFilters.js');
-        const { withSmartCache } = await import('../../utils/smartCache.js');
-        
-        const sanitizedFilters = sanitizeFilters(filters);
-        
-        statusGroups = await withSmartCache(
-          'status',
-          sanitizedFilters,
-          async () => {
-            const pipeline = buildStatusPipeline(sanitizedFilters);
-            const result = await executeAggregation(getMongoClient, pipeline);
-            return formatGroupByResult(result, '_id', 'count');
-          },
-          null,
+  // REFATORAÇÃO FASE 4: Remover cache duplo - usar APENAS withSmartCache para filtros dinâmicos
+  // Não usar withCache() + withSmartCache() (cache duplo)
+  const filter = {};
+  if (servidor) filter.servidor = servidor;
+  if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
+  
+  const total = await Record.countDocuments(filter);
+  
+  // Construir filtros para pipeline
+  const filters = {};
+  if (servidor) filters.servidor = servidor;
+  if (unidadeCadastro) filters.unidadeCadastro = unidadeCadastro;
+  
+  try {
+    // Usar pipeline MongoDB nativo com Mongoose (único cache)
+    let statusGroups;
+    if (getMongoClient) {
+      const { executeAggregation } = await import('../../utils/dbAggregations.js');
+      const { buildStatusPipeline } = await import('../../utils/pipelines/index.js');
+      const { formatGroupByResult } = await import('../../utils/dataFormatter.js');
+      const { sanitizeFilters } = await import('../../utils/validateFilters.js');
+      const { withSmartCache } = await import('../../utils/smartCache.js');
+      
+      const sanitizedFilters = sanitizeFilters(filters);
+      
+      statusGroups = await withSmartCache(
+        'status',
+        sanitizedFilters,
+        async () => {
+          const pipeline = buildStatusPipeline(sanitizedFilters);
+          const result = await executeAggregation(getMongoClient, pipeline);
+          return formatGroupByResult(result, '_id', 'count');
+        },
+        null,
           [] // Fallback seguro
         );
       } else {
@@ -705,7 +705,7 @@ export async function statusOverview(req, res, getMongoClient) {
       
       const totalCount = total || 0;
       
-      return {
+      const result = {
         total: totalCount,
         concluida: {
           quantidade: concluidas,
@@ -716,45 +716,54 @@ export async function statusOverview(req, res, getMongoClient) {
           percentual: totalCount > 0 ? Number(((emAtendimento / totalCount) * 100).toFixed(1)) : 0
         }
       };
+      return res.json(result);
     } catch (error) {
-      // Fallback
-      const allRecords = await Record.find(Object.keys(filter).length > 0 ? filter : {})
-        .select('status statusDemanda')
-        .lean();
-      
-      let concluidas = 0;
-      let emAtendimento = 0;
-      
-      for (const r of allRecords) {
-        const statusValue = r.status || r.statusDemanda || '';
-        const status = `${statusValue}`.toLowerCase();
+      try {
+        // Fallback
+        const allRecords = await Record.find(Object.keys(filter).length > 0 ? filter : {})
+          .select('status statusDemanda')
+          .lean();
         
-        if (status.includes('concluída') || status.includes('concluida') || 
-            status.includes('encerrada') || status.includes('arquivamento') ||
-            status.includes('resposta final')) {
-          concluidas++;
-        } else if (status.includes('em atendimento') || status.includes('aberto') || 
-                   status.includes('pendente') || status.includes('análise') ||
-                   status.includes('departamento') || status.includes('ouvidoria') ||
-                   status.length > 0) {
-          emAtendimento++;
+        let concluidas = 0;
+        let emAtendimento = 0;
+        
+        for (const r of allRecords) {
+          const statusValue = r.status || r.statusDemanda || '';
+          const status = `${statusValue}`.toLowerCase();
+          
+          if (status.includes('concluída') || status.includes('concluida') || 
+              status.includes('encerrada') || status.includes('arquivamento') ||
+              status.includes('resposta final')) {
+            concluidas++;
+          } else if (status.includes('em atendimento') || status.includes('aberto') || 
+                     status.includes('pendente') || status.includes('análise') ||
+                     status.includes('departamento') || status.includes('ouvidoria') ||
+                     status.length > 0) {
+            emAtendimento++;
+          }
         }
+        
+        const totalCount = total || 0;
+        
+        const result = {
+          total: totalCount,
+          concluida: {
+            quantidade: concluidas,
+            percentual: totalCount > 0 ? Number(((concluidas / totalCount) * 100).toFixed(1)) : 0
+          },
+          emAtendimento: {
+            quantidade: emAtendimento,
+            percentual: totalCount > 0 ? Number(((emAtendimento / totalCount) * 100).toFixed(1)) : 0
+          }
+        };
+        return res.json(result);
+      } catch (fallbackError) {
+        logger.error('Erro ao buscar status overview:', { error: fallbackError.message });
+        return res.status(500).json({ 
+          error: 'Erro interno do servidor',
+          message: fallbackError.message 
+        });
       }
-      
-      const totalCount = total || 0;
-      
-      return {
-        total: totalCount,
-        concluida: {
-          quantidade: concluidas,
-          percentual: totalCount > 0 ? Number(((concluidas / totalCount) * 100).toFixed(1)) : 0
-        },
-        emAtendimento: {
-          quantidade: emAtendimento,
-          percentual: totalCount > 0 ? Number(((emAtendimento / totalCount) * 100).toFixed(1)) : 0
-        }
-      };
     }
-  }, null, 60000); // Timeout de 60s para endpoint pesado
 }
 

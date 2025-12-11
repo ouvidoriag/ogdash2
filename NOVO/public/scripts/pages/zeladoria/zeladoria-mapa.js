@@ -179,8 +179,8 @@ const categoriaColors = {
  * Carregar página do mapa
  */
 async function loadZeladoriaMapa() {
-  // Verificar se está na dashboard principal ou na página zeladoria.html
-  const page = document.getElementById('page-zeladoria-mapa') || document.getElementById('page-mapa');
+  // Verificar se está na dashboard principal
+  const page = document.getElementById('page-zeladoria-mapa');
   if (!page || page.style.display === 'none') return;
   
   try {
@@ -984,10 +984,295 @@ function setupMapSettings() {
   }
 }
 
+/**
+ * Carregar mapa do Colab (demandas do Colab)
+ */
+async function loadZeladoriaColabMapa() {
+  const page = document.getElementById('page-zeladoria-colab-mapa');
+  if (!page || page.style.display === 'none') return;
+  
+  try {
+    // Aguardar até que lazyLibraries esteja disponível
+    let attempts = 0;
+    const maxAttempts = 50;
+    
+    while ((!window.lazyLibraries || !window.lazyLibraries.loadLeaflet) && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    
+    if (!window.lazyLibraries || !window.lazyLibraries.loadLeaflet) {
+      throw new Error('lazyLibraries não foi carregado');
+    }
+    
+    // Carregar Leaflet
+    await window.lazyLibraries.loadLeaflet();
+    
+    if (!window.L) {
+      throw new Error('Leaflet não foi carregado corretamente');
+    }
+    
+    // Calcular datas (últimos 30 dias)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    
+    const startDateStr = startDate.toISOString().replace('T', ' ').substring(0, 19) + '.0000';
+    const endDateStr = endDate.toISOString().replace('T', ' ').substring(0, 19) + '.9999';
+    
+    // Carregar demandas do Colab
+    const demandas = await window.dataLoader?.load(
+      `/api/colab/posts?start_date=${encodeURIComponent(startDateStr)}&end_date=${encodeURIComponent(endDateStr)}`,
+      { useDataStore: true, ttl: 5 * 60 * 1000 }
+    ) || [];
+    
+    // Filtrar apenas demandas com coordenadas
+    const demandasComCoordenadas = demandas.filter(d => d.lat && d.lng && !isNaN(parseFloat(d.lat)) && !isNaN(parseFloat(d.lng)));
+    
+    // Converter para formato esperado pelo mapa
+    const data = demandasComCoordenadas.map(d => ({
+      latitude: parseFloat(d.lat),
+      longitude: parseFloat(d.lng),
+      status: d.status,
+      categoria: d.category_id ? `Categoria ${d.category_id}` : 'Sem categoria',
+      endereco: d.address || '',
+      bairro: d.neighborhood || '',
+      id: d.id,
+      descricao: d.description || ''
+    }));
+    
+    markersData = data;
+    
+    // Criar mapa específico para Colab se não existir
+    const mapContainer = document.getElementById('zeladoria-colab-map-container');
+    if (!mapContainer) {
+      throw new Error('Container do mapa Colab não encontrado');
+    }
+    
+    let colabMap = mapContainer._mapInstance;
+    let colabMarkersLayer = mapContainer._markersLayer;
+    
+    if (!colabMap) {
+      // Inicializar mapa no container do Colab
+      colabMap = window.L.map('zeladoria-colab-map-container', {
+        center: [-22.7855, -43.3093],
+        zoom: 12,
+        maxBounds: [[CAXIAS_BOUNDS.south, CAXIAS_BOUNDS.west], [CAXIAS_BOUNDS.north, CAXIAS_BOUNDS.east]]
+      });
+      
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(colabMap);
+      
+      colabMarkersLayer = window.L.layerGroup().addTo(colabMap);
+      
+      // Armazenar referências
+      mapContainer._mapInstance = colabMap;
+      mapContainer._markersLayer = colabMarkersLayer;
+    }
+    
+    if (!colabMap || !colabMarkersLayer) {
+      throw new Error('Mapa do Colab não foi inicializado');
+    }
+    
+    // Limpar marcadores anteriores
+    colabMarkersLayer.clearLayers();
+    
+    // Verificar se há dados
+    if (data.length === 0) {
+      const statsEl = document.getElementById('zeladoria-colab-mapa-stats');
+      if (statsEl) {
+        statsEl.innerHTML = `
+          <div class="glass rounded-lg p-3 text-center text-amber-400">
+            ⚠️ Nenhuma demanda com coordenadas GPS encontrada
+          </div>
+        `;
+      }
+      return;
+    }
+    
+    // Adicionar marcadores
+    data.forEach(item => {
+      const marker = window.L.marker([item.latitude, item.longitude], {
+        icon: createColabMarkerIcon(item.status)
+      });
+      
+      marker.bindPopup(`
+        <div class="custom-popup">
+          <div class="font-semibold text-cyan-300 mb-2">Demanda #${item.id}</div>
+          <div class="text-sm text-slate-300 mb-1"><strong>Status:</strong> ${item.status}</div>
+          <div class="text-sm text-slate-300 mb-1"><strong>Endereço:</strong> ${item.endereco}</div>
+          ${item.bairro ? `<div class="text-sm text-slate-300 mb-1"><strong>Bairro:</strong> ${item.bairro}</div>` : ''}
+          ${item.descricao ? `<div class="text-sm text-slate-400 mt-2">${item.descricao.substring(0, 100)}${item.descricao.length > 100 ? '...' : ''}</div>` : ''}
+        </div>
+      `);
+      
+      colabMarkersLayer.addLayer(marker);
+    });
+    
+    // Ajustar zoom para mostrar todos os marcadores
+    if (data.length > 0) {
+      const group = new window.L.featureGroup(colabMarkersLayer.getLayers());
+      colabMap.fitBounds(group.getBounds().pad(0.1));
+    }
+    
+    // Atualizar estatísticas
+    const statsEl = document.getElementById('zeladoria-colab-mapa-stats');
+    if (statsEl) {
+      const statusCounts = {};
+      data.forEach(d => {
+        statusCounts[d.status] = (statusCounts[d.status] || 0) + 1;
+      });
+      
+      statsEl.innerHTML = `
+        <div class="glass rounded-lg p-3">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+            <div>
+              <div class="text-xs text-slate-400">Total</div>
+              <div class="text-lg font-bold text-cyan-300">${data.length}</div>
+            </div>
+            ${Object.entries(statusCounts).slice(0, 3).map(([status, count]) => `
+              <div>
+                <div class="text-xs text-slate-400">${status}</div>
+                <div class="text-lg font-bold text-amber-300">${count}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    
+    // Configurar filtros
+    setupColabMapFilters(data, colabMap, colabMarkersLayer);
+    
+  } catch (error) {
+    window.Logger?.error('Erro ao carregar Mapa Colab:', error);
+    const content = document.getElementById('zeladoria-colab-mapa-content');
+    if (content) {
+      content.innerHTML = `
+        <div class="glass rounded-xl p-6 text-center text-red-400">
+          <p class="text-lg mb-2">❌ Erro ao carregar mapa</p>
+          <p class="text-sm text-slate-400">${error.message || 'Erro desconhecido'}</p>
+        </div>
+      `;
+    }
+  }
+}
+
+/**
+ * Criar ícone de marcador para Colab baseado no status
+ */
+function createColabMarkerIcon(status) {
+  const statusColors = {
+    'NOVO': '#a78bfa',
+    'ABERTO': '#3b82f6',
+    'ATENDIMENTO': '#f59e0b',
+    'ATENDIDO': '#10b981',
+    'FECHADO': '#059669',
+    'RECUSADO': '#ef4444'
+  };
+  
+  const color = statusColors[status] || '#94a3b8';
+  
+  return window.L.divIcon({
+    className: 'custom-marker',
+    html: `
+      <div class="marker-pin" style="border-color: ${color}; background-color: ${color};">
+        <div class="marker-pin-inner"></div>
+      </div>
+    `,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30]
+  });
+}
+
+/**
+ * Configurar filtros do mapa Colab
+ */
+function setupColabMapFilters(data, mapInstance, markersLayer) {
+  // Obter status únicos
+  const statuses = [...new Set(data.map(d => d.status))].sort();
+  const categorias = [...new Set(data.map(d => d.categoria))].sort();
+  
+  // Preencher select de status
+  const statusSelect = document.getElementById('zeladoria-colab-mapa-filter-status');
+  if (statusSelect) {
+    statusSelect.innerHTML = '<option value="">Todos os Status</option>' +
+      statuses.map(s => `<option value="${s}">${s}</option>`).join('');
+    
+    statusSelect.onchange = () => applyColabMapFilters(mapInstance, markersLayer, data);
+  }
+  
+  // Preencher select de categoria
+  const categoriaSelect = document.getElementById('zeladoria-colab-mapa-filter-categoria');
+  if (categoriaSelect) {
+    categoriaSelect.innerHTML = '<option value="">Todas as Categorias</option>' +
+      categorias.map(c => `<option value="${c}">${c}</option>`).join('');
+    
+    categoriaSelect.onchange = () => applyColabMapFilters(mapInstance, markersLayer, data);
+  }
+  
+  // Botão limpar filtros
+  const clearBtn = document.getElementById('zeladoria-colab-mapa-clear-filters');
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      if (statusSelect) statusSelect.value = '';
+      if (categoriaSelect) categoriaSelect.value = '';
+      applyColabMapFilters(mapInstance, markersLayer, data);
+    };
+  }
+}
+
+/**
+ * Aplicar filtros no mapa Colab
+ */
+function applyColabMapFilters(mapInstance, markersLayer, allData) {
+  const status = document.getElementById('zeladoria-colab-mapa-filter-status')?.value || '';
+  const categoria = document.getElementById('zeladoria-colab-mapa-filter-categoria')?.value || '';
+  
+  // Filtrar dados
+  let filteredData = allData;
+  if (status) {
+    filteredData = filteredData.filter(d => d.status === status);
+  }
+  if (categoria) {
+    filteredData = filteredData.filter(d => d.categoria === categoria);
+  }
+  
+  // Limpar marcadores
+  markersLayer.clearLayers();
+  
+  // Adicionar marcadores filtrados
+  filteredData.forEach(item => {
+    const marker = window.L.marker([item.latitude, item.longitude], {
+      icon: createColabMarkerIcon(item.status)
+    });
+    
+    marker.bindPopup(`
+      <div class="custom-popup">
+        <div class="font-semibold text-cyan-300 mb-2">Demanda #${item.id}</div>
+        <div class="text-sm text-slate-300 mb-1"><strong>Status:</strong> ${item.status}</div>
+        <div class="text-sm text-slate-300 mb-1"><strong>Endereço:</strong> ${item.endereco}</div>
+        ${item.bairro ? `<div class="text-sm text-slate-300 mb-1"><strong>Bairro:</strong> ${item.bairro}</div>` : ''}
+      </div>
+    `);
+    
+    markersLayer.addLayer(marker);
+  });
+  
+  // Ajustar zoom
+  if (filteredData.length > 0) {
+    const group = new window.L.featureGroup(markersLayer.getLayers());
+    mapInstance.fitBounds(group.getBounds().pad(0.1));
+  }
+}
+
 // Conectar ao sistema global de filtros
 if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
-  window.chartCommunication.createPageFilterListener('page-mapa', loadZeladoriaMapa, 500);
+  window.chartCommunication.createPageFilterListener('page-zeladoria-mapa', loadZeladoriaMapa, 500);
+  window.chartCommunication.createPageFilterListener('page-zeladoria-colab-mapa', loadZeladoriaColabMapa, 500);
 }
 
 window.loadZeladoriaMapa = loadZeladoriaMapa;
+window.loadZeladoriaColabMapa = loadZeladoriaColabMapa;
 

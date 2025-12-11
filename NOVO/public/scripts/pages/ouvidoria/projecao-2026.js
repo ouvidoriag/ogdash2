@@ -11,6 +11,18 @@
  */
 
 async function loadProjecao2026() {
+  // PRIORIDADE 1: Verificar dependências
+  const dependencies = window.errorHandler?.requireDependencies(
+    ['dataLoader', 'chartFactory'],
+    () => {
+      window.errorHandler?.showNotification('Sistemas não carregados. Recarregue a página.', 'warning');
+      return null;
+    }
+  );
+  
+  if (!dependencies) return Promise.resolve();
+  const { dataLoader, chartFactory } = dependencies;
+  
   if (window.Logger) {
     window.Logger.debug('📈 loadProjecao2026: Iniciando');
   }
@@ -20,22 +32,40 @@ async function loadProjecao2026() {
     return Promise.resolve();
   }
   
-  try {
+  // PRIORIDADE 2: Mostrar loading
+  window.loadingManager?.show('Carregando projeções para 2026...');
+  
+  return await window.errorHandler?.safeAsync(async () => {
     // Carregar todos os dados necessários em paralelo
-    const [byMonth, temas, dashboardData] = await Promise.all([
-      window.dataLoader?.load('/api/aggregate/by-month', {
+    const [byMonthRaw, temasRaw, dashboardDataRaw] = await Promise.all([
+      dataLoader.load('/api/aggregate/by-month', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
       }) || [],
-      window.dataLoader?.load('/api/aggregate/by-theme', {
+      dataLoader.load('/api/aggregate/by-theme', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
       }) || [],
-      window.dataLoader?.load('/api/dashboard-data', {
+      dataLoader.load('/api/dashboard-data', {
         useDataStore: true,
         ttl: 10 * 60 * 1000
       }) || {}
     ]);
+    
+    // PRIORIDADE 1: Validar dados
+    const byMonthValidation = window.dataValidator?.validateApiResponse(byMonthRaw, {
+      arrayItem: { types: { ym: 'string', count: 'number' } }
+    });
+    const temasValidation = window.dataValidator?.validateApiResponse(temasRaw, {
+      arrayItem: { types: { theme: 'string', count: 'number' } }
+    });
+    const dashboardValidation = window.dataValidator?.validateDataStructure(dashboardDataRaw, {
+      types: { manifestationsByType: 'array', manifestationsByOrgan: 'array' }
+    });
+    
+    const byMonth = byMonthValidation.valid ? byMonthValidation.data : [];
+    const temas = temasValidation.valid ? temasValidation.data : [];
+    const dashboardData = dashboardValidation.valid ? dashboardValidation.data : { manifestationsByType: [], manifestationsByOrgan: [] };
     
     // Extrair tipos e órgãos do dashboardData
     const tipos = dashboardData.manifestationsByType || [];
@@ -84,12 +114,20 @@ async function loadProjecao2026() {
     if (window.Logger) {
       window.Logger.success('📈 loadProjecao2026: Concluído');
     }
-  } catch (error) {
-    console.error('❌ Erro ao carregar Projecao2026:', error);
-    if (window.Logger) {
-      window.Logger.error('Erro ao carregar Projecao2026:', error);
+    
+    // PRIORIDADE 2: Esconder loading
+    window.loadingManager?.hide();
+    
+    return { success: true };
+  }, 'loadProjecao2026', {
+    showToUser: true,
+    fallback: () => {
+      // PRIORIDADE 2: Esconder loading em caso de erro
+      window.loadingManager?.hide();
+      
+      return { success: false };
     }
-  }
+  });
 }
 
 /**
