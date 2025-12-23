@@ -2,6 +2,10 @@
  * Scheduler para Atualização Automática de Dados do Google Sheets
  * Executa atualização diária dos dados às 10:00
  * 
+ * Fluxo de execução:
+ * 1. Atualiza dados da planilha tratada (Google Sheets)
+ * 2. Sincroniza datas de conclusão da planilha bruta com o banco de dados
+ * 
  * CÉREBRO X-3
  * Data: 2025-01-XX
  */
@@ -105,6 +109,47 @@ function precisaExecutarCatchUp() {
 }
 
 /**
+ * Executar sincronização de datas de conclusão da planilha bruta
+ */
+async function executarSincronizacaoDatas() {
+  console.log('🔄 Iniciando sincronização de datas de conclusão da planilha bruta...');
+  
+  try {
+    // Executar o script de sincronização como processo filho
+    const scriptPath = path.join(__dirname, '../../../scripts/maintenance/sincronizar-datas-conclusao.js');
+    
+    return new Promise((resolve, reject) => {
+      const processo = spawn('node', [scriptPath], {
+        cwd: path.join(__dirname, '../../../'),
+        stdio: 'inherit', // Herdar stdout/stderr para ver logs
+        shell: true
+      });
+      
+      processo.on('close', (code) => {
+        if (code === 0) {
+          console.log('✅ Sincronização de datas concluída com sucesso');
+          resolve({ sucesso: true, codigo: code });
+        } else {
+          console.error(`⚠️ Sincronização de datas falhou com código ${code} (continuando mesmo assim)`);
+          // Não rejeitar - continuar mesmo se a sincronização falhar
+          resolve({ sucesso: false, codigo: code });
+        }
+      });
+      
+      processo.on('error', (error) => {
+        console.error('⚠️ Erro ao executar sincronização de datas:', error.message);
+        // Não rejeitar - continuar mesmo se a sincronização falhar
+        resolve({ sucesso: false, erro: error.message });
+      });
+    });
+  } catch (error) {
+    console.error('⚠️ Erro na sincronização de datas:', error.message);
+    // Não lançar erro - continuar mesmo se a sincronização falhar
+    return { sucesso: false, erro: error.message };
+  }
+}
+
+/**
  * Executar atualização de dados do Google Sheets
  */
 async function executarAtualizacao() {
@@ -121,9 +166,14 @@ async function executarAtualizacao() {
         shell: true
       });
       
-      processo.on('close', (code) => {
+      processo.on('close', async (code) => {
         if (code === 0) {
           console.log('✅ Atualização automática concluída com sucesso');
+          
+          // Após atualização bem-sucedida, sincronizar datas de conclusão da planilha bruta
+          console.log('\n🔄 Iniciando sincronização de datas de conclusão...');
+          await executarSincronizacaoDatas();
+          
           // Salvar timestamp da execução bem-sucedida
           salvarUltimaExecucao();
           resolve({ sucesso: true, codigo: code });

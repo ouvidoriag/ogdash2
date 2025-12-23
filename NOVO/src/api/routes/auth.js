@@ -3,7 +3,7 @@
  */
 
 import express from 'express';
-import { login, logout, getCurrentUser } from '../controllers/authController.js';
+import { register, login, logout, getCurrentUser } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 
 export default function authRoutes(prisma) {
@@ -11,6 +11,9 @@ export default function authRoutes(prisma) {
 
   // REFATORAÇÃO: Prisma → Mongoose (controllers já migrados, não precisam mais de prisma)
   // router.use removido - controllers não usam mais req.prisma
+
+  // POST /api/auth/register
+  router.post('/register', register);
 
   // POST /api/auth/login
   router.post('/login', login);

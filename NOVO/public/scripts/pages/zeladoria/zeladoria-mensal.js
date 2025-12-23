@@ -77,12 +77,23 @@ async function loadZeladoriaMensal() {
     const values = data.map(d => d.count || 0);
     
     // Gráfico de linha mostrando a evolução temporal
-    await window.chartFactory?.createLineChart('zeladoria-mensal-chart', labels, values, {
+    const chartMensal = await window.chartFactory?.createLineChart('zeladoria-mensal-chart', labels, values, {
       colorIndex: 0,
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       label: 'Ocorrências',
       legendContainer: 'zeladoria-mensal-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros (filtro por mês/período)
+    if (chartMensal && data && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartMensal, data, {
+        field: 'month',
+        valueField: 'month',
+        onFilterChange: () => {
+          if (window.loadZeladoriaMensal) setTimeout(() => window.loadZeladoriaMensal(), 100);
+        }
+      });
+    }
     
     // ========================================================================
     // ETAPA 4: Carregar e renderizar dados adicionais por status
@@ -105,6 +116,14 @@ async function loadZeladoriaMensal() {
     // ETAPA 6: Atualizar KPIs no header
     // ========================================================================
     updateZeladoriaMensalKPIs(data);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => updateZeladoriaMensalKPIs(data),
+        pageLoadFunction: window.loadZeladoriaMensal
+      });
+    }
     
     if (window.Logger) {
       window.Logger.success('📅 loadZeladoriaMensal: Carregamento concluído com sucesso');
@@ -154,11 +173,31 @@ async function renderMensalStatusChart(statusMesData, labels) {
   
   const canvas = document.getElementById('zeladoria-mensal-status-chart');
   if (canvas) {
-    await window.chartFactory?.createBarChart('zeladoria-mensal-status-chart', labels, datasets, {
+    const chartStatus = await window.chartFactory?.createBarChart('zeladoria-mensal-status-chart', labels, datasets, {
       colorIndex: 0,
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
+      field: 'status',
       legendContainer: 'zeladoria-mensal-status-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros ao gráfico de status mensal
+    if (chartStatus && statusArray && window.addCrossfilterToChart) {
+      const statusData = statusArray.map(status => ({
+        status,
+        month: labels.map((label, idx) => {
+          const [month, year] = label.split('/');
+          return `${year}-${month.padStart(2, '0')}`;
+        })
+      }));
+      
+      window.addCrossfilterToChart(chartStatus, statusData, {
+        field: 'status',
+        valueField: 'status',
+        onFilterChange: () => {
+          if (window.loadZeladoriaMensal) setTimeout(() => window.loadZeladoriaMensal(), 100);
+        }
+      });
+    }
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Canvas zeladoria-mensal-status-chart não encontrado, gráfico não será criado');

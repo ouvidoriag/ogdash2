@@ -73,6 +73,14 @@ async function loadZeladoriaTempo() {
     // Renderizar análises detalhadas
     renderTempoAnalises(stats, timeSeries);
     
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => updateZeladoriaTempoKPIs(stats),
+        pageLoadFunction: window.loadZeladoriaTempo
+      });
+    }
+    
     if (window.Logger) {
       window.Logger.success('⏱️ loadZeladoriaTempo: Concluído');
     }
@@ -141,12 +149,23 @@ async function renderTempoMesChart(timeSeries) {
   
   const canvasMes = document.getElementById('zeladoria-tempo-mes-chart');
   if (canvasMes) {
-    await window.chartFactory?.createLineChart('zeladoria-tempo-mes-chart', labels, tempoMedio, {
+    const chartTempo = await window.chartFactory?.createLineChart('zeladoria-tempo-mes-chart', labels, tempoMedio, {
       colorIndex: 6,
       label: 'Tempo Médio (dias)',
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       legendContainer: 'zeladoria-tempo-mes-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros (filtro por mês/período)
+    if (chartTempo && timeSeries && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartTempo, timeSeries, {
+        field: 'month',
+        valueField: 'month',
+        onFilterChange: () => {
+          if (window.loadZeladoriaTempo) setTimeout(() => window.loadZeladoriaTempo(), 100);
+        }
+      });
+    }
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Canvas zeladoria-tempo-mes-chart não encontrado');
@@ -172,12 +191,28 @@ async function renderTempoDistribuicao(stats) {
   
   const canvasDist = document.getElementById('zeladoria-tempo-distribuicao-chart');
   if (canvasDist) {
-    await window.chartFactory?.createBarChart('zeladoria-tempo-distribuicao-chart', labels, values, {
+    const chartDist = await window.chartFactory?.createBarChart('zeladoria-tempo-distribuicao-chart', labels, values, {
       colorIndex: 6,
       horizontal: true,
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       legendContainer: 'zeladoria-tempo-distribuicao-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros (filtro por faixa de tempo)
+    if (chartDist && labels && window.addCrossfilterToChart) {
+      const distribuicaoData = labels.map((label, idx) => ({
+        faixa: label,
+        count: values[idx]
+      }));
+      
+      window.addCrossfilterToChart(chartDist, distribuicaoData, {
+        field: 'tempo',
+        valueField: 'faixa',
+        onFilterChange: () => {
+          if (window.loadZeladoriaTempo) setTimeout(() => window.loadZeladoriaTempo(), 100);
+        }
+      });
+    }
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Canvas zeladoria-tempo-distribuicao-chart não encontrado');

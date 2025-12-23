@@ -75,10 +75,22 @@ async function loadEsicOverview() {
     if (statusData.length > 0) {
       const labels = statusData.map(d => d.key || d._id || 'N/A');
       const values = statusData.map(d => d.count || 0);
-      await window.chartFactory?.createDoughnutChart('esic-chart-status', labels, values, {
-        onClick: false,
-        colorIndex: 0
+      // PADRONIZAÇÃO: Usar campo 'status' para cores padronizadas
+      const chartStatus = await window.chartFactory?.createDoughnutChart('esic-chart-status', labels, values, {
+        onClick: true, // Habilitar interatividade para crossfilter
+        field: 'status' // Especificar campo para usar cores padronizadas do config.js
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartStatus && statusData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartStatus, statusData, {
+          field: 'status',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadEsicOverview) setTimeout(() => window.loadEsicOverview(), 100);
+          }
+        });
+      }
     }
     
     // Carregar dados por tipo de informação
@@ -90,10 +102,23 @@ async function loadEsicOverview() {
     if (tipoInformacaoData.length > 0) {
       const labels = tipoInformacaoData.slice(0, 10).map(d => d.key || d._id || 'N/A');
       const values = tipoInformacaoData.slice(0, 10).map(d => d.count || 0);
-      await window.chartFactory?.createBarChart('esic-chart-tipo-informacao', labels, values, {
+      const chartTipo = await window.chartFactory?.createBarChart('esic-chart-tipo-informacao', labels, values, {
         horizontal: true,
-        colorIndex: 1
+        colorIndex: 1,
+        field: 'tipoInformacao',
+        onClick: true // Habilitar interatividade para crossfilter
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartTipo && tipoInformacaoData.slice(0, 10) && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartTipo, tipoInformacaoData.slice(0, 10), {
+          field: 'tipoInformacao',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadEsicOverview) setTimeout(() => window.loadEsicOverview(), 100);
+          }
+        });
+      }
     }
     
     // Carregar dados por responsável
@@ -105,10 +130,23 @@ async function loadEsicOverview() {
     if (responsavelData.length > 0) {
       const labels = responsavelData.slice(0, 10).map(d => d.key || d._id || 'N/A');
       const values = responsavelData.slice(0, 10).map(d => d.count || 0);
-      await window.chartFactory?.createBarChart('esic-chart-responsavel', labels, values, {
+      const chartResp = await window.chartFactory?.createBarChart('esic-chart-responsavel', labels, values, {
         horizontal: true,
-        colorIndex: 2
+        colorIndex: 2,
+        field: 'responsavel',
+        onClick: true // Habilitar interatividade para crossfilter
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartResp && responsavelData.slice(0, 10) && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartResp, responsavelData.slice(0, 10), {
+          field: 'responsavel',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadEsicOverview) setTimeout(() => window.loadEsicOverview(), 100);
+          }
+        });
+      }
     }
     
     // Carregar dados mensais

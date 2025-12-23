@@ -23,16 +23,20 @@ import Record from '../../models/Record.model.js';
  * Lista todas as notificações com filtros opcionais
  * 
  * Query params:
- * - tipo: '15_dias' | 'vencimento' | '30_dias_vencido' | '60_dias_vencido' | 'consolidacao_geral'
- * - secretaria: Nome da secretaria
+ * - tipo: '15_dias' | 'vencimento' | '30_dias_vencido' | '60_dias_vencido' | 'resumo_geral'
+ * - secretaria: Nome da secretaria (busca parcial, case-insensitive)
  * - status: 'enviado' | 'erro' | 'pendente'
- * - dataInicio: YYYY-MM-DD
- * - dataFim: YYYY-MM-DD
+ * - protocolo: Número do protocolo (busca parcial, case-insensitive)
+ * - emailSecretaria: Email da secretaria (busca parcial, case-insensitive)
+ * - dataInicio: YYYY-MM-DD (filtro por data de envio)
+ * - dataFim: YYYY-MM-DD (filtro por data de envio)
  * - limit: Número de resultados (padrão: 100)
  * - page: Página (padrão: 1)
  */
 export async function getNotificacoes(req, res) {
-  const cacheKey = 'notificacoes:list:v2';
+  // Criar chave de cache baseada nos filtros para evitar cache incorreto
+  const { tipo, secretaria, status, protocolo, emailSecretaria, dataInicio, dataFim, limit, page } = req.query;
+  const cacheKey = `notificacoes:list:${JSON.stringify({ tipo, secretaria, status, protocolo, emailSecretaria, dataInicio, dataFim, limit, page })}:v3`;
   const ttlSeconds = 60; // Cache de 1 minuto
 
   return withCache(
@@ -44,6 +48,8 @@ export async function getNotificacoes(req, res) {
         tipo,
         secretaria,
         status,
+        protocolo,
+        emailSecretaria,
         dataInicio,
         dataFim,
         limit = 100,
@@ -53,18 +59,32 @@ export async function getNotificacoes(req, res) {
       // Construir filtros
       const filter = {};
 
+      // Filtro por tipo de notificação
       if (tipo) {
         filter.tipoNotificacao = tipo;
       }
 
+      // Filtro por secretaria (busca parcial, case-insensitive)
       if (secretaria) {
         filter.secretaria = { $regex: secretaria, $options: 'i' };
       }
 
+      // Filtro por status da notificação (enviado, erro, pendente)
       if (status) {
         filter.status = status;
       }
 
+      // Filtro por protocolo (busca parcial, case-insensitive)
+      if (protocolo) {
+        filter.protocolo = { $regex: protocolo, $options: 'i' };
+      }
+
+      // Filtro por email da secretaria (busca parcial, case-insensitive)
+      if (emailSecretaria) {
+        filter.emailSecretaria = { $regex: emailSecretaria, $options: 'i' };
+      }
+
+      // Filtro por período de envio
       if (dataInicio || dataFim) {
         filter.enviadoEm = {};
         if (dataInicio) {
@@ -96,6 +116,66 @@ export async function getNotificacoes(req, res) {
         totalPages: Math.ceil(total / parseInt(limit)),
         notificacoes
       };
+    }
+  );
+}
+
+/**
+ * GET /api/notificacoes/meses-disponiveis
+ * Retorna lista de meses únicos com notificações (para popular select)
+ */
+export async function getMesesDisponiveis(req, res) {
+  const cacheKey = 'notificacoes:meses-disponiveis:v1';
+  const ttlSeconds = 300; // Cache de 5 minutos
+
+  return withCache(
+    cacheKey,
+    ttlSeconds,
+    res,
+    async () => {
+      // Agregação para obter meses únicos (YYYY-MM) das datas de envio
+      const meses = await NotificacaoEmail.aggregate([
+        {
+          $match: {
+            enviadoEm: { $exists: true, $ne: null }
+          }
+        },
+        {
+          $project: {
+            ano: { $year: '$enviadoEm' },
+            mes: { $month: '$enviadoEm' }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              ano: '$ano',
+              mes: '$mes'
+            }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            mes: {
+              $concat: [
+                { $toString: '$_id.ano' },
+                '-',
+                { $cond: [
+                  { $lt: ['$_id.mes', 10] },
+                  { $concat: ['0', { $toString: '$_id.mes' }] },
+                  { $toString: '$_id.mes' }
+                ]}
+              ]
+            }
+          }
+        },
+        {
+          $sort: { mes: -1 } // Mais recente primeiro
+        }
+      ]);
+
+      return meses.map(m => m.mes);
     }
   );
 }
@@ -546,11 +626,13 @@ export async function enviarSelecionados(req, res) {
       getEmailSecretaria, 
       EMAIL_REMETENTE, 
       NOME_REMETENTE,
+      EMAIL_OUVIDORIA_GERAL,
       getTemplate15Dias,
       getTemplateVencimento,
       getTemplate30Dias,
       getTemplate60Dias,
-      getTemplateConsolidacaoGeral
+      getTemplateConsolidacaoGeral,
+      getTemplateResumoOuvidoriaGeral
     } = await import('../../services/email-notifications/emailConfig.js');
     
     // Funções auxiliares
@@ -839,6 +921,225 @@ export async function enviarSelecionados(req, res) {
                 enviadoEm: new Date()
               }))
             );
+          }
+        })()
+      );
+    }
+    
+    // Executar em batches paralelos
+    for (let i = 0; i < sendPromises.length; i += BATCH_SIZE) {
+      await Promise.all(sendPromises.slice(i, i + BATCH_SIZE));
+    }
+    
+    // Enviar resumo para Ouvidoria Geral (apenas para tipo "hoje")
+    if (tipo === 'hoje' && EMAIL_OUVIDORIA_GERAL && resultados.enviados > 0) {
+      try {
+        // Verificar se há demandas para enviar
+        const totalDemandas = Object.values(porSecretaria).reduce((sum, arr) => sum + arr.length, 0);
+        
+        if (totalDemandas > 0) {
+          const template = await getTemplateResumoOuvidoriaGeral(porSecretaria);
+          
+          // Separar múltiplos emails (separados por vírgula)
+          const emails = EMAIL_OUVIDORIA_GERAL.split(',').map(e => e.trim()).filter(e => e);
+          
+          const resumosEnviados = [];
+          
+          // Enviar para cada email
+          for (const email of emails) {
+            try {
+              const { messageId } = await sendEmail(
+                email,
+                template.subject,
+                template.html,
+                template.text,
+                EMAIL_REMETENTE,
+                NOME_REMETENTE
+              );
+              
+              resumosEnviados.push({ email, messageId, status: 'enviado' });
+            } catch (error) {
+              resumosEnviados.push({ email, status: 'erro', erro: error.message });
+              console.error(`Erro ao enviar resumo para ${email}:`, error.message);
+            }
+          }
+          
+          resultados.resumoEnviado = resumosEnviados.length > 0;
+          resultados.resumosEnviados = resumosEnviados;
+          resultados.resumoEmails = emails;
+          resultados.totalDemandasResumo = totalDemandas;
+        }
+      } catch (error) {
+        // Não bloquear o processo se o resumo falhar
+        resultados.resumoEnviado = false;
+        resultados.resumoErro = error.message;
+        console.error('Erro ao enviar resumo para Ouvidoria Geral:', error);
+      }
+    }
+    
+    return resultados;
+  });
+}
+
+/**
+ * POST /api/notificacoes/enviar-extra
+ * Envia email extra para emails informados manualmente
+ * 
+ * Body: {
+ *   emails: ['email1@exemplo.com', 'email2@exemplo.com', ...]
+ * }
+ */
+export async function enviarEmailExtra(req, res) {
+  return safeQuery(res, async () => {
+    const { emails } = req.body;
+    
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ 
+        error: 'Lista de emails é obrigatória' 
+      });
+    }
+    
+    // Validar formato de emails
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailsInvalidos = emails.filter(e => !emailRegex.test(e));
+    if (emailsInvalidos.length > 0) {
+      return res.status(400).json({ 
+        error: `Emails inválidos: ${emailsInvalidos.join(', ')}` 
+      });
+    }
+    
+    // Importar funções necessárias
+    const { sendEmail } = await import('../../services/email-notifications/gmailService.js');
+    const { 
+      EMAIL_REMETENTE, 
+      NOME_REMETENTE
+    } = await import('../../services/email-notifications/emailConfig.js');
+    
+    const resultados = {
+      enviados: 0,
+      erros: 0,
+      detalhes: []
+    };
+    
+    // Template simples para envio extra
+    const template = {
+      subject: 'Comunicação da Ouvidoria Geral de Duque de Caxias',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #e3f2fd; border-left: 4px solid #2196f3; color: #333; padding: 30px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { padding: 30px 20px; background: #fff; }
+            .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h2>📧 Ouvidoria Geral de Duque de Caxias</h2>
+              <p>Comunicação Extra</p>
+            </div>
+            <div class="content">
+              <h3>Prezados(as),</h3>
+              
+              <p style="font-size: 16px; margin: 20px 0;">
+                Este é um email extra enviado pela Ouvidoria Geral de Duque de Caxias.
+              </p>
+              
+              <p style="margin-top: 20px;">
+                Permanecemos à disposição para quaisquer esclarecimentos.
+              </p>
+              
+              <p style="margin-top: 20px;">
+                Atenciosamente,<br>
+                <strong>Ouvidoria Geral de Duque de Caxias</strong>
+              </p>
+            </div>
+            <div class="footer">
+              <p>Este é um email automático do sistema de Ouvidoria Geral de Duque de Caxias.</p>
+              <p>Por favor, não responda este email.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+Ouvidoria Geral de Duque de Caxias
+Comunicação Extra
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Prezados(as),
+
+Este é um email extra enviado pela Ouvidoria Geral de Duque de Caxias.
+
+Permanecemos à disposição para quaisquer esclarecimentos.
+
+Atenciosamente,
+Ouvidoria Geral de Duque de Caxias
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Este é um email automático. Por favor, não responda.
+      `.trim()
+    };
+    
+    // Enviar para cada email
+    const BATCH_SIZE = 5; // Limitar a 5 emails por vez
+    const sendPromises = [];
+    
+    for (const email of emails) {
+      sendPromises.push(
+        (async () => {
+          try {
+            const { messageId } = await sendEmail(
+              email,
+              template.subject,
+              template.html,
+              template.text,
+              EMAIL_REMETENTE,
+              NOME_REMETENTE
+            );
+            
+            // Registrar notificação
+            await NotificacaoEmail.create({
+              protocolo: 'EXTRA',
+              secretaria: 'Envio Extra',
+              emailSecretaria: email,
+              tipoNotificacao: 'envio_extra',
+              status: 'enviado',
+              messageId: messageId,
+              enviadoEm: new Date()
+            });
+            
+            resultados.enviados++;
+            resultados.detalhes.push({
+              email,
+              status: 'enviado',
+              messageId
+            });
+          } catch (error) {
+            resultados.erros++;
+            resultados.detalhes.push({
+              email,
+              status: 'erro',
+              motivo: error.message
+            });
+            
+            // Registrar erro
+            await NotificacaoEmail.create({
+              protocolo: 'EXTRA',
+              secretaria: 'Envio Extra',
+              emailSecretaria: email,
+              tipoNotificacao: 'envio_extra',
+              status: 'erro',
+              mensagemErro: error.message,
+              enviadoEm: new Date()
+            });
           }
         })()
       );

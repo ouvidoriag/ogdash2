@@ -63,12 +63,27 @@ async function loadZeladoriaStatus() {
     const values = sortedData.map(d => d.count || 0);
     
     // Criar gráfico principal (doughnut)
+    // PADRONIZAÇÃO: Usar campo 'status' para detecção automática de cores do sistema centralizado
     const legendContainer = document.getElementById('zeladoria-status-legend');
-    await window.chartFactory?.createDoughnutChart('zeladoria-status-chart', labels, values, {
-      onClick: false,
-      field: 'status',
+    const chartStatus = await window.chartFactory?.createDoughnutChart('zeladoria-status-chart', labels, values, {
+      onClick: true, // Habilitar interatividade para crossfilter
+      field: 'status', // Especificar campo para usar cores padronizadas do config.js
       ...(legendContainer && { legendContainer: 'zeladoria-status-legend' })
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros
+    if (chartStatus && sortedData && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartStatus, sortedData, {
+        field: 'status',
+        valueField: 'key',
+        onFilterChange: () => {
+          if (window.loadZeladoriaStatus) setTimeout(() => window.loadZeladoriaStatus(), 100);
+        },
+        onClearFilters: () => {
+          if (window.loadZeladoriaStatus) setTimeout(() => window.loadZeladoriaStatus(), 100);
+        }
+      });
+    }
     
     // Renderizar ranking de status
     renderStatusRanking(sortedData);
@@ -93,6 +108,36 @@ async function loadZeladoriaStatus() {
     
     // Atualizar KPIs no header
     updateZeladoriaStatusKPIs(stats, sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => updateZeladoriaStatusKPIs(stats, sortedData),
+        pageLoadFunction: window.loadZeladoriaStatus
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#zeladoria-status-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const status = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: status,
+              field: 'status'
+            };
+          }),
+          field: 'status',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]');
+            return textEl ? textEl.getAttribute('title') : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('📊 loadZeladoriaStatus: Concluído');
@@ -133,18 +178,30 @@ async function renderStatusMesChart(dataMes) {
     return m;
   });
   
-  const canvas = document.getElementById('zeladoria-status-mes-chart');
-  if (canvas) {
-    await window.chartFactory?.createBarChart('zeladoria-status-mes-chart', labels, datasets, {
-      colorIndex: 0,
-      onClick: false,
-      legendContainer: 'zeladoria-status-mes-legend'
-    });
-  } else {
-    if (window.Logger) {
-      window.Logger.warn('⚠️ Canvas zeladoria-status-mes-chart não encontrado');
+    const canvas = document.getElementById('zeladoria-status-mes-chart');
+    if (canvas) {
+      // PADRONIZAÇÃO: Usar campo 'status' para detecção automática de cores
+      const chartMes = await window.chartFactory?.createBarChart('zeladoria-status-mes-chart', labels, datasets, {
+        field: 'status', // Especificar campo para usar cores padronizadas do config.js
+        onClick: true, // Habilitar interatividade para crossfilter
+        legendContainer: 'zeladoria-status-mes-legend'
+      });
+      
+      // CROSSFILTER: Adicionar sistema de filtros ao gráfico mensal
+      if (chartMes && dataMes && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartMes, dataMes, {
+          field: 'status',
+          valueField: 'status',
+          onFilterChange: () => {
+            if (window.loadZeladoriaStatus) setTimeout(() => window.loadZeladoriaStatus(), 100);
+          }
+        });
+      }
+    } else {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Canvas zeladoria-status-mes-chart não encontrado');
+      }
     }
-  }
 }
 
 /**
@@ -161,17 +218,8 @@ function renderStatusRanking(data) {
     const count = item.count || 0;
     const percent = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
     
-    // Cores por status
-    const statusColors = {
-      'NOVO': '#a78bfa',
-      'ABERTO': '#3b82f6',
-      'ATENDIMENTO': '#f59e0b',
-      'ATENDIDO': '#10b981',
-      'FECHADO': '#059669',
-      'RECUSADO': '#ef4444'
-    };
-    
-    const color = statusColors[status] || '#94a3b8';
+    // PADRONIZAÇÃO: Usar sistema centralizado de cores do config.js
+    const color = window.config?.getColorByStatus?.(status) || '#94a3b8';
     
     return `
       <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">

@@ -86,13 +86,27 @@ async function loadZeladoriaBairro() {
     // ========================================================================
     // Gráfico de barras horizontal mostrando os bairros com mais ocorrências
     // Habilitado para interação (filtros globais ao clicar)
-    await window.chartFactory?.createBarChart('zeladoria-bairro-chart', labels, values, {
+    const chartBairro = await window.chartFactory?.createBarChart('zeladoria-bairro-chart', labels, values, {
       horizontal: true,
       colorIndex: 3,
       field: 'bairro',
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       legendContainer: 'zeladoria-bairro-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros
+    if (chartBairro && sortedData && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartBairro, sortedData, {
+        field: 'bairro',
+        valueField: 'key',
+        onFilterChange: () => {
+          if (window.loadZeladoriaBairro) setTimeout(() => window.loadZeladoriaBairro(), 100);
+        },
+        onClearFilters: () => {
+          if (window.loadZeladoriaBairro) setTimeout(() => window.loadZeladoriaBairro(), 100);
+        }
+      });
+    }
     
     // ========================================================================
     // ETAPA 4: Renderizar ranking detalhado de bairros
@@ -140,6 +154,36 @@ async function loadZeladoriaBairro() {
     // ETAPA 9: Atualizar KPIs no header
     // ========================================================================
     updateZeladoriaBairroKPIs(sortedData, data);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => updateZeladoriaBairroKPIs(sortedData, data),
+        pageLoadFunction: window.loadZeladoriaBairro
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#zeladoria-bairro-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const bairro = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: bairro,
+              field: 'bairro'
+            };
+          }),
+          field: 'bairro',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]') || card.querySelector('.font-semibold');
+            return textEl ? (textEl.getAttribute('title') || textEl.textContent.trim()) : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('📍 loadZeladoriaBairro: Carregamento concluído com sucesso');
@@ -222,11 +266,23 @@ async function renderBairroMesChart(dataMes, topBairros) {
   // Criar gráfico de barras agrupadas
   const canvas = document.getElementById('zeladoria-bairro-mes-chart');
   if (canvas) {
-    await window.chartFactory?.createBarChart('zeladoria-bairro-mes-chart', labels, datasets, {
+    const chartMes = await window.chartFactory?.createBarChart('zeladoria-bairro-mes-chart', labels, datasets, {
       colorIndex: 0,
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
+      field: 'bairro',
       legendContainer: 'zeladoria-bairro-mes-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros ao gráfico mensal
+    if (chartMes && dataMes && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartMes, dataMes, {
+        field: 'bairro',
+        valueField: 'bairro',
+        onFilterChange: () => {
+          if (window.loadZeladoriaBairro) setTimeout(() => window.loadZeladoriaBairro(), 100);
+        }
+      });
+    }
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Canvas zeladoria-bairro-mes-chart não encontrado');

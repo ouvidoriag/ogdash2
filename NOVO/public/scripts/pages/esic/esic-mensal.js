@@ -66,16 +66,37 @@ async function loadEsicMensal() {
     const values = sortedData.map(d => d.count || 0);
     
     if (labels.length > 0 && values.length > 0) {
-      await window.chartFactory?.createLineChart('esic-chart-mensal-detail', labels, values, {
+      const chartMensal = await window.chartFactory?.createLineChart('esic-chart-mensal-detail', labels, values, {
         colorIndex: 5,
-        onClick: false,
+        onClick: true, // Habilitar interatividade para crossfilter
         fill: true,
         tension: 0.4
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros (filtro por mês/período)
+      if (chartMensal && sortedData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartMensal, sortedData, {
+          field: 'month',
+          valueField: 'month',
+          onFilterChange: () => {
+            if (window.loadEsicMensal) setTimeout(() => window.loadEsicMensal(), 100);
+          }
+        });
+      }
     }
     
     // Renderizar estatísticas mensais
     renderMensalStats(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => {
+          if (window.loadEsicMensal) window.loadEsicMensal();
+        },
+        pageLoadFunction: window.loadEsicMensal
+      });
+    }
     
     if (window.Logger) {
       window.Logger.success('📅 loadEsicMensal: Concluído');

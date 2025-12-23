@@ -15,6 +15,9 @@ import { paginateWithCursor } from '../../utils/cursorPagination.js';
 import Record from '../../models/Record.model.js';
 import { logger } from '../../utils/logger.js';
 import { getOverviewData } from '../../utils/dbAggregations.js';
+import { normalizeFilters } from '../../utils/normalizeFilters.js';
+import { limitMultiSelect } from '../../utils/limitMultiSelect.js';
+import { CompositeFilter } from '../../utils/compositeFilters.js';
 
 /**
  * POST /api/filter
@@ -25,24 +28,72 @@ import { getOverviewData } from '../../utils/dbAggregations.js';
  */
 export async function filterRecords(req, res, getMongoClient) {
   try {
-    const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+    let filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
     const originalUrl = req.body?.originalUrl || '';
     
+    // MELHORIA: Suporte a filtros compostos (estrutura básica)
+    // Verificar se é um filtro composto (tem operator e filters)
+    let isComposite = false;
+    let compositeFilter = null;
+    
+    if (req.body?.operator && Array.isArray(req.body?.filters)) {
+      // É um filtro composto
+      try {
+        compositeFilter = CompositeFilter.fromJSON(req.body);
+        const validation = compositeFilter.validate();
+        if (validation.valid) {
+          isComposite = true;
+          logger.debug('/api/filter: Filtro composto detectado', {
+            operator: compositeFilter.operator,
+            filtersCount: compositeFilter.filters.length
+          });
+        } else {
+          logger.warn('/api/filter: Filtro composto inválido, usando formato simples:', validation.error);
+        }
+      } catch (error) {
+        logger.warn('/api/filter: Erro ao processar filtro composto, usando formato simples:', error.message);
+      }
+    }
+    
     // Se não há filtros, retornar vazio
-    if (filters.length === 0) {
+    if (filters.length === 0 && !isComposite) {
       logger.warn('/api/filter: Chamado SEM filtros! Retornando array vazio.');
       return res.json([]);
     }
     
-    // Debug: log dos filtros recebidos
-    logger.debug('/api/filter: Filtros recebidos', { filters });
+    // MELHORIA: Limitar MultiSelect (arrays muito grandes)
+    if (!isComposite) {
+      filters = limitMultiSelect(filters);
+      
+      // MELHORIA: Normalizar filtros (remover duplicatas, combinar ranges, unificar operadores)
+      filters = normalizeFilters(filters);
+    }
+    
+    // Debug: log dos filtros recebidos e normalizados
+    logger.debug('/api/filter: Filtros recebidos e normalizados', { 
+      original: req.body?.filters?.length || 0,
+      normalized: filters.length,
+      isComposite,
+      filters 
+    });
     
     // Construir filtro MongoDB otimizado
-    const mongoFilter = {};
+    let mongoFilter = {};
     const needsInMemoryFilter = [];
     const fieldsNeeded = new Set(['_id', 'data']);
     
-    // Separar filtros que podem usar $match do MongoDB
+    // MELHORIA: Se for filtro composto, usar conversão direta
+    if (isComposite && compositeFilter) {
+      mongoFilter = compositeFilter.toMongoQuery(getNormalizedField);
+      logger.debug('/api/filter: Filtro composto convertido para MongoDB', {
+        mongoFilter,
+        operator: compositeFilter.operator
+      });
+      // Para filtros compostos, precisamos buscar todos os campos possíveis
+      // (a validação de campos será feita em memória se necessário)
+    } else {
+      // Processar filtros simples (código existente)
+      // Separar filtros que podem usar $match do MongoDB
     for (const f of filters) {
       const col = getNormalizedField(f.field);
       
@@ -62,14 +113,33 @@ export async function filterRecords(req, res, getMongoClient) {
         mongoFilter[col] = { $in: values };
         fieldsNeeded.add(col);
       } else if (col && f.op === 'contains') {
+        // MELHORIA: Otimização de "contains" usando campos lowercase indexados
         // Para campos de data, usar regex se o valor for no formato YYYY-MM
         if ((col === 'dataDaCriacao' || col === 'dataCriacaoIso') && /^\d{4}-\d{2}$/.test(f.value)) {
           // Filtro por mês: usar regex para melhor performance
           mongoFilter[col] = { $regex: `^${f.value}`, $options: 'i' };
+          fieldsNeeded.add(col);
         } else {
-          mongoFilter[col] = { $regex: f.value, $options: 'i' };
+          // Tentar usar campo lowercase indexado se disponível
+          const lowercaseField = `${col}Lowercase`;
+          const lowercaseFields = [
+            'temaLowercase', 'assuntoLowercase', 'canalLowercase', 'orgaosLowercase',
+            'statusDemandaLowercase', 'tipoDeManifestacaoLowercase', 'responsavelLowercase',
+            'bairroLowercase'
+          ];
+          
+          if (lowercaseFields.includes(lowercaseField)) {
+            // Usar campo lowercase indexado (muito mais rápido que regex)
+            const normalizedValue = f.value.toLowerCase().trim();
+            mongoFilter[lowercaseField] = { $regex: normalizedValue, $options: 'i' };
+            fieldsNeeded.add(lowercaseField);
+            fieldsNeeded.add(col); // Também precisamos do campo original para resposta
+          } else {
+            // Fallback: usar regex no campo original (mais lento)
+            mongoFilter[col] = { $regex: f.value, $options: 'i' };
+            fieldsNeeded.add(col);
+          }
         }
-        fieldsNeeded.add(col);
       } else if (col && (f.op === 'gte' || f.op === 'lte' || f.op === 'gt' || f.op === 'lt')) {
         // Operadores de comparação para campos de data
         if (col === 'dataCriacaoIso' || col === 'dataDaCriacao' || col === 'dataConclusaoIso') {
@@ -101,6 +171,7 @@ export async function filterRecords(req, res, getMongoClient) {
         if (col) fieldsNeeded.add(col);
       }
     }
+    } // Fechar o bloco else da linha 94
     
     // Buscar apenas campos necessários
     const selectFields = Array.from(fieldsNeeded).join(' ');
@@ -338,15 +409,39 @@ export async function filterRecords(req, res, getMongoClient) {
  */
 export async function filterAndAggregate(req, res, getMongoClient) {
   try {
-    const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+    let filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+    
+    // MELHORIA: Suporte a filtros compostos (estrutura básica)
+    let isComposite = false;
+    let compositeFilter = null;
+    
+    if (req.body?.operator && Array.isArray(req.body?.filters)) {
+      // É um filtro composto
+      try {
+        compositeFilter = CompositeFilter.fromJSON(req.body);
+        const validation = compositeFilter.validate();
+        if (validation.valid) {
+          isComposite = true;
+          logger.debug('/api/filter/aggregated: Filtro composto detectado', {
+            operator: compositeFilter.operator,
+            filtersCount: compositeFilter.filters.length
+          });
+        } else {
+          logger.warn('/api/filter/aggregated: Filtro composto inválido, usando formato simples:', validation.error);
+        }
+      } catch (error) {
+        logger.warn('/api/filter/aggregated: Erro ao processar filtro composto, usando formato simples:', error.message);
+      }
+    }
     
     logger.debug('/api/filter/aggregated: Filtros recebidos', { 
       filtersCount: filters.length,
+      isComposite,
       filters: filters.slice(0, 3) // Log apenas primeiros 3 para não poluir
     });
     
     // Se não há filtros, retornar estrutura vazia
-    if (filters.length === 0) {
+    if (filters.length === 0 && !isComposite) {
       logger.warn('/api/filter/aggregated: Chamado SEM filtros! Retornando estrutura vazia.');
       return res.json({
         totalManifestations: 0,
@@ -364,6 +459,12 @@ export async function filterAndAggregate(req, res, getMongoClient) {
       });
     }
     
+    // MELHORIA: Limitar MultiSelect e normalizar filtros
+    if (!isComposite) {
+      filters = limitMultiSelect(filters);
+      filters = normalizeFilters(filters);
+    }
+    
     // Verificar se getMongoClient está disponível
     if (!getMongoClient) {
       logger.error('/api/filter/aggregated: getMongoClient não disponível');
@@ -371,10 +472,18 @@ export async function filterAndAggregate(req, res, getMongoClient) {
     }
     
     // Construir filtro MongoDB a partir dos filtros do frontend
-    // Usar a mesma lógica do filterRecords, mas adaptada para agregação
-    const mongoFilter = {};
+    let mongoFilter = {};
     
-    for (const f of filters) {
+    // MELHORIA: Se for filtro composto, usar conversão direta
+    if (isComposite && compositeFilter) {
+      mongoFilter = compositeFilter.toMongoQuery(getNormalizedField);
+      logger.debug('/api/filter/aggregated: Filtro composto convertido para MongoDB', {
+        mongoFilter,
+        operator: compositeFilter.operator
+      });
+    } else {
+      // Processar filtros simples
+      for (const f of filters) {
       const col = getNormalizedField(f.field);
       
       logger.debug(`/api/filter/aggregated: Processando filtro:`, {
@@ -416,12 +525,27 @@ export async function filterAndAggregate(req, res, getMongoClient) {
           logger.warn(`/api/filter/aggregated: Array vazio para ${col}, ignorando filtro`);
         }
       } else if (f.op === 'contains') {
-        // Contém (regex case-insensitive)
+        // MELHORIA: Otimização de "contains" usando campos lowercase indexados
+        // Para campos de data, usar regex se o valor for no formato YYYY-MM
         if ((col === 'dataDaCriacao' || col === 'dataCriacaoIso') && /^\d{4}-\d{2}$/.test(f.value)) {
           // Filtro por mês: usar regex para melhor performance
           mongoFilter[col] = { $regex: `^${f.value}`, $options: 'i' };
         } else {
-          mongoFilter[col] = { $regex: f.value, $options: 'i' };
+          // Tentar usar campo lowercase indexado se disponível
+          const lowercaseField = `${col}Lowercase`;
+          const lowercaseFields = [
+            'temaLowercase', 'assuntoLowercase', 'canalLowercase', 'orgaosLowercase',
+            'statusDemandaLowercase', 'tipoDeManifestacaoLowercase', 'responsavelLowercase'
+          ];
+          
+          if (lowercaseFields.includes(lowercaseField)) {
+            // Usar campo lowercase indexado (muito mais rápido que regex)
+            const normalizedValue = f.value.toLowerCase().trim();
+            mongoFilter[lowercaseField] = { $regex: normalizedValue, $options: 'i' };
+          } else {
+            // Fallback: usar regex no campo original (mais lento)
+            mongoFilter[col] = { $regex: f.value, $options: 'i' };
+          }
         }
       } else if (f.op === 'gte' || f.op === 'lte' || f.op === 'gt' || f.op === 'lt') {
         // Operadores de comparação para campos de data
@@ -442,6 +566,7 @@ export async function filterAndAggregate(req, res, getMongoClient) {
         }
       }
     }
+    }
     
     logger.debug('/api/filter/aggregated: Filtro MongoDB construído', {
       mongoFilterKeys: Object.keys(mongoFilter),
@@ -454,6 +579,24 @@ export async function filterAndAggregate(req, res, getMongoClient) {
         valueSample: Array.isArray(f.value) ? f.value.slice(0, 3) : f.value
       }))
     });
+    
+    // DEBUG CRÍTICO: Log detalhado do filtro de data se existir
+    if (mongoFilter.dataCriacaoIso) {
+      logger.info('🔍 FILTRO DE DATA DETECTADO:', {
+        dataCriacaoIso: mongoFilter.dataCriacaoIso,
+        type: typeof mongoFilter.dataCriacaoIso,
+        isObject: typeof mongoFilter.dataCriacaoIso === 'object',
+        hasGte: mongoFilter.dataCriacaoIso?.$gte,
+        hasLte: mongoFilter.dataCriacaoIso?.$lte
+      });
+    }
+    
+    if (mongoFilter.statusDemanda) {
+      logger.info('🔍 FILTRO DE STATUS DETECTADO:', {
+        statusDemanda: mongoFilter.statusDemanda,
+        type: typeof mongoFilter.statusDemanda
+      });
+    }
     
     // Usar getOverviewData com os filtros construídos
     // getOverviewData espera um objeto de filtros simples (ex: { servidor: 'X', orgaos: 'Y' })
@@ -469,12 +612,14 @@ export async function filterAndAggregate(req, res, getMongoClient) {
     // A função buildMatchFromFilters dentro do pipeline já suporta objetos MongoDB como { $in: [...] }
     const pipeline = buildOverviewPipeline(mongoFilter);
     
-    logger.debug('/api/filter/aggregated: Pipeline construído com filtros:', {
+    logger.info('/api/filter/aggregated: Pipeline construído com filtros:', {
       mongoFilterKeys: Object.keys(mongoFilter),
       mongoFilter: mongoFilter,
       hasInOperator: Object.values(mongoFilter).some(v => v && typeof v === 'object' && v.$in),
       pipelineLength: pipeline.length,
-      firstStage: pipeline[0]
+      firstStage: pipeline[0],
+      hasMatch: pipeline[0]?.$match ? true : false,
+      matchContent: pipeline[0]?.$match || null
     });
     
     logger.debug('/api/filter/aggregated: Pipeline final construído:', {

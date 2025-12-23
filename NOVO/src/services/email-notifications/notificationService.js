@@ -474,22 +474,37 @@ async function enviarResumoOuvidoriaGeral(porSecretaria, prisma) {
     
     const template = await getTemplateResumoOuvidoriaGeral(porSecretaria, prisma);
     
-    const { messageId } = await sendEmail(
-      EMAIL_OUVIDORIA_GERAL,
-      template.subject,
-      template.html,
-      template.text,
-      EMAIL_REMETENTE,
-      NOME_REMETENTE
-    );
+    // Separar múltiplos emails (separados por vírgula)
+    const emails = EMAIL_OUVIDORIA_GERAL.split(',').map(e => e.trim()).filter(e => e);
     
-    logger.info('Resumo enviado para Ouvidoria Geral', {
-      email: EMAIL_OUVIDORIA_GERAL,
-      totalDemandas,
-      messageId
-    });
+    const resultados = [];
     
-    return { messageId, totalDemandas };
+    // Enviar para cada email
+    for (const email of emails) {
+      try {
+        const { messageId } = await sendEmail(
+          email,
+          template.subject,
+          template.html,
+          template.text,
+          EMAIL_REMETENTE,
+          NOME_REMETENTE
+        );
+        
+        logger.info('Resumo enviado para Ouvidoria Geral', {
+          email,
+          totalDemandas,
+          messageId
+        });
+        
+        resultados.push({ email, messageId, status: 'enviado' });
+      } catch (error) {
+        logger.errorWithContext('Erro ao enviar resumo para email específico', error, { email });
+        resultados.push({ email, status: 'erro', erro: error.message });
+      }
+    }
+    
+    return { resultados, totalDemandas };
   } catch (error) {
     logger.errorWithContext('Erro ao enviar resumo para Ouvidoria Geral', error);
     throw error;

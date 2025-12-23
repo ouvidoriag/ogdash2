@@ -1,4 +1,4 @@
-# 📋 Documentação: Filtro por Mês - Página Tempo Médio de Atendimento
+npm star# 📋 Documentação: Filtro por Mês - Página Tempo Médio de Atendimento
 
 **Data de Criação:** Dezembro 2025  
 **Sistema:** Dashboard de Ouvidoria  

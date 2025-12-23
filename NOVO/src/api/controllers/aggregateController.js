@@ -60,6 +60,58 @@ export async function countBy(req, res) {
     // OTIMIZAÇÃO: Usar agregação MongoDB nativa
     const col = getNormalizedField(field);
     if (col) {
+      // Para campo responsavel, usar pipeline que busca também no campo data
+      if (col === 'responsavel') {
+        const pipeline = [
+          ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
+          {
+            $project: {
+              responsavel: {
+                $ifNull: [
+                  '$responsavel',
+                  {
+                    $ifNull: [
+                      '$data.responsavel',
+                      {
+                        $ifNull: [
+                          '$data.Responsavel',
+                          {
+                            $ifNull: [
+                              '$data.responsável',
+                              {
+                                $ifNull: [
+                                  '$data.RESPONSAVEL',
+                                  null
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            $group: {
+              _id: {
+                $ifNull: ['$responsavel', 'Não informado']
+              },
+              count: { $sum: 1 }
+            }
+          },
+          { $sort: { count: -1 } }
+        ];
+        
+        const result = await Record.aggregate(pipeline);
+        return result.map(r => ({ 
+          key: r._id && r._id !== 'null' && r._id.trim() !== '' ? r._id : 'Não informado', 
+          count: r.count 
+        }));
+      }
+      
       // Agregar direto no banco usando MongoDB aggregation
       const pipeline = [
         ...(Object.keys(filter).length > 0 ? [{ $match: filter }] : []),
@@ -94,10 +146,35 @@ export async function countBy(req, res) {
       .limit(20000)
       .lean();
       
-    const map = new Map();
+      const map = new Map();
     for (const r of rows) {
       const dat = r.data || {};
-      const key = dat?.[field] ?? dat?.[field.toLowerCase()] ?? dat?.[field.replace(/\s+/g, '_')] ?? 'Não informado';
+      let key;
+      
+      // Tratamento especial para campo Responsavel
+      if (field && (field.toLowerCase() === 'responsavel' || field === 'Responsavel')) {
+        key = r.responsavel || 
+              dat.responsavel || 
+              dat.Responsavel || 
+              dat.responsável || 
+              dat.RESPONSAVEL ||
+              dat['responsavel'] ||
+              dat['Responsavel'] ||
+              'Não informado';
+      } else {
+        // Busca genérica com variações
+        key = dat?.[field] ?? 
+              dat?.[field.toLowerCase()] ?? 
+              dat?.[field.replace(/\s+/g, '_')] ?? 
+              dat?.[field.replace(/\s+/g, '-')] ??
+              'Não informado';
+      }
+      
+      // Normalizar: remover null, undefined, strings vazias
+      if (!key || key === 'null' || key === 'undefined' || String(key).trim() === '') {
+        key = 'Não informado';
+      }
+      
       const k = `${key}`;
       map.set(k, (map.get(k) ?? 0) + 1);
     }
@@ -743,6 +820,13 @@ export async function countByStatusMes(req, res) {
         selectFields.push('categoria');
       } else if (fieldLower === 'status') {
         selectFields.push('status');
+      } else if (fieldLower === 'tipodemanifestacao' || fieldLower === 'tipo') {
+        selectFields.push('tipoDeManifestacao');
+      } else if (fieldLower === 'orgaos' || fieldLower === 'orgao' || fieldLower === 'secretaria') {
+        selectFields.push('orgaos');
+      } else if (fieldLower === 'responsavel') {
+        selectFields.push('responsavel');
+        selectFields.push('data'); // Incluir data para buscar variações
       } else {
         // Tentar usar o campo diretamente
         selectFields.push(field);
@@ -775,6 +859,26 @@ export async function countByStatusMes(req, res) {
           fieldValue = r.assunto || (r.data && typeof r.data === 'object' ? r.data.assunto : null) || 'Não informado';
         } else if (fieldLower === 'categoria') {
           fieldValue = r.categoria || (r.data && typeof r.data === 'object' ? r.data.categoria : null) || 'Não informado';
+        } else if (fieldLower === 'tipodemanifestacao' || fieldLower === 'tipo') {
+          fieldValue = r.tipoDeManifestacao || (r.data && typeof r.data === 'object' ? r.data.tipoDeManifestacao : null) || 'Não informado';
+        } else if (fieldLower === 'orgaos' || fieldLower === 'orgao' || fieldLower === 'secretaria') {
+          fieldValue = r.orgaos || r.secretaria || (r.data && typeof r.data === 'object' ? (r.data.orgaos || r.data.secretaria) : null) || 'Não informado';
+        } else if (fieldLower === 'responsavel') {
+          // Buscar responsável em múltiplas variações
+          fieldValue = r.responsavel || 
+                       (r.data && typeof r.data === 'object' ? (
+                         r.data.responsavel || 
+                         r.data.Responsavel || 
+                         r.data.responsável || 
+                         r.data.RESPONSAVEL ||
+                         r.data['responsavel'] ||
+                         r.data['Responsavel']
+                       ) : null) || 
+                       'Não informado';
+          // Normalizar: remover null, undefined, strings vazias
+          if (!fieldValue || fieldValue === 'null' || fieldValue === 'undefined' || String(fieldValue).trim() === '') {
+            fieldValue = 'Não informado';
+          }
         } else {
           fieldValue = r[field] || (r.data && typeof r.data === 'object' ? r.data[field] : null) || 'Não informado';
         }
@@ -806,6 +910,15 @@ export async function countByStatusMes(req, res) {
           obj.assunto = value;
         } else if (fieldLower === 'categoria') {
           obj.categoria = value;
+        } else if (fieldLower === 'tipodemanifestacao' || fieldLower === 'tipo') {
+          obj.tipo = value;
+          obj.tipoDeManifestacao = value; // Compatibilidade
+        } else if (fieldLower === 'orgaos' || fieldLower === 'orgao' || fieldLower === 'secretaria') {
+          obj.orgaos = value;
+          obj.organ = value; // Compatibilidade
+        } else if (fieldLower === 'responsavel') {
+          obj.responsavel = value;
+          obj._id = value; // Compatibilidade com frontend
         } else {
           obj[fieldLower] = value;
         }
@@ -913,13 +1026,14 @@ export async function byDistrict(req, res) {
 
 /**
  * GET /api/aggregate/top-protocolos-demora
- * Busca os 10 protocolos com maior tempo de demora
+ * Busca os 10 protocolos com maior tempo de resolução
  * 
- * Calcula o tempo de demora como:
+ * Calcula o tempo de resolução como:
  * - Se concluído: dataConclusaoIso - dataCriacaoIso
  * - Se não concluído: data atual - dataCriacaoIso
  * 
  * REFATORAÇÃO: Prisma → Mongoose
+ * NOTA: Esta funcionalidade foi removida da interface, mas o endpoint permanece para compatibilidade
  */
 export async function topProtocolosDemora(req, res, getMongoClient) {
   const limit = parseInt(req.query.limit) || 10;
@@ -942,7 +1056,7 @@ export async function topProtocolosDemora(req, res, getMongoClient) {
       const hoje = new Date();
       hoje.setHours(0, 0, 0, 0);
       
-      // Calcular tempo de demora para cada protocolo
+      // Calcular tempo de resolução para cada protocolo
       const protocolosComDemora = records
         .map(record => {
           // Obter data de criação (prioridade: dataCriacaoIso > dataDaCriacao)
@@ -976,7 +1090,7 @@ export async function topProtocolosDemora(req, res, getMongoClient) {
             }
           }
           
-          // Calcular tempo de demora em dias
+          // Calcular tempo de resolução em dias
           const dataFim = concluido && dataConclusao ? dataConclusao : hoje;
           const diffMs = dataFim.getTime() - dataCriacao.getTime();
           const tempoDemoraDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -1008,7 +1122,7 @@ export async function topProtocolosDemora(req, res, getMongoClient) {
         protocolos: protocolosComDemora
       };
     } catch (error) {
-      logger.error('Erro ao buscar protocolos com maior tempo de demora:', { error: error.message });
+      logger.error('Erro ao buscar protocolos com maior tempo de resolução:', { error: error.message });
       throw error;
     }
   });

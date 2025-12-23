@@ -87,10 +87,11 @@ window.dataLoader = {
                 ? options.ttl 
                 : (window.cacheConfig ? window.cacheConfig.getTTL(endpoint) : 5000);
             
-            // Verificar cache no dataStore (único cache do sistema)
+            // CORREÇÃO CRÍTICA: Usar endpoint completo (incluindo query string) como chave de cache
+            // Isso garante que endpoints com parâmetros diferentes tenham caches separados
             const cacheKey = endpoint === '/api/dashboard-data' || endpoint.includes('/api/dashboard-data')
                 ? 'dashboardData'
-                : endpoint;
+                : endpoint; // endpoint já contém query string se foi passado na URL
             
             const cached = window.dataStore.get(cacheKey, ttl);
             if (cached !== null) {

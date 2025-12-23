@@ -106,7 +106,6 @@ function createWaitForFunctionWrapper(funcName) {
             'loadVencimento': 'vencimento.js',
             'loadOverview': 'overview.js',
             'loadOrgaoMes': 'orgao-mes.js',
-            'loadProtocolosDemora': 'protocolos-demora.js',
             'loadTema': 'tema.js',
             'loadAssunto': 'assunto.js',
             'loadStatus': 'status.js',
@@ -190,7 +189,6 @@ function getPageLoader(page) {
     'orgao-mes': 'loadOrgaoMes',
     'tempo-medio': 'loadTempoMedio',
     'vencimento': 'loadVencimento',
-    'protocolos-demora': 'loadProtocolosDemora',
     'notificacoes': 'loadNotificacoes',
     'filtros-avancados': 'loadFiltrosAvancados',
     'tema': 'loadTema',
@@ -232,7 +230,9 @@ function getPageLoader(page) {
     'central-zeladoria': 'loadCentralZeladoria',
     'central-ouvidoria': 'loadCentralOuvidoria',
     'central-esic': 'loadCentralEsic',
-    'central-cora': 'loadCentralCora'
+    'central-cora': 'loadCentralCora',
+    // Página de Configurações
+    'configuracoes': 'loadConfiguracoes'
   };
   
   const funcName = loaderMap[page];
@@ -492,7 +492,7 @@ function initSectionSelector() {
         console.error('❌ menuCentral não encontrado');
       }
       if (sectionTitle) {
-        sectionTitle.textContent = '🏙️ Painel Central';
+        sectionTitle.textContent = 'Painel Central';
         console.log('✅ Título atualizado para Painel Central');
       }
       loadSection('central-dashboard');
@@ -721,6 +721,103 @@ function init() {
   } else {
     console.log('✅ Sistema inicializado');
   }
+  
+  // Esconder loading após inicialização completa
+  hideLoadingScreen();
+  
+  // Verificação adicional: se após 5 segundos ainda estiver mostrando loading, esconder forçadamente
+  setTimeout(() => {
+    const loadingContainer = document.getElementById('city-loading-container');
+    if (loadingContainer && loadingContainer.style.display !== 'none') {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Loading ainda visível após 5s, escondendo forçadamente');
+      }
+      if (window.cityLoading) {
+        window.cityLoading.hide();
+      } else {
+        loadingContainer.style.opacity = '0';
+        loadingContainer.style.transition = 'opacity 0.5s ease-out';
+        setTimeout(() => {
+          loadingContainer.style.display = 'none';
+        }, 500);
+      }
+    }
+  }, 5000);
+}
+
+/**
+ * Esconde a tela de loading quando o sistema estiver pronto
+ */
+function hideLoadingScreen() {
+  let attempts = 0;
+  const maxAttempts = 30; // Máximo de 15 segundos (30 * 500ms)
+  const minWaitTime = 2000; // Mínimo de 2 segundos antes de esconder
+  const startTime = Date.now();
+  
+  const hideLoading = () => {
+    if (window.cityLoading) {
+      window.cityLoading.hide();
+    } else {
+      // Fallback caso cityLoading não esteja disponível
+      const loadingContainer = document.getElementById('city-loading-container');
+      if (loadingContainer) {
+        loadingContainer.style.opacity = '0';
+        loadingContainer.style.transition = 'opacity 0.5s ease-out';
+        setTimeout(() => {
+          loadingContainer.style.display = 'none';
+        }, 500);
+      }
+    }
+  };
+  
+  // Verificar se os principais componentes estão carregados
+  const checkComponents = () => {
+    attempts++;
+    const elapsed = Date.now() - startTime;
+    
+    const hasDataStore = typeof window.dataStore !== 'undefined';
+    const hasChartFactory = typeof window.ChartFactory !== 'undefined';
+    const hasGlobalFilters = typeof window.globalFilters !== 'undefined';
+    const hasLogger = typeof window.Logger !== 'undefined';
+    
+    // Verificar se a página principal está visível (indicando que o sistema carregou)
+    const pagesContainer = document.getElementById('pages');
+    const hasPages = pagesContainer && pagesContainer.children.length > 0;
+    
+    // Condições para esconder:
+    // 1. Componentes principais carregados OU
+    // 2. Passou o tempo mínimo E tem páginas OU
+    // 3. Máximo de tentativas atingido
+    const componentsReady = hasDataStore && hasChartFactory && hasGlobalFilters && hasLogger;
+    const minTimePassed = elapsed >= minWaitTime;
+    const maxAttemptsReached = attempts >= maxAttempts;
+    
+    if (componentsReady && minTimePassed) {
+      // Componentes prontos e tempo mínimo passado
+      setTimeout(hideLoading, 500);
+      if (window.Logger) {
+        window.Logger.debug('🔍 Componentes carregados, escondendo loading...');
+      }
+    } else if (minTimePassed && hasPages && (hasDataStore || hasChartFactory)) {
+      // Tempo mínimo passado, tem páginas e pelo menos alguns componentes
+      setTimeout(hideLoading, 500);
+      if (window.Logger) {
+        window.Logger.debug('🔍 Sistema parcialmente carregado, escondendo loading...');
+      }
+    } else if (maxAttemptsReached) {
+      // Timeout - esconder mesmo assim
+      hideLoading();
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Timeout ao verificar componentes, escondendo loading forçadamente');
+      }
+    } else {
+      // Continuar verificando
+      setTimeout(checkComponents, 500);
+    }
+  };
+  
+  // Iniciar verificação após um pequeno delay
+  setTimeout(checkComponents, 500);
 }
 
 if (document.readyState === 'loading') {

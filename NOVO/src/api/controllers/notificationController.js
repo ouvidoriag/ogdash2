@@ -26,13 +26,18 @@ import NotificacaoEmail from '../../models/NotificacaoEmail.model.js';
 /**
  * GET /api/notifications/auth/url
  * Obter URL de autorização do Gmail
+ * Para uso web, usa o callback da API
  */
 export async function getAuthUrlEndpoint(req, res) {
   try {
-    const authUrl = getAuthUrl();
+    // Para uso web, usar o callback da API
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/notifications/auth/callback`;
+    const authUrl = getAuthUrl(redirectUri);
+    
     res.json({
       success: true,
       authUrl,
+      redirectUri,
       message: 'Acesse a URL para autorizar o acesso ao Gmail'
     });
   } catch (error) {

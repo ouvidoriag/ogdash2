@@ -9,7 +9,20 @@
     <!-- Em produção, usar build process ou CSS compilado -->
     <script>
       // Carregar Tailwind CSS apenas se não estiver em produção
+      // Em produção, usar CSS compilado via build process
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        // Suprimir aviso de produção do Tailwind CDN ANTES de carregar
+        const originalWarn = console.warn;
+        console.warn = function(...args) {
+          if (args[0] && typeof args[0] === 'string' && 
+              (args[0].includes('cdn.tailwindcss.com') || 
+               args[0].includes('should not be used in production') ||
+               args[0].includes('PostCSS plugin'))) {
+            return; // Suprimir aviso do Tailwind CDN em desenvolvimento
+          }
+          originalWarn.apply(console, args);
+        };
+        
         const tailwindScript = document.createElement('script');
         tailwindScript.src = 'https://cdn.tailwindcss.com';
         tailwindScript.onload = () => {
@@ -328,6 +341,519 @@
       :where(.overflow-y-auto, .overflow-auto, .overflow-y-scroll)::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(180deg, #111, #222);
       }
+      /* Ajuste para pageTitle vazio não ocupar espaço */
+      #pageTitle:empty {
+        display: none;
+        margin: 0;
+        padding: 0;
+        min-height: 0;
+        height: 0;
+      }
+      
+      
+      /* Estilos para página de Configurações */
+      .config-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      
+      .config-tab {
+        padding: 0.75rem 1.5rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        color: var(--text-secondary);
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.9rem;
+      }
+      
+      .config-tab:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--text-primary);
+        border-color: var(--primary);
+      }
+      
+      .config-tab.active {
+        background: linear-gradient(90deg, rgba(34,211,238,0.2) 0%, rgba(167,139,250,0.2) 100%);
+        color: var(--primary);
+        border-color: var(--primary);
+        box-shadow: 0 0 20px rgba(34,211,238,0.2);
+      }
+      
+      body.light-mode .config-tab {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      
+      body.light-mode .config-tab.active {
+        background: linear-gradient(90deg, rgba(34,211,238,0.25) 0%, rgba(167,139,250,0.25) 100%);
+        color: #0891b2;
+      }
+      
+      .config-section {
+        background: var(--panel);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid var(--border);
+      }
+      
+      .config-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+      }
+      
+      .config-description {
+        color: var(--text-secondary);
+        margin-bottom: 1.5rem;
+        font-size: 0.9rem;
+      }
+      
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      
+      .config-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      
+      .config-item-full {
+        grid-column: 1 / -1;
+      }
+      
+      .config-item label {
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 0.9rem;
+      }
+      
+      .config-item input[type="number"],
+      .config-item input[type="time"],
+      .config-item input[type="email"],
+      .config-item input[type="tel"],
+      .config-item input[type="text"] {
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        color: var(--text-primary);
+        font-size: 1rem;
+        transition: all 0.2s ease;
+      }
+      
+      .config-item textarea {
+        width: 100%;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        color: var(--text-primary);
+        font-size: 0.9rem;
+        resize: vertical;
+        min-height: 80px;
+        transition: all 0.2s ease;
+        font-family: inherit;
+      }
+      
+      .config-item textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+        background: rgba(255, 255, 255, 0.08);
+        box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+      }
+      
+      body.light-mode .config-item textarea {
+        background: rgba(0, 0, 0, 0.05);
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+      
+      body.light-mode .config-item textarea:focus {
+        background: rgba(0, 0, 0, 0.08);
+        border-color: #0891b2;
+      }
+      
+      .config-item input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(34,211,238,0.1);
+      }
+      
+      body.light-mode .config-item input {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      
+      .config-item small {
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+      }
+      
+      .checkbox-item {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      
+      .checkbox-item label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+      }
+      
+      .checkbox-item input[type="checkbox"] {
+        width: 1.25rem;
+        height: 1.25rem;
+        cursor: pointer;
+        accent-color: var(--primary);
+      }
+      
+      .config-actions {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+      }
+      
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      
+      .stat-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.2s ease;
+      }
+      
+      .stat-card:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: var(--primary);
+        transform: translateY(-2px);
+      }
+      
+      .stat-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+      }
+      
+      .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--primary);
+        margin-bottom: 0.25rem;
+      }
+      
+      .stat-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+      
+      .secretarias-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      
+      .secretaria-item {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        transition: all 0.2s ease;
+      }
+      
+      .secretaria-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: var(--primary);
+      }
+      
+      .secretaria-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      
+      .secretaria-badge {
+        background: rgba(34, 211, 238, 0.2);
+        color: var(--primary);
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      
+      .secretaria-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 1rem;
+        align-items: end;
+      }
+      
+      .status-item {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+      }
+      
+      .status-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+      }
+      
+      .status-icon {
+        font-size: 1.5rem;
+      }
+      
+      .status-name {
+        flex: 1;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      
+      .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      
+      .status-connected {
+        background: rgba(52, 211, 153, 0.2);
+        color: #34d399;
+      }
+      
+      .status-disconnected {
+        background: rgba(251, 113, 133, 0.2);
+        color: #fb7185;
+      }
+      
+      .status-error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+      }
+      
+      .status-unknown {
+        background: rgba(148, 163, 184, 0.2);
+        color: #94a3b8;
+      }
+      
+      .btn-primary,
+      .btn-secondary,
+      .btn-small {
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+        font-size: 0.9rem;
+      }
+      
+      .btn-primary {
+        background: var(--primary);
+        color: white;
+      }
+      
+      .btn-primary:hover {
+        background: #06b6d4;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(34,211,238,0.3);
+      }
+      
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+      }
+      
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: var(--primary);
+      }
+      
+      .btn-small {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+      }
+      
+      .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      
+      .status-connected {
+        background: rgba(52, 211, 153, 0.2);
+        color: #34d399;
+      }
+      
+      .status-disconnected,
+      .status-error {
+        background: rgba(251, 113, 133, 0.2);
+        color: #fb7185;
+      }
+      
+      .status-unknown {
+        background: rgba(148, 163, 184, 0.2);
+        color: #94a3b8;
+      }
+      
+      .status-item {
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+      }
+      
+      .status-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+      }
+      
+      .status-icon {
+        font-size: 1.5rem;
+        margin-right: 0.5rem;
+      }
+      
+      .status-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        flex: 1;
+      }
+      
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      
+      .stat-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.2s ease;
+      }
+      
+      .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+        border-color: var(--primary);
+      }
+      
+      .stat-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+      }
+      
+      .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--primary);
+        margin-bottom: 0.25rem;
+      }
+      
+      .stat-label {
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+      }
+      
+      .secretarias-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      
+      .secretaria-item {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+      }
+      
+      .secretaria-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      
+      .secretaria-badge {
+        padding: 0.25rem 0.75rem;
+        background: rgba(34, 211, 238, 0.2);
+        color: var(--primary);
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      
+      .secretaria-body {
+        margin-top: 1rem;
+      }
+      
+      .secretaria-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border);
+      }
+      
+      .secretaria-header > div {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      
+      .secretaria-sigla {
+        padding: 0.25rem 0.5rem;
+        background: rgba(167, 139, 250, 0.2);
+        color: var(--accent);
+        border-radius: 0.375rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      
+      .secretaria-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+      }
+      
+      .secretaria-actions .btn-small {
+        flex: 1;
+      }
+      
       /* Estilos para marcadores do mapa Leaflet */
       .custom-marker {
         background: transparent !important;
@@ -656,6 +1182,43 @@
     </script>
   </head>
   <body class="text-slate-100">
+    <!-- Tela de Loading com Animação de Construção de Cidade -->
+    <div id="city-loading-container" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0b1020 0%, #1e293b 50%, #0b1020 100%);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Rajdhani', sans-serif;
+      pointer-events: auto;
+    ">
+      <div style="
+        text-align: center;
+        margin-bottom: 40px;
+        color: #f1f5f9;
+        z-index: 100000;
+      ">
+        <h2 style="
+          font-size: 32px;
+          font-weight: 700;
+          margin-bottom: 12px;
+          color: #22d3ee;
+          text-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
+        ">Construindo Dashboard</h2>
+        <p style="
+          font-size: 16px;
+          color: #cbd5e1;
+          font-weight: 500;
+        ">Carregando dados e inicializando sistemas...</p>
+      </div>
+    </div>
+    
     <!-- Botões fixos no topo direito (tema + informações de secretarias) -->
     <div class="theme-toggle-container flex items-center gap-2">
       <button id="secretariasInfoButton" class="theme-toggle relative w-8 h-8 flex items-center justify-center rounded-full border border-cyan-400/60 bg-slate-900/70 hover:bg-slate-800/90 transition-colors shadow-lg"
@@ -704,11 +1267,16 @@
           </div>
           
           <div class="space-y-1 pt-2 border-t border-white/10">
-            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📊 Módulos</div>
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">📚 Instruções</div>
             <div data-page="central-zeladoria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🧹 Zeladoria</div>
             <div data-page="central-ouvidoria" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📣 Ouvidoria</div>
             <div data-page="central-esic" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📋 E-SIC</div>
             <div data-page="central-cora" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🛰️ CORA</div>
+          </div>
+          
+          <div class="space-y-1 pt-2 border-t border-white/10">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">⚙️ Administração</div>
+            <div data-page="configuracoes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⚙️ Configurações</div>
           </div>
         </nav>
         
@@ -729,7 +1297,6 @@
             <div data-page="orgao-mes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">🏢 Por Órgão e Mês</div>
             <div data-page="tempo-medio" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏱️ Tempo Médio</div>
             <div data-page="vencimento" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏰ Vencimento</div>
-            <div data-page="protocolos-demora" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">⏳ Protocolos com Maior Demora</div>
             <div data-page="notificacoes" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📧 Notificações de Email</div>
             <div data-page="tema" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📑 Por Tema</div>
             <div data-page="assunto" class="px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">📝 Por Assunto</div>
@@ -846,7 +1413,7 @@
 
       <main id="pages" class="col-span-12 lg:col-span-9 xl:col-span-10 space-y-6">
         <div id="filterIndicator" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-50"></div>
-        <div id="pageTitle" class="mb-4"></div>
+        <div id="pageTitle" class="mb-4" style="min-height: 0;"></div>
         
         <!-- PAINEL CENTRAL - GESTÃO INTEGRADA MUNICIPAL -->
         <section id="page-central-dashboard" style="display: none;">
@@ -1008,6 +1575,36 @@
               </div>
             </div>
           </header>
+
+          <!-- Filtros -->
+          <div class="mb-6 glass rounded-2xl p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label for="filtroMesOverview" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesOverview" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusOverview" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusOverview" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
           <!-- ============================================ -->
           <!-- SEÇÃO 1: RESUMO EXECUTIVO - KPIs Principais -->
@@ -1200,6 +1797,16 @@
                 <div id="dailyInfo" class="p-3 bg-slate-800/50 rounded-lg text-sm"></div>
               </div>
             </div>
+            <div class="grid grid-cols-12 gap-6 mt-6">
+              <div class="col-span-12 glass rounded-2xl p-5">
+                <h3 class="font-semibold text-purple-300 mb-3">📈 Evolução Temporal por Tipo de Manifestação</h3>
+                <div class="text-xs text-slate-400 mb-3">Evolução dos tipos de manifestação ao longo do tempo</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                  <canvas id="chartTiposTemporal"></canvas>
+                </div>
+                <div id="tiposTemporalInfo" class="p-3 bg-slate-800/50 rounded-lg text-sm"></div>
+              </div>
+            </div>
           </section>
 
           <section class="mb-6">
@@ -1227,24 +1834,31 @@
               <div class="text-xs text-slate-400">Análise detalhada de manifestações</div>
             </div>
             
-            
-            <!-- KPIs Principais -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-              <div class="glass rounded-xl p-4 border border-cyan-500/20">
-                <div class="text-xs text-slate-400 mb-1">Total de Manifestações</div>
-                <div id="kpiTotalOrgaos" class="text-2xl font-bold text-cyan-300">—</div>
+            <!-- Filtros -->
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label for="filtroMesOrgaoMes" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesOrgaoMes" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
               </div>
-              <div class="glass rounded-xl p-4 border border-violet-500/20">
-                <div class="text-xs text-slate-400 mb-1">Órgãos Únicos</div>
-                <div id="kpiOrgaosUnicos" class="text-2xl font-bold text-violet-300">—</div>
-              </div>
-              <div class="glass rounded-xl p-4 border border-emerald-500/20">
-                <div class="text-xs text-slate-400 mb-1">Média por Órgão</div>
-                <div id="kpiMediaOrgao" class="text-2xl font-bold text-emerald-300">—</div>
-              </div>
-              <div class="glass rounded-xl p-4 border border-amber-500/20">
-                <div class="text-xs text-slate-400 mb-1">Período Analisado</div>
-                <div id="kpiPeriodo" class="text-lg font-bold text-amber-300">—</div>
+              <div>
+                <label for="filtroStatusOrgaoMes" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusOrgaoMes" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
+                </select>
               </div>
             </div>
           </header>
@@ -1320,12 +1934,44 @@
           </div>
           
           <!-- Gráfico de Comparação (Opcional) -->
-          <div class="grid grid-cols-12 gap-6">
+          <div class="grid grid-cols-12 gap-6 mb-6">
             <div class="col-span-12 glass rounded-2xl p-5">
               <h3 class="font-semibold text-lg text-amber-400 mb-4">Top 10 Órgãos</h3>
               <div class="rounded-xl overflow-hidden bg-slate-900/30 p-4">
                 <canvas id="chartTopOrgaosBar"></canvas>
               </div>
+            </div>
+          </div>
+          
+          <!-- Gráficos Adicionais -->
+          <div class="grid grid-cols-12 gap-6 mb-6">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold text-lg text-purple-400 mb-4">Distribuição Percentual</h3>
+              <div class="text-xs text-slate-400 mb-3">Distribuição de manifestações por órgão</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-4">
+                <canvas id="chartOrgaosPizza"></canvas>
+              </div>
+              <div id="orgaosPizzaInfo" class="mt-3 p-3 bg-slate-800/50 rounded-lg text-center text-sm"></div>
+            </div>
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold text-lg text-cyan-400 mb-4">Evolução Temporal - Top 5 Órgãos</h3>
+              <div class="text-xs text-slate-400 mb-3">Evolução dos principais órgãos ao longo do tempo</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-4">
+                <canvas id="chartOrgaosTemporal"></canvas>
+              </div>
+              <div id="orgaosTemporalInfo" class="mt-3 p-3 bg-slate-800/50 rounded-lg text-center text-sm"></div>
+            </div>
+          </div>
+          
+          <!-- Gráfico de Barras Agrupadas -->
+          <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold text-lg text-emerald-400 mb-4">Órgãos por Mês (Barras Agrupadas)</h3>
+              <div class="text-xs text-slate-400 mb-3">Comparação de manifestações por órgão e mês</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-4">
+                <canvas id="chartOrgaosAgrupadas"></canvas>
+              </div>
+              <div id="orgaosAgrupadasInfo" class="mt-3 p-3 bg-slate-800/50 rounded-lg text-center text-sm"></div>
             </div>
           </div>
         </section>
@@ -1339,7 +1985,7 @@
             </div>
             
             <!-- Filtros -->
-            <div class="mb-4">
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label for="filtroMesTempoMedio" class="block text-sm font-medium text-slate-300 mb-2">
                   📅 Filtrar por mês:
@@ -1349,6 +1995,19 @@
                   class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
                 >
                   <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusTempoMedio" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusTempoMedio" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
                 </select>
               </div>
             </div>
@@ -1488,6 +2147,34 @@
               <div class="text-xs text-slate-400">Análise de prazos e vencimentos</div>
             </div>
             
+            <!-- Filtros -->
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label for="filtroMesVencimento" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesVencimento" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusVencimento" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusVencimento" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
+                </select>
+              </div>
+            </div>
+            
             <!-- KPIs Principais -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
               <div class="glass rounded-xl p-4 border border-cyan-500/20">
@@ -1513,7 +2200,7 @@
             </div>
             
             <!-- Filtros -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
               <div>
                 <label for="selectFiltroVencimento" class="block text-sm font-medium text-slate-300 mb-2">
                   Filtrar por prazo:
@@ -1540,6 +2227,21 @@
                   <option value="">Todas as secretarias</option>
                 </select>
               </div>
+              <div>
+                <label for="selectTempoResolucaoVencimento" class="block text-sm font-medium text-slate-300 mb-2">
+                  Filtrar por tempo de resolução:
+                </label>
+                <select 
+                  id="selectTempoResolucaoVencimento" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="0-15">0-15 dias</option>
+                  <option value="16-30">16-30 dias</option>
+                  <option value="31-60">31-60 dias</option>
+                  <option value="61+">Mais de 60 dias</option>
+                </select>
+              </div>
             </div>
           </header>
           
@@ -1561,63 +2263,57 @@
           </div>
         </section>
         
-        <!-- Página: Protocolos com Maior Demora -->
-        <section id="page-protocolos-demora" style="display: none;">
-          <header class="glass rounded-2xl p-6 mb-6">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="neon text-xl font-bold">⏳ Protocolos com Maior Tempo de Demora</h2>
-              <div class="text-xs text-slate-400">Top 10 protocolos com maior tempo de demora</div>
-            </div>
-            
-            <!-- KPIs Principais -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 mb-4">
-              <div class="glass rounded-xl p-4 border border-red-500/20">
-                <div class="text-xs text-slate-400 mb-1">Total de Protocolos</div>
-                <div id="kpiTotalDemora" class="text-2xl font-bold text-red-300">—</div>
-                <div class="text-xs text-slate-500 mt-1">com maior demora</div>
-              </div>
-              <div class="glass rounded-xl p-4 border border-orange-500/20">
-                <div class="text-xs text-slate-400 mb-1">Maior Demora</div>
-                <div id="kpiMaiorDemora" class="text-2xl font-bold text-orange-300">—</div>
-                <div class="text-xs text-slate-500 mt-1">dias</div>
-              </div>
-              <div class="glass rounded-xl p-4 border border-yellow-500/20">
-                <div class="text-xs text-slate-400 mb-1">Média de Demora</div>
-                <div id="kpiMediaDemora" class="text-2xl font-bold text-yellow-300">—</div>
-                <div class="text-xs text-slate-500 mt-1">dias</div>
-              </div>
-              <div class="glass rounded-xl p-4 border border-amber-500/20">
-                <div class="text-xs text-slate-400 mb-1">Não Concluídos</div>
-                <div id="kpiNaoConcluidos" class="text-2xl font-bold text-amber-300">—</div>
-                <div class="text-xs text-slate-500 mt-1">protocolos</div>
-              </div>
-            </div>
-          </header>
-          
-          <div class="glass rounded-2xl p-6">
-            <div class="mb-4">
-              <h3 class="font-semibold text-lg text-red-400 mb-2">Top 10 Protocolos com Maior Tempo de Demora</h3>
-              <p class="text-sm text-slate-400">
-                Protocolos ordenados por tempo de demora (em dias).
-                <br>
-                <span class="text-xs">Tempo de demora = Data atual/conclusão - Data de criação</span>
-              </p>
-            </div>
-            <div id="tableProtocolosDemora" class="overflow-x-auto">
-              <div class="text-center py-8 text-slate-400">
-                <div class="text-2xl mb-2 animate-spin">⏳</div>
-                <div>Carregando protocolos...</div>
-              </div>
-            </div>
-          </div>
-        </section>
-        
         <!-- Página: Notificações de Email -->
         <section id="page-notificacoes" style="display: none;">
           <header class="glass rounded-2xl p-6 mb-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">📧 Verificação de Notificações de Email</h2>
               <div class="text-xs text-slate-400">Histórico e estatísticas de emails enviados</div>
+            </div>
+            
+            <!-- Filtros Principais -->
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label for="filtroMesEnvioNotificacoes" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Mês de Envio:
+                </label>
+                <select 
+                  id="filtroMesEnvioNotificacoes" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusNotificacao" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Status da Notificação:
+                </label>
+                <select 
+                  id="filtroStatusNotificacao" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="enviado">✅ Enviado</option>
+                  <option value="erro">❌ Erro</option>
+                  <option value="pendente">⏳ Pendente</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroTipoNotificacao" class="block text-sm font-medium text-slate-300 mb-2">
+                  📧 Tipo de Notificação:
+                </label>
+                <select 
+                  id="filtroTipoNotificacao" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os tipos</option>
+                  <option value="15_dias">🟢 15 Dias Antes</option>
+                  <option value="vencimento">⚠️ Vencimento Hoje</option>
+                  <option value="30_dias_vencido">🟡 30 Dias Vencido</option>
+                  <option value="60_dias_vencido">🔴 60+ Dias Vencido</option>
+                  <option value="resumo_geral">📋 Resumo Geral</option>
+                </select>
+              </div>
             </div>
             
             <!-- KPIs Principais -->
@@ -1654,43 +2350,47 @@
               </div>
             </div>
             
-            <!-- Filtros -->
+            <!-- Filtros Secundários -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
               <div>
-                <label for="notificacoes-filtro-tipo" class="block text-sm font-medium text-slate-300 mb-2">
-                  Tipo:
-                </label>
-                <select id="notificacoes-filtro-tipo" class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200">
-                  <option value="">Todos</option>
-                  <option value="15_dias">15 Dias Antes</option>
-                  <option value="vencimento">Vencimento Hoje</option>
-                  <option value="60_dias_vencido">60 Dias Vencido</option>
-                </select>
-              </div>
-              <div>
                 <label for="notificacoes-filtro-secretaria" class="block text-sm font-medium text-slate-300 mb-2">
-                  Secretaria:
+                  🏢 Secretaria:
                 </label>
-                <input type="text" id="notificacoes-filtro-secretaria" placeholder="Filtrar por secretaria..." 
-                  class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200">
+                <input 
+                  type="text" 
+                  id="notificacoes-filtro-secretaria" 
+                  placeholder="Buscar secretaria..." 
+                  class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                >
               </div>
               <div>
-                <label for="notificacoes-filtro-status" class="block text-sm font-medium text-slate-300 mb-2">
-                  Status:
+                <label for="notificacoes-filtro-protocolo" class="block text-sm font-medium text-slate-300 mb-2">
+                  📄 Protocolo:
                 </label>
-                <select id="notificacoes-filtro-status" class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200">
-                  <option value="">Todos</option>
-                  <option value="enviado">Enviado</option>
-                  <option value="erro">Erro</option>
-                  <option value="pendente">Pendente</option>
-                </select>
+                <input 
+                  type="text" 
+                  id="notificacoes-filtro-protocolo" 
+                  placeholder="Buscar protocolo..." 
+                  class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent font-mono text-sm"
+                >
+              </div>
+              <div>
+                <label for="notificacoes-filtro-email" class="block text-sm font-medium text-slate-300 mb-2">
+                  📧 Email da Secretaria:
+                </label>
+                <input 
+                  type="text" 
+                  id="notificacoes-filtro-email" 
+                  placeholder="Buscar email..." 
+                  class="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm"
+                >
               </div>
               <div class="flex items-end gap-2">
-                <button id="notificacoes-btn-aplicar" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                  Aplicar
+                <button id="notificacoes-btn-aplicar" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-semibold">
+                  🔍 Aplicar
                 </button>
                 <button id="notificacoes-btn-limpar" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">
-                  Limpar
+                  🗑️ Limpar
                 </button>
               </div>
             </div>
@@ -1816,7 +2516,7 @@
             </div>
             
             <!-- Filtros -->
-            <div class="mb-4">
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label for="filtroMesTema" class="block text-sm font-medium text-slate-300 mb-2">
                   📅 Filtrar por mês:
@@ -1826,6 +2526,19 @@
                   class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
                 >
                   <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusTema" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusTema" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
                 </select>
               </div>
             </div>
@@ -1925,7 +2638,7 @@
             </div>
             
             <!-- Filtros -->
-            <div class="mb-4">
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label for="filtroMesAssunto" class="block text-sm font-medium text-slate-300 mb-2">
                   📅 Filtrar por mês:
@@ -1935,6 +2648,19 @@
                   class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
                 >
                   <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusAssunto" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusAssunto" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
                 </select>
               </div>
             </div>
@@ -1984,12 +2710,28 @@
               <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider px-3">📈 Análise Temporal</h2>
               <div class="h-px flex-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
             </div>
-            <div class="glass rounded-2xl p-5">
-              <h3 class="font-semibold mb-3 text-emerald-400">Assuntos por Mês</h3>
-              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
-                <canvas id="chartAssuntoMes"></canvas>
+            <div class="grid grid-cols-12 gap-6">
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-3 text-emerald-400">Assuntos por Mês</h3>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3 mb-3">
+                  <canvas id="chartAssuntoMes"></canvas>
+                </div>
+                <div id="legendAssuntoMes" class="space-y-2 text-xs"></div>
               </div>
-              <div id="legendAssuntoMes" class="space-y-2 text-xs"></div>
+              <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+                <h3 class="font-semibold mb-3 text-purple-400">Distribuição Percentual (Top 10)</h3>
+                <div class="text-xs text-slate-400 mb-3">Distribuição percentual dos principais assuntos</div>
+                <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                  <canvas id="chartAssuntoPizza"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="mt-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-cyan-400">Assuntos por Status (Barras Agrupadas)</h3>
+              <div class="text-xs text-slate-400 mb-3">Comparação de assuntos por status</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartAssuntoStatusAgrupadas"></canvas>
+              </div>
             </div>
           </div>
 
@@ -2041,6 +2783,24 @@
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-3 text-violet-400">Top Tipos (Rank)</h3>
               <ul id="rankTipo" class="space-y-2"></ul>
+            </div>
+          </div>
+          
+          <!-- Gráficos Adicionais -->
+          <div class="grid grid-cols-12 gap-6 mt-6">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-cyan-400">Evolução Temporal por Tipo</h3>
+              <div class="text-xs text-slate-400 mb-3">Evolução dos tipos ao longo do tempo</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartTipoTemporal"></canvas>
+              </div>
+            </div>
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-purple-400">Tipos por Mês (Barras Agrupadas)</h3>
+              <div class="text-xs text-slate-400 mb-3">Comparação de tipos por mês</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartTipoAgrupadas"></canvas>
+              </div>
             </div>
           </div>
         </section>
@@ -2098,6 +2858,24 @@
             <div class="col-span-12 md:col-span-6 glass rounded-2xl p-5">
               <h3 class="font-semibold mb-3 text-violet-400">Top Responsáveis (Rank)</h3>
               <ul id="rankResponsavel" class="space-y-2"></ul>
+            </div>
+          </div>
+          
+          <!-- Gráficos Adicionais -->
+          <div class="grid grid-cols-12 gap-6 mt-6">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-cyan-400">Evolução Temporal por Responsável</h3>
+              <div class="text-xs text-slate-400 mb-3">Evolução dos principais responsáveis ao longo do tempo</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartResponsavelTemporal"></canvas>
+              </div>
+            </div>
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-purple-400">Responsáveis por Mês (Barras Agrupadas)</h3>
+              <div class="text-xs text-slate-400 mb-3">Comparação de responsáveis por mês</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartResponsavelAgrupadas"></canvas>
+              </div>
             </div>
           </div>
         </section>
@@ -2169,7 +2947,7 @@
             </div>
             
             <!-- Filtros -->
-            <div class="mb-4">
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label for="filtroMesPrioridade" class="block text-sm font-medium text-slate-300 mb-2">
                   📅 Filtrar por mês:
@@ -2179,6 +2957,19 @@
                   class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
                 >
                   <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusPrioridade" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusPrioridade" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
                 </select>
               </div>
             </div>
@@ -2262,6 +3053,15 @@
               <div id="legendStatusMes" class="space-y-2 text-xs"></div>
             </div>
           </div>
+          
+          <!-- Gráfico de Linha Temporal -->
+          <div class="mt-6 glass rounded-2xl p-5">
+            <h3 class="font-semibold mb-3 text-cyan-400">Evolução Temporal por Status</h3>
+            <div class="text-xs text-slate-400 mb-3">Evolução de cada status ao longo do tempo</div>
+            <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+              <canvas id="chartStatusTemporal"></canvas>
+            </div>
+          </div>
         </section>
         
         <!-- Página: Bairro -->
@@ -2270,6 +3070,34 @@
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">🏘️ Análise por Bairro</h2>
               <div class="text-xs text-slate-400">Análise geográfica por bairro</div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label for="filtroMesBairro" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesBairro" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusBairro" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusBairro" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
+                </select>
+              </div>
             </div>
             
             <!-- KPIs Principais -->
@@ -2307,6 +3135,24 @@
               <div id="legendBairroMes" class="space-y-2 text-xs"></div>
             </div>
           </div>
+          
+          <!-- Gráficos Adicionais -->
+          <div class="grid grid-cols-12 gap-6 mt-6">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-cyan-400">Evolução Temporal por Bairro</h3>
+              <div class="text-xs text-slate-400 mb-3">Evolução dos principais bairros ao longo do tempo</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartBairroTemporal"></canvas>
+              </div>
+            </div>
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-purple-400">Distribuição Percentual (Top 10)</h3>
+              <div class="text-xs text-slate-400 mb-3">Distribuição percentual dos principais bairros</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartBairroPizza"></canvas>
+              </div>
+            </div>
+          </div>
         </section>
         
         <!-- Página: Por Cadastrante -->
@@ -2318,7 +3164,7 @@
             </div>
             
             <!-- Filtros -->
-            <div class="mb-4">
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label for="filtroMesCadastrante" class="block text-sm font-medium text-slate-300 mb-2">
                   📅 Filtrar por mês:
@@ -2328,6 +3174,19 @@
                   class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
                 >
                   <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusCadastrante" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusCadastrante" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
                 </select>
               </div>
             </div>
@@ -2377,6 +3236,31 @@
               <div class="text-xs text-slate-400">TOTAL CADASTRADAS ATÉ O MOMENTO</div>
             </div>
           </div>
+          
+          <!-- Gráficos Adicionais -->
+          <div class="grid grid-cols-12 gap-6 mt-6">
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-cyan-400">Evolução Temporal por Servidor</h3>
+              <div class="text-xs text-slate-400 mb-3">Evolução dos principais servidores ao longo do tempo</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartCadastranteTemporal"></canvas>
+              </div>
+            </div>
+            <div class="col-span-12 lg:col-span-6 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-purple-400">Distribuição por Servidor (Top 10)</h3>
+              <div class="text-xs text-slate-400 mb-3">Distribuição percentual dos principais servidores</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartCadastrantePizza"></canvas>
+              </div>
+            </div>
+            <div class="col-span-12 glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3 text-emerald-400">Servidores por Mês (Barras Agrupadas)</h3>
+              <div class="text-xs text-slate-400 mb-3">Comparação de servidores por mês</div>
+              <div class="rounded-xl overflow-hidden bg-slate-900/30 p-3">
+                <canvas id="chartCadastranteAgrupadas"></canvas>
+              </div>
+            </div>
+          </div>
         </section>
         
         <!-- Página: Reclamações -->
@@ -2385,6 +3269,34 @@
             <div class="flex items-center justify-between mb-4">
               <h2 class="neon text-xl font-bold">🚨 Reclamações e Denúncias</h2>
               <div class="text-xs text-slate-400">Análise de reclamações e denúncias</div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label for="filtroMesReclamacoes" class="block text-sm font-medium text-slate-300 mb-2">
+                  📅 Filtrar por mês:
+                </label>
+                <select 
+                  id="filtroMesReclamacoes" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos os meses</option>
+                </select>
+              </div>
+              <div>
+                <label for="filtroStatusReclamacoes" class="block text-sm font-medium text-slate-300 mb-2">
+                  📊 Filtrar por status:
+                </label>
+                <select 
+                  id="filtroStatusReclamacoes" 
+                  class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                >
+                  <option value="">Todos</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="em-andamento">Em Andamento</option>
+                </select>
+              </div>
             </div>
             
             <!-- KPIs Principais -->
@@ -2582,6 +3494,10 @@
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-lg font-semibold text-cyan-300">Filtros Disponíveis</h3>
               <div class="flex gap-2">
+                <button id="btnFiltrosCompostos" class="px-4 py-2 bg-purple-500/20 border border-purple-500/50 rounded-lg text-purple-300 hover:bg-purple-500/30 transition-colors flex items-center gap-2" title="Criar filtros compostos com operadores AND/OR">
+                  <span>⚙️</span>
+                  <span>Filtros Compostos</span>
+                </button>
                 <button id="btnAplicarFiltros" class="px-4 py-2 bg-green-500/20 border border-green-500/50 rounded-lg text-green-300 hover:bg-green-500/30 transition-colors flex items-center gap-2">
                   <span>✓</span>
                   <span>Aplicar Filtros</span>
@@ -2591,6 +3507,17 @@
                   <span>Limpar Todos</span>
                 </button>
               </div>
+            </div>
+            
+            <!-- Container para Filtros Compostos (inicialmente oculto) -->
+            <div id="compositeFiltersContainer" class="hidden mb-6 glass rounded-xl p-4 border border-purple-500/30">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-md font-semibold text-purple-300">Filtros Compostos (AND/OR)</h4>
+                <button id="btnFecharCompostos" class="px-3 py-1 bg-slate-700/50 border border-slate-600/50 rounded-lg text-slate-300 hover:bg-slate-700/70 transition-colors">
+                  ✕ Fechar
+                </button>
+              </div>
+              <div id="compositeFiltersUI" class="max-h-96 overflow-y-auto"></div>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3915,6 +4842,686 @@
             <canvas id="esic-chart-mensal-detail"></canvas>
           </div>
         </section>
+        
+        <!-- ============================================ -->
+        <!-- PÁGINAS DE DOCUMENTAÇÃO DOS MÓDULOS -->
+        <!-- ============================================ -->
+        
+        <section id="page-central-zeladoria" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h1 class="neon text-2xl font-bold">🧹 Manual do Módulo Zeladoria</h1>
+              <button onclick="window.switchSection('zeladoria')" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-sm font-semibold transition-colors">
+                🚀 Acessar Módulo Completo
+              </button>
+            </div>
+            <p class="text-slate-400 text-sm">Guia completo de uso do sistema de Zeladoria Municipal</p>
+          </header>
+          
+          <div class="space-y-6">
+            <!-- O que é -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-cyan-300 mb-4">📖 O que é o Módulo Zeladoria?</h2>
+              <p class="text-slate-300 mb-4">
+                O módulo Zeladoria é um sistema completo para gestão e análise dos serviços de zeladoria e manutenção urbana do município. 
+                Ele permite acompanhar demandas, ocorrências e serviços relacionados à manutenção da cidade.
+              </p>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">📋</div>
+                  <div class="font-semibold text-cyan-300 mb-1">Gestão de Demandas</div>
+                  <div class="text-xs text-slate-400">Acompanhe todas as demandas de zeladoria</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">🗺️</div>
+                  <div class="font-semibold text-violet-300 mb-1">Análise Geográfica</div>
+                  <div class="text-xs text-slate-400">Visualize ocorrências por localização</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">⏱️</div>
+                  <div class="font-semibold text-emerald-300 mb-1">Tempo de Resolução</div>
+                  <div class="text-xs text-slate-400">Monitore eficiência dos serviços</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Como usar -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-cyan-300 mb-4">🎯 Como Usar</h2>
+              <div class="space-y-4">
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center font-bold text-sm">1</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Acesse o Módulo</div>
+                    <div class="text-sm text-slate-400">Clique no botão "Acessar Módulo Completo" acima ou use o menu lateral para navegar até Zeladoria</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center font-bold text-sm">2</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Explore a Visão Geral</div>
+                    <div class="text-sm text-slate-400">Na página Home, você verá um resumo com KPIs principais e gráficos de síntese</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center font-bold text-sm">3</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Navegue pelas Análises</div>
+                    <div class="text-sm text-slate-400">Use o menu lateral para acessar análises detalhadas por Status, Categoria, Departamento, Bairro, etc.</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-cyan-500 rounded-full flex items-center justify-center font-bold text-sm">4</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Use os Filtros</div>
+                    <div class="text-sm text-slate-400">Aplique filtros para refinar suas análises e obter insights mais específicos</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Páginas disponíveis -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-cyan-300 mb-4">📊 Páginas e Análises Disponíveis</h2>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">🏠 Home</div>
+                  <div class="text-sm text-slate-400">Página inicial com apresentação do módulo</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">📊 Visão Geral</div>
+                  <div class="text-sm text-slate-400">Dashboard executivo com KPIs e gráficos consolidados</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">📊 Por Status</div>
+                  <div class="text-sm text-slate-400">Análise de demandas por status (Aberto, Fechado, etc.)</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">📂 Por Categoria</div>
+                  <div class="text-sm text-slate-400">Distribuição de demandas por categoria</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">🏢 Por Departamento</div>
+                  <div class="text-sm text-slate-400">Análise por departamento responsável</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">📍 Por Bairro</div>
+                  <div class="text-sm text-slate-400">Distribuição geográfica por bairro</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">👥 Por Responsável</div>
+                  <div class="text-sm text-slate-400">Análise por responsável pela demanda</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">📡 Por Canal</div>
+                  <div class="text-sm text-slate-400">Distribuição por canal de entrada</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">⏱️ Tempo de Resolução</div>
+                  <div class="text-sm text-slate-400">Análise de eficiência e tempo médio</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">📅 Análise Mensal</div>
+                  <div class="text-sm text-slate-400">Evolução temporal das demandas</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">🗺️ Análise Geográfica</div>
+                  <div class="text-sm text-slate-400">Visualização geográfica das ocorrências</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-cyan-300 mb-2">🗺️ Mapa Interativo</div>
+                  <div class="text-sm text-slate-400">Mapa interativo com localização das demandas</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Dicas -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-cyan-300 mb-4">💡 Dicas de Uso</h2>
+              <ul class="space-y-2 text-slate-300">
+                <li class="flex items-start gap-2">
+                  <span class="text-cyan-400">•</span>
+                  <span>Use a <strong>Visão Geral</strong> para ter uma visão consolidada rápida</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-cyan-400">•</span>
+                  <span>Combine filtros para análises mais específicas (ex: Status + Bairro)</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-cyan-400">•</span>
+                  <span>Clique nos gráficos para aplicar filtros automaticamente</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-cyan-400">•</span>
+                  <span>Use <strong>Ctrl+Clique</strong> para seleção múltipla em filtros</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-cyan-400">•</span>
+                  <span>O <strong>Mapa Interativo</strong> permite visualizar ocorrências geograficamente</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+        
+        <section id="page-central-ouvidoria" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h1 class="neon text-2xl font-bold">📣 Manual do Módulo Ouvidoria</h1>
+              <button onclick="window.switchSection('ouvidoria')" class="px-4 py-2 bg-violet-500 hover:bg-violet-600 rounded-lg text-sm font-semibold transition-colors">
+                🚀 Acessar Módulo Completo
+              </button>
+            </div>
+            <p class="text-slate-400 text-sm">Guia completo de uso do sistema de Ouvidoria Municipal</p>
+          </header>
+          
+          <div class="space-y-6">
+            <!-- O que é -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-violet-300 mb-4">📖 O que é o Módulo Ouvidoria?</h2>
+              <p class="text-slate-300 mb-4">
+                O módulo Ouvidoria é o sistema principal para gestão e análise de todas as manifestações dos cidadãos, incluindo 
+                reclamações, denúncias, sugestões e elogios. É o coração do sistema de participação cidadã do município.
+              </p>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">📝</div>
+                  <div class="font-semibold text-violet-300 mb-1">Gestão de Manifestações</div>
+                  <div class="text-xs text-slate-400">Acompanhe todas as manifestações dos cidadãos</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">🤖</div>
+                  <div class="font-semibold text-cyan-300 mb-1">CORA - Assistente Virtual</div>
+                  <div class="text-xs text-slate-400">Chat inteligente para análises em linguagem natural</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">📊</div>
+                  <div class="font-semibold text-emerald-300 mb-1">Análises Avançadas</div>
+                  <div class="text-xs text-slate-400">Cross-filter estilo Power BI</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Como usar -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-violet-300 mb-4">🎯 Como Usar</h2>
+              <div class="space-y-4">
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-violet-500 rounded-full flex items-center justify-center font-bold text-sm">1</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Acesse o Módulo</div>
+                    <div class="text-sm text-slate-400">Clique no botão "Acessar Módulo Completo" acima ou use o menu lateral</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-violet-500 rounded-full flex items-center justify-center font-bold text-sm">2</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Explore a Visão Geral</div>
+                    <div class="text-sm text-slate-400">Use a página "Visão Geral" com sistema Cross-filter: clique nos gráficos para filtrar todo o painel</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-violet-500 rounded-full flex items-center justify-center font-bold text-sm">3</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Use a CORA</div>
+                    <div class="text-sm text-slate-400">Acesse "Cora - Chat" para fazer perguntas em linguagem natural sobre os dados</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-violet-500 rounded-full flex items-center justify-center font-bold text-sm">4</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Navegue pelas Análises</div>
+                    <div class="text-sm text-slate-400">Explore análises por Tema, Assunto, Órgão, Status, Bairro, Responsável, etc.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Páginas disponíveis -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-violet-300 mb-4">📊 Páginas e Análises Disponíveis</h2>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">🏠 Home</div>
+                  <div class="text-sm text-slate-400">Página inicial com apresentação da CORA</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">📊 Visão Geral</div>
+                  <div class="text-sm text-slate-400">Dashboard com Cross-filter inteligente (Power BI style)</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">💬 Cora - Chat</div>
+                  <div class="text-sm text-slate-400">Assistente virtual para análises em linguagem natural</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">🔍 Filtros Avançados</div>
+                  <div class="text-sm text-slate-400">Página dedicada para filtros complexos e múltiplos</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">🏢 Por Órgão e Mês</div>
+                  <div class="text-sm text-slate-400">Análise combinada de órgão responsável e período</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">⏱️ Tempo Médio</div>
+                  <div class="text-sm text-slate-400">Análise de tempo médio de resolução com filtro por mês</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">⏰ Vencimento</div>
+                  <div class="text-sm text-slate-400">Acompanhamento de prazos e vencimentos</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">⏳ Protocolos com Maior Demora</div>
+                  <div class="text-sm text-slate-400">Identificação de protocolos que estão demorando mais</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">📧 Notificações de Email</div>
+                  <div class="text-sm text-slate-400">Gestão de notificações automáticas por email</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">📑 Por Tema</div>
+                  <div class="text-sm text-slate-400">Análise de manifestações por tema</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">📝 Por Assunto</div>
+                  <div class="text-sm text-slate-400">Distribuição por assunto específico</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">👤 Por Cadastrante</div>
+                  <div class="text-sm text-slate-400">Análise por quem cadastrou a manifestação</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">🚨 Reclamações e Denúncias</div>
+                  <div class="text-sm text-slate-400">Foco em reclamações e denúncias</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">📈 Projeção 2026</div>
+                  <div class="text-sm text-slate-400">Projeções e tendências para 2026</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-violet-300 mb-2">🏥 Unidades de Saúde</div>
+                  <div class="text-sm text-slate-400">Análise específica para unidades de saúde</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Dicas -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-violet-300 mb-4">💡 Dicas de Uso</h2>
+              <ul class="space-y-2 text-slate-300">
+                <li class="flex items-start gap-2">
+                  <span class="text-violet-400">•</span>
+                  <span>Use o <strong>Cross-filter</strong> na Visão Geral: clique em qualquer gráfico para filtrar todos os outros</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-violet-400">•</span>
+                  <span>Use <strong>Ctrl+Clique</strong> para seleção múltipla (ex: múltiplos status ou temas)</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-violet-400">•</span>
+                  <span><strong>Clique direito</strong> em qualquer gráfico para limpar todos os filtros</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-violet-400">•</span>
+                  <span>A <strong>CORA</strong> pode responder perguntas complexas como "Quantas reclamações sobre saúde tivemos em janeiro?"</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-violet-400">•</span>
+                  <span>Combine filtros na página <strong>Filtros Avançados</strong> para análises muito específicas</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+        
+        <section id="page-central-esic" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h1 class="neon text-2xl font-bold">📋 Manual do Módulo E-SIC</h1>
+              <button onclick="window.switchSection('esic')" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-sm font-semibold transition-colors">
+                🚀 Acessar Módulo Completo
+              </button>
+            </div>
+            <p class="text-slate-400 text-sm">Guia completo de uso do Sistema Eletrônico de Informações ao Cidadão</p>
+          </header>
+          
+          <div class="space-y-6">
+            <!-- O que é -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-emerald-300 mb-4">📖 O que é o Módulo E-SIC?</h2>
+              <p class="text-slate-300 mb-4">
+                O módulo E-SIC (Sistema Eletrônico de Informações ao Cidadão) gerencia todas as solicitações de informação 
+                feitas pelos cidadãos conforme a Lei de Acesso à Informação (Lei 12.527/2011). É o sistema de transparência ativa do município.
+              </p>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">📋</div>
+                  <div class="font-semibold text-emerald-300 mb-1">Solicitações de Informação</div>
+                  <div class="text-xs text-slate-400">Acompanhe todas as solicitações dos cidadãos</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">⏱️</div>
+                  <div class="font-semibold text-cyan-300 mb-1">Controle de Prazos</div>
+                  <div class="text-xs text-slate-400">Monitore prazos de resposta conforme a lei</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">📊</div>
+                  <div class="font-semibold text-violet-300 mb-1">Transparência</div>
+                  <div class="text-xs text-slate-400">Garanta acesso à informação pública</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Como usar -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-emerald-300 mb-4">🎯 Como Usar</h2>
+              <div class="space-y-4">
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center font-bold text-sm">1</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Acesse o Módulo</div>
+                    <div class="text-sm text-slate-400">Clique no botão "Acessar Módulo Completo" acima ou use o menu lateral</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center font-bold text-sm">2</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Explore a Visão Geral</div>
+                    <div class="text-sm text-slate-400">Veja KPIs principais e gráficos consolidados de todas as solicitações</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center font-bold text-sm">3</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Analise por Dimensão</div>
+                    <div class="text-sm text-slate-400">Explore análises por Status, Tipo de Informação, Responsável, Unidade, Canal</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center font-bold text-sm">4</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Monitore Prazos</div>
+                    <div class="text-sm text-slate-400">Use a análise mensal para acompanhar tendências e prazos</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Páginas disponíveis -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-emerald-300 mb-4">📊 Páginas e Análises Disponíveis</h2>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">🏠 Home</div>
+                  <div class="text-sm text-slate-400">Página inicial com apresentação do módulo</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">📊 Visão Geral</div>
+                  <div class="text-sm text-slate-400">Dashboard executivo com KPIs e gráficos consolidados</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">💬 Cora - Chat</div>
+                  <div class="text-sm text-slate-400">Assistente virtual para análises em linguagem natural</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">📈 Por Status</div>
+                  <div class="text-sm text-slate-400">Análise de solicitações por status (Aguardando, Respondida, etc.)</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">📑 Tipo de Informação</div>
+                  <div class="text-sm text-slate-400">Distribuição por tipo de informação solicitada</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">👤 Por Responsável</div>
+                  <div class="text-sm text-slate-400">Análise por responsável pela resposta</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">🏢 Por Unidade</div>
+                  <div class="text-sm text-slate-400">Distribuição por unidade de contato</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">📞 Por Canal</div>
+                  <div class="text-sm text-slate-400">Análise por canal de entrada da solicitação</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-emerald-300 mb-2">📅 Análise Mensal</div>
+                  <div class="text-sm text-slate-400">Evolução temporal das solicitações</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Dicas -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-emerald-300 mb-4">💡 Dicas de Uso</h2>
+              <ul class="space-y-2 text-slate-300">
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-400">•</span>
+                  <span>Use a <strong>Visão Geral</strong> para ter uma visão consolidada rápida de todas as solicitações</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-400">•</span>
+                  <span>Monitore o <strong>Status</strong> para identificar solicitações que precisam de atenção</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-400">•</span>
+                  <span>A análise <strong>Por Responsável</strong> ajuda a distribuir melhor o trabalho</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-400">•</span>
+                  <span>Use a <strong>Análise Mensal</strong> para identificar tendências e picos de demanda</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-400">•</span>
+                  <span>A <strong>CORA</strong> pode ajudar a responder perguntas sobre os dados do E-SIC</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+        
+        <section id="page-central-cora" style="display: none;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h1 class="neon text-2xl font-bold">🛰️ Manual do Módulo CORA</h1>
+              <button onclick="loadSection('cora-chat')" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 rounded-lg text-sm font-semibold transition-colors">
+                🚀 Acessar Chat da CORA
+              </button>
+            </div>
+            <p class="text-slate-400 text-sm">Guia completo da Central de Operações e Resposta Ágil</p>
+          </header>
+          
+          <div class="space-y-6">
+            <!-- O que é -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-amber-300 mb-4">📖 O que é a CORA?</h2>
+              <p class="text-slate-300 mb-4">
+                A CORA (Central de Operações e Resposta Ágil) é uma assistente virtual inteligente especializada em análises de dados 
+                dos sistemas municipais. Ela utiliza inteligência artificial (Gemini) para responder perguntas em linguagem natural 
+                sobre os dados de Ouvidoria, Zeladoria e E-SIC.
+              </p>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">💬</div>
+                  <div class="font-semibold text-amber-300 mb-1">Chat Inteligente</div>
+                  <div class="text-xs text-slate-400">Perguntas em linguagem natural</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">🧠</div>
+                  <div class="font-semibold text-cyan-300 mb-1">IA Avançada</div>
+                  <div class="text-xs text-slate-400">Powered by Google Gemini</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="text-2xl mb-2">📊</div>
+                  <div class="font-semibold text-violet-300 mb-1">Análises em Tempo Real</div>
+                  <div class="text-xs text-slate-400">Acesso direto ao banco de dados</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Como usar -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-amber-300 mb-4">🎯 Como Usar</h2>
+              <div class="space-y-4">
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm">1</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Acesse o Chat</div>
+                    <div class="text-sm text-slate-400">Clique no botão "Acessar Chat da CORA" acima ou use o menu "Cora - Chat" em qualquer módulo</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm">2</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Faça Perguntas</div>
+                    <div class="text-sm text-slate-400">Digite perguntas em linguagem natural, como "Quantas reclamações sobre saúde tivemos em janeiro?"</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm">3</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Receba Respostas</div>
+                    <div class="text-sm text-slate-400">A CORA analisa os dados e fornece respostas precisas com base nas informações reais do sistema</div>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center font-bold text-sm">4</div>
+                  <div>
+                    <div class="font-semibold text-slate-200 mb-1">Explore Análises</div>
+                    <div class="text-sm text-slate-400">Peça análises comparativas, tendências, projeções e insights estratégicos</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Exemplos de perguntas -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-amber-300 mb-4">💬 Exemplos de Perguntas</h2>
+              <div class="space-y-3">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">📊 Perguntas sobre Quantidades</div>
+                  <ul class="text-sm text-slate-300 space-y-1 ml-4">
+                    <li>• "Quantas manifestações temos em aberto?"</li>
+                    <li>• "Quantas demandas de zeladoria foram fechadas este mês?"</li>
+                    <li>• "Qual o total de solicitações E-SIC?"</li>
+                  </ul>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">📈 Perguntas sobre Análises</div>
+                  <ul class="text-sm text-slate-300 space-y-1 ml-4">
+                    <li>• "Qual o tema mais recorrente nas reclamações?"</li>
+                    <li>• "Qual secretaria tem mais demandas em aberto?"</li>
+                    <li>• "Qual o tempo médio de resolução das demandas de zeladoria?"</li>
+                  </ul>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">📅 Perguntas sobre Períodos</div>
+                  <ul class="text-sm text-slate-300 space-y-1 ml-4">
+                    <li>• "Quantas reclamações tivemos em janeiro de 2025?"</li>
+                    <li>• "Qual a tendência de demandas nos últimos 3 meses?"</li>
+                    <li>• "Compare o volume de solicitações E-SIC entre janeiro e fevereiro"</li>
+                  </ul>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">🔍 Perguntas Específicas</div>
+                  <ul class="text-sm text-slate-300 space-y-1 ml-4">
+                    <li>• "Quais são os bairros com mais ocorrências de zeladoria?"</li>
+                    <li>• "Quantas denúncias sobre saúde temos?"</li>
+                    <li>• "Qual o status das solicitações E-SIC da Secretaria de Educação?"</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Funcionalidades -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-amber-300 mb-4">⚙️ Funcionalidades</h2>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">🔍 Busca Inteligente</div>
+                  <div class="text-sm text-slate-400">Busca e análise de dados em tempo real</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">📊 Cálculos Matemáticos</div>
+                  <div class="text-sm text-slate-400">Realiza cálculos e análises estatísticas</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">📈 Análises Comparativas</div>
+                  <div class="text-sm text-slate-400">Compara períodos, módulos e dimensões</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">🎯 Contexto Inteligente</div>
+                  <div class="text-sm text-slate-400">Detecta automaticamente o módulo ativo</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">💾 Histórico de Conversas</div>
+                  <div class="text-sm text-slate-400">Mantém histórico das conversas</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                  <div class="font-semibold text-amber-300 mb-2">🔄 Reindexação</div>
+                  <div class="text-sm text-slate-400">Pode reindexar dados para atualizar conhecimento</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Dicas -->
+            <div class="glass rounded-2xl p-6">
+              <h2 class="text-xl font-bold text-amber-300 mb-4">💡 Dicas de Uso</h2>
+              <ul class="space-y-2 text-slate-300">
+                <li class="flex items-start gap-2">
+                  <span class="text-amber-400">•</span>
+                  <span>Seja <strong>específico</strong> nas perguntas para obter respostas mais precisas</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-amber-400">•</span>
+                  <span>Use <strong>períodos específicos</strong> quando possível (ex: "em janeiro de 2025")</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-amber-400">•</span>
+                  <span>A CORA entende <strong>linguagem natural</strong>, não precisa usar termos técnicos</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-amber-400">•</span>
+                  <span>Peça <strong>análises comparativas</strong> para insights mais profundos</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-amber-400">•</span>
+                  <span>O contexto muda automaticamente: no módulo Zeladoria, ela foca em dados de Zeladoria</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- Página: Configurações Administrativas -->
+        <section id="page-configuracoes" style="display: none; margin-top: 0; padding-top: 0;">
+          <header class="glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h1 class="neon text-3xl font-bold mb-2">⚙️ Configurações Administrativas</h1>
+                <p class="text-slate-400">Gerencie todas as configurações do sistema</p>
+              </div>
+            </div>
+          </header>
+          
+          <!-- Tabs de navegação -->
+          <div class="config-tabs glass rounded-2xl p-4 mb-6 flex flex-wrap gap-2">
+            <button class="config-tab active" onclick="showConfigTab('cache')">⚡ Cache</button>
+            <button class="config-tab" onclick="showConfigTab('notifications')">📧 Notificações</button>
+            <button class="config-tab" onclick="showConfigTab('logs')">📝 Logs</button>
+            <button class="config-tab" onclick="showConfigTab('sla')">⏱️ SLA</button>
+            <button class="config-tab" onclick="showConfigTab('integrations')">🔗 Integrações</button>
+            <button class="config-tab" onclick="showConfigTab('secretarias')">🏛️ Secretarias</button>
+            <button class="config-tab" onclick="showConfigTab('system')">📊 Sistema</button>
+          </div>
+          
+          <!-- Conteúdo das seções -->
+          <div id="config-cache" class="config-content"></div>
+          <div id="config-notifications" class="config-content" style="display: none;"></div>
+          <div id="config-logs" class="config-content" style="display: none;"></div>
+          <div id="config-sla" class="config-content" style="display: none;"></div>
+          <div id="config-integrations" class="config-content" style="display: none;"></div>
+          <div id="config-secretarias" class="config-content" style="display: none;"></div>
+          <div id="config-system" class="config-content" style="display: none;"></div>
+        </section>
       </main>
 
       <!-- Modal: Informações de Secretarias -->
@@ -3988,6 +5595,10 @@
     <script src="/scripts/utils/pageHelper.js"></script>
     <script src="/scripts/utils/timerManager.js"></script>
     <script src="/scripts/utils/dateUtils.js" defer></script>
+    <script src="/scripts/utils/crossfilter-helper.js"></script>
+    <script src="/scripts/utils/kpi-filter-helper.js"></script>
+    <script src="/scripts/utils/page-filter-helper.js"></script>
+    <script src="/scripts/utils/connect-all-elements.js"></script>
     <script src="/scripts/core/config.js"></script>
     <script src="/scripts/core/cache-config.js"></script>
     <script src="/scripts/core/dataLoader.js"></script>
@@ -4002,22 +5613,33 @@
     <script src="/scripts/core/chart-communication/auto-connect.js"></script>
     <script src="/scripts/core/chart-communication.js" defer></script>
     <script src="/scripts/core/crossfilter-overview.js" defer></script>
+    <!-- Sistema de Filtros Melhorado -->
+    <script src="/scripts/core/filter-cache.js"></script>
+    <script src="/scripts/core/filter-banner.js"></script>
+    <script src="/scripts/core/filter-history.js"></script>
+    <script src="/scripts/core/filter-history-ui.js"></script>
+    <script src="/scripts/core/filter-helper.js"></script>
     <!-- Script de teste do crossfilter (apenas em desenvolvimento) -->
     <script src="/scripts/test/test-crossfilter-browser.js" defer></script>
     <script src="/scripts/test/test-crossfilter-aggregation.js" defer></script>
+    <script src="/scripts/test/test-crossfilter.js" defer></script>
+    <script src="/scripts/test/test-crossfilter-interactive.js" defer></script>
+    <script src="/scripts/test/test-crossfilter-complete.js" defer></script>
     <!-- MIGRAÇÃO TYPESCRIPT: chart-legend.ts criado, mantendo .js para compatibilidade -->
     <script src="/scripts/core/chart-legend.js" defer></script>
     <script src="/scripts/core/chart-factory.js" defer></script>
     <script src="/scripts/modules/data-tables.js" defer></script>
     <!-- Páginas Painel Central -->
     <script src="/scripts/pages/central/central-dashboard.js" defer></script>
+    <!-- Página Configurações -->
+    <script src="/scripts/pages/configuracoes.js" defer></script>
     <!-- Páginas Ouvidoria -->
     <script src="/scripts/core/month-filter-helper.js" defer></script>
+    <script src="/scripts/utils/page-filters-helper.js" defer></script>
     <script src="/scripts/pages/ouvidoria/overview.js" defer></script>
     <script src="/scripts/pages/ouvidoria/orgao-mes.js" defer></script>
     <script src="/scripts/pages/ouvidoria/tempo-medio.js" defer></script>
     <script src="/scripts/pages/ouvidoria/vencimento.js" defer></script>
-    <script src="/scripts/pages/ouvidoria/protocolos-demora.js" defer></script>
     <script src="/scripts/pages/ouvidoria/notificacoes.js" defer></script>
     <script src="/scripts/pages/filtros-avancados.js" defer></script>
     <script src="/scripts/pages/ouvidoria/tema.js" defer></script>
@@ -4056,6 +5678,15 @@
     <script src="/scripts/pages/esic/esic-canal.js" defer></script>
     <script src="/scripts/pages/esic/esic-mensal.js" defer></script>
     <script src="/scripts/utils/secretarias-info.js" defer></script>
+    <script src="/scripts/core/city-loading.js" defer></script>
+    <script src="/scripts/core/crossfilter-core.js" defer></script>
+    <script src="/scripts/core/crossfilter-adapter.js" defer></script>
+    <script src="/scripts/core/composite-filters-ui.js" defer></script>
+    <!-- Exemplos de integração crossfilter -->
+    <script src="/scripts/pages/ouvidoria/tema-crossfilter.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/assunto-crossfilter.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/status-crossfilter.js" defer></script>
+    <script src="/scripts/pages/ouvidoria/responsavel-crossfilter.js" defer></script>
     <script src="/scripts/main.js" defer></script>
     
     <!-- Tratamento global de promises não tratadas -->

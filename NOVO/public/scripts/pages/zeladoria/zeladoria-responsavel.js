@@ -63,13 +63,27 @@ async function loadZeladoriaResponsavel() {
     const values = sortedData.map(d => d.count || 0);
     
     // Criar gráfico principal (barra horizontal)
-    await window.chartFactory?.createBarChart('zeladoria-responsavel-chart', labels, values, {
+    const chartResp = await window.chartFactory?.createBarChart('zeladoria-responsavel-chart', labels, values, {
       horizontal: true,
       colorIndex: 4,
       field: 'responsavel',
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       legendContainer: 'zeladoria-responsavel-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros
+    if (chartResp && sortedData && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartResp, sortedData, {
+        field: 'responsavel',
+        valueField: 'key',
+        onFilterChange: () => {
+          if (window.loadZeladoriaResponsavel) setTimeout(() => window.loadZeladoriaResponsavel(), 100);
+        },
+        onClearFilters: () => {
+          if (window.loadZeladoriaResponsavel) setTimeout(() => window.loadZeladoriaResponsavel(), 100);
+        }
+      });
+    }
     
     // Renderizar ranking de responsáveis
     renderResponsavelRanking(sortedData);
@@ -89,6 +103,36 @@ async function loadZeladoriaResponsavel() {
     
     // Atualizar KPIs no header
     updateZeladoriaResponsavelKPIs(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => updateZeladoriaResponsavelKPIs(sortedData),
+        pageLoadFunction: window.loadZeladoriaResponsavel
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#zeladoria-responsavel-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const resp = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: resp,
+              field: 'responsavel'
+            };
+          }),
+          field: 'responsavel',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]') || card.querySelector('.font-semibold');
+            return textEl ? (textEl.getAttribute('title') || textEl.textContent.trim()) : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('👥 loadZeladoriaResponsavel: Concluído');

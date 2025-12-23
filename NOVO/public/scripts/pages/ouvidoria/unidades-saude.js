@@ -233,6 +233,20 @@ async function carregarDadosUnidade(unidade) {
     // Atualizar KPIs
     updateUnidadesSaudeKPIs(assuntos, tipos);
     
+    // CROSSFILTER: Conectar TODOS os elementos automaticamente (garantir que nada foi esquecido)
+    setTimeout(() => {
+      if (window.connectAllElementsInPage) {
+        window.connectAllElementsInPage('page-unidades-saude', {
+          fieldMap: {
+            'chartUnidadesSaude': 'unidade'
+          },
+          defaultField: 'unidade',
+          kpiUpdateFunction: () => updateUnidadesSaudeKPIs(assuntos, tipos),
+          pageLoadFunction: window.loadUnidadesSaude
+        });
+      }
+    }, 600);
+    
     if (window.Logger) {
       window.Logger.success(`🏥 carregarDadosUnidade: ${unidade.nome} concluído`);
     }
@@ -293,27 +307,71 @@ async function renderUnidadeTiposChart(canvas, tipos, unitName) {
     canvas.id = chartId;
   }
   
-  await window.chartFactory?.createDoughnutChart(chartId, labels, values, {
+  const chart = await window.chartFactory?.createDoughnutChart(chartId, labels, values, {
     type: 'doughnut',
     field: 'tipoDeManifestacao',
-    onClick: false,
+    onClick: true, // Habilitar interatividade para crossfilter
     chartOptions: {
       plugins: {
         legend: { display: true, position: 'right', labels: { color: '#94a3b8' } }
       }
     }
   });
+  
+  // CROSSFILTER: Adicionar sistema de filtros
+  if (chart && tipos && window.addCrossfilterToChart) {
+    setTimeout(() => {
+      if (chart.canvas && chart.canvas.ownerDocument) {
+        try {
+          window.addCrossfilterToChart(chart, tipos, {
+            field: 'tipoDeManifestacao',
+            valueField: 'tipo',
+            onFilterChange: () => {
+              if (window.carregarDadosUnidade && unidadeSelecionada) {
+                window.carregarDadosUnidade(unidadeSelecionada);
+              }
+            },
+            onClearFilters: () => {
+              if (window.carregarDadosUnidade && unidadeSelecionada) {
+                window.carregarDadosUnidade(unidadeSelecionada);
+              }
+            }
+          });
+          
+          if (window.Logger) {
+            window.Logger.debug('✅ Gráfico de tipos de unidade conectado ao crossfilter');
+          }
+        } catch (error) {
+          if (window.Logger) {
+            window.Logger.warn('Erro ao adicionar crossfilter ao gráfico de tipos:', error);
+          }
+        }
+      }
+    }, 100);
+  }
 }
 
 /**
  * Inicializar listeners de filtro para a página Unidades de Saúde
+ * Usa o helper reutilizável baseado no padrão da Overview
  */
 function initUnidadesSaudeFilterListeners() {
-  if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
-    window.chartCommunication.createPageFilterListener('page-unidades-saude', loadUnidadesSaude, 500);
-    if (window.Logger) {
-      window.Logger.success('✅ Listeners de filtro para Unidades de Saúde inicializados');
+  // Usar helper reutilizável (mesmo padrão da Overview)
+  if (window.createPageFilterListener) {
+    window.createPageFilterListener({
+      pageId: 'page-unidades-saude',
+      listenerKey: '_unidadesSaudeListenerRegistered',
+      loadFunction: loadUnidadesSaude
+    });
+  } else {
+    // Fallback: método antigo
+    if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+      window.chartCommunication.createPageFilterListener('page-unidades-saude', loadUnidadesSaude, 500);
     }
+  }
+  
+  if (window.Logger) {
+    window.Logger.success('✅ Listeners de filtro para Unidades de Saúde inicializados');
   }
 }
 

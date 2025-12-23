@@ -32,19 +32,30 @@ export async function getSecretariasInfo(req, res) {
         .lean();
 
       // Mapear para um formato mais enxuto para o frontend
-      const items = secretarias.map((s) => ({
-        id: s._id.toString(),
-        name: s.name,
-        acronym: s.acronym,
-        email: s.email,
-        alternateEmail: s.alternateEmail,
-        phone: s.phone,
-        phoneAlt: s.phoneAlt,
-        address: s.address,
-        bairro: s.bairro,
-        district: s.district,
-        notes: s.notes,
-      }));
+      const items = secretarias.map((s) => {
+        // Se name está vazio, usar fallback (acronym, email ou ID)
+        let nomeExibicao = s.name;
+        if (!nomeExibicao || nomeExibicao.trim() === '') {
+          nomeExibicao = s.acronym || 
+                        (s.email ? s.email.split('@')[0] : null) || 
+                        `Secretaria ${s._id.toString().slice(-6)}` ||
+                        'N/A';
+        }
+        
+        return {
+          id: s._id.toString(),
+          name: nomeExibicao,
+          acronym: s.acronym || '',
+          email: s.email || '',
+          alternateEmail: s.alternateEmail || '',
+          phone: s.phone || '',
+          phoneAlt: s.phoneAlt || '',
+          address: s.address || '',
+          bairro: s.bairro || '',
+          district: s.district || '',
+          notes: s.notes || '',
+        };
+      });
 
       return {
         total: items.length,

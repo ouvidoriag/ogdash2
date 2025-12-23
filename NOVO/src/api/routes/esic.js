@@ -12,6 +12,7 @@
  * - GET /api/esic/by-status-month - Status por mês
  * - GET /api/esic/by-tipo-responsavel - Tipo de Informação por Responsável
  * - GET /api/esic/by-canal-unidade - Canal por Unidade
+ * - GET /api/esic/categorias-por-assunto - Categoriza tipos de informação por assuntos
  * 
  * @param {*} prisma - Parâmetro mantido para compatibilidade (não usado - sistema migrado para Mongoose)
  * @param {Function} getMongoClient - Função para obter cliente MongoDB
@@ -89,6 +90,14 @@ export default function esicRoutes() {
    * REFATORAÇÃO: Mongoose (sem prisma)
    */
   router.get('/by-canal-unidade', (req, res) => esicController.byCanalUnidade(req, res));
+  
+  /**
+   * GET /api/esic/categorias-por-assunto
+   * Categoriza tipos de pedidos de informação com base nos assuntos
+   * Query params: limit (padrão: 50), tipoInformacao (opcional)
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/categorias-por-assunto', (req, res) => esicController.categoriasPorAssunto(req, res));
   
   return router;
 }

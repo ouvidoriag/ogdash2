@@ -120,6 +120,7 @@ const CHART_CONFIG = {
   ],
   
   // Mapeamento de cores por tipo de manifestação (modo escuro) - cores suaves e consistentes
+  // PADRÃO: Denúncia=vermelho, Reclamação=laranja, Sugestão=amarelo, Elogio=verde, ESIC=azul
   TIPO_MANIFESTACAO_COLORS: {
     'elogio': '#10b981',        // Verde - positivo
     'elogios': '#10b981',
@@ -133,11 +134,11 @@ const CHART_CONFIG = {
     'denuncia': '#ef4444',
     'denuncias': '#ef4444',
     'denún': '#ef4444',
-    'sugestão': '#3b82f6',      // Azul - neutro/positivo
-    'sugestões': '#3b82f6',
-    'sugestao': '#3b82f6',
-    'sugestoes': '#3b82f6',
-    'sugest': '#3b82f6',
+    'sugestão': '#eab308',      // Amarelo - neutro/positivo (PADRÃO)
+    'sugestões': '#eab308',
+    'sugestao': '#eab308',
+    'sugestoes': '#eab308',
+    'sugest': '#eab308',
     'não informado': '#94a3b8', // Cinza
     'nao informado': '#94a3b8',
     'não informada': '#94a3b8',
@@ -146,18 +147,19 @@ const CHART_CONFIG = {
     'nao informados': '#94a3b8',
     'não informadas': '#94a3b8',
     'nao informadas': '#94a3b8',
-    'acesso a informação': '#eab308', // Amarelo
-    'acesso a informacao': '#eab308',
-    'acesso à informação': '#eab308',
-    'acesso à informacao': '#eab308',
-    'esic': '#eab308',          // Amarelo
-    'e-sic': '#eab308',
-    'e sic': '#eab308',
-    'lei de acesso': '#eab308',
-    'lei acesso': '#eab308'
+    'acesso a informação': '#3b82f6', // Azul (PADRÃO)
+    'acesso a informacao': '#3b82f6',
+    'acesso à informação': '#3b82f6',
+    'acesso à informacao': '#3b82f6',
+    'esic': '#3b82f6',          // Azul (PADRÃO)
+    'e-sic': '#3b82f6',
+    'e sic': '#3b82f6',
+    'lei de acesso': '#3b82f6',
+    'lei acesso': '#3b82f6'
   },
   
   // Mapeamento de cores por tipo de manifestação (modo claro - cores mais escuras para contraste)
+  // PADRÃO: Denúncia=vermelho, Reclamação=laranja, Sugestão=amarelo, Elogio=verde, ESIC=azul
   TIPO_MANIFESTACAO_COLORS_LIGHT: {
     'elogio': '#059669',        // Verde mais escuro
     'elogios': '#059669',
@@ -171,11 +173,11 @@ const CHART_CONFIG = {
     'denuncia': '#dc2626',
     'denuncias': '#dc2626',
     'denún': '#dc2626',
-    'sugestão': '#2563eb',      // Azul mais escuro
-    'sugestões': '#2563eb',
-    'sugestao': '#2563eb',
-    'sugestoes': '#2563eb',
-    'sugest': '#2563eb',
+    'sugestão': '#ca8a04',      // Amarelo mais escuro (PADRÃO)
+    'sugestões': '#ca8a04',
+    'sugestao': '#ca8a04',
+    'sugestoes': '#ca8a04',
+    'sugest': '#ca8a04',
     'não informado': '#64748b', // Cinza mais escuro
     'nao informado': '#64748b',
     'não informada': '#64748b',
@@ -184,15 +186,15 @@ const CHART_CONFIG = {
     'nao informados': '#64748b',
     'não informadas': '#64748b',
     'nao informadas': '#64748b',
-    'acesso a informação': '#ca8a04', // Amarelo mais escuro
-    'acesso a informacao': '#ca8a04',
-    'acesso à informação': '#ca8a04',
-    'acesso à informacao': '#ca8a04',
-    'esic': '#ca8a04',          // Amarelo mais escuro
-    'e-sic': '#ca8a04',
-    'e sic': '#ca8a04',
-    'lei de acesso': '#ca8a04',
-    'lei acesso': '#ca8a04'
+    'acesso a informação': '#2563eb', // Azul mais escuro (PADRÃO)
+    'acesso a informacao': '#2563eb',
+    'acesso à informação': '#2563eb',
+    'acesso à informacao': '#2563eb',
+    'esic': '#2563eb',          // Azul mais escuro (PADRÃO)
+    'e-sic': '#2563eb',
+    'e sic': '#2563eb',
+    'lei de acesso': '#2563eb',
+    'lei acesso': '#2563eb'
   },
   
   // Mapeamento de cores por Status (consistente em todo o dashboard)

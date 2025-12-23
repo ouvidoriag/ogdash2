@@ -33,6 +33,8 @@ import colabRoutes from './colab.js';
 import batchRoutes from './batch.js';
 import metricsRoutes from './metrics.js';
 import centralRoutes from './central.js';
+import savedFiltersRoutes from './savedFilters.js';
+import configRoutes from './config.js';
 
 export default function apiRoutes(prisma, getMongoClient) {
   const router = express.Router();
@@ -56,7 +58,9 @@ export default function apiRoutes(prisma, getMongoClient) {
     colab: '/api/colab/*',
     batch: '/api/batch/*',
     metrics: '/api/metrics/*',
-    central: '/api/central/*'
+    central: '/api/central/*',
+    savedFilters: '/api/saved-filters/*',
+    config: '/api/config/*'
   };
   
   // Rotas de agregação - Análises e agregações de dados
@@ -111,6 +115,12 @@ export default function apiRoutes(prisma, getMongoClient) {
   
   // Rotas do Painel Central - Dados consolidados de todos os sistemas
   router.use('/central', centralRoutes());
+  
+  // Rotas de Filtros Salvos - Gerenciamento de filtros salvos por usuário
+  router.use('/saved-filters', savedFiltersRoutes());
+  
+  // Rotas de Configurações - Painel administrativo de configurações
+  router.use('/config', configRoutes);
   
   // Log de carregamento das rotas (apenas em desenvolvimento)
   if (process.env.NODE_ENV === 'development') {

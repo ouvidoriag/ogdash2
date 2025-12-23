@@ -164,10 +164,37 @@ async function loadOrgaoMes(forceRefresh = false) {
   }
   
   const page = document.getElementById('page-orgao-mes');
-  if (!page || page.style.display === 'none') {
+  if (!page) {
     if (window.Logger) {
-      window.Logger.debug('🏢 loadOrgaoMes: Página não visível, pulando carregamento');
+      window.Logger.warn('⚠️ loadOrgaoMes: Página page-orgao-mes não encontrada');
     }
+    return Promise.resolve();
+  }
+  
+  // Verificar se a página está visível
+  const isPageVisible = page.style.display !== 'none' && 
+                        page.offsetParent !== null && 
+                        window.getComputedStyle(page).display !== 'none';
+  
+  if (!isPageVisible) {
+    if (window.Logger) {
+      window.Logger.debug('🏢 loadOrgaoMes: Página não visível, pulando carregamento', {
+        display: page.style.display,
+        offsetParent: page.offsetParent,
+        computedDisplay: window.getComputedStyle(page).display
+      });
+    }
+    // Mesmo assim, garantir que os KPIs sejam atualizados quando a página se tornar visível
+    // Adicionar listener para quando a página se tornar visível
+    const observer = new MutationObserver(() => {
+      const nowVisible = page.style.display !== 'none' && 
+                         page.offsetParent !== null && 
+                         window.getComputedStyle(page).display !== 'none';
+      if (nowVisible && currentOrgaosData.length > 0) {
+        observer.disconnect();
+      }
+    });
+    observer.observe(page, { attributes: true, attributeFilter: ['style'] });
     return Promise.resolve();
   }
   
@@ -330,10 +357,23 @@ async function loadOrgaoMes(forceRefresh = false) {
         }
         
         // Normalizar formato de dataMensal
-        dataMensal = dataMensal.map(m => ({
-          ym: m.month || m.ym || m._id,
-          count: m.count || 0
-        })).filter(m => m.ym);
+        dataMensal = (dataMensal || []).map(m => ({
+          ym: m.month || m.ym || m._id || '',
+          count: Number(m.count || m.value || 0)
+        })).filter(m => {
+          // Garantir formato YYYY-MM válido
+          return m.ym && 
+                 m.ym.length >= 7 && 
+                 /^\d{4}-\d{2}/.test(m.ym) &&
+                 !isNaN(m.count);
+        });
+        
+        if (window.Logger) {
+          window.Logger.debug('🏢 loadOrgaoMes: Dados mensais do fallback normalizados', {
+            count: dataMensal.length,
+            sample: dataMensal[0]
+          });
+        }
       }
     } else {
       // Sem filtros, carregar dados agregados normalmente
@@ -374,11 +414,20 @@ async function loadOrgaoMes(forceRefresh = false) {
         ttl: 10 * 60 * 1000
       }) || [];
       
-      // Validar dados mensais
+      if (window.Logger) {
+        window.Logger.debug('🏢 loadOrgaoMes: Dados mensais recebidos do endpoint', {
+          count: mensalData?.length || 0,
+          isArray: Array.isArray(mensalData),
+          sample: mensalData?.[0],
+          first3: mensalData?.slice(0, 3)
+        });
+      }
+      
+      // Validar dados mensais (mas não ser muito restritivo)
       const mensalValidation = window.dataValidator?.validateApiResponse(mensalData, {
         arrayItem: {
-          required: ['ym', 'count'],
-          types: { ym: 'string', count: 'number' }
+          required: ['month', 'count'], // O endpoint retorna 'month', não 'ym'
+          types: { month: 'string', count: 'number' }
         }
       });
       
@@ -386,14 +435,36 @@ async function loadOrgaoMes(forceRefresh = false) {
         dataMensal = (mensalData || []).map(m => ({
           ym: m.month || m.ym || m._id || '',
           count: Number(m.count || m.value || 0)
-        })).filter(m => m.ym);
+        })).filter(m => m.ym && m.ym.length >= 7); // Garantir formato YYYY-MM
       } else {
-        window.errorHandler?.handleError(
-          new Error(`Dados mensais inválidos: ${mensalValidation.error}`),
-          'loadOrgaoMes (validação mensal)',
-          { showToUser: false }
-        );
-        dataMensal = [];
+        // Mesmo se validação falhar, tentar processar os dados
+        if (window.Logger) {
+          window.Logger.warn('⚠️ Validação mensal falhou, mas tentando processar dados mesmo assim', {
+            error: mensalValidation.error,
+            dataLength: mensalData?.length || 0
+          });
+        }
+        
+        // Tentar processar mesmo com validação falhada
+        dataMensal = (mensalData || []).map(m => ({
+          ym: m.month || m.ym || m._id || '',
+          count: Number(m.count || m.value || 0)
+        })).filter(m => {
+          // Filtrar apenas itens com ym válido no formato YYYY-MM
+          return m.ym && 
+                 m.ym.length >= 7 && 
+                 /^\d{4}-\d{2}/.test(m.ym) &&
+                 !isNaN(m.count);
+        });
+        
+        if (dataMensal.length === 0 && mensalData && mensalData.length > 0) {
+          // Se ainda estiver vazio mas havia dados, logar para debug
+          window.errorHandler?.handleError(
+            new Error(`Dados mensais não puderam ser processados: ${mensalValidation.error}. Dados recebidos: ${JSON.stringify(mensalData.slice(0, 3))}`),
+            'loadOrgaoMes (validação mensal)',
+            { showToUser: false }
+          );
+        }
       }
     }
     
@@ -416,12 +487,29 @@ async function loadOrgaoMes(forceRefresh = false) {
       ym: item.ym || item.month || item._id || '',
       count: Number(item.count || item.value || 0)
     })).filter(item => {
-      // Manter apenas itens com ym válido
-      return item.ym && 
-             item.ym !== 'null' && 
-             item.ym !== 'undefined' &&
-             !isNaN(item.count);
-      // Não filtrar por count > 0 aqui
+      // Manter apenas itens com ym válido no formato YYYY-MM
+      if (!item.ym || item.ym === 'null' || item.ym === 'undefined') {
+        return false;
+      }
+      
+      // Garantir formato YYYY-MM (pelo menos 7 caracteres)
+      if (item.ym.length < 7 || !/^\d{4}-\d{2}/.test(item.ym)) {
+        if (window.Logger) {
+          window.Logger.debug('🏢 Filtrando item mensal inválido:', { ym: item.ym, count: item.count });
+        }
+        return false;
+      }
+      
+      // Garantir que count é um número válido
+      if (isNaN(item.count)) {
+        if (window.Logger) {
+          window.Logger.debug('🏢 Filtrando item mensal com count inválido:', { ym: item.ym, count: item.count });
+        }
+        return false;
+      }
+      
+      return true;
+      // Não filtrar por count > 0 aqui - queremos mostrar todos os meses, mesmo com 0
     });
     
     if (window.Logger) {
@@ -431,12 +519,24 @@ async function loadOrgaoMes(forceRefresh = false) {
         totalOrgaos: dataOrgaos.reduce((sum, o) => sum + (o.count || 0), 0),
         totalMeses: dataMensal.reduce((sum, m) => sum + (m.count || 0), 0),
         sampleOrgao: dataOrgaos[0],
-        sampleMes: dataMensal[0]
+        sampleMes: dataMensal[0],
+        first3Meses: dataMensal.slice(0, 3),
+        last3Meses: dataMensal.slice(-3)
       });
+      
+      if (dataMensal.length === 0) {
+        window.Logger.warn('⚠️ loadOrgaoMes: dataMensal está VAZIO após normalização!', {
+          orgaosCount: dataOrgaos.length,
+          totalOrgaos: dataOrgaos.reduce((sum, o) => sum + (o.count || 0), 0)
+        });
+      }
     }
     
     // Armazenar dados globalmente para busca e ordenação
     currentOrgaosData = dataOrgaos;
+    
+    // Armazenar dados mensais globalmente para uso posterior
+    window._orgaoMesDataMensal = dataMensal;
     
     // Limpar busca e ordenação quando dados mudam
     const searchInput = document.getElementById('searchOrgaos');
@@ -464,25 +564,13 @@ async function loadOrgaoMes(forceRefresh = false) {
     // Renderizar gráfico de barras dos top órgãos
     await renderTopOrgaosBarChart(dataOrgaos);
     
-    // Atualizar KPIs - tentar múltiplas vezes para garantir que funcione
-    // Primeira tentativa imediata
-    updateKPIs(dataOrgaos, dataMensal);
-    
-    // Segunda tentativa após pequeno delay (DOM pode não estar pronto)
-    setTimeout(() => {
-      updateKPIs(dataOrgaos, dataMensal);
-    }, 100);
-    
-    // Terceira tentativa após delay maior (garantir que tudo esteja carregado)
-    setTimeout(() => {
-      updateKPIs(dataOrgaos, dataMensal);
-    }, 500);
+    // Renderizar gráficos adicionais
+    await renderOrgaosPizzaChart(dataOrgaos);
+    await renderOrgaosTemporalChart(dataOrgaos, dataMensal);
+    await renderOrgaosAgrupadasChart(dataOrgaos, dataMensal);
     
     // CROSSFILTER: Renderizar banner de filtros ativos
     renderOrgaoMesFilterBanner();
-    
-    // Atualizar feedback visual dos KPIs
-    updateKPIsVisualState();
     
     // Re-renderizar lista para garantir destaque visual correto após banner ser criado
     renderOrgaosList(dataOrgaos);
@@ -655,6 +743,7 @@ async function renderOrgaoMesChart(dataMensal) {
     horizontal: false, // Gráfico vertical
     colorIndex: 1,
     label: 'Manifestações',
+    onClick: true, // Habilitar interatividade para crossfilter
     chartOptions: {
       plugins: {
         tooltip: {
@@ -678,7 +767,23 @@ async function renderOrgaoMesChart(dataMensal) {
     },
   });
   
-  // CROSSFILTER: Adicionar handler de clique para filtrar por mês
+  // CROSSFILTER: Adicionar sistema de filtros (filtro por mês/período)
+  // Aguardar um pouco para garantir que o gráfico foi criado completamente
+  if (chart && dataMensal && window.addCrossfilterToChart) {
+    setTimeout(() => {
+      if (chart && chart.canvas && chart.canvas.ownerDocument) {
+        window.addCrossfilterToChart(chart, dataMensal, {
+          field: 'month',
+          valueField: 'ym',
+          onFilterChange: () => {
+            if (window.loadOrgaoMes) setTimeout(() => window.loadOrgaoMes(), 100);
+          }
+        });
+      }
+    }, 100);
+  }
+  
+  // CROSSFILTER: Adicionar handler de clique para filtrar por mês (compatibilidade)
   if (chart && chart.canvas) {
     chart.canvas.style.cursor = 'pointer';
     
@@ -715,10 +820,9 @@ async function renderOrgaoMesChart(dataMensal) {
             window.chartCommunication.filters.apply('dataCriacaoIso', ym, 'chartOrgaoMes', { operator: 'contains' });
           }
           
-          // Atualizar banner e visual
+          // Atualizar banner
           setTimeout(() => {
             renderOrgaoMesFilterBanner();
-            updateKPIsVisualState();
           }, 100);
         }
       }
@@ -773,6 +877,8 @@ async function renderTopOrgaosBarChart(dataOrgaos) {
     horizontal: true,
     colorIndex: 2,
     label: 'Manifestações',
+    onClick: true, // Habilitar interatividade para crossfilter
+    field: 'orgaos',
     chartOptions: {
       plugins: {
         tooltip: {
@@ -786,7 +892,26 @@ async function renderTopOrgaosBarChart(dataOrgaos) {
     },
   });
   
-  // CROSSFILTER: Adicionar handler de clique para filtrar por órgão
+  // CROSSFILTER: Adicionar sistema de filtros usando helper universal
+  // Aguardar um pouco para garantir que o gráfico foi criado completamente
+  if (chart && dataOrgaos && window.addCrossfilterToChart) {
+    setTimeout(() => {
+      if (chart && chart.canvas && chart.canvas.ownerDocument) {
+        window.addCrossfilterToChart(chart, dataOrgaos, {
+          field: 'orgaos',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadOrgaoMes) setTimeout(() => window.loadOrgaoMes(), 100);
+          },
+          onClearFilters: () => {
+            if (window.loadOrgaoMes) setTimeout(() => window.loadOrgaoMes(), 100);
+          }
+        });
+      }
+    }, 100);
+  }
+  
+  // CROSSFILTER: Adicionar handler de clique para filtrar por órgão (compatibilidade)
   if (chart && chart.canvas) {
     chart.canvas.style.cursor = 'pointer';
     
@@ -825,166 +950,438 @@ async function renderTopOrgaosBarChart(dataOrgaos) {
 }
 
 /**
- * Atualizar KPIs da página
+ * Renderizar gráfico de pizza: Distribuição percentual dos órgãos
  */
-function updateKPIs(dataOrgaos, dataMensal) {
-  // Validar e normalizar dados
-  const safeDataOrgaos = Array.isArray(dataOrgaos) ? dataOrgaos : [];
-  const safeDataMensal = Array.isArray(dataMensal) ? dataMensal : [];
+async function renderOrgaosPizzaChart(dataOrgaos) {
+  const chartFactory = window.errorHandler?.requireDependency('chartFactory');
+  if (!chartFactory) return;
   
-  if (window.Logger) {
-    window.Logger.debug('📊 updateKPIs: Atualizando KPIs', {
-      orgaosCount: safeDataOrgaos.length,
-      mesesCount: safeDataMensal.length,
-      sampleOrgao: safeDataOrgaos[0],
-      sampleMes: safeDataMensal[0]
-    });
+  if (chartFactory.destroyCharts) {
+    chartFactory.destroyCharts(['chartOrgaosPizza']);
   }
   
-  // Calcular totais - usar dados mensais se disponíveis (mais preciso), senão usar órgãos
-  let total = 0;
-  if (safeDataMensal && safeDataMensal.length > 0) {
-    // Total = soma de todas as manifestações por mês (mais preciso)
-    total = safeDataMensal.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
-  } else if (safeDataOrgaos && safeDataOrgaos.length > 0) {
-    // Fallback: soma por órgão
-    total = safeDataOrgaos.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
-  }
-  
-  const orgaosUnicos = safeDataOrgaos.length;
-  const mediaOrgao = orgaosUnicos > 0 ? Math.round(total / orgaosUnicos) : 0;
-  
-  // Calcular período
-  let periodo = '—';
-  if (safeDataMensal && safeDataMensal.length > 0) {
-    const sorted = [...safeDataMensal].sort((a, b) => {
-      const ymA = a.ym || a.month || a._id || '';
-      const ymB = b.ym || b.month || b._id || '';
-      return ymA.localeCompare(ymB);
-    });
-    const primeiro = sorted[0];
-    const ultimo = sorted[sorted.length - 1];
-    if (primeiro && ultimo) {
-      const primeiroYm = primeiro.ym || primeiro.month || primeiro._id || '';
-      const ultimoYm = ultimo.ym || ultimo.month || ultimo._id || '';
-      
-      const primeiroLabel = window.dateUtils?.formatMonthYear?.(primeiroYm) || primeiroYm || '';
-      const ultimoLabel = window.dateUtils?.formatMonthYear?.(ultimoYm) || ultimoYm || '';
-      
-      if (primeiroLabel && ultimoLabel) {
-        periodo = primeiroLabel === ultimoLabel ? primeiroLabel : `${primeiroLabel} - ${ultimoLabel}`;
-      }
+  if (!dataOrgaos || dataOrgaos.length === 0) {
+    const canvas = document.getElementById('chartOrgaosPizza');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Sem dados disponíveis', canvas.width / 2, canvas.height / 2);
     }
-  }
-  
-  // Atualizar elementos DOM
-  const totalEl = document.getElementById('totalOrgaos');
-  const kpiTotalEl = document.getElementById('kpiTotalOrgaos');
-  const kpiUnicosEl = document.getElementById('kpiOrgaosUnicos');
-  const kpiMediaEl = document.getElementById('kpiMediaOrgao');
-  const kpiPeriodoEl = document.getElementById('kpiPeriodo');
-  
-  // Verificar se os elementos existem
-  if (!kpiTotalEl || !kpiUnicosEl || !kpiMediaEl || !kpiPeriodoEl) {
-    if (window.Logger) {
-      window.Logger.warn('⚠️ updateKPIs: Alguns elementos DOM não foram encontrados', {
-        kpiTotalEl: !!kpiTotalEl,
-        kpiUnicosEl: !!kpiUnicosEl,
-        kpiMediaEl: !!kpiMediaEl,
-        kpiPeriodoEl: !!kpiPeriodoEl
-      });
-    }
-    // Tentar novamente após um pequeno delay (pode ser problema de timing)
-    setTimeout(() => updateKPIs(safeDataOrgaos, safeDataMensal), 200);
     return;
   }
   
-  // Atualizar valores (sempre mostrar números, mesmo que sejam 0)
-  if (totalEl) {
-    totalEl.textContent = total.toLocaleString('pt-BR');
-  }
+  // Top 10 órgãos para pizza
+  const top10 = dataOrgaos.slice(0, 10);
+  const labels = top10.map(o => {
+    const key = o.key || o.organ || o._id || 'Não informado';
+    return key.length > 25 ? key.substring(0, 25) + '...' : key;
+  });
+  const values = top10.map(o => o.count || 0);
+  const total = values.reduce((sum, v) => sum + v, 0);
   
-  // Forçar atualização dos KPIs - sempre mostrar valores, mesmo que sejam 0
-  if (kpiTotalEl) {
-    kpiTotalEl.textContent = total.toLocaleString('pt-BR');
-  }
+  if (total === 0) return;
   
-  if (kpiUnicosEl) {
-    kpiUnicosEl.textContent = orgaosUnicos.toLocaleString('pt-BR');
-  }
+  const chart = await chartFactory.createDoughnutChart('chartOrgaosPizza', labels, values, {
+    field: 'orgaos',
+    chartOptions: {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.label || '';
+              const value = context.parsed || 0;
+              const percent = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+              return `${label}: ${value.toLocaleString('pt-BR')} (${percent}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
   
-  if (kpiMediaEl) {
-    kpiMediaEl.textContent = mediaOrgao.toLocaleString('pt-BR');
-  }
-  
-  if (kpiPeriodoEl) {
-    kpiPeriodoEl.textContent = periodo;
-  }
-  
-  // Log para debug
-  if (window.Logger) {
-    window.Logger.debug('📊 updateKPIs executado:', {
-      total,
-      orgaosUnicos,
-      mediaOrgao,
-      periodo,
-      elementosEncontrados: {
-        kpiTotalEl: !!kpiTotalEl,
-        kpiUnicosEl: !!kpiUnicosEl,
-        kpiMediaEl: !!kpiMediaEl,
-        kpiPeriodoEl: !!kpiPeriodoEl
-      },
-      dadosOrgaos: safeDataOrgaos.length,
-      dadosMensal: safeDataMensal.length
-    });
-  }
-  
-  if (window.Logger) {
-    window.Logger.success('✅ updateKPIs: KPIs atualizados', {
-      total,
-      orgaosUnicos,
-      mediaOrgao,
-      periodo
-    });
+  // Atualizar info box
+  const infoBox = document.getElementById('orgaosPizzaInfo');
+  if (infoBox && top10.length > 0) {
+    const topOrgao = top10[0];
+    const percent = total > 0 ? ((topOrgao.count / total) * 100).toFixed(1) : '0.0';
+    infoBox.innerHTML = `
+      <div class="text-xs text-slate-400 mb-1">Órgão mais frequente</div>
+      <div class="text-sm font-bold text-cyan-300">${topOrgao.key}</div>
+      <div class="text-xs text-slate-500 mt-1">${topOrgao.count.toLocaleString('pt-BR')} (${percent}%)</div>
+      <div class="text-xs text-slate-400 mt-2">Total: ${total.toLocaleString('pt-BR')} manifestações</div>
+    `;
   }
 }
 
 /**
- * Atualizar estado visual dos KPIs baseado em filtros ativos
+ * Renderizar gráfico de linha múltipla: Evolução temporal dos top 5 órgãos
  */
-function updateKPIsVisualState() {
-  const kpiTotalEl = document.getElementById('kpiTotalOrgaos');
-  const kpiUnicosEl = document.getElementById('kpiOrgaosUnicos');
-  const kpiMediaEl = document.getElementById('kpiMediaOrgao');
-  const kpiPeriodoEl = document.getElementById('kpiPeriodo');
+async function renderOrgaosTemporalChart(dataOrgaos, dataMensal) {
+  const chartFactory = window.errorHandler?.requireDependency('chartFactory');
+  if (!chartFactory) return;
   
-  const kpiContainers = [
-    kpiTotalEl?.closest('.glass') || kpiTotalEl?.parentElement,
-    kpiUnicosEl?.closest('.glass') || kpiUnicosEl?.parentElement,
-    kpiMediaEl?.closest('.glass') || kpiMediaEl?.parentElement,
-    kpiPeriodoEl?.closest('.glass') || kpiPeriodoEl?.parentElement
-  ].filter(Boolean);
-  
-  // Verificar se há filtros ativos
-  let hasFilters = false;
-  if (window.crossfilterOverview) {
-    hasFilters = Object.values(window.crossfilterOverview.filters).some(v => v !== null);
-  } else if (window.chartCommunication && window.chartCommunication.filters) {
-    hasFilters = (window.chartCommunication.filters.filters || []).length > 0;
+  if (chartFactory.destroyCharts) {
+    chartFactory.destroyCharts(['chartOrgaosTemporal']);
   }
   
-  // Aplicar feedback visual
-  kpiContainers.forEach(container => {
-    if (container) {
-      if (hasFilters) {
-        container.classList.add('ring-2', 'ring-cyan-500/50');
-        container.style.opacity = '0.9';
-      } else {
-        container.classList.remove('ring-2', 'ring-cyan-500/50');
-        container.style.opacity = '1';
+  if (!dataOrgaos || dataOrgaos.length === 0 || !dataMensal || dataMensal.length === 0) {
+    const canvas = document.getElementById('chartOrgaosTemporal');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Sem dados disponíveis', canvas.width / 2, canvas.height / 2);
+    }
+    return;
+  }
+  
+  // Buscar dados de órgãos por mês
+  try {
+    const orgaosMesData = await window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=orgaos', {
+      useDataStore: true,
+      ttl: 5 * 60 * 1000
+    }) || [];
+    
+    if (Array.isArray(orgaosMesData) && orgaosMesData.length > 0) {
+      // Top 5 órgãos
+      const top5 = dataOrgaos.slice(0, 5);
+      const top5Keys = new Set(top5.map(o => o.key || o.organ || o._id));
+      
+      // Agrupar dados por órgão e mês
+      const orgaosMap = new Map();
+      const mesesSet = new Set();
+      
+      orgaosMesData.forEach(item => {
+        const orgao = item.orgaos || item.organ || item._id || 'Não informado';
+        const mes = item.month || item.mes || item.ym || '';
+        
+        if (!mes || !top5Keys.has(orgao)) return;
+        
+        mesesSet.add(mes);
+        
+        if (!orgaosMap.has(orgao)) {
+          orgaosMap.set(orgao, new Map());
+        }
+        
+        orgaosMap.get(orgao).set(mes, item.count || 0);
+      });
+      
+      // Ordenar meses
+      const meses = Array.from(mesesSet).sort();
+      const labels = meses.map(m => {
+        if (m.includes('-')) {
+          const [year, monthNum] = m.split('-');
+          return window.dateUtils?.formatMonthYearShort(m) || `${monthNum}/${year.slice(-2)}`;
+        }
+        return m;
+      });
+      
+      // Preparar datasets
+      const datasets = top5.map((item, idx) => {
+        const orgao = item.key || item.organ || item._id;
+        const mesesMap = orgaosMap.get(orgao) || new Map();
+        const values = meses.map(mes => mesesMap.get(mes) || 0);
+        
+        return {
+          label: orgao.length > 20 ? orgao.substring(0, 20) + '...' : orgao,
+          data: values,
+          borderColor: getColorForIndex(idx),
+          backgroundColor: getColorWithAlpha(getColorForIndex(idx), 0.1),
+          tension: 0.4,
+          fill: false,
+          pointRadius: 3,
+          pointHoverRadius: 5
+        };
+      });
+      
+      // Garantir que Chart.js está carregado
+      if (window.lazyLibraries?.loadChartJS) {
+        await window.lazyLibraries.loadChartJS();
+      }
+      
+      const canvas = document.getElementById('chartOrgaosTemporal');
+      if (canvas && window.Chart) {
+        // Destruir gráfico existente
+        if (window.Chart.getChart) {
+          const existingChart = window.Chart.getChart(canvas);
+          if (existingChart) {
+            existingChart.destroy();
+          }
+        }
+        
+        const chart = new window.Chart(canvas, {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                  color: isLightMode() ? '#1e293b' : '#e2e8f0',
+                  font: { size: 11 },
+                  padding: 10,
+                  usePointStyle: true
+                }
+              },
+              tooltip: {
+                mode: 'index',
+                intersect: false
+              }
+            },
+            scales: {
+              x: {
+                ticks: {
+                  color: isLightMode() ? '#64748b' : '#94a3b8',
+                  maxRotation: 45,
+                  minRotation: 45
+                },
+                grid: {
+                  color: isLightMode() ? 'rgba(100, 116, 139, 0.1)' : 'rgba(148, 163, 184, 0.1)'
+                }
+              },
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  color: isLightMode() ? '#64748b' : '#94a3b8',
+                  callback: function(value) {
+                    return value.toLocaleString('pt-BR');
+                  }
+                },
+                grid: {
+                  color: isLightMode() ? 'rgba(100, 116, 139, 0.1)' : 'rgba(148, 163, 184, 0.1)'
+                }
+              }
+            }
+          }
+        });
+        
+        window.chartOrgaosTemporal = chart;
+        
+        // Atualizar info box
+        const infoBox = document.getElementById('orgaosTemporalInfo');
+        if (infoBox && top5.length > 0) {
+          const topOrgao = top5[0];
+          infoBox.innerHTML = `
+            <div class="text-xs text-slate-400 mb-1">Órgão líder</div>
+            <div class="text-sm font-bold text-cyan-300">${topOrgao.key}</div>
+            <div class="text-xs text-slate-500 mt-1">Total: ${topOrgao.count.toLocaleString('pt-BR')} manifestações</div>
+          `;
+        }
       }
     }
-  });
+  } catch (error) {
+    window.errorHandler?.handleError(error, 'renderOrgaosTemporalChart', { showToUser: false });
+  }
+}
+
+/**
+ * Renderizar gráfico de barras agrupadas: Órgãos por mês
+ */
+async function renderOrgaosAgrupadasChart(dataOrgaos, dataMensal) {
+  const chartFactory = window.errorHandler?.requireDependency('chartFactory');
+  if (!chartFactory) return;
+  
+  if (chartFactory.destroyCharts) {
+    chartFactory.destroyCharts(['chartOrgaosAgrupadas']);
+  }
+  
+  if (!dataOrgaos || dataOrgaos.length === 0 || !dataMensal || dataMensal.length === 0) {
+    const canvas = document.getElementById('chartOrgaosAgrupadas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Sem dados disponíveis', canvas.width / 2, canvas.height / 2);
+    }
+    return;
+  }
+  
+  // Buscar dados de órgãos por mês
+  try {
+    const orgaosMesData = await window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=orgaos', {
+      useDataStore: true,
+      ttl: 5 * 60 * 1000
+    }) || [];
+    
+    if (Array.isArray(orgaosMesData) && orgaosMesData.length > 0) {
+      // Top 5 órgãos
+      const top5 = dataOrgaos.slice(0, 5);
+      const top5Keys = new Set(top5.map(o => o.key || o.organ || o._id));
+      
+      // Agrupar dados por mês
+      const mesesMap = new Map();
+      orgaosMesData.forEach(item => {
+        const orgao = item.orgaos || item.organ || item._id || 'Não informado';
+        const mes = item.month || item.mes || item.ym || '';
+        
+        if (!mes || !top5Keys.has(orgao)) return;
+        
+        if (!mesesMap.has(mes)) {
+          mesesMap.set(mes, new Map());
+        }
+        
+        mesesMap.get(mes).set(orgao, item.count || 0);
+      });
+      
+      // Ordenar meses
+      const meses = Array.from(mesesMap.keys()).sort();
+      const labels = meses.map(m => {
+        if (m.includes('-')) {
+          const [year, monthNum] = m.split('-');
+          return window.dateUtils?.formatMonthYearShort(m) || `${monthNum}/${year.slice(-2)}`;
+        }
+        return m;
+      });
+      
+      // Preparar datasets para cada órgão
+      const datasets = top5.map((item, idx) => {
+        const orgao = item.key || item.organ || item._id;
+        const values = meses.map(mes => {
+          const orgaosMap = mesesMap.get(mes) || new Map();
+          return orgaosMap.get(orgao) || 0;
+        });
+        
+        return {
+          label: orgao.length > 20 ? orgao.substring(0, 20) + '...' : orgao,
+          data: values,
+          backgroundColor: getColorWithAlpha(getColorForIndex(idx), 0.7),
+          borderColor: getColorForIndex(idx),
+          borderWidth: 1
+        };
+      });
+      
+      // Garantir que Chart.js está carregado
+      if (window.lazyLibraries?.loadChartJS) {
+        await window.lazyLibraries.loadChartJS();
+      }
+      
+      const canvas = document.getElementById('chartOrgaosAgrupadas');
+      if (canvas && window.Chart) {
+        // Destruir gráfico existente
+        if (window.Chart.getChart) {
+          const existingChart = window.Chart.getChart(canvas);
+          if (existingChart) {
+            existingChart.destroy();
+          }
+        }
+        
+        const chart = new window.Chart(canvas, {
+          type: 'bar',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                  color: isLightMode() ? '#1e293b' : '#e2e8f0',
+                  font: { size: 11 },
+                  padding: 10,
+                  usePointStyle: true
+                }
+              },
+              tooltip: {
+                mode: 'index',
+                intersect: false
+              }
+            },
+            scales: {
+              x: {
+                stacked: false,
+                ticks: {
+                  color: isLightMode() ? '#64748b' : '#94a3b8',
+                  maxRotation: 45,
+                  minRotation: 45
+                },
+                grid: {
+                  color: isLightMode() ? 'rgba(100, 116, 139, 0.1)' : 'rgba(148, 163, 184, 0.1)'
+                }
+              },
+              y: {
+                stacked: false,
+                beginAtZero: true,
+                ticks: {
+                  color: isLightMode() ? '#64748b' : '#94a3b8',
+                  callback: function(value) {
+                    return value.toLocaleString('pt-BR');
+                  }
+                },
+                grid: {
+                  color: isLightMode() ? 'rgba(100, 116, 139, 0.1)' : 'rgba(148, 163, 184, 0.1)'
+                }
+              }
+            }
+          }
+        });
+        
+        window.chartOrgaosAgrupadas = chart;
+        
+        // Atualizar info box
+        const infoBox = document.getElementById('orgaosAgrupadasInfo');
+        if (infoBox) {
+          infoBox.innerHTML = `
+            <div class="text-xs text-slate-400">Comparação dos top 5 órgãos ao longo do tempo</div>
+            <div class="text-xs text-slate-500 mt-1">Total de meses: ${meses.length}</div>
+          `;
+        }
+      }
+    }
+  } catch (error) {
+    window.errorHandler?.handleError(error, 'renderOrgaosAgrupadasChart', { showToUser: false });
+  }
+}
+
+// Funções auxiliares para cores
+function getColorForIndex(idx) {
+  const colors = [
+    '#22d3ee', '#a78bfa', '#34d399', '#fbbf24', 
+    '#fb7185', '#60a5fa', '#f472b6', '#84cc16'
+  ];
+  return colors[idx % colors.length];
+}
+
+function getColorWithAlpha(color, alpha = 0.7) {
+  if (color.startsWith('rgba')) {
+    return color.replace(/[\d\.]+\)$/g, `${alpha})`);
+  }
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return color;
+}
+
+function isLightMode() {
+  return document.body.classList.contains('light-mode');
+}
+
+/**
+ * REMOVIDO: Funções updateKPIs e updateKPIsVisualState removidas
+ * Os cards de KPIs foram removidos da página conforme solicitado
+ */
+function updateKPIs(dataOrgaos, dataMensal) {
+  // Função removida - cards de KPIs não existem mais
+  return;
+}
+
+function updateKPIsVisualState() {
+  // Função removida - cards de KPIs não existem mais
+  return;
 }
 
 /**
@@ -1061,7 +1458,6 @@ function initOrgaoMesFilterListeners() {
     // Escutar eventos de filtro para atualizar banner e visual
     const updateUI = () => {
       renderOrgaoMesFilterBanner();
-      updateKPIsVisualState();
       renderOrgaosList(currentOrgaosData);
     };
     
@@ -1108,9 +1504,8 @@ function filterByOrgao(orgao) {
     window.chartCommunication.filters.apply('Orgaos', orgao, 'listaOrgaos', { operator: 'contains' });
   }
   
-  // Atualizar banner e visual imediatamente
+  // Atualizar banner imediatamente
   renderOrgaoMesFilterBanner();
-  updateKPIsVisualState();
   renderOrgaosList(currentOrgaosData);
   
   if (window.Logger) {
@@ -1119,23 +1514,34 @@ function filterByOrgao(orgao) {
 }
 
 /**
- * Limpar todos os filtros (chamado ao clicar direito)
+ * Limpar todos os filtros - REFATORADO para melhor funcionamento
  */
 function clearAllFiltersOrgaoMes() {
+  if (window.Logger) {
+    window.Logger.debug('🗑️ clearAllFiltersOrgaoMes: Limpando todos os filtros');
+  }
+  
+  // Limpar filtros do crossfilter
   if (window.crossfilterOverview) {
     window.crossfilterOverview.clearAllFilters();
     window.crossfilterOverview.notifyListeners();
-  } else if (window.chartCommunication && window.chartCommunication.filters) {
-    window.chartCommunication.filters.clear();
   }
   
-  // Atualizar banner e visual
-  renderOrgaoMesFilterBanner();
-  updateKPIsVisualState();
-  renderOrgaosList(currentOrgaosData);
+  // Limpar filtros do sistema global (incluindo filtros de data)
+  if (window.chartCommunication && window.chartCommunication.filters) {
+    window.chartCommunication.filters.clear();
+    if (window.chartCommunication.filters.notifyListeners) {
+      window.chartCommunication.filters.notifyListeners();
+    }
+  }
+  
+  // Recarregar dados após limpar filtros
+  setTimeout(() => {
+    loadOrgaoMes(true);
+  }, 100);
   
   if (window.Logger) {
-    window.Logger.debug('📊 Todos os filtros limpos');
+    window.Logger.success('✅ Todos os filtros foram limpos');
   }
 }
 
@@ -1180,9 +1586,50 @@ function renderOrgaoMesFilterBanner() {
   // Também verificar sistema global de filtros (pode ter filtros de data)
   if (window.chartCommunication && window.chartCommunication.filters) {
     const globalFilters = window.chartCommunication.filters.filters || [];
-    // Adicionar filtros que não estão no crossfilter (ex: dataCriacaoIso)
-    globalFilters.forEach(filter => {
+    // Agrupar filtros de data relacionados
+    const dataFilters = globalFilters.filter(f => 
+      f.field === 'dataCriacaoIso' || 
+      (f.field && f.field.toLowerCase().includes('data'))
+    );
+    
+    if (dataFilters.length > 0) {
+      // Se há múltiplos filtros de data, criar um único filtro agrupado
+      const dataMin = dataFilters.find(f => f.op === 'gte' || f.op === '>=' || String(f.value).includes('-01'));
+      const dataMax = dataFilters.find(f => f.op === 'lte' || f.op === '<=' || String(f.value).includes('T23:59'));
+      
+      if (dataMin && dataMax) {
+        // Formatar período de data
+        const dataInicio = dataMin.value ? String(dataMin.value).substring(0, 10) : '';
+        const dataFim = dataMax.value ? String(dataMax.value).substring(0, 10) : '';
+        activeFilters.push({
+          field: 'Data de Criação',
+          value: `${dataInicio} a ${dataFim}`,
+          isDateRange: true,
+          originalFilters: [dataMin, dataMax]
+        });
+      } else {
+        // Adicionar filtros de data individuais
+        dataFilters.forEach(filter => {
       if (!activeFilters.some(f => f.field === filter.field && f.value === filter.value)) {
+            // Formatar valor de data para exibição
+            let displayValue = String(filter.value);
+            if (displayValue.includes('T')) {
+              displayValue = displayValue.substring(0, 10);
+            }
+            activeFilters.push({
+              ...filter,
+              displayValue: displayValue
+            });
+          }
+        });
+      }
+    }
+    
+    // Adicionar outros filtros que não estão no crossfilter
+    globalFilters.forEach(filter => {
+      const isDataFilter = filter.field === 'dataCriacaoIso' || 
+                          (filter.field && filter.field.toLowerCase().includes('data'));
+      if (!isDataFilter && !activeFilters.some(f => f.field === filter.field && f.value === filter.value)) {
         activeFilters.push(filter);
       }
     });
@@ -1193,10 +1640,13 @@ function renderOrgaoMesFilterBanner() {
     return;
   }
   
-  // Criar banner
+  // Criar banner com event listeners adequados
   const banner = document.createElement('div');
   banner.id = 'orgao-mes-filter-banner';
   banner.className = 'glass rounded-xl p-4 mb-6 border border-cyan-500/30 bg-gradient-to-r from-cyan-500/10 to-violet-500/10';
+  banner.style.position = 'relative';
+  banner.style.zIndex = '10';
+  banner.style.pointerEvents = 'auto';
   
   const fieldLabels = {
     'Status': 'Status',
@@ -1207,7 +1657,8 @@ function renderOrgaoMesFilterBanner() {
     'Prioridade': 'Prioridade',
     'Unidade': 'Unidade',
     'Bairro': 'Bairro',
-    'dataCriacaoIso': 'Data'
+    'dataCriacaoIso': 'Data',
+    'Data de Criação': 'Data'
   };
   
   const fieldEmojis = {
@@ -1219,40 +1670,98 @@ function renderOrgaoMesFilterBanner() {
     'Prioridade': '⚡',
     'Unidade': '🏥',
     'Bairro': '📍',
-    'dataCriacaoIso': '📅'
+    'dataCriacaoIso': '📅',
+    'Data de Criação': '📅'
   };
   
-  banner.innerHTML = `
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3 flex-wrap">
-        <div class="text-sm font-semibold text-cyan-300">🔍 Filtros Ativos:</div>
-        ${activeFilters.map(filter => {
-          const label = fieldLabels[filter.field] || filter.field;
-          const emoji = fieldEmojis[filter.field] || '🔍';
-          return `
-            <div class="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 border border-cyan-500/30 rounded-lg">
-              <span>${emoji}</span>
-              <span class="text-sm text-slate-200">${label}: <span class="font-bold text-cyan-300">${filter.value}</span></span>
-              <button 
-                onclick="removeFilterOrgaoMes('${filter.field}', '${String(filter.value).replace(/'/g, "\\'")}')"
-                class="ml-2 text-cyan-400 hover:text-red-400 transition-colors"
-                title="Remover filtro"
-              >
-                ✕
-              </button>
-            </div>
-          `;
-        }).join('')}
-      </div>
-      <button 
-        onclick="clearAllFiltersOrgaoMes()"
-        class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-sm font-medium text-red-300 transition-colors"
-        title="Limpar todos os filtros"
-      >
-        Limpar Todos
-      </button>
-    </div>
-  `;
+  // Criar estrutura do banner
+  const bannerContent = document.createElement('div');
+  bannerContent.className = 'flex items-center justify-between';
+  
+  const filtersContainer = document.createElement('div');
+  filtersContainer.className = 'flex items-center gap-3 flex-wrap';
+  
+  const title = document.createElement('div');
+  title.className = 'text-sm font-semibold text-cyan-300';
+  title.textContent = '🔍 Filtros Ativos:';
+  filtersContainer.appendChild(title);
+  
+  // Criar botões de filtro individuais
+  activeFilters.forEach((filter, index) => {
+    const filterBadge = document.createElement('div');
+    filterBadge.className = 'flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 border border-cyan-500/30 rounded-lg';
+    filterBadge.style.pointerEvents = 'auto';
+    filterBadge.style.cursor = 'default';
+    
+    const emoji = document.createElement('span');
+    emoji.textContent = fieldEmojis[filter.field] || '🔍';
+    
+    const label = document.createElement('span');
+    label.className = 'text-sm text-slate-200';
+    const fieldLabel = fieldLabels[filter.field] || filter.field;
+    // Usar displayValue se disponível (para filtros de data formatados)
+    const filterValue = filter.displayValue || String(filter.value || '');
+    // Truncar valores muito longos
+    const displayValue = filterValue.length > 30 ? filterValue.substring(0, 30) + '...' : filterValue;
+    label.innerHTML = `${fieldLabel}: <span class="font-bold text-cyan-300">${displayValue}</span>`;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'ml-2 text-cyan-400 hover:text-red-400 transition-colors cursor-pointer';
+    removeBtn.style.pointerEvents = 'auto';
+    removeBtn.style.fontSize = '18px';
+    removeBtn.style.lineHeight = '1';
+    removeBtn.style.background = 'none';
+    removeBtn.style.border = 'none';
+    removeBtn.style.padding = '0';
+    removeBtn.style.width = '20px';
+    removeBtn.style.height = '20px';
+    removeBtn.style.display = 'flex';
+    removeBtn.style.alignItems = 'center';
+    removeBtn.style.justifyContent = 'center';
+    removeBtn.textContent = '✕';
+    removeBtn.title = 'Remover filtro';
+    removeBtn.setAttribute('data-filter-index', index);
+    removeBtn.setAttribute('data-filter-field', filter.field);
+    removeBtn.setAttribute('data-filter-value', filter.value);
+    
+    // Event listener para remover filtro
+    removeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Se é um filtro de data agrupado, remover todos os filtros originais
+      if (filter.isDateRange && filter.originalFilters) {
+        filter.originalFilters.forEach(origFilter => {
+          removeFilterOrgaoMes(origFilter.field, origFilter.value);
+        });
+      } else {
+        removeFilterOrgaoMes(filter.field, filter.value);
+      }
+    });
+    
+    filterBadge.appendChild(emoji);
+    filterBadge.appendChild(label);
+    filterBadge.appendChild(removeBtn);
+    filtersContainer.appendChild(filterBadge);
+  });
+  
+  // Botão limpar todos
+  const clearAllBtn = document.createElement('button');
+  clearAllBtn.className = 'px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-sm font-medium text-red-300 transition-colors cursor-pointer';
+  clearAllBtn.style.pointerEvents = 'auto';
+  clearAllBtn.textContent = 'Limpar Todos';
+  clearAllBtn.title = 'Limpar todos os filtros';
+  
+  // Event listener para limpar todos
+  clearAllBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearAllFiltersOrgaoMes();
+  });
+  
+  bannerContent.appendChild(filtersContainer);
+  bannerContent.appendChild(clearAllBtn);
+  banner.appendChild(bannerContent);
   
   // Inserir banner no topo da página
   const header = page.querySelector('header');
@@ -1264,11 +1773,51 @@ function renderOrgaoMesFilterBanner() {
 }
 
 /**
- * Remover filtro específico
+ * Remover filtro específico - REFATORADO para melhor funcionamento
  */
 function removeFilterOrgaoMes(field, value) {
+  if (window.Logger) {
+    window.Logger.debug('🗑️ removeFilterOrgaoMes: Removendo filtro', { field, value });
+  }
+  
+  // Tratar filtros de data primeiro (vem do sistema global de filtros)
+  if (field === 'dataCriacaoIso' || field === 'Data de Criação') {
+    if (window.chartCommunication && window.chartCommunication.filters) {
+      // Remover todos os filtros de data relacionados
+      const filters = window.chartCommunication.filters.filters || [];
+      const dataFilters = filters.filter(f => 
+        f.field === 'dataCriacaoIso' || 
+        f.field === 'Data de Criação' ||
+        (f.field && f.field.toLowerCase().includes('data'))
+      );
+      
+      dataFilters.forEach(dataFilter => {
+        window.chartCommunication.filters.remove(dataFilter.field, dataFilter.value);
+      });
+      
+      // Forçar atualização
+      if (window.chartCommunication.filters.notifyListeners) {
+        window.chartCommunication.filters.notifyListeners();
+      }
+    }
+    
+    // Recarregar dados após remover filtros de data
+    setTimeout(() => {
+      loadOrgaoMes(true);
+    }, 100);
+    return;
+  }
+  
+  // Tratar outros tipos de filtros
+  // Primeiro, remover do chartCommunication (sistema global)
+  if (window.chartCommunication && window.chartCommunication.filters) {
+    window.chartCommunication.filters.remove(field, value);
+    if (window.chartCommunication.filters.notifyAllCharts) {
+      window.chartCommunication.filters.notifyAllCharts();
+    }
+  }
+  
   if (window.crossfilterOverview) {
-    // Usar crossfilterOverview
     const fieldMap = {
       'Status': 'status',
       'Tema': 'tema',
@@ -1277,12 +1826,12 @@ function removeFilterOrgaoMes(field, value) {
       'Canal': 'canal',
       'Prioridade': 'prioridade',
       'Unidade': 'unidade',
-      'Bairro': 'bairro',
-      'dataCriacaoIso': null // Não tem setter direto no crossfilter
+      'Bairro': 'bairro'
     };
     
     const mappedField = fieldMap[field] || field.toLowerCase();
     
+    // Remover filtro específico do crossfilter
     if (mappedField === 'status') window.crossfilterOverview.setStatusFilter(null);
     else if (mappedField === 'tema') window.crossfilterOverview.setTemaFilter(null);
     else if (mappedField === 'orgaos') window.crossfilterOverview.setOrgaosFilter(null);
@@ -1293,29 +1842,39 @@ function removeFilterOrgaoMes(field, value) {
     else if (mappedField === 'bairro') window.crossfilterOverview.setBairroFilter(null);
     
     window.crossfilterOverview.notifyListeners();
-  } else if (window.chartCommunication && window.chartCommunication.filters) {
-    // Usar sistema global
-    window.chartCommunication.filters.remove(field, value);
   }
   
-  // Atualizar banner e visual
-  renderOrgaoMesFilterBanner();
-  updateKPIsVisualState();
-  renderOrgaosList(currentOrgaosData);
+  // Notificar chartCommunication também (já removido acima, mas garantir notificação)
+  if (window.chartCommunication && window.chartCommunication.filters) {
+    if (window.chartCommunication.filters.notifyAllCharts) {
+      window.chartCommunication.filters.notifyAllCharts();
+    }
+  }
+  
+  // Emitir evento global
+  if (window.eventBus) {
+    window.eventBus.emit('filter:removed', { field, value });
+  }
+  
+  // Recarregar dados após remover filtro
+  setTimeout(() => {
+    loadOrgaoMes(true);
+  }, 100);
   
   if (window.Logger) {
-    window.Logger.debug('📊 Filtro removido:', { field, value });
+    window.Logger.success('✅ Filtro removido com sucesso', { field, value });
   }
 }
 
 /**
  * Coletar filtros da página
- * REMOVIDO: Filtros de mês e status da página foram removidos
- * Agora usa apenas filtros globais
+ * Agora inclui filtros de mês e status usando o helper
  */
 function collectPageFilters() {
-  // Retornar array vazio - filtros da página foram removidos
-  // A página agora usa apenas filtros globais via chartCommunication
+  // Usar helper para coletar filtros de mês e status
+  if (window.PageFiltersHelper && window.PageFiltersHelper.coletarFiltrosMesStatus) {
+    return window.PageFiltersHelper.coletarFiltrosMesStatus('OrgaoMes');
+  }
   return [];
 }
 
@@ -1325,12 +1884,32 @@ window.filterByOrgao = filterByOrgao;
 window.clearAllFiltersOrgaoMes = clearAllFiltersOrgaoMes;
 window.removeFilterOrgaoMes = removeFilterOrgaoMes;
 
+/**
+ * Inicializar filtros de mês e status
+ */
+function inicializarFiltrosOrgaoMes() {
+  if (window.PageFiltersHelper && window.PageFiltersHelper.inicializarFiltrosMesStatus) {
+    window.PageFiltersHelper.inicializarFiltrosMesStatus({
+      prefix: 'OrgaoMes',
+      endpoint: '/api/aggregate/by-month',
+      onChange: () => loadOrgaoMes(true),
+      mesSelecionado: ''
+    });
+  }
+}
+
 // Inicializar listeners quando o script carregar
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initOrgaoMesFilterListeners);
+  document.addEventListener('DOMContentLoaded', () => {
+    initOrgaoMesFilterListeners();
+    inicializarFiltrosOrgaoMes();
+  });
 } else {
   initOrgaoMesFilterListeners();
+  inicializarFiltrosOrgaoMes();
 }
+
+// KPIs removidos da página - listeners de visibilidade não são mais necessários
 
 window.loadOrgaoMes = loadOrgaoMes;
 

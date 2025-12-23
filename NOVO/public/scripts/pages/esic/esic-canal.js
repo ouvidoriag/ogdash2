@@ -55,15 +55,62 @@ async function loadEsicCanal() {
     const values = sortedData.map(d => d.count || 0);
     
     if (labels.length > 0 && values.length > 0) {
-      await window.chartFactory?.createBarChart('esic-chart-canal-detail', labels, values, {
+      const chartCanal = await window.chartFactory?.createBarChart('esic-chart-canal-detail', labels, values, {
         horizontal: true,
         colorIndex: 4,
-        onClick: false,
+        onClick: true, // Habilitar interatividade para crossfilter
+        field: 'canal'
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartCanal && sortedData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartCanal, sortedData, {
+          field: 'canal',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadEsicCanal) setTimeout(() => window.loadEsicCanal(), 100);
+          },
+          onClearFilters: () => {
+            if (window.loadEsicCanal) setTimeout(() => window.loadEsicCanal(), 100);
+          }
+        });
+      }
     }
     
     // Renderizar ranking
     renderCanalRanking(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => {
+          if (window.loadEsicCanal) window.loadEsicCanal();
+        },
+        pageLoadFunction: window.loadEsicCanal
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#esic-canal-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const canal = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: canal,
+              field: 'canal'
+            };
+          }),
+          field: 'canal',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]');
+            return textEl ? textEl.getAttribute('title') : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('📞 loadEsicCanal: Concluído');

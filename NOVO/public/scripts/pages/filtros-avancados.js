@@ -173,8 +173,165 @@ async function loadFilterOptions(forceRefresh = false) {
     }
   }
   
+  // Carregar meses disponíveis para criação e finalização
+  await loadMesesDisponiveis(forceRefresh);
+  
   if (window.Logger) {
     window.Logger.debug('🔍 Opções de filtros carregadas');
+  }
+}
+
+/**
+ * Carregar meses disponíveis para filtros de mês criado e mês finalizado
+ */
+async function loadMesesDisponiveis(forceRefresh = false) {
+  try {
+    // Carregar meses de criação
+    if (window.dataLoader) {
+      // Buscar meses de criação usando endpoint de stats
+      const dataMesCriacao = await window.dataLoader.load('/api/stats/average-time/by-month', {
+        useDataStore: true,
+        ttl: 10 * 60 * 1000, // Cache de 10 minutos
+        fallback: []
+      }) || [];
+      
+      const mesesCriacao = dataMesCriacao
+        .map(d => d.month || d.ym || d._id)
+        .filter(m => m && /^\d{4}-\d{2}$/.test(m))
+        .sort()
+        .reverse(); // Mais recente primeiro
+      
+      popularSelectMeses('filtroMesCriado', mesesCriacao);
+      
+      // Para meses de finalização, precisamos buscar do banco
+      // Usar endpoint de filter para buscar registros com dataConclusaoIso
+      const mesesFinalizacao = await buscarMesesFinalizacao();
+      popularSelectMeses('filtroMesFinalizado', mesesFinalizacao);
+      
+      if (window.Logger) {
+        window.Logger.debug(`✅ Meses carregados: ${mesesCriacao.length} criação, ${mesesFinalizacao.length} finalização`);
+      }
+    }
+  } catch (error) {
+    if (window.Logger) {
+      window.Logger.warn('Erro ao carregar meses disponíveis:', error);
+    }
+  }
+}
+
+/**
+ * Buscar meses de finalização disponíveis
+ */
+async function buscarMesesFinalizacao() {
+  try {
+    // Buscar registros com dataConclusaoIso e extrair meses únicos
+    const response = await fetch('/api/filter', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        filters: [
+          {
+            field: 'dataConclusaoIso',
+            op: 'ne',
+            value: null
+          }
+        ],
+        limit: 10000 // Limitar para performance
+      })
+    });
+    
+    if (!response.ok) {
+      return [];
+    }
+    
+    const resultados = await response.json();
+    if (!Array.isArray(resultados)) {
+      return [];
+    }
+    
+    // Extrair meses únicos de dataConclusaoIso
+    const mesesSet = new Set();
+    resultados.forEach(record => {
+      const data = record.data || record;
+      const dataConclusao = data.dataConclusaoIso || record.dataConclusaoIso || 
+                           data.data_conclusao || record.data_conclusao ||
+                           data.dataDaConclusao || record.dataDaConclusao;
+      
+      if (dataConclusao) {
+        // Extrair YYYY-MM da data
+        const match = String(dataConclusao).match(/^(\d{4}-\d{2})/);
+        if (match) {
+          mesesSet.add(match[1]);
+        }
+      }
+    });
+    
+    return Array.from(mesesSet).sort().reverse(); // Mais recente primeiro
+  } catch (error) {
+    if (window.Logger) {
+      window.Logger.warn('Erro ao buscar meses de finalização:', error);
+    }
+    return [];
+  }
+}
+
+/**
+ * Popular select de meses com formatação
+ */
+function popularSelectMeses(selectId, meses) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  
+  // Validar se meses é um array
+  if (!Array.isArray(meses)) {
+    if (window.Logger) {
+      window.Logger.warn(`popularSelectMeses: meses não é um array para ${selectId}:`, meses);
+    }
+    return;
+  }
+  
+  // Salvar valor atual
+  const currentValue = select.value;
+  
+  // Limpar opções existentes (exceto "Todos os meses")
+  while (select.children.length > 1) {
+    select.removeChild(select.lastChild);
+  }
+  
+  // Adicionar meses
+  meses.forEach(mes => {
+    const option = document.createElement('option');
+    option.value = mes;
+    
+    // Formatar para nome do mês (ex: "Janeiro 2025")
+    let nomeMes = mes;
+    try {
+      if (mes && mes.includes('-')) {
+        const [ano, mesNum] = mes.split('-');
+        const mesesNomes = [
+          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        const mesIndex = parseInt(mesNum) - 1;
+        if (mesIndex >= 0 && mesIndex < 12) {
+          nomeMes = `${mesesNomes[mesIndex]} ${ano}`;
+        }
+      }
+    } catch (e) {
+      // Se der erro, usar formatação padrão
+      nomeMes = mes;
+    }
+    
+    option.textContent = nomeMes;
+    select.appendChild(option);
+  });
+  
+  // Restaurar valor se ainda existir
+  if (currentValue) {
+    select.value = currentValue;
   }
 }
 
@@ -228,22 +385,41 @@ function populateSelect(selectElement, options) {
   // Salvar valor atual
   const currentValue = selectElement.value;
   
+  // Verificar se já existe opção "Todos"
+  const temTodos = Array.from(selectElement.options).some(opt => 
+    (opt.value === '' || opt.value.toLowerCase() === 'todos') && 
+    (opt.textContent.toLowerCase() === 'todos' || opt.textContent.toLowerCase() === 'todos os meses')
+  );
+  
   // Limpar opções existentes (exceto "Todos")
-  while (selectElement.children.length > 1) {
+  while (selectElement.children.length > (temTodos ? 1 : 0)) {
     selectElement.removeChild(selectElement.lastChild);
+  }
+  
+  // Se não tem opção "Todos", criar uma
+  if (!temTodos) {
+    const optionTodos = document.createElement('option');
+    optionTodos.value = '';
+    optionTodos.textContent = 'Todos';
+    selectElement.insertBefore(optionTodos, selectElement.firstChild);
   }
   
   // Adicionar novas opções
   options.forEach(option => {
-    const optionElement = document.createElement('option');
-    optionElement.value = option;
-    optionElement.textContent = option;
-    selectElement.appendChild(optionElement);
+    // Não adicionar se já existe "Todos" e o valor é vazio ou "Todos"
+    if (option && option.trim() !== '' && option.toLowerCase() !== 'todos') {
+      const optionElement = document.createElement('option');
+      optionElement.value = option;
+      optionElement.textContent = option;
+      selectElement.appendChild(optionElement);
+    }
   });
   
-  // Restaurar valor se ainda existir
-  if (currentValue) {
+  // Restaurar valor se ainda existir, caso contrário selecionar "Todos"
+  if (currentValue && Array.from(selectElement.options).some(opt => opt.value === currentValue)) {
     selectElement.value = currentValue;
+  } else {
+    selectElement.value = '';
   }
 }
 
@@ -296,6 +472,26 @@ function setupEventListeners() {
     btnLimpar.addEventListener('click', clearAllFilters);
   }
   
+  // Botão Filtros Compostos
+  const btnCompostos = document.getElementById('btnFiltrosCompostos');
+  const containerCompostos = document.getElementById('compositeFiltersContainer');
+  const btnFecharCompostos = document.getElementById('btnFecharCompostos');
+  
+  if (btnCompostos && containerCompostos) {
+    btnCompostos.addEventListener('click', () => {
+      containerCompostos.classList.toggle('hidden');
+      if (!containerCompostos.classList.contains('hidden')) {
+        initCompositeFiltersUI();
+      }
+    });
+  }
+  
+  if (btnFecharCompostos && containerCompostos) {
+    btnFecharCompostos.addEventListener('click', () => {
+      containerCompostos.classList.add('hidden');
+    });
+  }
+  
   // Toggle de ativar/desativar filtros
   const toggleFiltros = document.getElementById('toggleFiltros');
   if (toggleFiltros) {
@@ -318,9 +514,72 @@ function setupEventListeners() {
 }
 
 /**
+ * Inicializar UI de Filtros Compostos
+ */
+function initCompositeFiltersUI() {
+  const container = document.getElementById('compositeFiltersUI');
+  if (!container) {
+    if (window.Logger) {
+      window.Logger.warn('Container compositeFiltersUI não encontrado');
+    }
+    return;
+  }
+
+  // Usar a API window.compositeFiltersUI se disponível
+  if (window.compositeFiltersUI && window.compositeFiltersUI.showBuilder) {
+    // Criar botão para abrir o builder
+    container.innerHTML = `
+      <div class="text-center py-4">
+        <p class="text-slate-400 mb-4">Crie filtros compostos com operadores AND/OR</p>
+        <button id="btnAbrirBuilderCompostos" class="px-4 py-2 bg-purple-500/20 border border-purple-500/50 rounded-lg text-purple-300 hover:bg-purple-500/30 transition-colors">
+          Abrir Construtor de Filtros Compostos
+        </button>
+      </div>
+    `;
+
+    const btnAbrir = document.getElementById('btnAbrirBuilderCompostos');
+    if (btnAbrir) {
+      btnAbrir.addEventListener('click', () => {
+        window.compositeFiltersUI.showBuilder((compositeFilter) => {
+          // Salvar filtro composto no estado
+          window.compositeFilterInstance = compositeFilter;
+          if (window.Logger) {
+            window.Logger.debug('Filtro composto criado:', compositeFilter);
+          }
+          // Atualizar contador
+          updateCounters();
+        });
+      });
+    }
+  } else {
+    container.innerHTML = `
+      <div class="text-center py-4 text-slate-400">
+        <p>Sistema de filtros compostos em desenvolvimento</p>
+      </div>
+    `;
+  }
+}
+
+/**
  * Coletar filtros do formulário
  */
 function collectFilters() {
+  // PRIORIDADE: Coletar filtros compostos primeiro (se existirem)
+  if (window.compositeFilterInstance) {
+    try {
+      // Retornar filtro composto como objeto especial
+      // O backend espera um objeto com isComposite: true e compositeFilter
+      return { 
+        isComposite: true, 
+        compositeFilter: window.compositeFilterInstance 
+      };
+    } catch (error) {
+      if (window.Logger) {
+        window.Logger.warn('Erro ao coletar filtros compostos:', error);
+      }
+    }
+  }
+  
   const filtros = [];
   
   // Protocolo (busca por texto)
@@ -335,7 +594,7 @@ function collectFilters() {
   
   // Status Demanda
   const statusDemanda = document.getElementById('filtroStatusDemanda')?.value?.trim();
-  if (statusDemanda) {
+  if (statusDemanda && statusDemanda !== '' && statusDemanda.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'StatusDemanda',
       op: 'eq',
@@ -345,7 +604,7 @@ function collectFilters() {
   
   // Unidade/Cadastro
   const unidadeCadastro = document.getElementById('filtroUnidadeCadastro')?.value?.trim();
-  if (unidadeCadastro) {
+  if (unidadeCadastro && unidadeCadastro !== '' && unidadeCadastro.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'UnidadeCadastro',
       op: 'eq',
@@ -355,7 +614,7 @@ function collectFilters() {
   
   // Canal
   const canal = document.getElementById('filtroCanal')?.value?.trim();
-  if (canal) {
+  if (canal && canal !== '' && canal.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Canal',
       op: 'eq',
@@ -365,7 +624,7 @@ function collectFilters() {
   
   // Servidor
   const servidor = document.getElementById('filtroServidor')?.value?.trim();
-  if (servidor) {
+  if (servidor && servidor !== '' && servidor.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Servidor',
       op: 'eq',
@@ -375,7 +634,7 @@ function collectFilters() {
   
   // Tipo de Manifestação
   const tipoManifestacao = document.getElementById('filtroTipoManifestacao')?.value?.trim();
-  if (tipoManifestacao) {
+  if (tipoManifestacao && tipoManifestacao !== '' && tipoManifestacao.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Tipo',
       op: 'eq',
@@ -385,7 +644,7 @@ function collectFilters() {
   
   // Tema
   const tema = document.getElementById('filtroTema')?.value?.trim();
-  if (tema) {
+  if (tema && tema !== '' && tema.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Tema',
       op: 'eq',
@@ -395,7 +654,7 @@ function collectFilters() {
   
   // Prioridade
   const prioridade = document.getElementById('filtroPrioridade')?.value?.trim();
-  if (prioridade) {
+  if (prioridade && prioridade !== '' && prioridade.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Prioridade',
       op: 'eq',
@@ -405,7 +664,7 @@ function collectFilters() {
   
   // Unidade/Saúde
   const unidadeSaude = document.getElementById('filtroUnidadeSaude')?.value?.trim();
-  if (unidadeSaude) {
+  if (unidadeSaude && unidadeSaude !== '' && unidadeSaude.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'unidadeSaude',
       op: 'eq',
@@ -438,9 +697,55 @@ function collectFilters() {
     });
   }
   
+  // Filtro por Mês Criado
+  const mesCriado = document.getElementById('filtroMesCriado')?.value?.trim();
+  if (mesCriado) {
+    // Formato: YYYY-MM
+    const [ano, mes] = mesCriado.split('-');
+    if (ano && mes) {
+      const dataInicial = `${mesCriado}-01`;
+      const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
+      const dataFinal = `${mesCriado}-${ultimoDia}`;
+      
+      filtros.push({
+        field: 'dataCriacaoIso',
+        op: 'gte',
+        value: dataInicial
+      });
+      filtros.push({
+        field: 'dataCriacaoIso',
+        op: 'lte',
+        value: `${dataFinal}T23:59:59.999Z`
+      });
+    }
+  }
+  
+  // Filtro por Mês Finalizado
+  const mesFinalizado = document.getElementById('filtroMesFinalizado')?.value?.trim();
+  if (mesFinalizado) {
+    // Formato: YYYY-MM
+    const [ano, mes] = mesFinalizado.split('-');
+    if (ano && mes) {
+      const dataInicial = `${mesFinalizado}-01`;
+      const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
+      const dataFinal = `${mesFinalizado}-${ultimoDia}`;
+      
+      filtros.push({
+        field: 'dataConclusaoIso',
+        op: 'gte',
+        value: dataInicial
+      });
+      filtros.push({
+        field: 'dataConclusaoIso',
+        op: 'lte',
+        value: `${dataFinal}T23:59:59.999Z`
+      });
+    }
+  }
+  
   // Assunto
   const assunto = document.getElementById('filtroAssunto')?.value?.trim();
-  if (assunto) {
+  if (assunto && assunto !== '' && assunto.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Assunto',
       op: 'eq',
@@ -450,7 +755,7 @@ function collectFilters() {
   
   // Responsável
   const responsavel = document.getElementById('filtroResponsavel')?.value?.trim();
-  if (responsavel) {
+  if (responsavel && responsavel !== '' && responsavel.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Responsavel',
       op: 'eq',
@@ -460,7 +765,7 @@ function collectFilters() {
   
   // Status
   const status = document.getElementById('filtroStatus')?.value?.trim();
-  if (status) {
+  if (status && status !== '' && status.toLowerCase() !== 'todos') {
     filtros.push({
       field: 'Status',
       op: 'eq',
@@ -495,10 +800,23 @@ async function applyFilters() {
   
   try {
     // Coletar filtros do formulário
-    const filtros = collectFilters();
+    const filtrosData = collectFilters();
     
-    if (window.Logger) {
-      window.Logger.debug(`🔍 Aplicando ${filtros.length} filtro(s)`, filtros);
+    // Verificar se é filtro composto
+    let filtros = [];
+    let isComposite = false;
+    
+    if (filtrosData && filtrosData.isComposite && filtrosData.compositeFilter) {
+      isComposite = true;
+      filtros = filtrosData;
+      if (window.Logger) {
+        window.Logger.debug('🔍 Aplicando filtro composto', filtrosData.compositeFilter);
+      }
+    } else {
+      filtros = Array.isArray(filtrosData) ? filtrosData : [];
+      if (window.Logger) {
+        window.Logger.debug(`🔍 Aplicando ${filtros.length} filtro(s)`, filtros);
+      }
     }
     
     // Atualizar estado
@@ -550,7 +868,27 @@ async function applyFilters() {
  */
 async function applyFiltersAPI(filtros) {
   try {
-    const response = await fetch('/api/filter', {
+    // Verificar se é filtro composto
+    const isComposite = filtros && filtros.isComposite && filtros.compositeFilter;
+    const endpoint = isComposite ? '/api/filter' : '/api/filter';
+    
+    let requestBody;
+    if (isComposite) {
+      // Enviar filtro composto
+      requestBody = {
+        isComposite: true,
+        compositeFilter: filtros.compositeFilter,
+        originalUrl: window.location.pathname
+      };
+    } else {
+      // Enviar filtros simples
+      requestBody = {
+        filters: Array.isArray(filtros) ? filtros : [],
+        originalUrl: window.location.pathname
+      };
+    }
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -597,9 +935,38 @@ function displayResults() {
     return;
   }
   
+  // Verificar se há filtros de data aplicados (incluindo filtros de mês)
+  const temFiltroData = filtrosState.filtros.some(f => 
+    f.field === 'dataCriacaoIso' || 
+    f.field === 'dataConclusaoIso' ||
+    f.field === 'data_da_criacao' ||
+    f.field === 'dataDaCriacao' ||
+    f.field === 'data_conclusao' ||
+    f.field === 'dataDaConclusao'
+  ) || 
+  document.getElementById('filtroMesCriado')?.value?.trim() ||
+  document.getElementById('filtroMesFinalizado')?.value?.trim();
+  
+  // Ordenar por data decrescente se não houver filtro de data
+  let resultadosOrdenados = [...resultados];
+  if (!temFiltroData) {
+    resultadosOrdenados.sort((a, b) => {
+      const dataA = a.data?.dataCriacaoIso || a.dataCriacaoIso || a.data?.data_da_criacao || a.dataDaCriacao || '';
+      const dataB = b.data?.dataCriacaoIso || b.dataCriacaoIso || b.data?.data_da_criacao || b.dataDaCriacao || '';
+      
+      // Comparar datas (mais recente primeiro)
+      if (dataA && dataB) {
+        return new Date(dataB) - new Date(dataA);
+      }
+      if (dataA) return -1;
+      if (dataB) return 1;
+      return 0;
+    });
+  }
+  
   // Pegar apenas os resultados a serem exibidos
-  const resultadosParaExibir = resultados.slice(0, resultadosExibidos);
-  const temMais = resultados.length > resultadosExibidos;
+  const resultadosParaExibir = resultadosOrdenados.slice(0, resultadosExibidos);
+  const temMais = resultadosOrdenados.length > resultadosExibidos;
   
   // Criar tabela de resultados
   const tableHTML = `
@@ -817,6 +1184,8 @@ function clearAllFilters() {
   document.getElementById('filtroUnidadeSaude').value = '';
   document.getElementById('filtroDataCriacaoInicial').value = '';
   document.getElementById('filtroDataCriacaoFinal').value = '';
+  document.getElementById('filtroMesCriado').value = '';
+  document.getElementById('filtroMesFinalizado').value = '';
   document.getElementById('filtroAssunto').value = '';
   document.getElementById('filtroResponsavel').value = '';
   document.getElementById('filtroStatus').value = '';

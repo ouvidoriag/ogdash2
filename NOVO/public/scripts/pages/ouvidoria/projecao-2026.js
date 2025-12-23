@@ -303,30 +303,43 @@ async function renderProjecaoChart(historico, projecao2026) {
   const historicoValues = historico.map(h => h.value);
   const projecaoValues = projecao2026.map(p => p.value);
   
+  // PADRONIZAÇÃO: Usar cores da paleta padronizada do sistema
+  const config = window.config?.CHART_CONFIG || {};
+  const primaryColor = config.COLORS?.PRIMARY || '#06b6d4';
+  const secondaryColor = config.COLORS?.SECONDARY || '#8b5cf6';
+  
+  // Converter hex para rgba
+  const hexToRgba = (hex, alpha) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+  
   const datasets = [
     {
       label: 'Histórico',
       data: [...historicoValues, ...Array(12).fill(null)],
-      borderColor: '#22d3ee',
-      backgroundColor: 'rgba(34,211,238,0.1)',
+      borderColor: primaryColor,
+      backgroundColor: hexToRgba(primaryColor, 0.1),
       fill: true,
       tension: 0.4
     },
     {
       label: 'Projeção 2026',
       data: [...Array(historico.length).fill(null), ...projecaoValues],
-      borderColor: '#a78bfa',
-      backgroundColor: 'rgba(167,139,250,0.1)',
+      borderColor: secondaryColor,
+      backgroundColor: hexToRgba(secondaryColor, 0.1),
       borderDash: [5, 5],
       fill: true,
       tension: 0.4
     }
   ];
   
-  await window.chartFactory?.createLineChart('chartProjecaoMensal', todosLabels, datasets, {
+  const chartProjecao = await window.chartFactory?.createLineChart('chartProjecaoMensal', todosLabels, datasets, {
     fill: true,
     tension: 0.4,
-    onClick: false,
+    onClick: true, // Habilitar interatividade para crossfilter
     legendContainer: 'legendProjecaoMensal',
     chartOptions: {
       plugins: {
@@ -352,6 +365,17 @@ async function renderProjecaoChart(historico, projecao2026) {
       }
     }
   });
+  
+  // CROSSFILTER: Adicionar sistema de filtros (filtro por mês/período)
+  if (chartProjecao && historico && window.addCrossfilterToChart) {
+    window.addCrossfilterToChart(chartProjecao, historico, {
+      field: 'month',
+      valueField: 'ym',
+      onFilterChange: () => {
+        if (window.loadProjecao2026) setTimeout(() => window.loadProjecao2026(), 100);
+      }
+    });
+  }
 }
 
 /**
@@ -389,9 +413,9 @@ async function renderCrescimentoPercentual(historico, projecao2026) {
   const labels = crescimento.map(c => c.label);
   const valores = crescimento.map(c => c.value);
   
-  await window.chartFactory?.createBarChart('chartCrescimentoPercentual', labels, valores, {
+  const chartCrescimento = await window.chartFactory?.createBarChart('chartCrescimentoPercentual', labels, valores, {
         colorIndex: 0,
-        onClick: false,
+        onClick: true, // Habilitar interatividade para crossfilter
         chartOptions: {
           plugins: {
             tooltip: {
@@ -411,10 +435,21 @@ async function renderCrescimentoPercentual(historico, projecao2026) {
                   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
                 }
               }
-            }
-          }
         }
-      });
+      }
+    }
+  });
+  
+  // CROSSFILTER: Adicionar sistema de filtros
+  if (chartCrescimento && crescimento && window.addCrossfilterToChart) {
+    window.addCrossfilterToChart(chartCrescimento, crescimento, {
+      field: 'month',
+      valueField: 'label',
+      onFilterChange: () => {
+        if (window.loadProjecao2026) setTimeout(() => window.loadProjecao2026(), 100);
+      }
+    });
+  }
 }
 
 /**
@@ -478,9 +513,9 @@ async function renderComparacaoAnual(historico, projecao2026) {
     }
   ];
   
-  await window.chartFactory?.createLineChart('chartComparacaoAnual', labels, datasets, {
+  const chartComparacao = await window.chartFactory?.createLineChart('chartComparacaoAnual', labels, datasets, {
     fill: false,
-    onClick: false,
+    onClick: true, // Habilitar interatividade para crossfilter
     legendContainer: 'legendComparacaoAnual',
     chartOptions: {
       plugins: {
@@ -505,6 +540,17 @@ async function renderComparacaoAnual(historico, projecao2026) {
       }
     }
   });
+  
+  // CROSSFILTER: Adicionar sistema de filtros
+  if (chartComparacao && historico && window.addCrossfilterToChart) {
+    window.addCrossfilterToChart(chartComparacao, historico, {
+      field: 'month',
+      valueField: 'ym',
+      onFilterChange: () => {
+        if (window.loadProjecao2026) setTimeout(() => window.loadProjecao2026(), 100);
+      }
+    });
+  }
 }
 
 /**
@@ -521,9 +567,9 @@ async function renderSazonalidade(sazonalidade) {
     valores.push((sazonalidade[mesStr] || 1.0) * 100); // Converter para percentual
   }
   
-  await window.chartFactory?.createBarChart('chartSazonalidade', labels, valores, {
+  const chartSazonalidade = await window.chartFactory?.createBarChart('chartSazonalidade', labels, valores, {
     colorIndex: 2,
-    onClick: false,
+    onClick: true, // Habilitar interatividade para crossfilter
     chartOptions: {
       plugins: {
         tooltip: {
@@ -548,6 +594,22 @@ async function renderSazonalidade(sazonalidade) {
       }
     }
   });
+  
+  // CROSSFILTER: Adicionar sistema de filtros
+  if (chartSazonalidade && labels && window.addCrossfilterToChart) {
+    const sazonalidadeData = labels.map((label, idx) => ({
+      mes: label,
+      valor: valores[idx]
+    }));
+    
+    window.addCrossfilterToChart(chartSazonalidade, sazonalidadeData, {
+      field: 'month',
+      valueField: 'mes',
+      onFilterChange: () => {
+        if (window.loadProjecao2026) setTimeout(() => window.loadProjecao2026(), 100);
+      }
+    });
+  }
 }
 
 /**
@@ -574,9 +636,10 @@ async function renderProjecaoPorTema(temas, analise) {
     }
   ];
   
-  await window.chartFactory?.createBarChart('chartProjecaoTema', labels, valoresAtuais, {
+  const chartTema = await window.chartFactory?.createBarChart('chartProjecaoTema', labels, valoresAtuais, {
     colorIndex: 0,
-    onClick: false,
+    onClick: true, // Habilitar interatividade para crossfilter
+    field: 'tema',
     chartOptions: {
       indexAxis: 'y',
       plugins: {
@@ -602,6 +665,17 @@ async function renderProjecaoPorTema(temas, analise) {
       }
     }
   });
+  
+  // CROSSFILTER: Adicionar sistema de filtros
+  if (chartTema && temas && window.addCrossfilterToChart) {
+    window.addCrossfilterToChart(chartTema, temas, {
+      field: 'tema',
+      valueField: 'theme',
+      onFilterChange: () => {
+        if (window.loadProjecao2026) setTimeout(() => window.loadProjecao2026(), 100);
+      }
+    });
+  }
 }
 
 /**
@@ -617,8 +691,10 @@ async function renderProjecaoPorTipo(tipos, analise) {
     return Math.round(atual * fatorCrescimento * 12); // Projeção anual
   });
   
-  await window.chartFactory?.createDoughnutChart('chartProjecaoTipo', labels, valores, {
-    onClick: false,
+  // PADRONIZAÇÃO: Usar campo 'tipoDeManifestacao' para cores padronizadas
+  const chartTipo = await window.chartFactory?.createDoughnutChart('chartProjecaoTipo', labels, valores, {
+    field: 'tipoDeManifestacao', // Especificar campo para usar cores padronizadas (Denúncia=vermelho, Reclamação=laranja, etc.)
+    onClick: true, // Habilitar interatividade para crossfilter
     legendContainer: 'legendProjecaoTipo',
     chartOptions: {
       plugins: {

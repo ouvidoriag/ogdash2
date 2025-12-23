@@ -118,13 +118,34 @@
         }
       } else {
         // Modo single select: comportamento original (toggle)
-        if (this.filters[field] === value) {
-          this.filters[field] = null; // Desativar filtro
+        // Se já existe um array, converter para valor único
+        const current = this.filters[field];
+        
+        // Se é array, verificar se o valor está no array
+        if (Array.isArray(current)) {
+          const index = current.findIndex(v => String(v).toLowerCase() === String(value).toLowerCase());
+          if (index >= 0 && current.length === 1) {
+            // Se é o único valor no array, desativar
+            this.filters[field] = null;
+            if (window.Logger) {
+              window.Logger.debug(`Crossfilter: Filtro '${field}' desativado (era array com 1 item)`, { field, value });
+            }
+          } else {
+            // Substituir array por valor único
+            this.filters[field] = value;
+            if (window.Logger) {
+              window.Logger.debug(`Crossfilter: Array convertido para valor único em '${field}'`, { field, value, previousArray: current });
+            }
+          }
+        } else if (current === value) {
+          // Valor único igual ao clicado: desativar
+          this.filters[field] = null;
           if (window.Logger) {
             window.Logger.debug(`Crossfilter: Filtro '${field}' desativado`, { field, value });
           }
         } else {
-          this.filters[field] = value; // Ativar filtro
+          // Ativar filtro com valor único
+          this.filters[field] = value;
           if (window.Logger) {
             window.Logger.debug(`Crossfilter: Filtro '${field}' ativado`, { field, value });
           }

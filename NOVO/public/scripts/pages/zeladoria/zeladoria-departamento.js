@@ -67,13 +67,27 @@ async function loadZeladoriaDepartamento() {
     const values = sortedData.map(d => d.count || 0);
     
     // Criar gráfico principal (barra horizontal)
-    await window.chartFactory?.createBarChart('zeladoria-departamento-chart', labels, values, {
+    const chartDept = await window.chartFactory?.createBarChart('zeladoria-departamento-chart', labels, values, {
       horizontal: true,
       colorIndex: 2,
       field: 'departamento',
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       legendContainer: 'zeladoria-departamento-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros
+    if (chartDept && sortedData && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartDept, sortedData, {
+        field: 'departamento',
+        valueField: 'key',
+        onFilterChange: () => {
+          if (window.loadZeladoriaDepartamento) setTimeout(() => window.loadZeladoriaDepartamento(), 100);
+        },
+        onClearFilters: () => {
+          if (window.loadZeladoriaDepartamento) setTimeout(() => window.loadZeladoriaDepartamento(), 100);
+        }
+      });
+    }
     
     // Renderizar ranking de departamentos
     renderDepartamentoRanking(sortedData);
@@ -93,6 +107,36 @@ async function loadZeladoriaDepartamento() {
     
     // Atualizar KPIs no header
     updateZeladoriaDepartamentoKPIs(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => updateZeladoriaDepartamentoKPIs(sortedData),
+        pageLoadFunction: window.loadZeladoriaDepartamento
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#zeladoria-departamento-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const dept = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: dept,
+              field: 'departamento'
+            };
+          }),
+          field: 'departamento',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]') || card.querySelector('.font-semibold');
+            return textEl ? (textEl.getAttribute('title') || textEl.textContent.trim()) : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('🏢 loadZeladoriaDepartamento: Concluído');

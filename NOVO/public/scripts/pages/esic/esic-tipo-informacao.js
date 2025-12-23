@@ -55,15 +55,62 @@ async function loadEsicTipoInformacao() {
     const values = sortedData.map(d => d.count || 0);
     
     if (labels.length > 0 && values.length > 0) {
-      await window.chartFactory?.createBarChart('esic-chart-tipo-informacao-detail', labels, values, {
+      const chartTipo = await window.chartFactory?.createBarChart('esic-chart-tipo-informacao-detail', labels, values, {
         horizontal: true,
         colorIndex: 1,
-        onClick: false,
+        onClick: true, // Habilitar interatividade para crossfilter
+        field: 'tipoInformacao'
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartTipo && sortedData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartTipo, sortedData, {
+          field: 'tipoInformacao',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadEsicTipoInformacao) setTimeout(() => window.loadEsicTipoInformacao(), 100);
+          },
+          onClearFilters: () => {
+            if (window.loadEsicTipoInformacao) setTimeout(() => window.loadEsicTipoInformacao(), 100);
+          }
+        });
+      }
     }
     
     // Renderizar ranking
     renderTipoRanking(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => {
+          if (window.loadEsicTipoInformacao) window.loadEsicTipoInformacao();
+        },
+        pageLoadFunction: window.loadEsicTipoInformacao
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#esic-tipo-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const tipo = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: tipo,
+              field: 'tipoInformacao'
+            };
+          }),
+          field: 'tipoInformacao',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]');
+            return textEl ? textEl.getAttribute('title') : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('📑 loadEsicTipoInformacao: Concluído');

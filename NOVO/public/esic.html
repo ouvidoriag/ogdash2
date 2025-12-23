@@ -5,20 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>e-SIC - Duque de Caxias - Dashboard</title>
     <link rel="icon" type="image/png" href="/dc-logo.png" />
-    <!-- Tailwind CSS via CDN (apenas para desenvolvimento) -->
+    <!-- Tailwind CSS: Sempre tentar usar local primeiro, CDN como fallback -->
     <script>
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        const tailwindScript = document.createElement('script');
-        tailwindScript.src = 'https://cdn.tailwindcss.com';
-        document.head.appendChild(tailwindScript);
-      } else {
+      (function() {
+        // Suprimir aviso do Tailwind CDN ANTES de qualquer coisa
+        const originalWarn = console.warn;
+        console.warn = function(...args) {
+          if (args[0] && typeof args[0] === 'string' && 
+              (args[0].includes('cdn.tailwindcss.com') || 
+               args[0].includes('should not be used in production'))) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+        
         const tailwindCSS = document.createElement('link');
         tailwindCSS.rel = 'stylesheet';
-        tailwindCSS.href = '/styles/tailwind.css';
+        tailwindCSS.href = '/styles/tailwind.min.css';
+        
+        tailwindCSS.onerror = function() {
+          const isDevelopment = window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.hostname.includes('localhost');
+          
+          if (isDevelopment) {
+            const tailwindScript = document.createElement('script');
+            tailwindScript.src = 'https://cdn.tailwindcss.com';
+            tailwindScript.onload = function() {
+              if (window.tailwind) {
+                window.tailwind.config = window.tailwind.config || {};
+                window.tailwind.config.silent = true;
+              }
+            };
+            document.head.appendChild(tailwindScript);
+          }
+        };
+        
         document.head.appendChild(tailwindCSS);
-      }
+      })();
     </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <!-- Animate.css local (resolve Tracking Prevention) -->
+    <link rel="stylesheet" href="/styles/animate.min.css"/>
     <!-- Google Fonts - Rajdhani (mesma fonte do painel de login) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

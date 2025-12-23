@@ -134,7 +134,7 @@ export default function aggregateRoutes(prisma, getMongoClient) {
   
   /**
    * GET /api/aggregate/top-protocolos-demora
-   * Busca os 10 protocolos com maior tempo de demora
+   * Busca os 10 protocolos com maior tempo de resolução
    * Query params: limit (padrão: 10)
    * REFATORAÇÃO: Mongoose (sem prisma)
    */

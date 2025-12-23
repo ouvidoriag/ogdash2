@@ -39,7 +39,13 @@ function resolveConfigPath(filename) {
 }
 
 // Configuração OAuth2
-const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
+// Escopos necessários:
+// - gmail.send: para enviar emails
+// - gmail.settings.basic: para verificar/configurar vacation settings (resposta automática de férias)
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.settings.basic'
+];
 const TOKEN_PATH = resolveConfigPath('gmail-token.json');
 const CREDENTIALS_PATH = resolveConfigPath('gmail-credentials.json');
 
@@ -61,10 +67,17 @@ function loadCredentials() {
     const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
     const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
     
+    // CORREÇÃO: Google descontinuou urn:ietf:wg:oauth:2.0:oob
+    // Usar http://localhost para scripts CLI (o usuário copia o código da URL)
+    // Para aplicações web, usar o callback da API
+    const redirectUri = redirect_uris && redirect_uris.length > 0 
+      ? redirect_uris.find(uri => uri.startsWith('http://localhost')) || redirect_uris[0]
+      : 'http://localhost';
+    
     oauth2Client = new google.auth.OAuth2(
       client_id,
       client_secret,
-      redirect_uris[0]
+      redirectUri
     );
     
     return oauth2Client;
@@ -114,14 +127,34 @@ function saveToken(token) {
 
 /**
  * Obter URL de autorização
+ * @param {string} redirectUri - URI de redirecionamento (opcional)
+ *   - Se não fornecido, usa o padrão das credenciais
+ *   - Para scripts CLI: 'http://localhost' (Google descontinuou OOB)
+ *   - Para web: 'http://localhost:3000/api/notifications/auth/callback'
  */
-export function getAuthUrl() {
-  const auth = loadCredentials();
+export function getAuthUrl(redirectUri = null) {
+  // Se um redirect_uri específico foi fornecido, criar novo cliente OAuth
+  if (redirectUri) {
+    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
+    const { client_secret, client_id } = credentials.installed || credentials.web;
+    
+    oauth2Client = new google.auth.OAuth2(
+      client_id,
+      client_secret,
+      redirectUri
+    );
+  } else {
+    // Usar o cliente padrão (carregado com redirect_uri das credenciais)
+    loadCredentials();
+  }
   
-  return auth.generateAuthUrl({
-    access_type: 'offline',
+  const options = {
+    access_type: 'offline', // Importante: permite refresh_token
     scope: SCOPES,
-  });
+    prompt: 'consent' // Forçar tela de consentimento para garantir refresh_token
+  };
+  
+  return oauth2Client.generateAuthUrl(options);
 }
 
 /**
@@ -129,15 +162,45 @@ export function getAuthUrl() {
  */
 export async function authorize(code) {
   try {
-    const auth = loadCredentials();
+    // Garantir que estamos usando o mesmo redirect_uri usado na URL de autorização
+    // Para scripts CLI, usar http://localhost
+    const redirectUri = 'http://localhost';
+    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
+    const { client_secret, client_id } = credentials.installed || credentials.web;
+    
+    // Criar cliente OAuth com o redirect_uri correto
+    const auth = new google.auth.OAuth2(
+      client_id,
+      client_secret,
+      redirectUri
+    );
+    
+    console.log(`   Verificando redirect_uri: ${redirectUri}`);
+    
     const { tokens } = await auth.getToken(code);
     auth.setCredentials(tokens);
     saveToken(tokens);
     
+    // Atualizar o cliente global
+    oauth2Client = auth;
     gmail = google.gmail({ version: 'v1', auth });
+    
     return tokens;
   } catch (error) {
-    console.error('❌ Erro ao autorizar:', error);
+    console.error('❌ Erro ao autorizar:', error.message);
+    
+    // Se for erro de redirect_uri_mismatch, dar instruções claras
+    if (error.message && error.message.includes('redirect_uri_mismatch')) {
+      console.error('\n🚨 ERRO: redirect_uri_mismatch');
+      console.error('\n💡 SOLUÇÃO:');
+      console.error('   1. Vá no Google Cloud Console');
+      console.error('   2. Cliente OAuth: 353430763944-tmerll34c4anr8d12vjnpk6bv0c9i3fd');
+      console.error('   3. Em "URIs de redirecionamento autorizados"');
+      console.error('   4. Adicione EXATAMENTE: http://localhost');
+      console.error('   5. Salve e aguarde 30-60 segundos');
+      console.error('   6. Teste novamente\n');
+    }
+    
     throw error;
   }
 }
@@ -419,6 +482,80 @@ export async function checkAuthStatus() {
       authorized: false,
       message: `Erro ao verificar autorização: ${error.message}`
     };
+  }
+}
+
+/**
+ * Obter configurações de resposta automática de férias (Vacation Settings)
+ * Requer escopo: https://www.googleapis.com/auth/gmail.settings.basic
+ * 
+ * @param {string} userId - ID do usuário (padrão: 'me' para o usuário autenticado)
+ * @returns {Promise<Object>} Configurações de férias
+ */
+export async function getVacationSettings(userId = 'me') {
+  try {
+    const gmailClient = initGmail();
+    
+    const response = await gmailClient.users.settings.getVacation({
+      userId: userId
+    });
+    
+    return {
+      success: true,
+      enabled: response.data.enableAutoReply || false,
+      subject: response.data.responseSubject || '',
+      message: response.data.responseBodyPlainText || '',
+      startTime: response.data.startTime || null,
+      endTime: response.data.endTime || null,
+      restrictToContacts: response.data.restrictToContacts || false,
+      restrictToDomain: response.data.restrictToDomain || false,
+      raw: response.data
+    };
+  } catch (error) {
+    console.error('❌ Erro ao obter configurações de férias:', error);
+    
+    // Se o erro for de escopo insuficiente
+    if (error.code === 403 || (error.response && error.response.status === 403)) {
+      throw new Error('Escopo insuficiente. É necessário reautorizar com o escopo gmail.settings.basic. Execute: npm run gmail:auth');
+    }
+    
+    throw error;
+  }
+}
+
+/**
+ * Verificar se a resposta automática de férias está ativa
+ * Útil para evitar enviar emails quando o remetente está de férias
+ * 
+ * @param {string} userId - ID do usuário (padrão: 'me')
+ * @returns {Promise<boolean>} true se está de férias, false caso contrário
+ */
+export async function isOnVacation(userId = 'me') {
+  try {
+    const settings = await getVacationSettings(userId);
+    
+    if (!settings.enabled) {
+      return false;
+    }
+    
+    // Verificar se está dentro do período de férias
+    const now = Date.now();
+    const startTime = settings.startTime ? parseInt(settings.startTime) : null;
+    const endTime = settings.endTime ? parseInt(settings.endTime) : null;
+    
+    if (startTime && now < startTime) {
+      return false; // Ainda não começou
+    }
+    
+    if (endTime && now > endTime) {
+      return false; // Já terminou
+    }
+    
+    return true; // Está de férias
+  } catch (error) {
+    // Se não conseguir verificar, assumir que não está de férias
+    console.warn('⚠️ Não foi possível verificar status de férias, assumindo que não está de férias:', error.message);
+    return false;
   }
 }
 

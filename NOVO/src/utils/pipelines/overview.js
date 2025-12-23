@@ -11,11 +11,37 @@
 export function buildOverviewPipeline(filters = {}) {
   const pipeline = [];
   
+  // DEBUG: Log dos filtros recebidos
+  if (filters.dataCriacaoIso || filters.statusDemanda) {
+    console.log('🔍 buildOverviewPipeline: Filtros recebidos:', {
+      hasDataCriacaoIso: !!filters.dataCriacaoIso,
+      dataCriacaoIso: filters.dataCriacaoIso,
+      hasStatusDemanda: !!filters.statusDemanda,
+      statusDemanda: filters.statusDemanda,
+      filterKeys: Object.keys(filters)
+    });
+  }
+  
   // Construir $match a partir dos filtros
   const match = buildMatchFromFilters(filters);
   
+  // DEBUG: Log do match construído (usar console.log para garantir que aparece)
+  if (match.dataCriacaoIso || match.statusDemanda) {
+    console.log('🔍 buildOverviewPipeline: Match construído:', {
+      hasDataCriacaoIso: !!match.dataCriacaoIso,
+      dataCriacaoIso: match.dataCriacaoIso,
+      hasStatusDemanda: !!match.statusDemanda,
+      statusDemanda: match.statusDemanda,
+      matchKeys: Object.keys(match),
+      fullMatch: match
+    });
+  }
+  
   if (Object.keys(match).length > 0) {
     pipeline.push({ $match: match });
+    console.log('✅ $match adicionado ao pipeline com', Object.keys(match).length, 'filtros');
+  } else {
+    console.log('⚠️ Nenhum filtro aplicado no $match');
   }
   
   // Pipeline com $facet para múltiplas agregações
@@ -146,7 +172,33 @@ function buildMatchFromFilters(filters = {}) {
   }
   
   // Filtros de data
-  if (filters.dataInicio || filters.dataFim) {
+  // CORREÇÃO: Processar filtros de data que já vêm no formato MongoDB (do filterController)
+  // Verificar se dataCriacaoIso já tem operadores MongoDB ($gte, $lte, etc)
+  if (filters.dataCriacaoIso && typeof filters.dataCriacaoIso === 'object' && 
+      (filters.dataCriacaoIso.$gte || filters.dataCriacaoIso.$lte || filters.dataCriacaoIso.$gt || filters.dataCriacaoIso.$lt)) {
+    // Filtro já está no formato MongoDB, usar diretamente
+    // IMPORTANTE: dataCriacaoIso é string no formato YYYY-MM-DD
+    // MongoDB compara strings lexicograficamente, então "2025-11-01" <= "2025-11-30" funciona corretamente
+    // Se o $lte vier com timestamp, remover o timestamp para manter consistência
+    const dateFilter = { ...filters.dataCriacaoIso };
+    if (dateFilter.$gte && typeof dateFilter.$gte === 'string' && dateFilter.$gte.includes('T')) {
+      dateFilter.$gte = dateFilter.$gte.split('T')[0]; // Remover timestamp
+    }
+    if (dateFilter.$lte && typeof dateFilter.$lte === 'string' && dateFilter.$lte.includes('T')) {
+      dateFilter.$lte = dateFilter.$lte.split('T')[0]; // Remover timestamp
+    }
+    
+    match.dataCriacaoIso = dateFilter;
+    
+    // DEBUG: Log do filtro de data aplicado
+    console.log('✅ Filtro de data aplicado no $match:', {
+      dataCriacaoIso: match.dataCriacaoIso,
+      gte: match.dataCriacaoIso.$gte,
+      lte: match.dataCriacaoIso.$lte,
+      original: filters.dataCriacaoIso
+    });
+  } else if (filters.dataInicio || filters.dataFim) {
+    // Formato antigo: dataInicio e dataFim
     const dateFilter = {};
     if (filters.dataInicio) dateFilter.$gte = filters.dataInicio;
     if (filters.dataFim) dateFilter.$lte = filters.dataFim;
@@ -171,6 +223,12 @@ function buildMatchFromFilters(filters = {}) {
         ];
       }
     }
+  }
+  
+  // CORREÇÃO: Processar também statusDemanda se vier com operador contains (do filterController)
+  if (filters.statusDemanda && typeof filters.statusDemanda === 'object' && 
+      (filters.statusDemanda.$regex || filters.statusDemanda.$in)) {
+    match.statusDemanda = filters.statusDemanda;
   }
   
   return match;

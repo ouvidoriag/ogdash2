@@ -131,8 +131,33 @@ export function formatOverviewData(facetResult = {}) {
   if (!facetResult || typeof facetResult !== 'object') {
     facetResult = {};
   }
+  
+  // CORREÇÃO: Calcular total de múltiplas formas para garantir que sempre temos um valor
+  let totalManifestations = 0;
+  
+  // Tentar 1: facet total (contagem direta)
+  if (facetResult.total && Array.isArray(facetResult.total) && facetResult.total.length > 0) {
+    totalManifestations = facetResult.total[0].total || 0;
+  }
+  
+  // Tentar 2: Se total não veio, calcular a partir das agregações
+  if (!totalManifestations || totalManifestations === 0) {
+    // Somar todos os status
+    if (facetResult.porStatus && Array.isArray(facetResult.porStatus)) {
+      totalManifestations = facetResult.porStatus.reduce((sum, item) => sum + (item.count || 0), 0);
+    }
+    // Se ainda não tiver, tentar somar por mês
+    if (!totalManifestations && facetResult.porMes && Array.isArray(facetResult.porMes)) {
+      totalManifestations = facetResult.porMes.reduce((sum, item) => sum + (item.count || 0), 0);
+    }
+    // Se ainda não tiver, tentar somar por dia
+    if (!totalManifestations && facetResult.porDia && Array.isArray(facetResult.porDia)) {
+      totalManifestations = facetResult.porDia.reduce((sum, item) => sum + (item.count || 0), 0);
+    }
+  }
+  
   const result = {
-    totalManifestations: facetResult.total?.[0]?.total || 0,
+    totalManifestations: totalManifestations,
     last7Days: facetResult.last7Days?.[0]?.total || 0,
     last30Days: facetResult.last30Days?.[0]?.total || 0,
     manifestationsByStatus: (facetResult.porStatus || []).map(item => ({
