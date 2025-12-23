@@ -34,6 +34,67 @@ const LIMITS = {
 };
 
 /**
+ * Validar filtros conflitantes
+ * @param {Array} filters - Array de filtros
+ * @returns {{valid: boolean, error?: string}} Resultado da validação
+ */
+export function validateConflictingFilters(filters) {
+  if (!Array.isArray(filters) || filters.length === 0) {
+    return { valid: true };
+  }
+
+  const byField = {};
+  const errors = [];
+
+  // Agrupar por campo
+  for (const filter of filters) {
+    if (!byField[filter.field]) {
+      byField[filter.field] = [];
+    }
+    byField[filter.field].push(filter);
+  }
+
+  // Validar cada campo
+  for (const [field, fieldFilters] of Object.entries(byField)) {
+    // Conflitos de igualdade (múltiplos 'eq' com valores diferentes)
+    const eqFilters = fieldFilters.filter(f => f.op === 'eq');
+    if (eqFilters.length > 1) {
+      const uniqueValues = new Set(eqFilters.map(f => f.value));
+      if (uniqueValues.size > 1) {
+        errors.push(`Conflito: ${field} não pode ter múltiplos valores com 'eq'. Use 'in' para múltiplos valores.`);
+      }
+    }
+
+    // Conflitos de data (gte > lte)
+    const dateFields = ['dataCriacaoIso', 'dataConclusaoIso', 'dataDaCriacao', 'dataInicio', 'dataFim'];
+    if (dateFields.includes(field)) {
+      const gte = fieldFilters.find(f => f.op === 'gte');
+      const lte = fieldFilters.find(f => f.op === 'lte');
+      
+      if (gte && lte) {
+        const gteDate = new Date(gte.value);
+        const lteDate = new Date(lte.value);
+        
+        if (isNaN(gteDate.getTime()) || isNaN(lteDate.getTime())) {
+          errors.push(`Data inválida em ${field}: gte=${gte.value}, lte=${lte.value}`);
+        } else if (gteDate > lteDate) {
+          errors.push(`Conflito de data: ${field} gte=${gte.value} é maior que lte=${lte.value}`);
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return {
+      valid: false,
+      error: errors.join('; ')
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Validar filtros
  * @param {Object} filters - Filtros a validar
  * @returns {{valid: boolean, error?: string, sanitized?: Object}} Resultado da validação

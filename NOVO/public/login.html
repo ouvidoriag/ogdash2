@@ -153,7 +153,7 @@
         }
 
         .logo-container img {
-            max-width: 140px;
+            max-width: 200px;
             height: auto;
             margin-bottom: 16px;
         }
@@ -359,6 +359,29 @@
                 Acessar Sistema
             </button>
         </form>
+
+        <div style="margin-top: 24px; text-align: center;">
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 12px;">
+                Não possui uma conta?
+            </p>
+            <a href="/cadastro" style="
+                display: inline-block;
+                padding: 12px 24px;
+                background: transparent;
+                color: var(--accent);
+                border: 1px solid var(--accent);
+                border-radius: 12px;
+                font-size: 14px;
+                font-weight: 600;
+                font-family: 'Rajdhani', sans-serif;
+                text-decoration: none;
+                letter-spacing: 0.5px;
+                transition: all 0.2s ease;
+            " onmouseover="this.style.background='var(--accent)'; this.style.color='white';" 
+               onmouseout="this.style.background='transparent'; this.style.color='var(--accent)';">
+                Criar Conta
+            </a>
+        </div>
     </div>
 
     <script>

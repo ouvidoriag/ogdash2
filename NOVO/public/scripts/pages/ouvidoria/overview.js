@@ -21,6 +21,10 @@
 // Usar um objeto para armazenar o estado de forma mais confiável
 window._ctrlKeyState = { pressed: false, timestamp: 0 };
 
+// Variáveis para filtros de mês e status
+let filtroMesOverview = '';
+let filtroStatusOverview = '';
+
 if (typeof document !== 'undefined') {
   // Rastrear Ctrl/Cmd em todos os eventos relevantes
   document.addEventListener('keydown', (e) => {
@@ -82,27 +86,206 @@ async function loadOverview(forceRefresh = false) {
   window.loadingManager?.show('Carregando dashboard...');
   
   try {
+    // REFATORAÇÃO: Coletar filtros usando função local (padrão Tempo Médio)
+    const filtrosPagina = coletarFiltrosOverview();
+    
+    // DEBUG: Log detalhado dos filtros coletados
+    if (window.Logger) {
+      window.Logger.debug('🔍 Filtros coletados da página:', {
+        count: filtrosPagina.length,
+        filtros: filtrosPagina,
+        mes: document.getElementById('filtroMesOverview')?.value,
+        status: document.getElementById('filtroStatusOverview')?.value
+      });
+    }
+    
+    // IMPORTANTE: Combinar filtros de dropdown (mês/status) com filtros de clique (crossfilter)
+    // Ambos devem trabalhar juntos - filtros de dropdown são aplicados primeiro, depois crossfilter
+    let activeFilters = [...filtrosPagina];
+    
+    // Adicionar filtros do crossfilter (clique em gráficos)
+    if (window.crossfilterOverview && window.crossfilterOverview.filters) {
+      const crossFilters = window.crossfilterOverview.filters;
+      Object.entries(crossFilters).forEach(([field, value]) => {
+        if (value !== null && value !== undefined) {
+          // Mapear campos do crossfilter para campos da API
+          const fieldMap = {
+            status: 'statusDemanda', // Usar campo correto do banco
+            tema: 'tema',
+            orgaos: 'orgaos',
+            tipo: 'tipoDeManifestacao',
+            canal: 'canal',
+            prioridade: 'prioridade',
+            unidade: 'unidadeCadastro',
+            bairro: 'bairro'
+          };
+          const apiField = fieldMap[field] || field;
+          
+          // Verificar se já existe filtro de dropdown para este campo
+          // Se houver, o filtro de dropdown tem prioridade (não adicionar crossfilter)
+          const hasDropdownFilter = filtrosPagina.some(f => {
+            const filterField = f.field?.toLowerCase() || '';
+            return filterField.includes(apiField.toLowerCase()) || 
+                   filterField.includes(field.toLowerCase());
+          });
+          
+          if (!hasDropdownFilter) {
+            if (Array.isArray(value) && value.length > 0) {
+              activeFilters.push({ field: apiField, op: 'in', value: value });
+            } else if (!Array.isArray(value)) {
+              activeFilters.push({ field: apiField, op: 'eq', value: value });
+            }
+          } else if (window.Logger) {
+            window.Logger.debug(`⏸️ Filtro de dropdown ativo para ${field}, ignorando crossfilter`);
+          }
+        }
+      });
+    }
+    
+    if (window.Logger && activeFilters.length > 0) {
+      window.Logger.debug('📊 Filtros combinados (dropdown + crossfilter):', {
+        dropdownFilters: filtrosPagina.length,
+        crossfilterFilters: activeFilters.length - filtrosPagina.length,
+        total: activeFilters.length,
+        filters: activeFilters.map(f => ({ field: f.field, op: f.op }))
+      });
+    }
+    
     let dashboardData = {};
     
-    // CROSSFILTER: Carregar dados completos e armazenar no crossfilter
-    if (window.crossfilterOverview) {
-      // Carregar dados completos primeiro
-      dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
-        useDataStore: !forceRefresh,
-        ttl: 5 * 60 * 1000 // 5 minutos
-      }) || {};
-      
-      // Armazenar dados completos no crossfilter
-      window.crossfilterOverview.allData = dashboardData;
-      
-      // Aplicar filtros se houver
-      dashboardData = window.crossfilterOverview.applyFilters(dashboardData);
+    // Se houver filtros de mês/status ou crossfilter, usar endpoint /api/filter/aggregated
+    if (activeFilters.length > 0) {
+      try {
+        if (window.Logger) {
+          window.Logger.debug('📊 loadOverview: Aplicando filtros:', {
+            count: activeFilters.length,
+            filters: activeFilters,
+            forceRefresh
+          });
+        }
+        
+        // CORREÇÃO: Invalidar cache antes de fazer a requisição
+        if (forceRefresh && window.dataStore && typeof window.dataStore.clear === 'function') {
+          window.dataStore.clear('/api/filter/aggregated');
+          if (window.Logger) {
+            window.Logger.debug('🔄 Cache de /api/filter/aggregated invalidado (forceRefresh=true)');
+          }
+        }
+        
+        // DEBUG: Log do que está sendo enviado
+        if (window.Logger) {
+          window.Logger.debug('📤 Enviando requisição para /api/filter/aggregated:', {
+            filtersCount: activeFilters.length,
+            filters: activeFilters,
+            body: JSON.stringify({ filters: activeFilters })
+          });
+        }
+        
+        const response = await fetch('/api/filter/aggregated', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ filters: activeFilters })
+        });
+        
+        if (window.Logger) {
+          window.Logger.debug('📥 Resposta recebida:', {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText
+          });
+        }
+        
+        if (response.ok) {
+          dashboardData = await response.json();
+          
+          // DEBUG: Log dos dados recebidos
+          if (window.Logger) {
+            window.Logger.debug('📊 Dados recebidos do /api/filter/aggregated:', {
+              totalManifestations: dashboardData?.totalManifestations,
+              last7Days: dashboardData?.last7Days,
+              last30Days: dashboardData?.last30Days,
+              byMonth: dashboardData?.manifestationsByMonth?.length,
+              byDay: dashboardData?.manifestationsByDay?.length,
+              byStatus: dashboardData?.manifestationsByStatus?.length
+            });
+          }
+          
+          // Garantir estrutura válida
+          if (!dashboardData || typeof dashboardData !== 'object' || Array.isArray(dashboardData)) {
+            dashboardData = {
+              totalManifestations: 0,
+              last7Days: 0,
+              last30Days: 0,
+              manifestationsByMonth: [],
+              manifestationsByDay: [],
+              manifestationsByStatus: [],
+              manifestationsByTheme: [],
+              manifestationsByOrgan: [],
+              manifestationsByType: [],
+              manifestationsByChannel: [],
+              manifestationsByPriority: [],
+              manifestationsByUnit: []
+            };
+          } else {
+            // Garantir que todas as propriedades existem
+            dashboardData = {
+              totalManifestations: dashboardData.totalManifestations ?? 0,
+              last7Days: dashboardData.last7Days ?? 0,
+              last30Days: dashboardData.last30Days ?? 0,
+              manifestationsByMonth: Array.isArray(dashboardData.manifestationsByMonth) ? dashboardData.manifestationsByMonth : [],
+              manifestationsByDay: Array.isArray(dashboardData.manifestationsByDay) ? dashboardData.manifestationsByDay : [],
+              manifestationsByStatus: Array.isArray(dashboardData.manifestationsByStatus) ? dashboardData.manifestationsByStatus : [],
+              manifestationsByTheme: Array.isArray(dashboardData.manifestationsByTheme) ? dashboardData.manifestationsByTheme : [],
+              manifestationsByOrgan: Array.isArray(dashboardData.manifestationsByOrgan) ? dashboardData.manifestationsByOrgan : [],
+              manifestationsByType: Array.isArray(dashboardData.manifestationsByType) ? dashboardData.manifestationsByType : [],
+              manifestationsByChannel: Array.isArray(dashboardData.manifestationsByChannel) ? dashboardData.manifestationsByChannel : [],
+              manifestationsByPriority: Array.isArray(dashboardData.manifestationsByPriority) ? dashboardData.manifestationsByPriority : [],
+              manifestationsByUnit: Array.isArray(dashboardData.manifestationsByUnit) ? dashboardData.manifestationsByUnit : []
+            };
+          }
+        } else {
+          if (window.Logger) {
+            window.Logger.warn('⚠️ Erro ao aplicar filtros, carregando dados sem filtros');
+          }
+          // Fallback: carregar sem filtros
+          dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
+            useDataStore: !forceRefresh,
+            ttl: 5 * 60 * 1000
+          }) || {};
+        }
+      } catch (error) {
+        if (window.Logger) {
+          window.Logger.warn('⚠️ Erro ao aplicar filtros, carregando dados sem filtros:', error);
+        }
+        // Fallback: carregar sem filtros
+        dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
+          useDataStore: !forceRefresh,
+          ttl: 5 * 60 * 1000
+        }) || {};
+      }
     } else {
-      // Fallback: carregar normalmente
-      dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
-        useDataStore: !forceRefresh,
-        ttl: 5 * 60 * 1000 // 5 minutos
-      }) || {};
+      // Sem filtros de mês/status, usar lógica normal
+      // CROSSFILTER: Carregar dados completos e armazenar no crossfilter
+      if (window.crossfilterOverview) {
+        // Carregar dados completos primeiro
+        dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
+          useDataStore: !forceRefresh,
+          ttl: 5 * 60 * 1000 // 5 minutos
+        }) || {};
+        
+        // Armazenar dados completos no crossfilter
+        window.crossfilterOverview.allData = dashboardData;
+        
+        // Aplicar filtros se houver
+        dashboardData = window.crossfilterOverview.applyFilters(dashboardData);
+      } else {
+        // Fallback: carregar normalmente
+        dashboardData = await window.dataLoader?.load('/api/dashboard-data', {
+          useDataStore: !forceRefresh,
+          ttl: 5 * 60 * 1000 // 5 minutos
+        }) || {};
+      }
     }
     
     // PRIORIDADE 1: Validar dados recebidos
@@ -131,12 +314,87 @@ async function loadOverview(forceRefresh = false) {
     
     // Extrair dados
     // CORREÇÃO: Mapear diferentes formatos de resposta da API
+    let totalValue = dashboardData.totalManifestations || dashboardData.total || dashboardData.count || 0;
+    
+    // CORREÇÃO CRÍTICA: Se total está undefined ou 0 mas há dados, calcular a partir das agregações
+    // Isso é especialmente importante quando há filtros aplicados
+    if ((!totalValue || totalValue === 0 || isNaN(totalValue)) && (activeFilters.length > 0 || dashboardData.manifestationsByStatus || dashboardData.manifestationsByDay)) {
+      // Calcular total a partir das agregações disponíveis (prioridade: status > day > month)
+      if (dashboardData.manifestationsByStatus && Array.isArray(dashboardData.manifestationsByStatus) && dashboardData.manifestationsByStatus.length > 0) {
+        totalValue = dashboardData.manifestationsByStatus.reduce((sum, item) => sum + (item.count || 0), 0);
+      } else if (dashboardData.manifestationsByDay && Array.isArray(dashboardData.manifestationsByDay) && dashboardData.manifestationsByDay.length > 0) {
+        totalValue = dashboardData.manifestationsByDay.reduce((sum, item) => sum + (item.count || 0), 0);
+      } else if (dashboardData.manifestationsByMonth && Array.isArray(dashboardData.manifestationsByMonth) && dashboardData.manifestationsByMonth.length > 0) {
+        totalValue = dashboardData.manifestationsByMonth.reduce((sum, item) => sum + (item.count || 0), 0);
+      }
+      
+      if (window.Logger && totalValue > 0) {
+        window.Logger.debug('📊 Total recalculado a partir de agregações:', {
+          originalTotal: dashboardData.totalManifestations,
+          recalculatedTotal: totalValue,
+          source: dashboardData.manifestationsByStatus?.length > 0 ? 'byStatus' : 
+                  dashboardData.manifestationsByDay?.length > 0 ? 'byDay' : 'byMonth',
+          hasFilters: activeFilters.length > 0
+        });
+      }
+    }
+    
+    // Garantir que totalValue é sempre um número válido
+    if (!totalValue || isNaN(totalValue)) {
+      totalValue = 0;
+    }
+    
     const summary = {
-      total: dashboardData.totalManifestations || dashboardData.total || dashboardData.count || 0,
+      total: totalValue,
       last7: dashboardData.last7Days || dashboardData.last7 || dashboardData.last_7_days || 0,
       last30: dashboardData.last30Days || dashboardData.last30 || dashboardData.last_30_days || 0,
       statusCounts: dashboardData.manifestationsByStatus || dashboardData.byStatus || dashboardData.status || []
     };
+    
+    // CORREÇÃO: Quando há filtros de mês, recalcular last7 e last30 baseado nos dados filtrados
+    // Se há filtros de mês, calcular last7 e last30 a partir de manifestationsByDay
+    if (activeFilters.length > 0 && dashboardData.manifestationsByDay && Array.isArray(dashboardData.manifestationsByDay)) {
+      const byDay = dashboardData.manifestationsByDay;
+      
+      // Ordenar por data (mais recente primeiro)
+      const sortedDays = [...byDay].sort((a, b) => {
+        const dateA = new Date(a.date || a._id || 0);
+        const dateB = new Date(b.date || b._id || 0);
+        return dateB - dateA;
+      });
+      
+      // Calcular últimos 7 dias a partir dos dados filtrados
+      const last7DaysData = sortedDays.slice(0, 7);
+      const last7Count = last7DaysData.reduce((sum, day) => sum + (day.count || 0), 0);
+      
+      // Calcular últimos 30 dias a partir dos dados filtrados
+      const last30DaysData = sortedDays.slice(0, 30);
+      const last30Count = last30DaysData.reduce((sum, day) => sum + (day.count || 0), 0);
+      
+      // Atualizar summary com valores recalculados
+      if (last7Count > 0 || summary.last7 === 0) {
+        summary.last7 = last7Count;
+      }
+      if (last30Count > 0 || summary.last30 === 0) {
+        summary.last30 = last30Count;
+      }
+      
+      // Se o total ainda não foi calculado, usar a soma dos dias
+      if (!summary.total || summary.total === 0) {
+        summary.total = sortedDays.reduce((sum, day) => sum + (day.count || 0), 0);
+      }
+      
+      if (window.Logger) {
+        window.Logger.debug('📊 Valores recalculados com filtros:', {
+          originalLast7: dashboardData.last7Days,
+          recalculatedLast7: last7Count,
+          originalLast30: dashboardData.last30Days,
+          recalculatedLast30: last30Count,
+          total: summary.total,
+          daysAvailable: sortedDays.length
+        });
+      }
+    }
     
     // Debug: Log dos dados recebidos para identificar problema
     if (window.Logger) {
@@ -144,6 +402,7 @@ async function loadOverview(forceRefresh = false) {
         total: summary.total,
         last7: summary.last7,
         last30: summary.last30,
+        hasFilters: activeFilters.length > 0,
         dashboardDataKeys: Object.keys(dashboardData).slice(0, 20),
         totalManifestations: dashboardData.totalManifestations,
         total: dashboardData.total,
@@ -163,6 +422,15 @@ async function loadOverview(forceRefresh = false) {
     
     // CROSSFILTER: Renderizar banner de filtros ativos
     renderCrossfilterBanner();
+    
+    // Inicializar filtros de mês e status se ainda não foram inicializados
+    if (!window._overviewFiltersInitialized) {
+      window._overviewFiltersInitialized = true;
+      // Aguardar um pouco para garantir que o DOM está pronto
+      setTimeout(() => {
+        initOverviewFilterListeners();
+      }, 100);
+    }
     
     // CROSSFILTER: Registrar listener UMA VEZ para atualizar quando filtros mudarem
     if (window.crossfilterOverview && !window.crossfilterOverview._listenerRegistered) {
@@ -490,11 +758,21 @@ async function loadOverview(forceRefresh = false) {
             }
             
             // Re-renderizar com dados filtrados
+            // CORREÇÃO: Calcular total se não vier do backend
+            let filteredTotal = safeFilteredData.totalManifestations || 0;
+            if (!filteredTotal || filteredTotal === 0) {
+              if (safeFilteredData.manifestationsByStatus && Array.isArray(safeFilteredData.manifestationsByStatus)) {
+                filteredTotal = safeFilteredData.manifestationsByStatus.reduce((sum, item) => sum + (item.count || 0), 0);
+              } else if (safeFilteredData.manifestationsByDay && Array.isArray(safeFilteredData.manifestationsByDay)) {
+                filteredTotal = safeFilteredData.manifestationsByDay.reduce((sum, item) => sum + (item.count || 0), 0);
+              }
+            }
+            
             const filteredSummary = {
-              total: safeFilteredData.totalManifestations,
-              last7: safeFilteredData.last7Days,
-              last30: safeFilteredData.last30Days,
-              statusCounts: safeFilteredData.manifestationsByStatus
+              total: filteredTotal,
+              last7: safeFilteredData.last7Days || 0,
+              last30: safeFilteredData.last30Days || 0,
+              statusCounts: safeFilteredData.manifestationsByStatus || []
             };
             const filteredByMonth = safeFilteredData.manifestationsByMonth;
             const filteredByDay = safeFilteredData.manifestationsByDay;
@@ -675,8 +953,14 @@ async function renderStatusOverview() {
       return 'violet'; // Cor padrão
     }
     
-    // Renderizar cards de status
-    const cardsHTML = statusCounts.map((item, index) => {
+    // Separar os 10 primeiros e o restante
+    const INITIAL_DISPLAY = 10;
+    const first10 = statusCounts.slice(0, INITIAL_DISPLAY);
+    const remaining = statusCounts.slice(INITIAL_DISPLAY);
+    const hasMore = remaining.length > 0;
+    
+    // Função para renderizar um card de status
+    const renderStatusCard = (item) => {
       const status = item.status || item._id || item.key || 'Não informado';
       const count = item.count || 0;
       const percent = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
@@ -713,9 +997,52 @@ async function renderStatusOverview() {
           </div>
         </div>
       `;
-    }).join('');
+    };
     
-    statusContainer.innerHTML = cardsHTML;
+    // Renderizar apenas os primeiros 10 (mantendo o espaçamento space-y-3 do container pai)
+    const cardsHTML = first10.map(renderStatusCard).join('');
+    
+    // Adicionar container para cards restantes (inicialmente oculto)
+    // Usar o mesmo espaçamento space-y-3 que o container pai
+    const hiddenCardsHTML = hasMore ? `
+      <div id="statusOverviewRemaining" class="space-y-3" style="display: none;">
+        ${remaining.map(renderStatusCard).join('')}
+      </div>
+      <div class="flex justify-center mt-4">
+        <button id="statusOverviewLoadMore" 
+                class="px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-lg text-cyan-300 font-semibold transition-all flex items-center gap-2 cursor-pointer">
+          <span class="text-2xl font-bold">+</span>
+          <span>Carregar mais (${remaining.length})</span>
+        </button>
+      </div>
+    ` : '';
+    
+    statusContainer.innerHTML = cardsHTML + hiddenCardsHTML;
+    
+    // Adicionar event listener para o botão "Carregar mais"
+    if (hasMore) {
+      const loadMoreBtn = document.getElementById('statusOverviewLoadMore');
+      const remainingContainer = document.getElementById('statusOverviewRemaining');
+      
+      if (loadMoreBtn && remainingContainer) {
+        loadMoreBtn.addEventListener('click', () => {
+          remainingContainer.style.display = 'block';
+          loadMoreBtn.style.display = 'none';
+          
+          // Adicionar event listeners para os novos cards também
+          const newCards = remainingContainer.querySelectorAll('.status-card');
+          newCards.forEach(card => {
+            card.addEventListener('click', () => {
+              const status = card.dataset.status;
+              if (status && window.crossfilterOverview) {
+                window.crossfilterOverview.setStatusFilter(status);
+                window.crossfilterOverview.notifyListeners();
+              }
+            });
+          });
+        });
+      }
+    }
     
     // Adicionar event listeners para os cards (melhor que onclick inline)
     const statusCards = statusContainer.querySelectorAll('.status-card');
@@ -822,22 +1149,62 @@ window.updateKPIsVisualState = updateKPIsVisualState;
 
 /**
  * Renderizar sparkline (gráfico pequeno)
+ * CORREÇÃO: Garantir que os sparklines não sejam destruídos pelos gráficos principais
+ * CORREÇÃO: Aguardar Chart.js estar carregado antes de usar
  */
 async function renderSparkline(canvasId, data) {
   if (!data || data.length === 0) return;
   
   const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
+  if (!canvas) {
+    if (window.Logger) {
+      window.Logger.debug(`Sparkline ${canvasId}: Canvas não encontrado`);
+    }
+    return;
+  }
+  
+  // VALIDAÇÃO: Verificar se o canvas ainda está no DOM
+  if (!canvas.parentNode || !document.body.contains(canvas)) {
+    if (window.Logger) {
+      window.Logger.debug(`Sparkline ${canvasId}: Canvas não está no DOM`);
+    }
+    return;
+  }
+  
+  // Garantir que Chart.js está carregado antes de usar
+  if (window.lazyLibraries?.loadChartJS && !window.Chart) {
+    await window.lazyLibraries.loadChartJS();
+  }
+  
+  // Destruir gráfico existente se houver (evitar sobreposição)
+  if (window.Chart && window[canvasId] instanceof window.Chart) {
+    try {
+      window[canvasId]._isDestroying = true;
+      window[canvasId].destroy();
+    } catch (error) {
+      // Ignorar erros ao destruir
+    }
+    window[canvasId] = null;
+  }
+  
+  // VALIDAÇÃO FINAL: Verificar novamente se o canvas ainda existe e está no DOM
+  const canvasCheck = document.getElementById(canvasId);
+  if (!canvasCheck || !canvasCheck.parentNode || !document.body.contains(canvasCheck)) {
+    if (window.Logger) {
+      window.Logger.debug(`Sparkline ${canvasId}: Canvas removido antes de criar gráfico`);
+    }
+    return;
+  }
   
   const labels = data.map((_, i) => '');
   
-  await window.chartFactory?.createLineChart(canvasId, labels, data, {
+  const chart = await window.chartFactory?.createLineChart(canvasId, labels, data, {
     borderWidth: 2,
     pointRadius: 0,
     fill: true,
     tension: 0.4,
     colorIndex: 0,
-        onClick: false,
+    onClick: false,
     chartOptions: {
       plugins: {
         legend: { display: false },
@@ -846,9 +1213,18 @@ async function renderSparkline(canvasId, data) {
       scales: {
         x: { display: false },
         y: { display: false }
-      }
+      },
+      maintainAspectRatio: false,
+      responsive: true
     }
   });
+  
+  // Garantir que o gráfico persista mesmo após outras renderizações
+  if (chart) {
+    window[canvasId] = chart;
+  }
+  
+  return chart;
 }
 
 // ============================================
@@ -961,18 +1337,74 @@ window.renderStandardDoughnutLegend = renderStandardDoughnutLegend;
  * 
  * OTIMIZAÇÃO: Renderização incremental com lazy loading
  */
-async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit, forceRefresh = false) {
-  // Verificar se chartFactory está disponível
-  if (!window.chartFactory) {
-    window.errorHandler?.handleError(
-      new Error('chartFactory não está disponível'),
-      'renderMainCharts',
-      { showToUser: false }
-    );
-    if (window.Logger) {
-      window.Logger.error('chartFactory não está disponível');
+/**
+ * Helper para atualizar chart com segurança
+ * Verifica se o chart e canvas ainda existem antes de atualizar
+ */
+function safeChartUpdate(chart, mode = 'none') {
+  if (!chart) return false;
+  
+  try {
+    // Verificar se o chart tem canvas e se está no DOM
+    if (!chart.canvas) {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Chart não tem canvas, pulando update');
+      }
+      return false;
     }
-    return;
+    
+    if (!chart.canvas.ownerDocument) {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Canvas não tem ownerDocument, pulando update');
+      }
+      return false;
+    }
+    
+    if (!chart.canvas.ownerDocument.contains(chart.canvas)) {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Canvas não está no DOM, pulando update');
+      }
+      return false;
+    }
+    
+    // Tentar atualizar
+    chart.update(mode);
+    return true;
+  } catch (error) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Erro ao atualizar chart:', error);
+    }
+    return false;
+  }
+}
+
+async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byType, byChannel, byPriority, byUnit, forceRefresh = false) {
+  // CORREÇÃO: Aguardar chartFactory estar disponível (pode estar carregando)
+  if (!window.chartFactory) {
+    // Tentar aguardar um pouco e verificar novamente
+    await new Promise(resolve => setTimeout(resolve, 100));
+    if (!window.chartFactory) {
+      // Se ainda não estiver disponível, aguardar mais um pouco
+      await new Promise(resolve => setTimeout(resolve, 200));
+      if (!window.chartFactory) {
+        if (window.Logger) {
+          window.Logger.warn('⚠️ chartFactory não está disponível ainda, aguardando...');
+        }
+        // Aguardar mais um pouco antes de desistir
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (!window.chartFactory) {
+          window.errorHandler?.handleError(
+            new Error('chartFactory não está disponível após múltiplas tentativas'),
+            'renderMainCharts',
+            { showToUser: false }
+          );
+          if (window.Logger) {
+            window.Logger.error('chartFactory não está disponível após aguardar');
+          }
+          return;
+        }
+      }
+    }
   }
   
   // OTIMIZAÇÃO: Verificar se a página ainda está visível antes de renderizar
@@ -996,9 +1428,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
     'chartPrioridades',
     'chartUnidadesCadastro',
     'chartSLA',
-    'sparkTotal',
-    'spark7',
-    'spark30'
+    'chartTiposTemporal'
+    // Sparklines não são destruídos aqui - eles são renderizados nos KPIs e devem persistir
+    // 'sparkTotal', 'spark7', 'spark30'
   ];
   
   if (window.chartFactory.destroyCharts) {
@@ -1167,7 +1599,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 }
               }
             };
-            trendChart.update('none');
+            safeChartUpdate(trendChart, 'none');
           }
         } catch (error) {
           window.errorHandler?.handleError(error, 'renderMainCharts (chartTrend)', {
@@ -1290,7 +1722,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 }
               }
             };
-            statusChart.update('none');
+            safeChartUpdate(statusChart, 'none');
           }
         } catch (error) {
           window.errorHandler?.handleError(error, 'renderMainCharts (chartFunnelStatus)', {
@@ -1500,7 +1932,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 }
               }
             };
-            dailyChart.update('none');
+            safeChartUpdate(dailyChart, 'none');
           }
           
           return dailyChart;
@@ -1650,7 +2082,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
               }
             }
           };
-          orgaosChart.update('none');
+          safeChartUpdate(orgaosChart, 'none');
         }
         
         return orgaosChart;
@@ -1758,7 +2190,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
               }
             }
           };
-          temasChart.update('none');
+          safeChartUpdate(temasChart, 'none');
         }
         
         return temasChart;
@@ -1849,6 +2281,11 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
         }
       }
       
+      // Garantir que Chart.js está carregado
+      if (window.lazyLibraries?.loadChartJS) {
+        await window.lazyLibraries.loadChartJS();
+      }
+      
       const tiposChart = await window.chartFactory.createDoughnutChart('chartTiposManifestacao', labels, values, {
         field: 'tipoDeManifestacao',
         // Não passar legendContainer para evitar duplicação - usamos apenas renderStandardDoughnutLegend
@@ -1858,9 +2295,18 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
               display: false // Desabilitar legenda padrão (usamos legenda customizada abaixo)
             },
             tooltip: getStandardDoughnutTooltip()
+            // datalabels será aplicado automaticamente pelo chart-factory com padrão branco + sombreado cinza
           }
         }
       });
+      
+      // Forçar atualização do gráfico para aplicar os labels
+      // CORREÇÃO: Usar helper seguro para atualizar
+      if (tiposChart) {
+        setTimeout(() => {
+          safeChartUpdate(tiposChart, 'none');
+        }, 200);
+      }
       
       // Adicionar informações detalhadas na legenda (padronizado)
       renderStandardDoughnutLegend('legendTiposManifestacao', tiposWithPercent.map(t => ({
@@ -1916,7 +2362,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             }
           }
         };
-        tiposChart.update('none');
+        safeChartUpdate(tiposChart, 'none');
       }
     } catch (error) {
       window.errorHandler?.handleError(error, 'renderMainCharts (chartTiposManifestacao)', {
@@ -2018,7 +2464,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 }
               }
             };
-            canaisChart.update('none');
+            safeChartUpdate(canaisChart, 'none');
           }
         } catch (error) {
           window.errorHandler?.handleError(error, 'renderMainCharts (chartCanais)', {
@@ -2118,7 +2564,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 }
               }
             };
-            prioridadesChart.update('none');
+            safeChartUpdate(prioridadesChart, 'none');
           }
         } catch (error) {
           window.errorHandler?.handleError(error, 'renderMainCharts (chartPrioridades)', {
@@ -2199,7 +2645,7 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
               }
             }
           };
-          unidadesChart.update('none');
+          safeChartUpdate(unidadesChart, 'none');
         }
         
         return unidadesChart;
@@ -2214,6 +2660,194 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
   // Aguardar todos os gráficos de distribuição em paralelo
   if (distributionPromises.length > 0) {
     await Promise.all(distributionPromises);
+  }
+  
+  // ============================================
+  // SEÇÃO 6: EVOLUÇÃO TEMPORAL POR TIPO
+  // ============================================
+  
+  // Gráfico de linha múltipla: Evolução temporal por tipo de manifestação
+  try {
+    const tiposTemporalData = await window.dataLoader?.load('/api/aggregate/count-by-status-mes?field=tipoDeManifestacao', {
+      useDataStore: true,
+      ttl: 5 * 60 * 1000 // 5 minutos
+    }) || [];
+    
+    if (Array.isArray(tiposTemporalData) && tiposTemporalData.length > 0) {
+      // Agrupar dados por tipo e mês
+      const tiposMap = new Map();
+      const mesesSet = new Set();
+      
+      tiposTemporalData.forEach(item => {
+        // Tentar múltiplos campos para compatibilidade
+        const tipo = item.tipo || item.tipoDeManifestacao || item.tipodemanifestacao || item._id || 'Não informado';
+        const mes = item.month || item.mes || item.ym || '';
+        
+        if (!mes) return;
+        
+        mesesSet.add(mes);
+        
+        if (!tiposMap.has(tipo)) {
+          tiposMap.set(tipo, new Map());
+        }
+        
+        tiposMap.get(tipo).set(mes, item.count || 0);
+      });
+      
+      // Ordenar meses
+      const meses = Array.from(mesesSet).sort();
+      
+      // Formatar labels de meses
+      const labels = meses.map(m => {
+        if (m.includes('-')) {
+          const [year, monthNum] = m.split('-');
+          return window.dateUtils?.formatMonthYearShort(m) || `${monthNum}/${year.slice(-2)}`;
+        }
+        return m;
+      });
+      
+      // Obter top 5 tipos por volume total
+      const tiposTotais = Array.from(tiposMap.entries()).map(([tipo, mesesMap]) => {
+        const total = Array.from(mesesMap.values()).reduce((sum, count) => sum + count, 0);
+        return { tipo, total, mesesMap };
+      }).sort((a, b) => b.total - a.total).slice(0, 5);
+      
+      // Preparar datasets para Chart.js (linha múltipla)
+      const datasets = tiposTotais.map((item, idx) => {
+        const values = meses.map(mes => item.mesesMap.get(mes) || 0);
+        return {
+          label: item.tipo,
+          data: values,
+          borderColor: getColorForIndex(idx),
+          backgroundColor: getColorWithAlpha(getColorForIndex(idx), 0.1),
+          tension: 0.4,
+          fill: false,
+          pointRadius: 3,
+          pointHoverRadius: 5
+        };
+      });
+      
+      // Renderizar gráfico de linha múltipla
+      const tiposTemporalCanvas = document.getElementById('chartTiposTemporal');
+      if (tiposTemporalCanvas) {
+        // Garantir que Chart.js está carregado
+        if (window.lazyLibraries?.loadChartJS) {
+          await window.lazyLibraries.loadChartJS();
+        }
+        
+        // Destruir gráfico existente
+        if (window.Chart && typeof window.Chart.getChart === 'function') {
+          const existingChart = window.Chart.getChart(tiposTemporalCanvas);
+          if (existingChart) {
+            existingChart.destroy();
+          }
+        }
+        
+        const tiposTemporalChart = new window.Chart(tiposTemporalCanvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                  color: isLightMode() ? '#1e293b' : '#e2e8f0',
+                  font: { size: 12 },
+                  padding: 15,
+                  usePointStyle: true
+                }
+              },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                  label: function(context) {
+                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString('pt-BR')}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: {
+                  color: isLightMode() ? '#64748b' : '#94a3b8',
+                  maxRotation: 45,
+                  minRotation: 45
+                },
+                grid: {
+                  color: isLightMode() ? 'rgba(100, 116, 139, 0.1)' : 'rgba(148, 163, 184, 0.1)'
+                }
+              },
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  color: isLightMode() ? '#64748b' : '#94a3b8',
+                  callback: function(value) {
+                    return value.toLocaleString('pt-BR');
+                  }
+                },
+                grid: {
+                  color: isLightMode() ? 'rgba(100, 116, 139, 0.1)' : 'rgba(148, 163, 184, 0.1)'
+                }
+              }
+            },
+            interaction: {
+              mode: 'nearest',
+              axis: 'x',
+              intersect: false
+            }
+          }
+        });
+        
+        // Armazenar referência
+        window.chartTiposTemporal = tiposTemporalChart;
+        
+        // Atualizar info box
+        const tiposTemporalInfo = document.getElementById('tiposTemporalInfo');
+        if (tiposTemporalInfo && tiposTotais.length > 0) {
+          const topTipo = tiposTotais[0];
+          tiposTemporalInfo.innerHTML = `
+            <div class="text-xs text-slate-400 mb-1">Tipo mais frequente</div>
+            <div class="text-sm font-bold" style="color: ${getColorForIndex(0)}">${topTipo.tipo}</div>
+            <div class="text-xs text-slate-500 mt-1">Total: ${topTipo.total.toLocaleString('pt-BR')} manifestações</div>
+            <div class="text-xs text-slate-400 mt-2">Exibindo top ${tiposTotais.length} tipos</div>
+          `;
+        }
+        
+        if (window.Logger) {
+          window.Logger.debug('📊 Gráfico de evolução temporal por tipo renderizado', {
+            tipos: tiposTotais.length,
+            meses: meses.length
+          });
+        }
+      }
+    } else {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Sem dados para gráfico de evolução temporal por tipo');
+      }
+      const canvas = document.getElementById('chartTiposTemporal');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Sem dados disponíveis', canvas.width / 2, canvas.height / 2);
+      }
+    }
+  } catch (error) {
+    window.errorHandler?.handleError(error, 'renderMainCharts (chartTiposTemporal)', {
+      showToUser: false
+    });
+    if (window.Logger) {
+      window.Logger.error('Erro ao criar chartTiposTemporal:', error);
+    }
   }
   
   if (window.Logger) {
@@ -2327,7 +2961,7 @@ async function renderSLAChart(slaData) {
         slaChart.options.onClick = (event, elements) => {
           // CROSSFILTER: Por enquanto não filtrar por SLA (categoria especial)
         };
-        slaChart.update('none');
+        safeChartUpdate(slaChart, 'none');
       }
     }
   } catch (error) {
@@ -2345,7 +2979,7 @@ async function renderSLAChart(slaData) {
  */
 function addPeakAnnotations(chartId, peaks, labels, values) {
   const chart = window[chartId];
-  if (!chart || !(chart instanceof Chart)) return;
+  if (!chart || !window.Chart || !(chart instanceof window.Chart)) return;
   
   const canvas = chart.canvas;
   const canvasContainer = canvas.parentElement;
@@ -2427,11 +3061,28 @@ function addPeakAnnotations(chartId, peaks, labels, values) {
   }
   
   // Atualizar quando o gráfico for atualizado
+  // CORREÇÃO: Verificar se o canvas ainda existe antes de atualizar
   const originalUpdate = chart.update.bind(chart);
   chart.update = function(...args) {
-    const result = originalUpdate(...args);
-    setTimeout(updateAnnotations, 100);
-    return result;
+    // Verificar se o canvas ainda existe e está no DOM
+    if (!chart.canvas || !chart.canvas.ownerDocument || !chart.canvas.ownerDocument.contains(chart.canvas)) {
+      if (window.Logger) {
+        window.Logger.warn('⚠️ Tentativa de atualizar gráfico com canvas inválido, pulando update');
+      }
+      return;
+    }
+    
+    try {
+      const result = originalUpdate(...args);
+      setTimeout(updateAnnotations, 100);
+      return result;
+    } catch (error) {
+      if (window.Logger) {
+        window.Logger.error('Erro ao atualizar gráfico:', error);
+      }
+      // Não re-throw para evitar quebrar o fluxo
+      return;
+    }
   };
 }
 
@@ -3418,7 +4069,10 @@ function renderCrossfilterBanner() {
         removeBtn.textContent = '✕';
         removeBtn.style.cssText = 'background: transparent; border: none; cursor: pointer; padding: 0; color: #94a3b8; margin-left: 4px; font-size: 16px; line-height: 1;';
         removeBtn.title = 'Remover filtro';
-        removeBtn.addEventListener('click', () => {
+        removeBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          
           if (Array.isArray(value)) {
             // Remover valor específico do array
             const newArray = value.filter(v => String(v).toLowerCase() !== String(val).toLowerCase());
@@ -3427,7 +4081,24 @@ function renderCrossfilterBanner() {
             // Remover filtro único
             window.crossfilterOverview.filters[field] = null;
           }
-          window.crossfilterOverview.notifyListeners();
+          
+          // Notificar listeners
+          if (window.crossfilterOverview.notifyListeners) {
+            window.crossfilterOverview.notifyListeners();
+          }
+          
+          // Limpar também do chartCommunication
+          if (window.chartCommunication && window.chartCommunication.filters) {
+            window.chartCommunication.filters.remove(field, val);
+            if (window.chartCommunication.filters.notifyAllCharts) {
+              window.chartCommunication.filters.notifyAllCharts();
+            }
+          }
+          
+          // Re-renderizar banner
+          setTimeout(() => {
+            renderCrossfilterBanner();
+          }, 50);
         });
         
         pill.appendChild(labelEl);
@@ -3442,9 +4113,37 @@ function renderCrossfilterBanner() {
   clearAllBtn.textContent = 'Limpar Todos';
   clearAllBtn.style.cssText = 'padding: 0.5rem 1rem; background: #22d3ee; color: #0b1020; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;';
   clearAllBtn.title = 'Limpar todos os filtros';
-  clearAllBtn.addEventListener('click', () => {
-    window.crossfilterOverview.clearAllFilters();
-    window.crossfilterOverview.notifyListeners();
+  clearAllBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Limpar crossfilterOverview
+    if (window.crossfilterOverview) {
+      window.crossfilterOverview.clearAllFilters();
+      if (window.crossfilterOverview.notifyListeners) {
+        window.crossfilterOverview.notifyListeners();
+      }
+    }
+    
+    // Limpar chartCommunication
+    if (window.chartCommunication && window.chartCommunication.filters) {
+      if (window.chartCommunication.filters.clear) {
+        window.chartCommunication.filters.clear();
+      }
+      if (window.chartCommunication.filters.notifyAllCharts) {
+        window.chartCommunication.filters.notifyAllCharts();
+      }
+    }
+    
+    // Emitir evento global
+    if (window.eventBus) {
+      window.eventBus.emit('filter:cleared', {});
+    }
+    
+    // Re-renderizar banner
+    setTimeout(() => {
+      renderCrossfilterBanner();
+    }, 50);
   });
   
   bannerContent.appendChild(pillsContainer);
@@ -3461,16 +4160,274 @@ function renderCrossfilterBanner() {
 }
 
 /**
- * Inicializar listeners de eventos de filtro
- * CROSSFILTER: Agora usa sistema de crossfilter inteligente
+ * Coletar filtros da página Overview
+ * REFATORAÇÃO: Seguindo padrão do Tempo Médio para consistência
+ * @returns {Array} Array de filtros no formato esperado pela API
+ */
+function coletarFiltrosOverview() {
+  const filtros = [];
+  
+  // Filtro por mês
+  const mesFiltro = document.getElementById('filtroMesOverview')?.value?.trim() || '';
+  if (mesFiltro) {
+    // Formato: YYYY-MM
+    const [ano, mes] = mesFiltro.split('-');
+    if (ano && mes) {
+      // Filtrar por data de criação no mês selecionado
+      const dataInicial = `${mesFiltro}-01`;
+      const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
+      const dataFinal = `${mesFiltro}-${ultimoDia}`;
+      
+      // CORREÇÃO: dataCriacaoIso é string no formato YYYY-MM-DD, então $lte deve ser apenas a data (sem timestamp)
+      // MongoDB compara strings lexicograficamente, então "2025-11-30" <= "2025-11-30" funciona
+      filtros.push({
+        field: 'dataCriacaoIso',
+        op: 'gte',
+        value: dataInicial
+      });
+      filtros.push({
+        field: 'dataCriacaoIso',
+        op: 'lte',
+        value: dataFinal // Remover timestamp, usar apenas a data
+      });
+    }
+  }
+  
+  // Filtro por status
+  const statusFiltro = document.getElementById('filtroStatusOverview')?.value?.trim() || '';
+  if (statusFiltro) {
+    if (statusFiltro === 'concluido') {
+      // Filtrar por status concluído - usar contains para capturar variações
+      filtros.push({
+        field: 'statusDemanda',
+        op: 'contains',
+        value: 'concluíd'
+      });
+    } else if (statusFiltro === 'em-andamento') {
+      // Filtrar por status em andamento
+      filtros.push({
+        field: 'statusDemanda',
+        op: 'contains',
+        value: 'atendimento'
+      });
+    }
+  }
+  
+  return filtros;
+}
+
+/**
+ * Popular select de meses para Overview
+ * REFATORAÇÃO: Seguindo padrão do Tempo Médio
+ */
+async function popularSelectMesesOverview() {
+  const selectMes = document.getElementById('filtroMesOverview');
+  if (!selectMes) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Select filtroMesOverview não encontrado');
+    }
+    return;
+  }
+  
+  try {
+    // Usar o helper para popular meses
+    if (window.PageFiltersHelper && window.PageFiltersHelper.popularSelectMesesFromEndpoint) {
+      await window.PageFiltersHelper.popularSelectMesesFromEndpoint(
+        'filtroMesOverview',
+        '/api/aggregate/by-month',
+        filtroMesOverview
+      );
+    } else {
+      // Fallback: usar endpoint diretamente
+      const dataMes = await window.dataLoader?.load('/api/aggregate/by-month', {
+        useDataStore: true,
+        ttl: 10 * 60 * 1000,
+        fallback: []
+      }) || [];
+      
+      if (Array.isArray(dataMes) && dataMes.length > 0) {
+        // Limpar opções existentes (exceto "Todos")
+        while (selectMes.children.length > 1) {
+          selectMes.removeChild(selectMes.lastChild);
+        }
+        
+        const meses = dataMes
+          .map(d => d.month || d.ym || d._id || '')
+          .filter(m => m && typeof m === 'string' && m.length > 0)
+          .sort()
+          .reverse();
+        
+        meses.forEach(mes => {
+          const option = document.createElement('option');
+          option.value = mes;
+          let nomeMes = mes;
+          try {
+            if (mes && mes.includes('-')) {
+              const [ano, mesNum] = mes.split('-');
+              const mesesNomes = [
+                'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+              ];
+              const mesIndex = parseInt(mesNum) - 1;
+              if (mesIndex >= 0 && mesIndex < 12) {
+                nomeMes = `${mesesNomes[mesIndex]} ${ano}`;
+              }
+            }
+          } catch (e) {
+            nomeMes = window.dateUtils?.formatMonthYearShort(mes) || mes;
+          }
+          option.textContent = nomeMes;
+          selectMes.appendChild(option);
+        });
+        
+        if (filtroMesOverview) {
+          selectMes.value = filtroMesOverview;
+        }
+      }
+    }
+  } catch (error) {
+    if (window.Logger) {
+      window.Logger.error('Erro ao popular select de meses Overview:', error);
+    }
+  }
+}
+
+/**
+ * Inicializar listeners de filtros
+ * REFATORAÇÃO: Seguindo padrão do Tempo Médio para consistência e melhor funcionamento
  */
 function initOverviewFilterListeners() {
   if (window.Logger) {
-    window.Logger.debug('✅ Listeners de crossfilter inicializados - Overview com filtros inteligentes');
+    window.Logger.debug('✅ Inicializando filtros de mês e status para Overview');
   }
   
-  // CROSSFILTER: Não usar chartCommunication, usar crossfilterOverview
-  return;
+  // Verificar se a página está visível
+  const pageMain = document.getElementById('page-main');
+  if (!pageMain || pageMain.style.display === 'none') {
+    if (window.Logger) {
+      window.Logger.debug('⏸️ Página overview não está visível, aguardando...');
+    }
+    setTimeout(initOverviewFilterListeners, 500);
+    return;
+  }
+  
+  const selectMes = document.getElementById('filtroMesOverview');
+  const selectStatus = document.getElementById('filtroStatusOverview');
+  
+  if (!selectMes || !selectStatus) {
+    if (window.Logger) {
+      window.Logger.warn('⚠️ Elementos de filtro não encontrados, tentando novamente...');
+    }
+    setTimeout(initOverviewFilterListeners, 200);
+    return;
+  }
+  
+  // Listener para filtro de mês
+  if (selectMes) {
+    selectMes.addEventListener('change', async (e) => {
+      filtroMesOverview = e.target.value || '';
+      
+      if (window.Logger) {
+        window.Logger.debug(`📊 Filtro de mês alterado para: ${filtroMesOverview || 'Todos'}`);
+      }
+      
+      // Invalidar cache de TODOS os endpoints relacionados (seguindo padrão Tempo Médio)
+      if (window.dataStore && typeof window.dataStore.clear === 'function') {
+        const endpointsToClear = [
+          '/api/dashboard-data',
+          '/api/filter/aggregated',
+          '/api/summary',
+          '/api/aggregate/by-month',
+          '/api/aggregate/by-day',
+          '/api/aggregate/by-theme',
+          '/api/aggregate/by-subject',
+          '/api/aggregate/by-status-mes',
+          '/api/aggregate/by-organ',
+          '/api/aggregate/by-type',
+          '/api/aggregate/by-channel',
+          '/api/aggregate/by-priority',
+          '/api/aggregate/by-unit',
+          '/api/sla/summary'
+        ];
+        
+        // Limpar endpoints base
+        endpointsToClear.forEach(endpoint => {
+          window.dataStore.clear(endpoint);
+        });
+        
+        // Limpar também versões com query string (se existirem no cache)
+        if (filtroMesOverview) {
+          endpointsToClear.forEach(endpoint => {
+            window.dataStore.clear(`${endpoint}?meses=${encodeURIComponent(filtroMesOverview)}`);
+          });
+        }
+        
+        if (window.Logger) {
+          window.Logger.debug(`🔄 Cache invalidado para ${endpointsToClear.length} endpoints`);
+        }
+      }
+      
+      // Recarregar dados com forceRefresh=true para garantir que não use cache
+      await loadOverview(true);
+    });
+  }
+  
+  // Listener para filtro de status
+  if (selectStatus) {
+    selectStatus.addEventListener('change', async (e) => {
+      filtroStatusOverview = e.target.value || '';
+      
+      if (window.Logger) {
+        window.Logger.debug(`📊 Filtro de status alterado para: ${filtroStatusOverview || 'Todos'}`);
+      }
+      
+      // Invalidar cache de TODOS os endpoints relacionados (seguindo padrão Tempo Médio)
+      if (window.dataStore && typeof window.dataStore.clear === 'function') {
+        const endpointsToClear = [
+          '/api/dashboard-data',
+          '/api/filter/aggregated',
+          '/api/summary',
+          '/api/aggregate/by-month',
+          '/api/aggregate/by-day',
+          '/api/aggregate/by-theme',
+          '/api/aggregate/by-subject',
+          '/api/aggregate/by-status-mes',
+          '/api/aggregate/by-organ',
+          '/api/aggregate/by-type',
+          '/api/aggregate/by-channel',
+          '/api/aggregate/by-priority',
+          '/api/aggregate/by-unit',
+          '/api/sla/summary'
+        ];
+        
+        // Limpar endpoints base
+        endpointsToClear.forEach(endpoint => {
+          window.dataStore.clear(endpoint);
+        });
+        
+        // Limpar também versões com query string (se existirem no cache)
+        if (filtroMesOverview) {
+          endpointsToClear.forEach(endpoint => {
+            window.dataStore.clear(`${endpoint}?meses=${encodeURIComponent(filtroMesOverview)}`);
+          });
+        }
+        
+        if (window.Logger) {
+          window.Logger.debug(`🔄 Cache invalidado para ${endpointsToClear.length} endpoints`);
+        }
+      }
+      
+      // Recarregar dados com forceRefresh=true para garantir que não use cache
+      await loadOverview(true);
+    });
+  }
+  
+  // Popular select de meses
+  popularSelectMesesOverview();
+  
+  if (window.Logger) {
+    window.Logger.debug('✅ Filtros de mês e status inicializados com sucesso (padrão Tempo Médio)');
+  }
 }
 
 // Exportar função globalmente
@@ -3478,19 +4435,42 @@ window.loadOverview = loadOverview;
 window.initOverviewFilterListeners = initOverviewFilterListeners;
 
 // Inicializar listeners quando o DOM estiver pronto
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    // Aguardar um pouco para garantir que chartCommunication está disponível
+function initOverviewPage() {
+  // Verificar se a página está visível
+  const pageMain = document.getElementById('page-main');
+  if (pageMain && pageMain.style.display !== 'none') {
+    // Página está visível, inicializar filtros
     setTimeout(() => {
       initOverviewFilterListeners();
+    }, 300);
+  } else {
+    // Aguardar um pouco e tentar novamente
+    setTimeout(initOverviewPage, 500);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    // Aguardar um pouco para garantir que tudo está carregado
+    setTimeout(() => {
+      initOverviewPage();
     }, 500);
   });
 } else {
   // DOM já está pronto
   setTimeout(() => {
-    initOverviewFilterListeners();
+    initOverviewPage();
   }, 500);
 }
+
+// Também inicializar quando a página overview for carregada
+window.addEventListener('pageLoaded', (e) => {
+  if (e.detail && e.detail.page === 'overview') {
+    setTimeout(() => {
+      initOverviewFilterListeners();
+    }, 300);
+  }
+});
 
 if (window.Logger) {
   window.Logger.debug('✅ Página Overview carregada');

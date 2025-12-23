@@ -19,6 +19,7 @@
 
 let filtroAtual = 'vencidos';
 let secretariaFiltro = null;
+let tempoResolucaoFiltro = null;
 let protocolosCompletos = [];
 let protocolosExibidos = [];
 let itensPorPagina = 100;
@@ -66,20 +67,36 @@ async function loadVencimento(forceRefresh = false) {
       await popularDropdownSecretarias();
     }
     
+    // Coletar filtros de mês e status usando o novo helper
+    const filtrosPagina = window.PageFiltersHelper?.coletarFiltrosMesStatus?.('Vencimento') || [];
+    
     // Obter filtros selecionados APÓS popular os dropdowns
     const selectFiltro = document.getElementById('selectFiltroVencimento');
     const selectSecretariaEl = document.getElementById('selectSecretariaVencimento');
+    const selectTempoResolucao = document.getElementById('selectTempoResolucaoVencimento');
     
     const filtro = selectFiltro?.value || 'vencidos';
     const secretaria = selectSecretariaEl?.value || '';
+    const tempoResolucao = selectTempoResolucao?.value || '';
     
     filtroAtual = filtro;
     secretariaFiltro = (secretaria && secretaria.trim() !== '' && secretaria !== 'Todas as secretarias') ? secretaria.trim() : null;
+    tempoResolucaoFiltro = (tempoResolucao && tempoResolucao.trim() !== '') ? tempoResolucao.trim() : null;
+    
+    // Combinar com filtros globais
+    let activeFilters = filtrosPagina;
+    if (window.chartCommunication) {
+      const globalFilters = window.chartCommunication.filters?.filters || [];
+      activeFilters = [...globalFilters, ...filtrosPagina];
+    }
     
     // Construir URL da API
     let url = `/api/vencimento?filtro=${encodeURIComponent(filtro)}`;
     if (secretariaFiltro) {
       url += `&secretaria=${encodeURIComponent(secretariaFiltro)}`;
+    }
+    if (tempoResolucaoFiltro) {
+      url += `&tempoResolucao=${encodeURIComponent(tempoResolucaoFiltro)}`;
     }
     
     if (window.Logger) {
@@ -119,6 +136,9 @@ async function loadVencimento(forceRefresh = false) {
     protocolosCompletos = data.protocolos || [];
     paginaAtual = 0;
     
+    // PRIORIDADE 2: Esconder loading ANTES de renderizar
+    window.loadingManager?.hideInElement('tableVencimento');
+    
     // Renderizar tabela (primeira página)
     renderVencimentoTable();
     
@@ -128,9 +148,6 @@ async function loadVencimento(forceRefresh = false) {
     if (window.Logger) {
       window.Logger.success('⏰ loadVencimento: Concluído');
     }
-    
-    // PRIORIDADE 2: Esconder loading
-    window.loadingManager?.hideInElement('tableVencimento');
     
     return { success: true, data };
   }, 'loadVencimento', {
@@ -160,7 +177,15 @@ async function loadVencimento(forceRefresh = false) {
  */
 function renderVencimentoTable() {
   const tableContainer = document.getElementById('tableVencimento');
-  if (!tableContainer) return;
+  if (!tableContainer) {
+    if (window.Logger) {
+      window.Logger.warn('tableVencimento não encontrado');
+    }
+    return;
+  }
+  
+  // Garantir que o loading está escondido antes de renderizar
+  window.loadingManager?.hideInElement('tableVencimento');
   
   if (protocolosCompletos.length === 0) {
     tableContainer.innerHTML = `
@@ -192,6 +217,7 @@ function renderVencimentoTable() {
             <th class="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Data Criação</th>
             <th class="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Vencimento</th>
             <th class="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Prazo</th>
+            <th class="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Tempo de Resolução</th>
             <th class="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Dias Restantes</th>
           </tr>
         </thead>
@@ -249,6 +275,14 @@ function renderVencimentoTable() {
         <td class="py-3 px-4">
           <div class="text-xs text-slate-400">${p.prazo} dias</div>
           <div class="text-xs text-slate-500">${p.tipoManifestacao === 'SIC' || p.prazo === 20 ? 'SIC' : 'Ouvidoria'}</div>
+        </td>
+        <td class="py-3 px-4">
+          ${p.tempoResolucao !== null && p.tempoResolucao !== undefined ? `
+            <div class="text-sm font-semibold ${p.tempoResolucao > 60 ? 'text-red-400' : p.tempoResolucao > 30 ? 'text-orange-400' : p.tempoResolucao > 15 ? 'text-yellow-400' : 'text-green-400'}">
+              ${p.tempoResolucao} dias
+            </div>
+            <div class="text-xs text-slate-500">${p.diasRestantes < 0 ? 'decorrido' : 'em resolução'}</div>
+          ` : '<div class="text-xs text-slate-500">N/A</div>'}
         </td>
         <td class="py-3 px-4">
           <div class="inline-flex items-center px-2 py-1 rounded ${bgDias}">
@@ -512,31 +546,51 @@ function initVencimentoListeners() {
     });
   }
   
+  // Listener para filtro de tempo de resolução
+  const selectTempoResolucao = document.getElementById('selectTempoResolucaoVencimento');
+  if (selectTempoResolucao) {
+    selectTempoResolucao.addEventListener('change', async (e) => {
+      const novoTempoResolucao = e.target.value || null;
+      tempoResolucaoFiltro = novoTempoResolucao;
+      
+      if (window.Logger) {
+        window.Logger.debug(`⏰ Tempo de resolução alterado para: ${novoTempoResolucao || 'Todos'}`);
+      }
+      
+      await recarregarVencimentos();
+    });
+  }
+  
   // Popular dropdown quando a página for carregada
   setTimeout(() => {
     popularDropdownSecretarias();
   }, 100);
+  
+  // Inicializar filtros de mês e status
+  if (window.PageFiltersHelper && window.PageFiltersHelper.inicializarFiltrosMesStatus) {
+    window.PageFiltersHelper.inicializarFiltrosMesStatus({
+      prefix: 'Vencimento',
+      endpoint: '/api/aggregate/by-month',
+      onChange: async () => {
+        await loadVencimento(true);
+      },
+      mesSelecionado: ''
+    });
+  }
 }
 
 /**
  * Recarregar vencimentos
  */
 async function recarregarVencimentos() {
-  // Mostrar loading
-  const tableContainer = document.getElementById('tableVencimento');
-  if (tableContainer) {
-    tableContainer.innerHTML = `
-      <div class="text-center py-8 text-slate-400">
-        <div class="text-2xl mb-2 animate-spin">⏳</div>
-        <div>Carregando protocolos...</div>
-      </div>
-    `;
-  }
+  // Mostrar loading usando o loadingManager
+  window.loadingManager?.showInElement('tableVencimento', 'Carregando protocolos de vencimento...');
   
   // Invalidar cache
   if (window.dataStore) {
     let url = `/api/vencimento?filtro=${encodeURIComponent(filtroAtual)}`;
     if (secretariaFiltro) url += `&secretaria=${encodeURIComponent(secretariaFiltro)}`;
+    if (tempoResolucaoFiltro) url += `&tempoResolucao=${encodeURIComponent(tempoResolucaoFiltro)}`;
     
     if (typeof window.dataStore.clear === 'function') {
       window.dataStore.clear(url);
@@ -618,7 +672,14 @@ async function recarregarVencimentos() {
   }
   
   // Conectar ao sistema global de filtros
-  if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+  // Conectar ao sistema global de filtros usando helper reutilizável
+  if (window.createPageFilterListener) {
+    window.createPageFilterListener({
+      pageId: 'page-vencimento',
+      listenerKey: '_vencimentoListenerRegistered',
+      loadFunction: loadVencimento
+    });
+  } else if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
     window.chartCommunication.createPageFilterListener('page-vencimento', loadVencimento, 500);
   }
 })();

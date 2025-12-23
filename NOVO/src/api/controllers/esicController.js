@@ -9,6 +9,8 @@
 
 import { withCache } from '../../utils/responseHelper.js';
 import Esic from '../../models/Esic.model.js';
+import { categorizarTiposPorAssunto, obterCategoriasDisponiveis } from '../../utils/esicCategorizador.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * GET /api/esic/summary
@@ -331,6 +333,88 @@ export async function byCanalUnidade(req, res) {
     }
     
     return result;
+  });
+}
+
+/**
+ * GET /api/esic/categorias-por-assunto
+ * Categoriza tipos de pedidos de informação com base nos assuntos
+ * 
+ * Analisa especificacaoInformacao e detalhesSolicitacao para categorizar
+ * cada tipoInformacao em categorias semânticas (Administrativa, Financeira, etc.)
+ * 
+ * Query params:
+ * - limit: Limite de tipos de informação a processar (padrão: 50)
+ * - tipoInformacao: Filtrar por um tipo específico
+ */
+export async function categoriasPorAssunto(req, res) {
+  const limit = parseInt(req.query.limit || '50', 10);
+  const tipoInformacaoFilter = req.query.tipoInformacao;
+  
+  const cacheKey = `esic:categoriasPorAssunto:${tipoInformacaoFilter || 'all'}:${limit}:v1`;
+  return withCache(cacheKey, 7200, res, async () => {
+    try {
+      // Construir filtro
+      const filter = {
+        $or: [
+          { especificacaoInformacao: { $exists: true, $ne: null, $ne: '' } },
+          { detalhesSolicitacao: { $exists: true, $ne: null, $ne: '' } }
+        ]
+      };
+      
+      if (tipoInformacaoFilter) {
+        filter.tipoInformacao = tipoInformacaoFilter;
+      }
+      
+      // Buscar registros com especificação ou detalhes
+      const registros = await Esic.find(filter)
+        .select('tipoInformacao especificacaoInformacao detalhesSolicitacao')
+        .limit(Math.min(limit * 10, 10000)) // Buscar mais registros para ter amostra representativa
+        .lean();
+      
+      if (registros.length === 0) {
+        return {
+          tipos: [],
+          totalRegistros: 0,
+          categoriasDisponiveis: obterCategoriasDisponiveis(),
+          mensagem: 'Nenhum registro encontrado com especificação ou detalhes'
+        };
+      }
+      
+      // Categorizar tipos por assunto
+      const tiposCategorizados = await categorizarTiposPorAssunto(registros);
+      
+      // Limitar resultados
+      const tiposLimitados = tiposCategorizados.slice(0, limit);
+      
+      // Calcular estatísticas gerais
+      const totalRegistros = registros.length;
+      const categoriasUtilizadas = new Set();
+      tiposCategorizados.forEach(tipo => {
+        tipo.categorias.forEach(cat => categoriasUtilizadas.add(cat.categoria));
+      });
+      
+      return {
+        tipos: tiposLimitados,
+        totalRegistros,
+        totalTipos: tiposCategorizados.length,
+        categoriasDisponiveis: obterCategoriasDisponiveis(),
+        categoriasUtilizadas: Array.from(categoriasUtilizadas).sort(),
+        metadata: {
+          registrosAnalisados: registros.length,
+          limiteAplicado: limit,
+          filtroTipoInformacao: tipoInformacaoFilter || null
+        }
+      };
+      
+    } catch (error) {
+      logger.error('Erro ao categorizar tipos por assunto:', {
+        message: error.message,
+        stack: error.stack
+      });
+      
+      throw error;
+    }
   });
 }
 

@@ -19,6 +19,7 @@ export const SECRETARIAS_EMAILS = {
   'Secretaria Municipal de Administração, Planejamento e Orçamento': 'sma@duquedecaxias.rj.gov.br',
   'Secretaria Municipal de Assistência Social e Direitos Humanos': 'ouvidoria.smasdh@duquedecaxias.rj.gov.br',
   'Secretaria Municipal de Comunicação Social e Relações Públicas': 'imprensa@duquedecaxias.rj.gov.br',
+  'Secretaria Municipal de Comunicação Social Relações Públicas Trabalho Emprego e Renda': 'smgpmdc@gmail.com;govpmdc@gmail.com',
   'Secretaria Municipal de Educação': 'ouvidoriasme@smeduquedecaxias.rj.gov.br',
   'Secretaria Municipal de Esporte e Lazer': 'smel@duquedecaxias.rj.gov.br',
   'Secretaria Municipal de Eventos': 'semev.gabinete@duquedecaxias.rj.gov.br',
@@ -54,8 +55,9 @@ export const NOME_REMETENTE = process.env.NOME_REMETENTE || 'Ouvidoria Geral de 
 
 /**
  * Email da Ouvidoria Geral (recebe resumo diário)
+ * Pode ser um email único ou múltiplos emails separados por vírgula
  */
-export const EMAIL_OUVIDORIA_GERAL = process.env.EMAIL_OUVIDORIA_GERAL || 'ouvgeral.gestao@gmail.com';
+export const EMAIL_OUVIDORIA_GERAL = process.env.EMAIL_OUVIDORIA_GERAL || 'ouvgeral.gestao@gmail.com,ouvidoria020@gmail.com,dfreitas001.adm@gmail.com';
 
 /**
  * Obter email de uma secretaria (versão síncrona - usa mapeamento estático)

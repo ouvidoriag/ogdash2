@@ -223,7 +223,14 @@ function highlightChartElement(chart, datasetIndex, index) {
     clickedDataset.backgroundColor = getHighlightedColor(clickedDataset.backgroundColor);
   }
   
-  chart.update('none'); // Atualizar sem animação
+  // Atualizar com validações
+  try {
+    if (chart && chart.canvas && chart.canvas.parentNode && document.body.contains(chart.canvas) && !chart.destroyed && !chart._isDestroying) {
+      chart.update('none'); // Atualizar sem animação
+    }
+  } catch (error) {
+    // Ignorar erros de update
+  }
   
   // Restaurar cor após 1 segundo
   if (chart._highlightTimeout) {
@@ -240,9 +247,131 @@ function highlightChartElement(chart, datasetIndex, index) {
           }
         }
       });
-      chart.update('none');
+      // Atualizar com validações
+      try {
+        if (chart && chart.canvas && chart.canvas.parentNode && document.body.contains(chart.canvas) && !chart.destroyed && !chart._isDestroying) {
+          chart.update('none');
+        }
+      } catch (error) {
+        // Ignorar erros de update
+      }
     }
   }, 1000);
+}
+
+/**
+ * Configuração padrão de datalabels para gráficos de barra
+ * Retorna labels brancos com sombreado cinza para melhor legibilidade
+ * Ajusta automaticamente a posição para barras horizontais ou verticais
+ */
+function getStandardBarDataLabels(horizontal = false) {
+  return {
+    display: true,
+    color: '#ffffff', // SEMPRE branco, nunca cinza
+    font: {
+      weight: 'bold',
+      size: 12,
+      family: 'Arial, sans-serif'
+    },
+    formatter: (value) => {
+      // Mostrar apenas o número formatado
+      return value.toLocaleString('pt-BR');
+    },
+    anchor: horizontal ? 'end' : 'end', // Para barras horizontais, mostrar na ponta; para verticais, no topo
+    align: horizontal ? 'right' : 'top',  // Alinhamento: direita para horizontal, topo para vertical
+    textStrokeColor: '#666666', // Sombreado cinza (não a cor do texto, apenas o contorno)
+    textStrokeWidth: 2,
+    padding: 4,
+    clip: false
+  };
+}
+
+/**
+ * Configuração padrão de datalabels para gráficos doughnut/pie
+ * Retorna labels brancos com sombreado cinza para melhor legibilidade
+ */
+function getStandardDoughnutDataLabels(minPercent = 3) {
+  return {
+    display: function(context) {
+      // Exibir apenas se a fatia for maior que minPercent
+      const value = context.parsed || context.dataset.data[context.dataIndex];
+      const total = context.dataset.data.reduce((a, b) => a + b, 0);
+      const percent = total > 0 ? (value / total) * 100 : 0;
+      return percent >= minPercent;
+    },
+    color: '#ffffff', // SEMPRE branco, nunca cinza
+    font: {
+      weight: 'bold',
+      size: 14,
+      family: 'Arial, sans-serif'
+    },
+    formatter: (value) => {
+      // Mostrar apenas o número formatado
+      return value.toLocaleString('pt-BR');
+    },
+    anchor: 'center',
+    align: 'center',
+    textStrokeColor: '#666666', // Sombreado cinza (não a cor do texto, apenas o contorno)
+    textStrokeWidth: 3,
+    padding: 6,
+    clip: false
+  };
+}
+
+/**
+ * Configuração padrão de datalabels para gráficos de linha
+ * Retorna labels brancos com sombreado cinza para melhor legibilidade
+ * Exibe apenas em pontos importantes (máximos, mínimos, início, fim)
+ */
+function getStandardLineDataLabels(showAll = false) {
+  return {
+    display: function(context) {
+      if (showAll) return true; // Mostrar todos se solicitado
+      
+      const dataset = context.dataset;
+      const dataIndex = context.dataIndex;
+      const data = dataset.data;
+      
+      // Mostrar apenas em pontos importantes
+      if (dataIndex === 0 || dataIndex === data.length - 1) {
+        return true; // Sempre mostrar primeiro e último
+      }
+      
+      // Mostrar em máximos e mínimos locais
+      const currentValue = data[dataIndex];
+      const prevValue = data[dataIndex - 1];
+      const nextValue = data[dataIndex + 1];
+      
+      // Máximo local
+      if (currentValue > prevValue && currentValue > nextValue) {
+        return true;
+      }
+      
+      // Mínimo local
+      if (currentValue < prevValue && currentValue < nextValue) {
+        return true;
+      }
+      
+      return false;
+    },
+    color: '#ffffff', // SEMPRE branco, nunca cinza
+    font: {
+      weight: 'bold',
+      size: 11,
+      family: 'Arial, sans-serif'
+    },
+    formatter: (value) => {
+      // Mostrar apenas o número formatado
+      return value.toLocaleString('pt-BR');
+    },
+    anchor: 'end',
+    align: 'top',
+    offset: 5,
+    textStrokeColor: '#666666', // Sombreado cinza (não a cor do texto, apenas o contorno)
+    textStrokeWidth: 2,
+    padding: 3,
+    clip: false
+  };
 }
 
 function getChartDefaults(chartType) {
@@ -340,11 +469,15 @@ function getChartDefaults(chartType) {
 
 async function ensureChartJS() {
   if (window.Chart) {
+    // Verificar se o plugin datalabels está carregado e registrá-lo
+    registerDataLabelsPlugin();
     return Promise.resolve();
   }
   
   if (window.lazyLibraries?.loadChartJS) {
-    return window.lazyLibraries.loadChartJS();
+    const result = await window.lazyLibraries.loadChartJS();
+    registerDataLabelsPlugin();
+    return result;
   }
   
   return new Promise((resolve, reject) => {
@@ -353,8 +486,16 @@ async function ensureChartJS() {
     script.onload = () => {
       const pluginScript = document.createElement('script');
       pluginScript.src = 'https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js';
-      pluginScript.onload = resolve;
-      pluginScript.onerror = () => resolve();
+      pluginScript.onload = () => {
+        registerDataLabelsPlugin();
+        resolve();
+      };
+      pluginScript.onerror = () => {
+        if (window.Logger) {
+          window.Logger.warn('Erro ao carregar chartjs-plugin-datalabels');
+        }
+        resolve();
+      };
       document.head.appendChild(pluginScript);
     };
     script.onerror = reject;
@@ -362,10 +503,52 @@ async function ensureChartJS() {
   });
 }
 
+/**
+ * Registrar o plugin datalabels no Chart.js
+ */
+function registerDataLabelsPlugin() {
+  if (!window.Chart || !window.Chart.register) {
+    return;
+  }
+  
+  // O plugin chartjs-plugin-datalabels v2 se auto-registra quando carregado
+  // Mas podemos tentar registrar explicitamente se necessário
+  try {
+    // Verificar se o plugin já está registrado
+    const registry = window.Chart.registry;
+    if (registry) {
+      const plugins = registry.getAll ? registry.getAll() : [];
+      const hasDataLabels = plugins.some(p => 
+        (p.id && p.id.includes('datalabel')) || 
+        (p.id === 'datalabels')
+      );
+      
+      if (hasDataLabels) {
+        // Plugin já está registrado
+        return;
+      }
+    }
+    
+    // Tentar registrar o plugin se disponível globalmente
+    // O plugin v2 expõe ChartDataLabels globalmente quando carregado
+    if (typeof ChartDataLabels !== 'undefined') {
+      window.Chart.register(ChartDataLabels);
+    } else if (window.ChartDataLabels) {
+      window.Chart.register(window.ChartDataLabels);
+    }
+  } catch (e) {
+    // Plugin já registrado ou não disponível (ignorar)
+    if (window.Logger) {
+      window.Logger.debug('Plugin datalabels:', e.message || 'já registrado ou não disponível');
+    }
+  }
+}
+
 async function createBarChart(canvasId, labels, values, options = {}) {
   try {
     await ensureChartJS();
     
+    // VALIDAÇÃO ROBUSTA: Verificar se o canvas existe antes de qualquer operação
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
       if (window.Logger) {
@@ -374,8 +557,40 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       return null;
     }
     
-    if (window[canvasId] instanceof Chart) {
-      window[canvasId].destroy();
+    // VALIDAÇÃO: Verificar se o canvas ainda está no DOM
+    if (!canvas.parentNode || !document.body.contains(canvas)) {
+      if (window.Logger) {
+        window.Logger.warn(`Canvas ${canvasId} não está no DOM`);
+      }
+      return null;
+    }
+    
+    // VALIDAÇÃO: Verificar se o canvas tem contexto válido
+    let ctx = null;
+    try {
+      ctx = canvas.getContext('2d');
+      if (!ctx) {
+        if (window.Logger) {
+          window.Logger.warn(`Não foi possível obter contexto 2D do canvas ${canvasId}`);
+        }
+        return null;
+      }
+    } catch (error) {
+      if (window.Logger) {
+        window.Logger.warn(`Erro ao obter contexto do canvas ${canvasId}:`, error);
+      }
+      return null;
+    }
+    
+    // Destruir gráfico existente se houver
+    if (window.Chart && window[canvasId] instanceof window.Chart) {
+      try {
+        window[canvasId]._isDestroying = true;
+        window[canvasId].destroy();
+      } catch (error) {
+        // Ignorar erros ao destruir gráfico antigo
+      }
+      window[canvasId] = null;
     }
     
     // PRIORIDADE 3: Otimização de performance - Limitar pontos
@@ -394,7 +609,23 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       }
     }
     
-    const ctx = canvas.getContext('2d');
+    // VALIDAÇÃO: Verificar se o canvas ainda está no DOM antes de continuar
+    // (ctx já foi obtido anteriormente nas linhas 569-583)
+    if (!canvas.parentNode || !document.body.contains(canvas)) {
+      if (window.Logger) {
+        window.Logger.warn(`Canvas não está no DOM, pulando criação de gráfico`);
+      }
+      return null;
+    }
+    
+    // Verificar se ctx ainda é válido (já foi obtido anteriormente)
+    if (!ctx) {
+      if (window.Logger) {
+        window.Logger.warn(`Contexto do canvas não está disponível`);
+      }
+      return null;
+    }
+    
     const defaults = getChartDefaults(options.horizontal ? 'bar-horizontal' : 'bar');
     const palette = getColorPalette();
     
@@ -491,6 +722,17 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       }
     }
     
+    // Adicionar datalabels padrão se não foram especificados
+    // Permite sobrescrever com options.chartOptions.plugins.datalabels ou desabilitar com options.disableDataLabels
+    const pluginsConfig = {
+      ...defaults.plugins,
+      ...(options.chartOptions?.plugins || {})
+    };
+    
+    if (!pluginsConfig.datalabels && !options.disableDataLabels) {
+      pluginsConfig.datalabels = getStandardBarDataLabels(options.horizontal);
+    }
+    
     const config = {
       type: 'bar',
       data: {
@@ -499,7 +741,8 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       },
       options: {
         ...defaults,
-        ...options.chartOptions
+        ...options.chartOptions,
+        plugins: pluginsConfig
       }
     };
     
@@ -507,8 +750,78 @@ async function createBarChart(canvasId, labels, values, options = {}) {
       config.options.indexAxis = options.chartOptions?.indexAxis || 'y';
     }
     
+    // Garantir que o plugin datalabels está registrado
+    registerDataLabelsPlugin();
+    
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
+    
+    // GARANTIR que os datalabels estão sempre brancos com sombreado cinza (gráficos de barra)
+    if (chart && chart.options && chart.options.plugins && chart.options.plugins.datalabels) {
+      chart.options.plugins.datalabels.color = '#ffffff'; // Forçar branco sempre
+      if (!chart.options.plugins.datalabels.textStrokeColor || chart.options.plugins.datalabels.textStrokeColor === '#000000') {
+        chart.options.plugins.datalabels.textStrokeColor = '#666666'; // Sombreado cinza
+      }
+      // Forçar atualização para aplicar as cores - com verificações robustas
+      setTimeout(() => {
+        try {
+          // Verificar se o chart ainda existe e não foi destruído
+          if (!chart || chart.destroyed || chart._isDestroying) {
+            return;
+          }
+          
+          // Verificar se o canvas ainda existe no DOM
+          const canvas = chart.canvas;
+          if (!canvas) {
+            return;
+          }
+          
+          // Verificar se o canvas ainda está no DOM
+          if (!canvas.parentNode || !document.body.contains(canvas)) {
+            if (window.Logger) {
+              window.Logger.debug('⚠️ Chart canvas não encontrado no DOM, pulando update');
+            }
+            return;
+          }
+          
+          // Verificar se o chart ainda tem contexto válido
+          if (!chart.ctx) {
+            if (window.Logger) {
+              window.Logger.debug('⚠️ Chart context não encontrado, pulando update');
+            }
+            return;
+          }
+          
+          // Verificar se o chart ainda está registrado no Chart.js
+          try {
+            if (typeof window.Chart !== 'undefined' && typeof window.Chart.getChart === 'function') {
+              const registeredChart = window.Chart.getChart(canvas);
+              if (!registeredChart || registeredChart !== chart) {
+                // Chart não está mais registrado ou foi substituído
+                return;
+              }
+            }
+          } catch (e) {
+            // Ignorar erros de verificação
+          }
+          
+          // Atualizar apenas se tudo estiver válido
+          chart.update('none');
+        } catch (error) {
+          // Ignorar erros de update se o chart foi destruído ou canvas removido
+          const errorMsg = error?.message || '';
+          if (errorMsg.includes('destroyed') || 
+              errorMsg.includes('ownerDocument') || 
+              errorMsg.includes('null')) {
+            // Erro esperado quando chart foi destruído - ignorar silenciosamente
+            return;
+          }
+          if (window.Logger) {
+            window.Logger.warn('⚠️ Erro ao atualizar chart:', error.message);
+          }
+        }
+      }, 100);
+    }
     
     // REFATORAÇÃO FASE 5: Integração chartLegend × chartFactory
     // Criar legenda interativa se solicitado
@@ -548,6 +861,7 @@ async function createLineChart(canvasId, labels, values, options = {}) {
   try {
     await ensureChartJS();
     
+    // VALIDAÇÃO ROBUSTA: Verificar se o canvas existe antes de qualquer operação
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
       if (window.Logger) {
@@ -556,8 +870,23 @@ async function createLineChart(canvasId, labels, values, options = {}) {
       return null;
     }
     
-    if (window[canvasId] instanceof Chart) {
-      window[canvasId].destroy();
+    // VALIDAÇÃO: Verificar se o canvas ainda está no DOM
+    if (!canvas.parentNode || !document.body.contains(canvas)) {
+      if (window.Logger) {
+        window.Logger.warn(`Canvas ${canvasId} não está no DOM`);
+      }
+      return null;
+    }
+    
+    // Destruir gráfico existente se houver
+    if (window.Chart && window[canvasId] instanceof window.Chart) {
+      try {
+        window[canvasId]._isDestroying = true;
+        window[canvasId].destroy();
+      } catch (error) {
+        // Ignorar erros ao destruir gráfico antigo
+      }
+      window[canvasId] = null;
     }
     
     // PRIORIDADE 3: Otimização de performance - Limitar pontos
@@ -576,7 +905,29 @@ async function createLineChart(canvasId, labels, values, options = {}) {
       }
     }
     
-    const ctx = canvas.getContext('2d');
+    // VALIDAÇÃO: Verificar se o canvas ainda está no DOM antes de obter contexto
+    if (!canvas.parentNode || !document.body.contains(canvas)) {
+      if (window.Logger) {
+        window.Logger.warn(`Canvas não está no DOM, pulando criação de gráfico`);
+      }
+      return null;
+    }
+    
+    let ctx = null;
+    try {
+      ctx = canvas.getContext('2d');
+      if (!ctx) {
+        if (window.Logger) {
+          window.Logger.warn(`Não foi possível obter contexto 2D do canvas`);
+        }
+        return null;
+      }
+    } catch (error) {
+      if (window.Logger) {
+        window.Logger.warn(`Erro ao obter contexto do canvas:`, error);
+      }
+      return null;
+    }
     const defaults = getChartDefaults('line');
     const palette = getColorPalette();
     
@@ -619,6 +970,16 @@ async function createLineChart(canvasId, labels, values, options = {}) {
       }
     }
     
+    // Adicionar datalabels padrão se não foram especificados
+    const pluginsConfig = {
+      ...defaults.plugins,
+      ...(options.chartOptions?.plugins || {})
+    };
+    
+    if (!pluginsConfig.datalabels && !options.disableDataLabels) {
+      pluginsConfig.datalabels = getStandardLineDataLabels(options.showAllLabels || false);
+    }
+    
     const config = {
       type: 'line',
       data: {
@@ -627,12 +988,72 @@ async function createLineChart(canvasId, labels, values, options = {}) {
       },
       options: {
         ...defaults,
-        ...options.chartOptions
+        ...options.chartOptions,
+        plugins: pluginsConfig
       }
     };
     
+    // Garantir que o plugin datalabels está registrado
+    registerDataLabelsPlugin();
+    
     const chart = new Chart(ctx, config);
     window[canvasId] = chart;
+    
+    // GARANTIR que os datalabels estão sempre brancos com sombreado cinza (gráficos de linha)
+    if (chart && chart.options && chart.options.plugins && chart.options.plugins.datalabels) {
+      chart.options.plugins.datalabels.color = '#ffffff'; // Forçar branco sempre
+      if (!chart.options.plugins.datalabels.textStrokeColor || chart.options.plugins.datalabels.textStrokeColor === '#000000') {
+        chart.options.plugins.datalabels.textStrokeColor = '#666666'; // Sombreado cinza
+      }
+      // Forçar atualização para aplicar as cores - com verificações robustas
+      setTimeout(() => {
+        try {
+          // Verificar se o chart ainda existe e não foi destruído
+          if (!chart || chart.destroyed || chart._isDestroying) {
+            return;
+          }
+          
+          // Verificar se o canvas ainda existe no DOM
+          const canvas = chart.canvas;
+          if (!canvas) {
+            return;
+          }
+          
+          // Verificar se o canvas ainda está no DOM
+          if (!canvas.parentNode || !document.body.contains(canvas)) {
+            return;
+          }
+          
+          // Verificar se o chart ainda tem contexto válido
+          if (!chart.ctx) {
+            return;
+          }
+          
+          // Verificar se o chart ainda está registrado no Chart.js
+          try {
+            if (typeof window.Chart !== 'undefined' && typeof window.Chart.getChart === 'function') {
+              const registeredChart = window.Chart.getChart(canvas);
+              if (!registeredChart || registeredChart !== chart) {
+                return;
+              }
+            }
+          } catch (e) {
+            // Ignorar erros de verificação
+          }
+          
+          // Atualizar apenas se tudo estiver válido
+          chart.update('none');
+        } catch (error) {
+          // Ignorar erros de update se o chart foi destruído ou canvas removido
+          const errorMsg = error?.message || '';
+          if (errorMsg.includes('destroyed') || 
+              errorMsg.includes('ownerDocument') || 
+              errorMsg.includes('null')) {
+            return;
+          }
+        }
+      }, 100);
+    }
     
     // REFATORAÇÃO FASE 5: Integração chartLegend × chartFactory
     // Criar legenda interativa se solicitado
@@ -671,6 +1092,7 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
   try {
     await ensureChartJS();
     
+    // VALIDAÇÃO ROBUSTA: Verificar se o canvas existe antes de qualquer operação
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
       if (window.Logger) {
@@ -679,11 +1101,48 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
       return null;
     }
     
-    if (window[canvasId] instanceof Chart) {
-      window[canvasId].destroy();
+    // VALIDAÇÃO: Verificar se o canvas ainda está no DOM
+    if (!canvas.parentNode || !document.body.contains(canvas)) {
+      if (window.Logger) {
+        window.Logger.warn(`Canvas ${canvasId} não está no DOM`);
+      }
+      return null;
     }
     
-    const ctx = canvas.getContext('2d');
+    // Destruir gráfico existente se houver
+    if (window[canvasId] instanceof Chart) {
+      try {
+        window[canvasId]._isDestroying = true;
+        window[canvasId].destroy();
+      } catch (error) {
+        // Ignorar erros ao destruir gráfico antigo
+      }
+      window[canvasId] = null;
+    }
+    
+    // VALIDAÇÃO: Verificar se o canvas ainda está no DOM antes de obter contexto
+    if (!canvas.parentNode || !document.body.contains(canvas)) {
+      if (window.Logger) {
+        window.Logger.warn(`Canvas não está no DOM, pulando criação de gráfico`);
+      }
+      return null;
+    }
+    
+    let ctx = null;
+    try {
+      ctx = canvas.getContext('2d');
+      if (!ctx) {
+        if (window.Logger) {
+          window.Logger.warn(`Não foi possível obter contexto 2D do canvas`);
+        }
+        return null;
+      }
+    } catch (error) {
+      if (window.Logger) {
+        window.Logger.warn(`Erro ao obter contexto do canvas:`, error);
+      }
+      return null;
+    }
     const defaults = getChartDefaults('doughnut');
     const palette = getColorPalette();
     
@@ -733,19 +1192,31 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
     
     // Garantir que a legenda padrão do Chart.js sempre esteja desabilitada
     // (usamos legenda customizada abaixo do gráfico quando legendContainer é fornecido)
+    // Adicionar datalabels padrão se não foram fornecidos nas opções
+    const pluginsConfig = {
+      ...defaults.plugins,
+      ...(options.chartOptions?.plugins || {}),
+      // SEMPRE desabilitar legenda padrão do Chart.js
+      // A legenda customizada será renderizada abaixo se legendContainer for fornecido
+      legend: {
+        display: false
+      }
+    };
+    
+    // Adicionar datalabels padrão se não foram especificados
+    // Permite sobrescrever com options.chartOptions.plugins.datalabels
+    if (!pluginsConfig.datalabels && !options.disableDataLabels) {
+      pluginsConfig.datalabels = getStandardDoughnutDataLabels(3);
+    }
+    
     const finalOptions = {
       ...defaults,
       ...options.chartOptions,
-      plugins: {
-        ...defaults.plugins,
-        ...(options.chartOptions?.plugins || {}),
-        // SEMPRE desabilitar legenda padrão do Chart.js
-        // A legenda customizada será renderizada abaixo se legendContainer for fornecido
-        legend: {
-          display: false
-        }
-      }
+      plugins: pluginsConfig
     };
+    
+    // Garantir que o plugin datalabels está registrado
+    registerDataLabelsPlugin();
     
     const config = {
       type: options.type || 'doughnut',
@@ -759,7 +1230,8 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
           borderWidth: options.borderWidth || 2
         }]
       },
-      options: finalOptions
+      options: finalOptions,
+      plugins: []
     };
     
     const chart = new Chart(ctx, config);
@@ -769,7 +1241,77 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
     // (mesmo que tenha sido habilitada por algum motivo)
     if (chart.options && chart.options.plugins) {
       chart.options.plugins.legend = { display: false };
-      chart.update('none'); // Atualizar sem animação para aplicar imediatamente
+      
+      // GARANTIR que os datalabels estão sempre brancos com sombreado cinza (gráficos doughnut/pie)
+      if (chart.options.plugins.datalabels) {
+        chart.options.plugins.datalabels.color = '#ffffff'; // Forçar branco sempre
+        if (!chart.options.plugins.datalabels.textStrokeColor || chart.options.plugins.datalabels.textStrokeColor === '#000000') {
+          chart.options.plugins.datalabels.textStrokeColor = '#666666'; // Sombreado cinza
+        }
+      }
+      
+      // Atualizar com validações robustas
+      try {
+        if (chart && chart.canvas && chart.canvas.parentNode && document.body.contains(chart.canvas) && !chart.destroyed && !chart._isDestroying) {
+          chart.update('none'); // Atualizar sem animação para aplicar imediatamente
+        }
+      } catch (error) {
+        // Ignorar erros de update
+      }
+    }
+    
+    // Forçar atualização adicional para garantir que os datalabels sejam renderizados corretamente
+    if (chart && chart.options && chart.options.plugins && chart.options.plugins.datalabels) {
+      setTimeout(() => {
+        try {
+          // Verificar se o chart ainda existe e não foi destruído
+          if (!chart || chart.destroyed || chart._isDestroying) {
+            return;
+          }
+          
+          // Verificar se o canvas ainda existe no DOM
+          const canvas = chart.canvas;
+          if (!canvas) {
+            return;
+          }
+          
+          // Verificar se o canvas ainda está no DOM
+          if (!canvas.parentNode || !document.body.contains(canvas)) {
+            return;
+          }
+          
+          // Verificar se o chart ainda tem contexto válido
+          if (!chart.ctx) {
+            return;
+          }
+          
+          // Verificar se o chart ainda está registrado no Chart.js
+          try {
+            if (typeof window.Chart !== 'undefined' && typeof window.Chart.getChart === 'function') {
+              const registeredChart = window.Chart.getChart(canvas);
+              if (!registeredChart || registeredChart !== chart) {
+                return;
+              }
+            }
+          } catch (e) {
+            // Ignorar erros de verificação
+          }
+          
+          // Atualizar apenas se tudo estiver válido
+          if (chart.options && chart.options.plugins && chart.options.plugins.datalabels) {
+            chart.options.plugins.datalabels.color = '#ffffff'; // Reforçar branco
+            chart.update('none');
+          }
+        } catch (error) {
+          // Ignorar erros de update se o chart foi destruído ou canvas removido
+          const errorMsg = error?.message || '';
+          if (errorMsg.includes('destroyed') || 
+              errorMsg.includes('ownerDocument') || 
+              errorMsg.includes('null')) {
+            return;
+          }
+        }
+      }, 200);
     }
     
     // REFATORAÇÃO FASE 5: Integração chartLegend × chartFactory
@@ -826,8 +1368,9 @@ async function createDoughnutChart(canvasId, labels, values, options = {}) {
 
 async function updateChart(canvasId, labels, values, options = {}) {
   try {
+    await ensureChartJS();
     const chart = window[canvasId];
-    if (!chart || !(chart instanceof Chart)) {
+    if (!chart || !window.Chart || !(chart instanceof window.Chart)) {
       if (labels && values) {
         const chartType = options.type || 'bar';
         if (chartType === 'line') {
@@ -875,7 +1418,14 @@ async function updateChart(canvasId, labels, values, options = {}) {
       Object.assign(chart.options, options.chartOptions);
     }
     
-    chart.update(options.animationMode || 'default');
+    // Atualizar com validações
+    try {
+      if (chart && chart.canvas && chart.canvas.parentNode && document.body.contains(chart.canvas) && !chart.destroyed && !chart._isDestroying) {
+        chart.update(options.animationMode || 'default');
+      }
+    } catch (error) {
+      // Ignorar erros de update
+    }
     
     if (window.Logger) {
       window.Logger.debug(`Gráfico ${canvasId} atualizado`);
@@ -950,6 +1500,8 @@ function destroyChartSafely(chartId) {
     try {
       // Verificar se existe no window e tem método destroy
       if (window[id] && typeof window[id].destroy === 'function') {
+        // Marcar como destruído antes de destruir
+        window[id]._isDestroying = true;
         window[id].destroy();
         window[id] = null;
         destroyed = true;
@@ -962,6 +1514,7 @@ function destroyChartSafely(chartId) {
       if (typeof window.Chart !== 'undefined' && typeof window.Chart.getChart === 'function') {
         const existingChart = window.Chart.getChart(id);
         if (existingChart && typeof existingChart.destroy === 'function') {
+          existingChart._isDestroying = true;
           existingChart.destroy();
           destroyed = true;
           if (window.Logger) {
@@ -973,7 +1526,33 @@ function destroyChartSafely(chartId) {
       // Verificar se o canvas existe e limpar
       const canvas = document.getElementById(id);
       if (canvas) {
-        const ctx = canvas.getContext('2d');
+        // Limpar referência ao chart instance
+        if (canvas._chartInstance) {
+          canvas._chartInstance = null;
+        }
+        // VALIDAÇÃO: Verificar se o canvas ainda está no DOM antes de obter contexto
+    if (!canvas.parentNode || !document.body.contains(canvas)) {
+      if (window.Logger) {
+        window.Logger.warn(`Canvas não está no DOM, pulando criação de gráfico`);
+      }
+      return null;
+    }
+    
+    let ctx = null;
+    try {
+      ctx = canvas.getContext('2d');
+      if (!ctx) {
+        if (window.Logger) {
+          window.Logger.warn(`Não foi possível obter contexto 2D do canvas`);
+        }
+        return null;
+      }
+    } catch (error) {
+      if (window.Logger) {
+        window.Logger.warn(`Erro ao obter contexto do canvas:`, error);
+      }
+      return null;
+    }
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
@@ -1007,11 +1586,15 @@ function destroyCharts(chartIds) {
 }
 
 if (typeof window !== 'undefined') {
+  // CORREÇÃO: Expor chartFactory ANTES de qualquer outra coisa para garantir disponibilidade
   window.chartFactory = {
     getChartDefaults,
     getColorPalette,
     getColorFromPalette,
     getColorWithAlpha,
+    getStandardBarDataLabels,
+    getStandardDoughnutDataLabels,
+    getStandardLineDataLabels,
     createBarChart,
     createLineChart,
     createDoughnutChart,
@@ -1021,8 +1604,19 @@ if (typeof window !== 'undefined') {
     destroyCharts: destroyCharts
   };
   
+  // Exportar funções globalmente para uso em outras páginas
+  window.getStandardBarDataLabels = getStandardBarDataLabels;
+  window.getStandardDoughnutDataLabels = getStandardDoughnutDataLabels;
+  window.getStandardLineDataLabels = getStandardLineDataLabels;
+  
+  // CORREÇÃO: Expor também como ChartFactory (com C maiúsculo) para compatibilidade
+  window.ChartFactory = window.chartFactory;
+  
   if (window.Logger) {
     window.Logger.debug('✅ Chart Factory inicializado');
+  } else {
+    // Log mesmo sem Logger para garantir que foi carregado
+    console.log('✅ Chart Factory inicializado');
   }
 }
 

@@ -228,6 +228,15 @@ app.get('/login', (_req, res) => {
   res.sendFile(path.join(publicDir, 'login.html'));
 });
 
+// Rota de cadastro (pública) - servir cadastro.html diretamente
+app.get('/cadastro', (_req, res) => {
+  // Se já estiver autenticado, redirecionar para dashboard
+  if (_req.session && _req.session.isAuthenticated) {
+    return res.redirect('/dashboard');
+  }
+  res.sendFile(path.join(publicDir, 'cadastro.html'));
+});
+
 // Rota do dashboard - servir index.html (protegida)
 app.get('/dashboard', requireAuth, (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));

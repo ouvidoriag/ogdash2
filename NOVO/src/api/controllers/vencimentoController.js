@@ -10,7 +10,7 @@
 
 import logger from '../../utils/logger.js';
 import { withCache } from '../../utils/responseHelper.js';
-import { getDataCriacao, isConcluido } from '../../utils/dateUtils.js';
+import { getDataCriacao, isConcluido, getTempoResolucaoEmDias } from '../../utils/dateUtils.js';
 import Record from '../../models/Record.model.js';
 
 /**
@@ -105,6 +105,7 @@ export async function getVencimento(req, res) {
   const mes = req.query.mes; // Filtro por mês (YYYY-MM)
   const secretaria = req.query.secretaria; // Filtro por secretaria
   const prazoCustomizado = req.query.prazo ? parseInt(req.query.prazo) : null; // Prazo customizado em dias
+  const tempoResolucaoFiltro = req.query.tempoResolucao || ''; // Filtro de tempo de resolução: '0-15', '16-30', '31-60', '61+'
   
   // Debug: log dos parâmetros recebidos
   logger.debug('Parâmetros de vencimento recebidos', {
@@ -116,7 +117,7 @@ export async function getVencimento(req, res) {
     prazoCustomizado
   });
   
-  const key = `vencimento:${filtro}:${mes || ''}:${prazoCustomizado || ''}:${servidor || ''}:${unidadeCadastro || ''}:${secretaria || ''}:v3`;
+  const key = `vencimento:${filtro}:${mes || ''}:${prazoCustomizado || ''}:${servidor || ''}:${unidadeCadastro || ''}:${secretaria || ''}:${tempoResolucaoFiltro || ''}:v4`;
   
   // Cache de 5 horas (dados de vencimento mudam a cada ~5h)
   // Timeout de 60s para endpoint pesado (processa muitos registros em memória)
@@ -183,7 +184,7 @@ export async function getVencimento(req, res) {
     // OTIMIZAÇÃO CRÍTICA: Limitar a 20000 registros máximo para evitar sobrecarga
     // Se precisar de mais, implementar paginação ou usar agregações MongoDB
     const rows = await Record.find(filter)
-      .select('_id protocolo dataCriacaoIso dataDaCriacao tipoDeManifestacao tema assunto orgaos unidadeCadastro status statusDemanda responsavel')
+      .select('_id protocolo dataCriacaoIso dataDaCriacao dataConclusaoIso dataDaConclusao tipoDeManifestacao tema assunto orgaos unidadeCadastro status statusDemanda responsavel tempoDeResolucaoEmDias')
       .limit(20000)
       .lean();
     
@@ -295,44 +296,25 @@ export async function getVencimento(req, res) {
     // Processar registros e calcular vencimentos
     const protocolos = [];
     
+    // Se o filtro de tempo de resolução está ativo, mostrar apenas protocolos CONCLUÍDOS
+    // Caso contrário, mostrar apenas protocolos NÃO CONCLUÍDOS (comportamento padrão de vencimento)
+    const mostrarConcluidos = tempoResolucaoFiltro && tempoResolucaoFiltro.trim() !== '';
+    
     for (const row of rowsFiltrados) {
-      // Verificar se está concluído (usar função global)
-      if (isConcluido(row)) {
-        continue; // Pular concluídos
+      // Verificar se está concluído
+      const concluido = isConcluido(row);
+      
+      // Se o filtro de tempo de resolução está ativo, mostrar apenas concluídos
+      // Se não está ativo, mostrar apenas não concluídos (comportamento padrão)
+      if (mostrarConcluidos && !concluido) {
+        continue; // Filtro ativo: pular não concluídos
+      } else if (!mostrarConcluidos && concluido) {
+        continue; // Filtro não ativo: pular concluídos (comportamento padrão)
       }
       
       // Obter data de criação
       const dataCriacao = getDataCriacao(row);
       if (!dataCriacao) continue;
-      
-      // Calcular data de vencimento
-      const tipo = row.tipoDeManifestacao || 
-                   (row.data && typeof row.data === 'object' ? row.data.tipo_de_manifestacao : null) ||
-                   '';
-      
-      // Usar prazo customizado se fornecido, senão usar o padrão por tipo
-      const prazo = prazoCustomizado || getPrazoPorTipo(tipo);
-      const dataVencimento = calcularDataVencimentoComPrazo(dataCriacao, prazo);
-      if (!dataVencimento) continue;
-      
-      // Calcular dias restantes
-      const diasRestantes = calcularDiasRestantes(dataVencimento, hoje);
-      if (diasRestantes === null) continue;
-      
-      // Aplicar filtro
-      let incluir = false;
-      
-      if (filtro === 'vencidos') {
-        incluir = diasRestantes < 0; // Vencidos
-      } else {
-        const diasFiltro = parseInt(filtro);
-        if (!isNaN(diasFiltro)) {
-          // Próximos de vencer em X dias
-          incluir = diasRestantes >= 0 && diasRestantes <= diasFiltro;
-        }
-      }
-      
-      if (!incluir) continue;
       
       // Extrair informações
       const protocolo = row.protocolo || 
@@ -361,6 +343,85 @@ export async function getVencimento(req, res) {
       
       const oQueE = assunto || tema || tipoManifestacao || 'N/A';
       
+      let tempoResolucao = null;
+      let dataVencimento = null;
+      let diasRestantes = null;
+      let prazo = null;
+      
+      if (mostrarConcluidos) {
+        // Para protocolos concluídos: calcular tempo de resolução real
+        tempoResolucao = getTempoResolucaoEmDias(row, false);
+        
+        // Aplicar filtro de tempo de resolução
+        if (tempoResolucao === null) {
+          continue; // Pular se não conseguiu calcular tempo de resolução
+        }
+        
+        let incluirPorTempo = false;
+        if (tempoResolucaoFiltro === '0-15') {
+          incluirPorTempo = tempoResolucao >= 0 && tempoResolucao <= 15;
+        } else if (tempoResolucaoFiltro === '16-30') {
+          incluirPorTempo = tempoResolucao >= 16 && tempoResolucao <= 30;
+        } else if (tempoResolucaoFiltro === '31-60') {
+          incluirPorTempo = tempoResolucao >= 31 && tempoResolucao <= 60;
+        } else if (tempoResolucaoFiltro === '61+') {
+          incluirPorTempo = tempoResolucao > 60;
+        }
+        
+        if (!incluirPorTempo) continue;
+        
+        // Para concluídos, calcular dados de vencimento para exibição (mesmo que já estejam concluídos)
+        const tipo = tipoManifestacao || '';
+        prazo = prazoCustomizado || getPrazoPorTipo(tipo);
+        dataVencimento = calcularDataVencimentoComPrazo(dataCriacao, prazo);
+        if (dataVencimento) {
+          diasRestantes = calcularDiasRestantes(dataVencimento, hoje);
+        }
+      } else {
+        // Para protocolos não concluídos: comportamento padrão de vencimento
+        // Calcular data de vencimento
+        const tipo = tipoManifestacao || '';
+        
+        // Usar prazo customizado se fornecido, senão usar o padrão por tipo
+        prazo = prazoCustomizado || getPrazoPorTipo(tipo);
+        dataVencimento = calcularDataVencimentoComPrazo(dataCriacao, prazo);
+        if (!dataVencimento) continue;
+        
+        // Calcular dias restantes
+        diasRestantes = calcularDiasRestantes(dataVencimento, hoje);
+        if (diasRestantes === null) continue;
+        
+        // Aplicar filtro de vencimento
+        let incluir = false;
+        
+        if (filtro === 'vencidos') {
+          incluir = diasRestantes < 0; // Vencidos
+        } else {
+          const diasFiltro = parseInt(filtro);
+          if (!isNaN(diasFiltro)) {
+            // Próximos de vencer em X dias
+            incluir = diasRestantes >= 0 && diasRestantes <= diasFiltro;
+          }
+        }
+        
+        if (!incluir) continue;
+        
+        // Calcular tempo decorrido para não concluídos
+        try {
+          const dataCriacaoDate = new Date(dataCriacao + 'T00:00:00');
+          if (!isNaN(dataCriacaoDate.getTime())) {
+            const diffMs = hoje.getTime() - dataCriacaoDate.getTime();
+            const diasDecorridos = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            if (diasDecorridos >= 0 && diasDecorridos <= 1000) {
+              tempoResolucao = diasDecorridos;
+            }
+          }
+        } catch (error) {
+          // Ignorar erros de cálculo
+          logger.debug('Erro ao calcular tempo decorrido', { error: error.message, protocolo: row.protocolo });
+        }
+      }
+      
       protocolos.push({
         protocolo,
         setor,
@@ -370,18 +431,29 @@ export async function getVencimento(req, res) {
         dataCriacao,
         dataVencimento,
         diasRestantes,
-        prazo: prazoCustomizado || getPrazoPorTipo(tipo)
+        prazo: prazo || (prazoCustomizado || getPrazoPorTipo(tipoManifestacao || '')),
+        tempoResolucao: tempoResolucao
       });
     }
     
-    // Ordenar por dias restantes (mais urgentes primeiro)
-    protocolos.sort((a, b) => {
-      // Vencidos primeiro (negativos)
-      if (a.diasRestantes < 0 && b.diasRestantes >= 0) return -1;
-      if (a.diasRestantes >= 0 && b.diasRestantes < 0) return 1;
-      // Dentro de cada grupo, ordenar por dias restantes (menor primeiro)
-      return a.diasRestantes - b.diasRestantes;
-    });
+    // Ordenar conforme o contexto
+    if (mostrarConcluidos) {
+      // Para protocolos concluídos: ordenar por tempo de resolução (maior primeiro)
+      protocolos.sort((a, b) => {
+        const tempoA = a.tempoResolucao || 0;
+        const tempoB = b.tempoResolucao || 0;
+        return tempoB - tempoA; // Maior tempo primeiro
+      });
+    } else {
+      // Para protocolos não concluídos: ordenar por dias restantes (mais urgentes primeiro)
+      protocolos.sort((a, b) => {
+        // Vencidos primeiro (negativos)
+        if (a.diasRestantes < 0 && b.diasRestantes >= 0) return -1;
+        if (a.diasRestantes >= 0 && b.diasRestantes < 0) return 1;
+        // Dentro de cada grupo, ordenar por dias restantes (menor primeiro)
+        return a.diasRestantes - b.diasRestantes;
+      });
+    }
     
     return {
       total: protocolos.length,

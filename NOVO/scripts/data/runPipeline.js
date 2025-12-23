@@ -13,6 +13,11 @@
  * - Python 3 instalado
  * - Dependências do Pipeline instaladas (pip install -r Pipeline/requirements.txt)
  * - Credenciais Google em google-credentials.json
+ * - MONGODB_ATLAS_URL definido no .env
+ * 
+ * REFATORAÇÃO: Prisma → Mongoose
+ * Data: 17/12/2025
+ * CÉREBRO X-3
  */
 
 import 'dotenv/config';
@@ -22,36 +27,90 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
-import { normalizeDate } from '../src/utils/dateUtils.js';
+import { initializeDatabase, closeDatabase } from '../../src/config/database.js';
+import { Record } from '../../src/models/index.js';
+import { normalizeDate } from '../../src/utils/dateUtils.js';
+import { addLowercaseFields } from '../../src/utils/normalizeLowercase.js';
 
 const execAsync = promisify(exec);
 
-const prisma = new PrismaClient({
-  log: ['error', 'warn'],
-});
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const projectRoot = path.join(__dirname, '..');
-const pipelineRoot = path.join(projectRoot, '..'); // Volta para Dashboard/
+const projectRoot = path.join(__dirname, '..', '..'); // NOVO/
+const pipelineRoot = path.join(projectRoot, '..'); // Dashboard/
 
 // IDs do Google Drive
 const FOLDER_ID_BRUTA = process.env.GOOGLE_FOLDER_BRUTA || "1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5";
 const PLANILHA_TRATADA_ID = process.env.GOOGLE_SHEET_ID || "1aF0I8pxABXhqyO2DmzBV9aoWHQN2h7LpTN-qdkGLc_g";
 
 /**
+ * Buscar arquivo de credenciais em múltiplos locais possíveis
+ * @returns {string} Caminho do arquivo de credenciais encontrado
+ * @throws {Error} Se o arquivo não for encontrado
+ */
+function findCredentialsFile() {
+  const envPath = process.env.GOOGLE_CREDENTIALS_FILE;
+  const defaultPath = 'config/google-credentials.json';
+  
+  // Se GOOGLE_CREDENTIALS_FILE está definido
+  if (envPath) {
+    if (path.isAbsolute(envPath)) {
+      if (fs.existsSync(envPath)) {
+        return envPath;
+      }
+    } else {
+      // Tentar múltiplos locais possíveis
+      const possiblePaths = [
+        path.join(projectRoot, envPath), // NOVO/config/google-credentials.json
+        path.join(__dirname, '..', envPath), // NOVO/scripts/config/google-credentials.json
+        path.join(pipelineRoot, envPath), // Dashboard/config/google-credentials.json
+        path.join(process.cwd(), envPath) // Diretório atual/config/google-credentials.json
+      ];
+      
+      for (const possiblePath of possiblePaths) {
+        if (fs.existsSync(possiblePath)) {
+          return possiblePath;
+        }
+      }
+    }
+  }
+  
+  // Tentar locais padrão
+  const possiblePaths = [
+    path.join(projectRoot, defaultPath), // NOVO/config/google-credentials.json
+    path.join(__dirname, '..', defaultPath), // NOVO/scripts/config/google-credentials.json
+    path.join(pipelineRoot, defaultPath), // Dashboard/config/google-credentials.json
+    path.join(process.cwd(), defaultPath) // Diretório atual/config/google-credentials.json
+  ];
+  
+  for (const possiblePath of possiblePaths) {
+    if (fs.existsSync(possiblePath)) {
+      return possiblePath;
+    }
+  }
+  
+  // Se não encontrou, lançar erro com informações úteis
+  const errorMsg = `❌ Arquivo de credenciais não encontrado.
+
+Caminhos verificados:
+${envPath ? `- ${envPath} (de GOOGLE_CREDENTIALS_FILE)` : ''}
+- ${path.join(projectRoot, defaultPath)}
+- ${path.join(__dirname, '..', defaultPath)}
+- ${path.join(pipelineRoot, defaultPath)}
+- ${path.join(process.cwd(), defaultPath)}
+
+💡 Solução:
+1. Coloque o arquivo em: ${path.join(projectRoot, defaultPath)}
+2. Ou defina GOOGLE_CREDENTIALS_FILE no .env com o caminho correto`;
+  
+  throw new Error(errorMsg);
+}
+
+/**
  * Preparar credenciais para o Python (converter para Base64 como esperado pelo main.py)
  */
 function prepareCredentialsForPython() {
-  const credentialsPath = process.env.GOOGLE_CREDENTIALS_FILE || 'config/google-credentials.json';
-  const credentialsFile = path.isAbsolute(credentialsPath)
-    ? credentialsPath
-    : path.join(projectRoot, credentialsPath);
-  
-  if (!fs.existsSync(credentialsFile)) {
-    throw new Error(`❌ Arquivo de credenciais não encontrado: ${credentialsFile}`);
-  }
+  const credentialsFile = findCredentialsFile();
   
   // Ler credenciais JSON
   const credentialsContent = fs.readFileSync(credentialsFile, 'utf-8');
@@ -157,15 +216,7 @@ async function runPythonPipeline() {
  * Autenticar e obter cliente do Google Sheets
  */
 async function getGoogleClient() {
-  const credentialsPath = process.env.GOOGLE_CREDENTIALS_FILE || 'config/google-credentials.json';
-  
-  const credentialsFile = path.isAbsolute(credentialsPath)
-    ? credentialsPath
-    : path.join(projectRoot, credentialsPath);
-  
-  if (!fs.existsSync(credentialsFile)) {
-    throw new Error(`❌ Arquivo de credenciais não encontrado: ${credentialsFile}`);
-  }
+  const credentialsFile = findCredentialsFile();
   
   const credentialsContent = fs.readFileSync(credentialsFile, 'utf-8');
   const credentials = JSON.parse(credentialsContent);
@@ -279,7 +330,10 @@ function normalizeRecordData(row) {
   // Criar campo data (JSON completo)
   normalized.data = { ...row };
   
-  return normalized;
+  // Adicionar campos lowercase para otimização de filtros
+  const withLowercase = addLowercaseFields(normalized);
+  
+  return withLowercase;
 }
 
 /**
@@ -341,21 +395,20 @@ function getChangedFields(newData, existingRecord) {
 
 /**
  * Salvar dados no banco de dados
+ * REFATORAÇÃO: Prisma → Mongoose
  */
 async function saveToDatabase(jsonData) {
   console.log('💾 Salvando dados no banco de dados...\n');
   
-  // Buscar registros existentes
-  const existingRecords = await prisma.record.findMany({
-    where: { protocolo: { not: null } }
-  });
+  // Buscar registros existentes por protocolo
+  const existingRecords = await Record.find({ 
+    protocolo: { $ne: null, $exists: true } 
+  }).lean();
   
-  const protocolMap = new Map(); // protocolo -> id
   const existingDataMap = new Map(); // protocolo -> registro completo
   
   existingRecords.forEach(record => {
     const protocolo = String(record.protocolo);
-    protocolMap.set(protocolo, record.id);
     existingDataMap.set(protocolo, record);
   });
   
@@ -381,7 +434,7 @@ async function saveToDatabase(jsonData) {
       
       if (hasChanges) {
         toUpdate.push({
-          id: existingRecord.id,
+          _id: existingRecord._id,
           protocolo: protocolo,
           changedFields: changedFields
         });
@@ -406,12 +459,16 @@ async function saveToDatabase(jsonData) {
       const slice = toUpdate.slice(i, i + batchSize);
       
       const updatePromises = slice.map(item => {
-        return prisma.record.update({
-          where: { id: item.id },
-          data: item.changedFields
-        }).then(result => {
-          fieldsUpdated += Object.keys(item.changedFields).length;
-          return result;
+        return Record.findByIdAndUpdate(
+          item._id,
+          { $set: item.changedFields },
+          { new: true, runValidators: false }
+        ).then(result => {
+          if (result) {
+            fieldsUpdated += Object.keys(item.changedFields).length;
+            return result;
+          }
+          return null;
         }).catch(error => {
           console.error(`❌ Erro ao atualizar protocolo ${item.protocolo}:`, error.message);
           return null;
@@ -436,19 +493,39 @@ async function saveToDatabase(jsonData) {
     for (let i = 0; i < toInsert.length; i += batchSize) {
       const slice = toInsert.slice(i, i + batchSize);
       
+      // Usar insertMany com ordered: false para continuar mesmo com erros de duplicata
       try {
-        await prisma.record.createMany({
-          data: slice,
-          skipDuplicates: true
+        const result = await Record.insertMany(slice, { 
+          ordered: false,
+          rawResult: false
         });
-        inserted += slice.length;
+        inserted += result.length;
       } catch (error) {
-        for (const item of slice) {
-          try {
-            await prisma.record.create({ data: item });
-            inserted++;
-          } catch (e) {
-            console.error(`❌ Erro ao inserir protocolo ${item.protocolo}:`, e.message);
+        // Se houver erros de duplicata ou outros, tentar inserir um por um
+        if (error.writeErrors) {
+          // Inserir apenas os que não deram erro de duplicata
+          for (const item of slice) {
+            try {
+              await Record.create(item);
+              inserted++;
+            } catch (e) {
+              // Ignorar erros de duplicata (protocolo único)
+              if (!e.message.includes('duplicate key') && !e.code === 11000) {
+                console.error(`❌ Erro ao inserir protocolo ${item.protocolo}:`, e.message);
+              }
+            }
+          }
+        } else {
+          // Outro tipo de erro, tentar inserir um por um
+          for (const item of slice) {
+            try {
+              await Record.create(item);
+              inserted++;
+            } catch (e) {
+              if (!e.message.includes('duplicate key') && e.code !== 11000) {
+                console.error(`❌ Erro ao inserir protocolo ${item.protocolo}:`, e.message);
+              }
+            }
           }
         }
       }
@@ -460,7 +537,7 @@ async function saveToDatabase(jsonData) {
     console.log('');
   }
   
-  const countAfter = await prisma.record.count();
+  const countAfter = await Record.countDocuments();
   
   console.log('✅ Dados salvos no banco de dados!');
   console.log(`📊 Estatísticas:`);
@@ -482,12 +559,28 @@ async function saveToDatabase(jsonData) {
 
 /**
  * Função principal
+ * REFATORAÇÃO: Prisma → Mongoose
  */
 async function main() {
   console.log('🚀 Iniciando Pipeline Completo...\n');
   console.log('='.repeat(60));
   console.log('PIPELINE DE PROCESSAMENTO DE DADOS');
   console.log('='.repeat(60) + '\n');
+  
+  // Inicializar conexão Mongoose
+  const mongodbUrl = process.env.MONGODB_ATLAS_URL;
+  if (!mongodbUrl) {
+    console.error('❌ MONGODB_ATLAS_URL não está definido no .env');
+    process.exit(1);
+  }
+  
+  console.log('🔌 Conectando ao MongoDB Atlas...');
+  const connected = await initializeDatabase(mongodbUrl);
+  if (!connected) {
+    console.error('❌ Falha ao conectar ao MongoDB Atlas');
+    process.exit(1);
+  }
+  console.log('✅ Conectado ao MongoDB Atlas!\n');
   
   try {
     // Verificar se deve executar o Python ou apenas ler a planilha
@@ -549,7 +642,7 @@ async function main() {
     }
     process.exit(1);
   } finally {
-    await prisma.$disconnect();
+    await closeDatabase();
   }
 }
 

@@ -22,6 +22,143 @@ function ensureConnection() {
 }
 
 /**
+ * POST /api/auth/register
+ * Registra um novo usuário
+ */
+export async function register(req, res) {
+  try {
+    // Verificar conexão antes de executar query
+    ensureConnection();
+    
+    const {
+      username,
+      password,
+      nomeCompleto,
+      dataNascimento,
+      matriculaPrefeitura,
+      email,
+      telefone,
+      cargo
+    } = req.body;
+
+    // Validação de campos obrigatórios
+    if (!username || !password || !nomeCompleto || !dataNascimento || 
+        !matriculaPrefeitura || !email || !telefone || !cargo) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Todos os campos são obrigatórios' 
+      });
+    }
+
+    // Validar formato de email
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email inválido' 
+      });
+    }
+
+    // Verificar se usuário já existe
+    const existingUser = await User.findByUsername(username.toLowerCase());
+    if (existingUser) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Usuário já cadastrado' 
+      });
+    }
+
+    // Verificar se email já existe
+    const existingEmail = await User.findByEmail(email.toLowerCase());
+    if (existingEmail) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email já cadastrado' 
+      });
+    }
+
+    // Verificar se matrícula já existe
+    const existingMatricula = await User.findByMatricula(matriculaPrefeitura);
+    if (existingMatricula) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Matrícula já cadastrada' 
+      });
+    }
+
+    // Validar senha (mínimo 6 caracteres)
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Senha deve ter no mínimo 6 caracteres' 
+      });
+    }
+
+    // Hash da senha
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Validar data de nascimento
+    const dataNasc = new Date(dataNascimento);
+    if (isNaN(dataNasc.getTime())) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Data de nascimento inválida' 
+      });
+    }
+
+    // Criar novo usuário
+    const newUser = new User({
+      username: username.toLowerCase().trim(),
+      password: hashedPassword,
+      nomeCompleto: nomeCompleto.trim(),
+      dataNascimento: dataNasc,
+      matriculaPrefeitura: matriculaPrefeitura.trim().toUpperCase(),
+      email: email.toLowerCase().trim(),
+      telefone: telefone.trim(),
+      cargo: cargo.trim()
+    });
+
+    await newUser.save();
+
+    logger.info(`Novo usuário cadastrado: ${newUser.username} (${newUser.email})`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Usuário cadastrado com sucesso',
+      user: {
+        id: newUser._id.toString(),
+        username: newUser.username,
+        nomeCompleto: newUser.nomeCompleto,
+        email: newUser.email
+      }
+    });
+  } catch (error) {
+    logger.error('Erro no cadastro:', error);
+    
+    // Tratar erros de duplicidade do MongoDB
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      let message = 'Dados já cadastrados';
+      
+      if (field === 'username') message = 'Usuário já cadastrado';
+      else if (field === 'email') message = 'Email já cadastrado';
+      else if (field === 'matriculaPrefeitura') message = 'Matrícula já cadastrada';
+      
+      return res.status(400).json({ 
+        success: false, 
+        message 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erro interno do servidor' 
+    });
+  }
+}
+
+/**
  * POST /api/auth/login
  * Autentica um usuário
  */

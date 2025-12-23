@@ -452,6 +452,12 @@ export async function getDashboard(req, res) {
           concluidas: esicTotal - esicEmAtendimento,
           tempoMedio: tempoMedioEsic
         },
+        // CORA: Assistente virtual - mostra total de manifestações de ouvidoria
+        cora: {
+          ocorrenciasAtivas: ouvidoriaTotal, // Total de manifestações de ouvidoria
+          total: ouvidoriaTotal,
+          emAtendimento: ouvidoriaEmAtendimento
+        },
         tempoMedioConsolidado,
         evolucaoTemporal,
         alerts,

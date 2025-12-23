@@ -55,15 +55,62 @@ async function loadEsicUnidade() {
     const values = sortedData.map(d => d.count || 0);
     
     if (labels.length > 0 && values.length > 0) {
-      await window.chartFactory?.createBarChart('esic-chart-unidade-detail', labels, values, {
+      const chartUnidade = await window.chartFactory?.createBarChart('esic-chart-unidade-detail', labels, values, {
         horizontal: true,
         colorIndex: 3,
-        onClick: false,
+        onClick: true, // Habilitar interatividade para crossfilter
+        field: 'unidade'
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartUnidade && sortedData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartUnidade, sortedData, {
+          field: 'unidade',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadEsicUnidade) setTimeout(() => window.loadEsicUnidade(), 100);
+          },
+          onClearFilters: () => {
+            if (window.loadEsicUnidade) setTimeout(() => window.loadEsicUnidade(), 100);
+          }
+        });
+      }
     }
     
     // Renderizar ranking
     renderUnidadeRanking(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => {
+          if (window.loadEsicUnidade) window.loadEsicUnidade();
+        },
+        pageLoadFunction: window.loadEsicUnidade
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#esic-unidade-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const unidade = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: unidade,
+              field: 'unidade'
+            };
+          }),
+          field: 'unidade',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]');
+            return textEl ? textEl.getAttribute('title') : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('🏢 loadEsicUnidade: Concluído');

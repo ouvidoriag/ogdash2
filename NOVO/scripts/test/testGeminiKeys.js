@@ -11,7 +11,8 @@ import 'dotenv/config';
 const GEMINI_API_KEYS = (process.env.GEMINI_API_KEY ? [process.env.GEMINI_API_KEY] : []).concat(
   process.env.GEMINI_API_KEY_2 ? [process.env.GEMINI_API_KEY_2] : [],
   process.env.GEMINI_API_KEY_3 ? [process.env.GEMINI_API_KEY_3] : [],
-  process.env.GEMINI_API_KEY_4 ? [process.env.GEMINI_API_KEY_4] : []
+  process.env.GEMINI_API_KEY_4 ? [process.env.GEMINI_API_KEY_4] : [],
+  process.env.GEMINI_API_KEY_5 ? [process.env.GEMINI_API_KEY_5] : []
 ).filter(k => k && k.trim());
 
 /**
@@ -118,6 +119,7 @@ async function main() {
     console.log('   - GEMINI_API_KEY_2');
     console.log('   - GEMINI_API_KEY_3');
     console.log('   - GEMINI_API_KEY_4');
+    console.log('   - GEMINI_API_KEY_5');
     process.exit(1);
   }
   

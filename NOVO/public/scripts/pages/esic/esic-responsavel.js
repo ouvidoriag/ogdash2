@@ -55,15 +55,62 @@ async function loadEsicResponsavel() {
     const values = sortedData.map(d => d.count || 0);
     
     if (labels.length > 0 && values.length > 0) {
-      await window.chartFactory?.createBarChart('esic-chart-responsavel-detail', labels, values, {
+      const chartResp = await window.chartFactory?.createBarChart('esic-chart-responsavel-detail', labels, values, {
         horizontal: true,
         colorIndex: 2,
-        onClick: false,
+        onClick: true, // Habilitar interatividade para crossfilter
+        field: 'responsavel'
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartResp && sortedData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartResp, sortedData, {
+          field: 'responsavel',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadEsicResponsavel) setTimeout(() => window.loadEsicResponsavel(), 100);
+          },
+          onClearFilters: () => {
+            if (window.loadEsicResponsavel) setTimeout(() => window.loadEsicResponsavel(), 100);
+          }
+        });
+      }
     }
     
     // Renderizar ranking
     renderResponsavelRanking(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => {
+          if (window.loadEsicResponsavel) window.loadEsicResponsavel();
+        },
+        pageLoadFunction: window.loadEsicResponsavel
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#esic-responsavel-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const resp = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: resp,
+              field: 'responsavel'
+            };
+          }),
+          field: 'responsavel',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]');
+            return textEl ? textEl.getAttribute('title') : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('👤 loadEsicResponsavel: Concluído');

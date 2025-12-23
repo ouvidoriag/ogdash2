@@ -59,11 +59,26 @@ async function loadEsicStatus() {
     const values = sortedData.map(d => d.count || 0);
     
     // Criar gráfico principal (barras)
-    await window.chartFactory?.createBarChart('esic-chart-status-detail', labels, values, {
+    // PADRONIZAÇÃO: Usar campo 'status' para detecção automática de cores do sistema centralizado
+    const chartStatus = await window.chartFactory?.createBarChart('esic-chart-status-detail', labels, values, {
       horizontal: false,
-      colorIndex: 0,
-      onClick: false,
+      field: 'status', // Especificar campo para usar cores padronizadas do config.js
+      onClick: true, // Habilitar interatividade para crossfilter
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros
+    if (chartStatus && sortedData && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartStatus, sortedData, {
+        field: 'status',
+        valueField: 'key',
+        onFilterChange: () => {
+          if (window.loadEsicStatus) setTimeout(() => window.loadEsicStatus(), 100);
+        },
+        onClearFilters: () => {
+          if (window.loadEsicStatus) setTimeout(() => window.loadEsicStatus(), 100);
+        }
+      });
+    }
     
     // Renderizar ranking de status
     renderStatusRanking(sortedData);
@@ -75,6 +90,39 @@ async function loadEsicStatus() {
     }) || {};
     
     renderStatusStats(stats, sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => {
+          // Recarregar KPIs quando filtros mudarem
+          if (window.loadEsicStatus) window.loadEsicStatus();
+        },
+        pageLoadFunction: window.loadEsicStatus
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#esic-status-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const status = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: status,
+              field: 'status'
+            };
+          }),
+          field: 'status',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]') || card.querySelector('.font-semibold');
+            return textEl ? (textEl.getAttribute('title') || textEl.textContent.trim()) : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('📈 loadEsicStatus: Concluído');
@@ -100,17 +148,8 @@ function renderStatusRanking(data) {
     const count = item.count || 0;
     const percent = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
     
-    // Cores por status
-    const statusColors = {
-      'ENCERRADO': '#10b981',
-      'FECHADO': '#059669',
-      'EM ANDAMENTO': '#f59e0b',
-      'ABERTO': '#3b82f6',
-      'NOVO': '#a78bfa',
-      'CANCELADO': '#ef4444'
-    };
-    
-    const color = statusColors[status] || '#94a3b8';
+    // PADRONIZAÇÃO: Usar sistema centralizado de cores do config.js
+    const color = window.config?.getColorByStatus?.(status) || '#94a3b8';
     
     return `
       <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 transition-colors">

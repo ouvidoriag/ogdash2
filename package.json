@@ -18,7 +18,9 @@
     "setup": "cd NOVO && node scripts/setup/setup.js",
     "prisma:generate": "cd NOVO && npx prisma generate",
     "prisma:migrate": "cd NOVO && npx prisma migrate deploy",
-    "prisma:push": "cd NOVO && npx prisma db push"
+    "prisma:push": "cd NOVO && npx prisma db push",
+    "gmail:auth": "cd NOVO && node scripts/email/autorizar-gmail.js",
+    "gmail:debug": "cd NOVO && node scripts/email/debug-auth-url.js"
   },
   "keywords": [
     "ouvidoria",

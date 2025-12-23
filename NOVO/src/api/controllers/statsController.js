@@ -123,17 +123,22 @@ export async function averageTimeByDay(req, res) {
     if (servidor) filter.servidor = servidor;
     if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
-    // Filtrar apenas últimos 24 meses
-    const todayForFilter = new Date();
-    const twoYearsAgo = new Date(todayForFilter);
-    twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
-    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
-    
-    filter.$or = [
-      { dataCriacaoIso: { $gte: minDateStr } },
-      { dataDaCriacao: { $regex: todayForFilter.getFullYear().toString() } },
-      { dataDaCriacao: { $regex: (todayForFilter.getFullYear() - 1).toString() } }
-    ];
+    // Aplicar filtro de mês se fornecido
+    if (meses && meses.length > 0) {
+      addMesFilterMongo(filter, meses);
+    } else {
+      // Filtrar apenas últimos 24 meses se não houver filtro específico
+      const todayForFilter = new Date();
+      const twoYearsAgo = new Date(todayForFilter);
+      twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
+      const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+      
+      filter.$or = [
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: todayForFilter.getFullYear().toString() } },
+        { dataDaCriacao: { $regex: (todayForFilter.getFullYear() - 1).toString() } }
+      ];
+    }
     
     filter.dataDaCriacao = { $ne: null };
     
@@ -206,17 +211,22 @@ export async function averageTimeByWeek(req, res) {
     if (servidor) filter.servidor = servidor;
     if (unidadeCadastro) filter.unidadeCadastro = unidadeCadastro;
     
-    // Filtrar apenas últimos 24 meses
-    const todayForFilter = new Date();
-    const twoYearsAgo = new Date(todayForFilter);
-    twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
-    const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
-    
-    filter.$or = [
-      { dataCriacaoIso: { $gte: minDateStr } },
-      { dataDaCriacao: { $regex: todayForFilter.getFullYear().toString() } },
-      { dataDaCriacao: { $regex: (todayForFilter.getFullYear() - 1).toString() } }
-    ];
+    // Aplicar filtro de mês se fornecido
+    if (meses && meses.length > 0) {
+      addMesFilterMongo(filter, meses);
+    } else {
+      // Filtrar apenas últimos 24 meses se não houver filtro específico
+      const todayForFilter = new Date();
+      const twoYearsAgo = new Date(todayForFilter);
+      twoYearsAgo.setMonth(todayForFilter.getMonth() - 24);
+      const minDateStr = twoYearsAgo.toISOString().slice(0, 10);
+      
+      filter.$or = [
+        { dataCriacaoIso: { $gte: minDateStr } },
+        { dataDaCriacao: { $regex: todayForFilter.getFullYear().toString() } },
+        { dataDaCriacao: { $regex: (todayForFilter.getFullYear() - 1).toString() } }
+      ];
+    }
     
     filter.dataDaCriacao = { $ne: null };
     

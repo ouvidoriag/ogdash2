@@ -75,8 +75,21 @@
          * - clearPrevious: false por padrão (permite múltiplos filtros simultâneos)
          * - toggle: true por padrão (clicar novamente remove o filtro)
          * - Suporta múltiplos filtros: Status + Tema + Órgão + etc.
+         * - MELHORIA: Limita arrays muito grandes (máx 20 valores)
          */
         _applyImmediate(field, value, chartId = null, options = {}) {
+            // MELHORIA: Limitar arrays muito grandes
+            const MAX_MULTISELECT = 20;
+            let finalValue = value;
+            if (Array.isArray(value) && value.length > MAX_MULTISELECT) {
+                if (window.Logger) {
+                    window.Logger.warn(`Filtro ${field}: Array limitado de ${value.length} para ${MAX_MULTISELECT} valores`);
+                }
+                finalValue = value.slice(0, MAX_MULTISELECT);
+            }
+            
+            // Usar valor limitado
+            value = finalValue;
             // MUDANÇA: clearPrevious = false por padrão (sistema Power BI multi-dimensional)
             const { toggle = true, operator = 'eq', clearPrevious = false } = options;
             if (window.Logger) {

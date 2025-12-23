@@ -134,16 +134,27 @@ async function renderUnitTiposChart(canvas, tipos, unitName) {
     canvas.id = chartId;
   }
   
-  await window.chartFactory?.createDoughnutChart(chartId, labels, values, {
+  const chart = await window.chartFactory?.createDoughnutChart(chartId, labels, values, {
     type: 'doughnut',
     field: 'tipoDeManifestacao',
-    onClick: false,
+    onClick: true, // Habilitar interatividade para crossfilter
     chartOptions: {
       plugins: {
         legend: { display: true, position: 'right', labels: { color: '#94a3b8' } }
       }
     }
   });
+  
+  // CROSSFILTER: Adicionar sistema de filtros
+  if (chart && tipos && window.addCrossfilterToChart) {
+    window.addCrossfilterToChart(chart, tipos, {
+      field: 'tipoDeManifestacao',
+      valueField: 'tipo',
+      onFilterChange: () => {
+        if (window.loadUnit) setTimeout(() => window.loadUnit(unitName), 100);
+      }
+    });
+  }
 }
 
 // Conectar ao sistema global de filtros (para páginas dinâmicas de unidades)

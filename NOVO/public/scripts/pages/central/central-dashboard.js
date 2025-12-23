@@ -142,11 +142,36 @@ async function renderComparativeCharts(data) {
       data.cora?.ocorrenciasAtivas || 0
     ];
     
-    await window.chartFactory.createBarChart('chartVolumeSistemas', labels, values, {
+    const chartVolume = await window.chartFactory.createBarChart('chartVolumeSistemas', labels, values, {
       horizontal: false,
       colorIndex: 0,
-      label: 'Volume de Demandas'
+      label: 'Volume de Demandas',
+      onClick: true // Habilitar interatividade para crossfilter
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros (filtro por sistema)
+    // Validação robusta: verificar se o gráfico existe e tem canvas válido
+    if (chartVolume && 
+        chartVolume.canvas && 
+        chartVolume.canvas.ownerDocument && 
+        chartVolume.canvas.parentElement &&
+        window.addCrossfilterToChart) {
+      const sistemasData = labels.map((label, idx) => ({
+        sistema: label.toLowerCase(),
+        count: values[idx]
+      }));
+      
+      window.addCrossfilterToChart(chartVolume, sistemasData, {
+        field: 'sistema',
+        valueField: 'sistema',
+        onFilterChange: () => {
+          if (window.loadCentralDashboard) setTimeout(() => window.loadCentralDashboard(), 100);
+        }
+      });
+    } else if (chartVolume && !chartVolume.canvas && window.Logger) {
+      // Log apenas se o gráfico existe mas não tem canvas (caso raro)
+      window.Logger.debug('Gráfico chartVolume criado mas sem canvas válido, pulando crossfilter');
+    }
   }
   
   // Gráfico de Evolução Temporal
@@ -157,12 +182,40 @@ async function renderComparativeCharts(data) {
     const ouvidoriaData = data.evolucaoTemporal.map(d => d.ouvidoria || 0);
     const esicData = data.evolucaoTemporal.map(d => d.esic || 0);
     
+    // PADRONIZAÇÃO: Usar cores padronizadas do sistema
+    const config = window.config?.CHART_CONFIG || {};
+    const palette = config.COLOR_PALETTE || ['#06b6d4', '#8b5cf6', '#10b981'];
+    
+    // Converter hex para rgba para fill
+    const hexToRgba = (hex, alpha) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+    
     await window.chartFactory.createLineChart('chartEvolucaoTemporal', labels, [
-      { label: 'Zeladoria', data: zeladoriaData, color: '#22d3ee' },
-      { label: 'Ouvidoria', data: ouvidoriaData, color: '#a78bfa' },
-      { label: 'E-SIC', data: esicData, color: '#34d399' }
+      { 
+        label: 'Zeladoria', 
+        data: zeladoriaData, 
+        borderColor: palette[0],
+        backgroundColor: hexToRgba(palette[0], 0.1)
+      },
+      { 
+        label: 'Ouvidoria', 
+        data: ouvidoriaData, 
+        borderColor: palette[1],
+        backgroundColor: hexToRgba(palette[1], 0.1)
+      },
+      { 
+        label: 'E-SIC', 
+        data: esicData, 
+        borderColor: palette[2],
+        backgroundColor: hexToRgba(palette[2], 0.1)
+      }
     ], {
-      label: 'Evolução Temporal'
+      label: 'Evolução Temporal',
+      fill: true
     });
   }
 }
@@ -262,4 +315,70 @@ async function renderCentralTimeline(data) {
 
 // Exportar função globalmente
 window.loadCentralDashboard = loadCentralDashboard;
+
+/**
+ * Carregar página de documentação do módulo Zeladoria
+ */
+function loadCentralZeladoria() {
+  const page = document.getElementById('page-central-zeladoria');
+  if (!page) return Promise.resolve();
+  
+  // Apenas mostrar a página (conteúdo estático)
+  if (page.style.display === 'none') {
+    page.style.display = 'block';
+  }
+  
+  return Promise.resolve();
+}
+
+/**
+ * Carregar página de documentação do módulo Ouvidoria
+ */
+function loadCentralOuvidoria() {
+  const page = document.getElementById('page-central-ouvidoria');
+  if (!page) return Promise.resolve();
+  
+  // Apenas mostrar a página (conteúdo estático)
+  if (page.style.display === 'none') {
+    page.style.display = 'block';
+  }
+  
+  return Promise.resolve();
+}
+
+/**
+ * Carregar página de documentação do módulo E-SIC
+ */
+function loadCentralEsic() {
+  const page = document.getElementById('page-central-esic');
+  if (!page) return Promise.resolve();
+  
+  // Apenas mostrar a página (conteúdo estático)
+  if (page.style.display === 'none') {
+    page.style.display = 'block';
+  }
+  
+  return Promise.resolve();
+}
+
+/**
+ * Carregar página de documentação do módulo CORA
+ */
+function loadCentralCora() {
+  const page = document.getElementById('page-central-cora');
+  if (!page) return Promise.resolve();
+  
+  // Apenas mostrar a página (conteúdo estático)
+  if (page.style.display === 'none') {
+    page.style.display = 'block';
+  }
+  
+  return Promise.resolve();
+}
+
+// Exportar funções globalmente
+window.loadCentralZeladoria = loadCentralZeladoria;
+window.loadCentralOuvidoria = loadCentralOuvidoria;
+window.loadCentralEsic = loadCentralEsic;
+window.loadCentralCora = loadCentralCora;
 

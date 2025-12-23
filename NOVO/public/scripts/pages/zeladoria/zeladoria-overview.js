@@ -53,10 +53,22 @@ async function loadZeladoriaOverview() {
     if (statusData.length > 0) {
       const labels = statusData.map(d => d.key);
       const values = statusData.map(d => d.count);
-      await window.chartFactory?.createDoughnutChart('zeladoria-chart-status', labels, values, {
-        onClick: false,
-        colorIndex: 0
+      const chartStatus = await window.chartFactory?.createDoughnutChart('zeladoria-chart-status', labels, values, {
+        onClick: true, // Habilitar interatividade para crossfilter
+        colorIndex: 0,
+        field: 'status'
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartStatus && statusData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartStatus, statusData, {
+          field: 'status',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadZeladoriaOverview) setTimeout(() => window.loadZeladoriaOverview(), 100);
+          }
+        });
+      }
     }
     
     // Carregar dados por categoria
@@ -68,10 +80,23 @@ async function loadZeladoriaOverview() {
     if (categoriaData.length > 0) {
       const labels = categoriaData.slice(0, 10).map(d => d.key);
       const values = categoriaData.slice(0, 10).map(d => d.count);
-      await window.chartFactory?.createBarChart('zeladoria-chart-categoria', labels, values, {
+      const chartCategoria = await window.chartFactory?.createBarChart('zeladoria-chart-categoria', labels, values, {
         horizontal: true,
-        colorIndex: 1
+        colorIndex: 1,
+        field: 'categoria',
+        onClick: true // Habilitar interatividade para crossfilter
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartCategoria && categoriaData.slice(0, 10) && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartCategoria, categoriaData.slice(0, 10), {
+          field: 'categoria',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadZeladoriaOverview) setTimeout(() => window.loadZeladoriaOverview(), 100);
+          }
+        });
+      }
     }
     
     // Carregar dados por departamento
@@ -83,10 +108,23 @@ async function loadZeladoriaOverview() {
     if (departamentoData.length > 0) {
       const labels = departamentoData.map(d => d.key);
       const values = departamentoData.map(d => d.count);
-      await window.chartFactory?.createBarChart('zeladoria-chart-departamento', labels, values, {
+      const chartDept = await window.chartFactory?.createBarChart('zeladoria-chart-departamento', labels, values, {
         horizontal: true,
-        colorIndex: 2
+        colorIndex: 2,
+        field: 'departamento',
+        onClick: true // Habilitar interatividade para crossfilter
       });
+      
+      // CROSSFILTER: Adicionar sistema de filtros
+      if (chartDept && departamentoData && window.addCrossfilterToChart) {
+        window.addCrossfilterToChart(chartDept, departamentoData, {
+          field: 'departamento',
+          valueField: 'key',
+          onFilterChange: () => {
+            if (window.loadZeladoriaOverview) setTimeout(() => window.loadZeladoriaOverview(), 100);
+          }
+        });
+      }
     }
     
     // Carregar dados mensais

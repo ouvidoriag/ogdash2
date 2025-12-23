@@ -76,12 +76,26 @@ async function loadZeladoriaCanal() {
     // ========================================================================
     // Gráfico de rosca (doughnut) mostrando a proporção de cada canal
     const legendContainer = document.getElementById('zeladoria-canal-legend');
-    await window.chartFactory?.createDoughnutChart('zeladoria-canal-chart', labels, values, {
-      onClick: false,
-      field: 'canal',
-      colorIndex: 5,
+    // PADRONIZAÇÃO: Usar campo 'canal' para cores padronizadas
+    const chartCanal = await window.chartFactory?.createDoughnutChart('zeladoria-canal-chart', labels, values, {
+      onClick: true, // Habilitar interatividade para crossfilter
+      field: 'canal', // Especificar campo para usar cores padronizadas do config.js
       ...(legendContainer && { legendContainer: 'zeladoria-canal-legend' })
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros
+    if (chartCanal && sortedData && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartCanal, sortedData, {
+        field: 'canal',
+        valueField: 'key',
+        onFilterChange: () => {
+          if (window.loadZeladoriaCanal) setTimeout(() => window.loadZeladoriaCanal(), 100);
+        },
+        onClearFilters: () => {
+          if (window.loadZeladoriaCanal) setTimeout(() => window.loadZeladoriaCanal(), 100);
+        }
+      });
+    }
     
     // ========================================================================
     // ETAPA 4: Renderizar ranking detalhado de canais
@@ -109,6 +123,36 @@ async function loadZeladoriaCanal() {
     // ETAPA 7: Atualizar KPIs no header
     // ========================================================================
     updateZeladoriaCanalKPIs(sortedData);
+    
+    // CROSSFILTER: Fazer KPIs reagirem aos filtros
+    if (window.makeKPIsReactive) {
+      window.makeKPIsReactive({
+        updateFunction: () => updateZeladoriaCanalKPIs(sortedData),
+        pageLoadFunction: window.loadZeladoriaCanal
+      });
+    }
+    
+    // CROSSFILTER: Tornar ranking clicável
+    setTimeout(() => {
+      const rankItems = document.querySelectorAll('#zeladoria-canal-ranking > div');
+      if (rankItems.length > 0 && window.makeCardsClickable) {
+        window.makeCardsClickable({
+          cards: Array.from(rankItems).map((item, idx) => {
+            const canal = sortedData[idx]?.key || sortedData[idx]?._id || '';
+            return {
+              element: item,
+              value: canal,
+              field: 'canal'
+            };
+          }),
+          field: 'canal',
+          getValueFromCard: (card) => {
+            const textEl = card.querySelector('span[title]') || card.querySelector('.font-semibold');
+            return textEl ? (textEl.getAttribute('title') || textEl.textContent.trim()) : '';
+          }
+        });
+      }
+    }, 500);
     
     if (window.Logger) {
       window.Logger.success('📡 loadZeladoriaCanal: Carregamento concluído com sucesso');
@@ -166,8 +210,9 @@ async function renderCanalMesChart(dataMes, canais) {
   
   const canvas = document.getElementById('zeladoria-canal-mes-chart');
   if (canvas) {
+    // PADRONIZAÇÃO: Usar campo 'canal' para cores padronizadas
     await window.chartFactory?.createBarChart('zeladoria-canal-mes-chart', labels, datasets, {
-      colorIndex: 0,
+      field: 'canal', // Especificar campo para usar cores padronizadas do config.js
       onClick: false,
       legendContainer: 'zeladoria-canal-mes-legend'
     });

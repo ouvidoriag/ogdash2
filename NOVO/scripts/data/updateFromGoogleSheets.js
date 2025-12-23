@@ -38,6 +38,29 @@ function cleanString(str) {
 }
 
 /**
+ * Normaliza protocolo para comparação (remove espaços, normaliza)
+ */
+function normalizeProtocolo(protocolo) {
+  if (!protocolo) return null;
+  // Converter para string, remover espaços extras, trim
+  return String(protocolo).trim().replace(/\s+/g, '') || null;
+}
+
+/**
+ * Normalizar string para lowercase sem acentos
+ */
+function normalizeToLowercase(str) {
+  if (!str || typeof str !== 'string') {
+    return null;
+  }
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacríticos
+    .toLowerCase()
+    .trim();
+}
+
+/**
  * Normaliza dados de um registro do Google Sheets
  */
 function normalizeRecordData(row) {
@@ -67,6 +90,15 @@ function normalizeRecordData(row) {
     verificado: cleanString(row.verificado || row.Verificado || row['Verificado']),
     orgaos: cleanString(row.orgaos || row.Orgaos || row['Órgãos'] || row['Orgaos'] || row['Secretaria'] || row.secretaria),
   };
+
+  // MELHORIA: Adicionar campos lowercase indexados para otimizar filtros "contains"
+  normalized.temaLowercase = normalizeToLowercase(normalized.tema);
+  normalized.assuntoLowercase = normalizeToLowercase(normalized.assunto);
+  normalized.canalLowercase = normalizeToLowercase(normalized.canal);
+  normalized.orgaosLowercase = normalizeToLowercase(normalized.orgaos);
+  normalized.statusDemandaLowercase = normalizeToLowercase(normalized.statusDemanda);
+  normalized.tipoDeManifestacaoLowercase = normalizeToLowercase(normalized.tipoDeManifestacao);
+  normalized.responsavelLowercase = normalizeToLowercase(normalized.responsavel);
 
   // Normalizar datas ISO (YYYY-MM-DD)
   normalized.dataCriacaoIso = normalizeDate(normalized.dataDaCriacao);
@@ -236,13 +268,16 @@ async function main() {
     }).lean();
     
     // Criar mapas para acesso rápido
-    const protocolMap = new Map(); // protocolo -> id
-    const existingDataMap = new Map(); // protocolo -> registro completo
+    const protocolMap = new Map(); // protocolo normalizado -> id
+    const existingDataMap = new Map(); // protocolo normalizado -> registro completo
     
     existingRecords.forEach(record => {
-      const protocolo = String(record.protocolo);
-      protocolMap.set(protocolo, record._id.toString());
-      existingDataMap.set(protocolo, record);
+      // Normalizar protocolo para garantir comparação consistente
+      const protocoloNormalizado = normalizeProtocolo(record.protocolo);
+      if (protocoloNormalizado) {
+        protocolMap.set(protocoloNormalizado, record._id.toString());
+        existingDataMap.set(protocoloNormalizado, record);
+      }
     });
     
     console.log(`✅ ${protocolMap.size} registros encontrados no banco\n`);
@@ -330,18 +365,24 @@ async function main() {
         continue;
       }
       
-      const protocolo = String(normalized.protocolo);
+      // Normalizar protocolo para comparação consistente
+      const protocoloNormalizado = normalizeProtocolo(normalized.protocolo);
+      
+      if (!protocoloNormalizado) {
+        skipped++;
+        continue;
+      }
       
       // Se já processamos este protocolo nesta execução, ignorar (duplicata na planilha)
-      if (protocolosProcessadosPlanilha.has(protocolo)) {
+      if (protocolosProcessadosPlanilha.has(protocoloNormalizado)) {
         duplicatasIgnoradas++;
         continue;
       }
       
       // Marcar como processado
-      protocolosProcessadosPlanilha.add(protocolo);
+      protocolosProcessadosPlanilha.add(protocoloNormalizado);
       
-      const existingRecord = existingDataMap.get(protocolo);
+      const existingRecord = existingDataMap.get(protocoloNormalizado);
       
       if (existingRecord) {
         // Comparar e identificar mudanças
@@ -350,7 +391,7 @@ async function main() {
         if (hasChanges) {
           toUpdate.push({
             _id: existingRecord._id,
-            protocolo: protocolo,
+            protocolo: protocoloNormalizado,
             changedFields: changedFields
           });
         } else {
@@ -408,19 +449,44 @@ async function main() {
         const slice = toInsert.slice(i, i + batchSize);
         
         try {
-          // Usar insertMany com ordered: false para continuar mesmo com duplicatas
-          const result = await Record.insertMany(slice, {
-            ordered: false
-          });
-          inserted += result.length;
+          // Verificar duplicatas antes de inserir (proteção adicional)
+          const protocolosParaInserir = new Set();
+          const sliceSemDuplicatas = [];
+          
+          for (const item of slice) {
+            const protocoloNorm = normalizeProtocolo(item.protocolo);
+            if (protocoloNorm && !protocolosParaInserir.has(protocoloNorm)) {
+              // Verificar se já existe no banco (proteção contra race conditions)
+              const existe = await Record.findOne({ protocolo: protocoloNorm }).lean();
+              if (!existe) {
+                protocolosParaInserir.add(protocoloNorm);
+                sliceSemDuplicatas.push(item);
+              }
+            }
+          }
+          
+          if (sliceSemDuplicatas.length > 0) {
+            // Usar insertMany com ordered: false para continuar mesmo com duplicatas
+            const result = await Record.insertMany(sliceSemDuplicatas, {
+              ordered: false
+            });
+            inserted += result.length;
+          }
         } catch (error) {
-          // Se insertMany falhar, inserir um por um
+          // Se insertMany falhar, inserir um por um com verificação
           if (error.code === 11000 || error.message.includes('duplicate') || error.writeErrors) {
             console.warn(`⚠️ Duplicatas detectadas no lote ${Math.floor(i / batchSize) + 1}, inserindo individualmente...`);
             for (const item of slice) {
               try {
-                await Record.create(item);
-                inserted++;
+                const protocoloNorm = normalizeProtocolo(item.protocolo);
+                if (protocoloNorm) {
+                  // Verificar se já existe antes de inserir
+                  const existe = await Record.findOne({ protocolo: protocoloNorm }).lean();
+                  if (!existe) {
+                    await Record.create(item);
+                    inserted++;
+                  }
+                }
               } catch (e) {
                 if (e.code !== 11000 && !e.message.includes('duplicate')) {
                   console.error(`❌ Erro ao inserir protocolo ${item.protocolo}:`, e.message);
@@ -429,11 +495,17 @@ async function main() {
             }
           } else {
             console.error(`❌ Erro no lote ${Math.floor(i / batchSize) + 1}:`, error.message);
-            // Tentar inserir um por um
+            // Tentar inserir um por um com verificação
             for (const item of slice) {
               try {
-                await Record.create(item);
-                inserted++;
+                const protocoloNorm = normalizeProtocolo(item.protocolo);
+                if (protocoloNorm) {
+                  const existe = await Record.findOne({ protocolo: protocoloNorm }).lean();
+                  if (!existe) {
+                    await Record.create(item);
+                    inserted++;
+                  }
+                }
               } catch (e) {
                 console.error(`❌ Erro ao inserir protocolo ${item.protocolo}:`, e.message);
               }

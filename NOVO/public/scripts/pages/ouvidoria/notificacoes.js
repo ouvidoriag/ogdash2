@@ -37,7 +37,7 @@ async function loadNotificacoes() {
     // Renderizar tabela de notificações
     renderNotificacoes(notificacoesData);
 
-    // Configurar filtros
+    // Configurar filtros (isso também populará o select de meses)
     setupNotificacoesFilters();
 
     // Configurar controle manual (com pequeno delay para garantir que o DOM está pronto)
@@ -111,10 +111,22 @@ function renderStats(stats, ultimaExecucao) {
     });
     const valores = stats.porTipo.map(t => t.total);
 
-    window.chartFactory.createDoughnutChart('notificacoes-chart-tipo', tipos, valores, {
+    const notificacoesChart = window.chartFactory.createDoughnutChart('notificacoes-chart-tipo', tipos, valores, {
       colorIndex: 0,
       onClick: false,
     });
+    
+    // CROSSFILTER: Adicionar filtros ao gráfico de tipo de notificação
+    if (notificacoesChart && stats.porTipo) {
+      window.addCrossfilterToChart(notificacoesChart, stats.porTipo, {
+        field: 'tipo',
+        valueField: 'tipo',
+        onFilterChange: () => {
+          // Recarregar página de notificações se necessário
+          if (window.loadNotificacoes) setTimeout(() => window.loadNotificacoes(), 100);
+        }
+      });
+    }
   }
 
   // Resumo de hoje
@@ -122,28 +134,51 @@ function renderStats(stats, ultimaExecucao) {
     const resumoHoje = document.getElementById('notificacoes-resumo-hoje');
     if (resumoHoje) {
       const hoje = ultimaExecucao.hoje;
+      const labelsTipo = {
+        '15_dias': '15 Dias Antes',
+        'vencimento': 'Vencimento Hoje',
+        '60_dias_vencido': '60 Dias Vencido',
+        '30_dias_vencido': '30 Dias Vencido'
+      };
+      
       let html = `
-        <div class="space-y-2">
-          <div class="flex justify-between">
-            <span class="text-slate-400">Enviados hoje:</span>
-            <span class="font-semibold text-green-400">${hoje.totalEnviados || 0}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Erros hoje:</span>
-            <span class="font-semibold ${hoje.totalErros > 0 ? 'text-red-400' : 'text-slate-400'}">${hoje.totalErros || 0}</span>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-green-500/10 border border-green-500/30 rounded p-2">
+              <div class="text-xs text-slate-400 mb-1">Enviados</div>
+              <div class="text-lg font-bold text-green-400">${hoje.totalEnviados || 0}</div>
+            </div>
+            <div class="bg-red-500/10 border border-red-500/30 rounded p-2">
+              <div class="text-xs text-slate-400 mb-1">Erros</div>
+              <div class="text-lg font-bold ${hoje.totalErros > 0 ? 'text-red-400' : 'text-slate-400'}">${hoje.totalErros || 0}</div>
+            </div>
           </div>
       `;
 
+      // Por tipo de notificação
+      if (hoje.porTipo && hoje.porTipo.length > 0) {
+        html += '<div class="pt-2 border-t border-slate-700"><div class="text-xs text-slate-400 mb-2 font-semibold">Por Tipo de Notificação:</div>';
+        hoje.porTipo.forEach(t => {
+          const tipoLabel = labelsTipo[t.tipo] || t.tipo;
+          html += `<div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">${tipoLabel}</span>
+            <span class="font-semibold text-slate-300">${t.total}</span>
+          </div>`;
+        });
+        html += '</div>';
+      }
+
+      // Por secretaria
       if (hoje.porSecretaria && hoje.porSecretaria.length > 0) {
-        html += '<div class="mt-3 pt-3 border-t border-slate-700"><div class="text-xs text-slate-400 mb-2">Por Secretaria:</div>';
+        html += '<div class="pt-2 border-t border-slate-700"><div class="text-xs text-slate-400 mb-2 font-semibold">Por Secretaria:</div>';
         hoje.porSecretaria.slice(0, 5).forEach(s => {
-          html += `<div class="flex justify-between text-xs">
-            <span class="text-slate-500">${s.secretaria}</span>
-            <span class="text-slate-300">${s.total}</span>
+          html += `<div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-500 truncate" title="${s.secretaria}">${s.secretaria}</span>
+            <span class="text-slate-300 font-semibold ml-2">${s.total}</span>
           </div>`;
         });
         if (hoje.porSecretaria.length > 5) {
-          html += `<div class="text-xs text-slate-500 mt-1">+${hoje.porSecretaria.length - 5} mais</div>`;
+          html += `<div class="text-xs text-slate-500 mt-1 text-center">+${hoje.porSecretaria.length - 5} mais secretaria(s)</div>`;
         }
         html += '</div>';
       }
@@ -230,48 +265,261 @@ function renderNotificacoes(data) {
 }
 
 function setupNotificacoesFilters() {
-  const filtroTipo = document.getElementById('notificacoes-filtro-tipo');
+  // Filtros principais (no topo da página)
+  const filtroMesEnvio = document.getElementById('filtroMesEnvioNotificacoes');
+  const filtroStatus = document.getElementById('filtroStatusNotificacao');
+  const filtroTipo = document.getElementById('filtroTipoNotificacao');
+  
+  // Filtros secundários (na seção de filtros)
   const filtroSecretaria = document.getElementById('notificacoes-filtro-secretaria');
-  const filtroStatus = document.getElementById('notificacoes-filtro-status');
+  const filtroProtocolo = document.getElementById('notificacoes-filtro-protocolo');
+  const filtroEmail = document.getElementById('notificacoes-filtro-email');
+  
   const btnAplicar = document.getElementById('notificacoes-btn-aplicar');
   const btnLimpar = document.getElementById('notificacoes-btn-limpar');
 
+  // Popular select de meses de envio
+  if (filtroMesEnvio) {
+    popularSelectMesesNotificacoes();
+    
+    // Listener para mudança de mês - aplicar automaticamente
+    filtroMesEnvio.addEventListener('change', () => {
+      aplicarFiltros();
+    });
+  }
+
+  // Listener para mudança de status - aplicar automaticamente
+  if (filtroStatus) {
+    filtroStatus.addEventListener('change', () => {
+      aplicarFiltros();
+    });
+  }
+
+  // Listener para mudança de tipo - aplicar automaticamente
+  if (filtroTipo) {
+    filtroTipo.addEventListener('change', () => {
+      aplicarFiltros();
+    });
+  }
+
+  // Listeners para filtros de texto (com debounce para melhor performance)
+  let debounceTimeout = null;
+  const aplicarFiltrosDebounced = () => {
+    clearTimeout(debounceTimeout);
+    debounceTimeout = setTimeout(() => {
+      aplicarFiltros();
+    }, 500); // Aguardar 500ms após parar de digitar
+  };
+
+  if (filtroSecretaria) {
+    filtroSecretaria.addEventListener('input', aplicarFiltrosDebounced);
+  }
+
+  if (filtroProtocolo) {
+    filtroProtocolo.addEventListener('input', aplicarFiltrosDebounced);
+  }
+
+  if (filtroEmail) {
+    filtroEmail.addEventListener('input', aplicarFiltrosDebounced);
+  }
+
+  // Botão aplicar
   if (btnAplicar) {
     btnAplicar.addEventListener('click', () => {
       aplicarFiltros();
     });
   }
 
+  // Botão limpar - limpar todos os filtros
   if (btnLimpar) {
     btnLimpar.addEventListener('click', () => {
+      if (filtroMesEnvio) filtroMesEnvio.value = '';
+      if (filtroStatus) filtroStatus.value = '';
       if (filtroTipo) filtroTipo.value = '';
       if (filtroSecretaria) filtroSecretaria.value = '';
-      if (filtroStatus) filtroStatus.value = '';
+      if (filtroProtocolo) filtroProtocolo.value = '';
+      if (filtroEmail) filtroEmail.value = '';
       aplicarFiltros();
     });
   }
 }
 
+async function popularSelectMesesNotificacoes() {
+  const selectMes = document.getElementById('filtroMesEnvioNotificacoes');
+  if (!selectMes) return;
+  
+  try {
+    if (window.Logger) {
+      window.Logger.debug('📅 Carregando meses disponíveis para notificações...');
+    }
+    
+    // Buscar meses disponíveis do endpoint dedicado
+    let data = await window.dataLoader?.load('/api/notificacoes/meses-disponiveis', {
+      useDataStore: true,
+      ttl: 10 * 60 * 1000, // Cache de 10 minutos
+      fallback: []
+    }) || [];
+    
+    // Se não houver endpoint específico ou retornar vazio, tentar fallback
+    if (!data || data.length === 0) {
+      if (window.Logger) {
+        window.Logger.debug('⚠️ Endpoint de meses não retornou dados, tentando fallback...');
+      }
+      
+      // Fallback: extrair meses dos dados de notificações
+      const notificacoesData = await window.dataLoader?.load('/api/notificacoes?limit=1000', {
+        useDataStore: true,
+        ttl: 5 * 60 * 1000,
+        fallback: { notificacoes: [] }
+      });
+      
+      if (notificacoesData?.notificacoes && notificacoesData.notificacoes.length > 0) {
+        // Extrair meses únicos das datas de envio
+        const mesesSet = new Set();
+        notificacoesData.notificacoes.forEach(n => {
+          if (n.enviadoEm) {
+            try {
+              const date = new Date(n.enviadoEm);
+              if (!isNaN(date.getTime())) {
+                const mes = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                mesesSet.add(mes);
+              }
+            } catch (e) {
+              // Ignorar datas inválidas
+            }
+          }
+        });
+        data = Array.from(mesesSet).sort().reverse();
+        
+        if (window.Logger) {
+          window.Logger.debug(`✅ Extraídos ${data.length} meses do fallback`);
+        }
+      }
+    } else {
+      if (window.Logger) {
+        window.Logger.debug(`✅ ${data.length} meses obtidos do endpoint`);
+      }
+    }
+    
+    // Limpar opções existentes (exceto "Todos os meses")
+    while (selectMes.children.length > 1) {
+      selectMes.removeChild(selectMes.lastChild);
+    }
+    
+    // Adicionar meses disponíveis
+    data.forEach(mes => {
+      const option = document.createElement('option');
+      option.value = mes;
+      
+      // Formatar para nome do mês (ex: "Janeiro 2025")
+      let nomeMes = mes;
+      try {
+        if (mes && mes.includes('-')) {
+          const [ano, mesNum] = mes.split('-');
+          const mesesNomes = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+          ];
+          const mesIndex = parseInt(mesNum) - 1;
+          if (mesIndex >= 0 && mesIndex < 12) {
+            nomeMes = `${mesesNomes[mesIndex]} ${ano}`;
+          }
+        }
+      } catch (e) {
+        nomeMes = mes;
+      }
+      
+      option.textContent = nomeMes;
+      selectMes.appendChild(option);
+    });
+  } catch (error) {
+    window.Logger?.error('Erro ao popular select de meses:', error);
+  }
+}
+
 async function aplicarFiltros() {
-  const filtroTipo = document.getElementById('notificacoes-filtro-tipo');
+  // Filtros principais (no topo da página)
+  const filtroMesEnvio = document.getElementById('filtroMesEnvioNotificacoes');
+  const filtroStatus = document.getElementById('filtroStatusNotificacao');
+  const filtroTipo = document.getElementById('filtroTipoNotificacao');
+  
+  // Filtros secundários (na seção de filtros)
   const filtroSecretaria = document.getElementById('notificacoes-filtro-secretaria');
-  const filtroStatus = document.getElementById('notificacoes-filtro-status');
+  const filtroProtocolo = document.getElementById('notificacoes-filtro-protocolo');
+  const filtroEmail = document.getElementById('notificacoes-filtro-email');
 
   const params = new URLSearchParams();
-  if (filtroTipo?.value) params.set('tipo', filtroTipo.value);
-  if (filtroSecretaria?.value) params.set('secretaria', filtroSecretaria.value);
-  if (filtroStatus?.value) params.set('status', filtroStatus.value);
+  
+  // 1. Filtro por mês de envio - converter para dataInicio e dataFim
+  if (filtroMesEnvio?.value) {
+    const mes = filtroMesEnvio.value; // Formato: YYYY-MM
+    if (mes.match(/^\d{4}-\d{2}$/)) {
+      const [ano, mesNum] = mes.split('-');
+      // Primeiro dia do mês
+      const dataInicio = `${mes}-01`;
+      // Último dia do mês
+      const ultimoDia = new Date(parseInt(ano), parseInt(mesNum), 0).getDate();
+      const dataFim = `${mes}-${String(ultimoDia).padStart(2, '0')}`;
+      
+      params.set('dataInicio', dataInicio);
+      params.set('dataFim', dataFim);
+    }
+  }
+  
+  // 2. Filtro por status da notificação (enviado, erro, pendente)
+  if (filtroStatus?.value) {
+    params.set('status', filtroStatus.value);
+  }
+  
+  // 3. Filtro por tipo de notificação (15_dias, vencimento, etc)
+  if (filtroTipo?.value) {
+    params.set('tipo', filtroTipo.value);
+  }
+  
+  // 4. Filtro por secretaria (busca parcial, case-insensitive)
+  if (filtroSecretaria?.value?.trim()) {
+    params.set('secretaria', filtroSecretaria.value.trim());
+  }
+  
+  // 5. Filtro por protocolo (busca exata ou parcial)
+  if (filtroProtocolo?.value?.trim()) {
+    params.set('protocolo', filtroProtocolo.value.trim());
+  }
+  
+  // 6. Filtro por email da secretaria (busca parcial)
+  if (filtroEmail?.value?.trim()) {
+    params.set('emailSecretaria', filtroEmail.value.trim());
+  }
 
   try {
+    if (window.Logger) {
+      window.Logger.debug('🔍 Aplicando filtros de notificações:', {
+        mesEnvio: filtroMesEnvio?.value || 'todos',
+        status: filtroStatus?.value || 'todos',
+        tipo: filtroTipo?.value || 'todos',
+        secretaria: filtroSecretaria?.value || 'todas',
+        protocolo: filtroProtocolo?.value || 'todos',
+        email: filtroEmail?.value || 'todos',
+        params: params.toString()
+      });
+    }
+    
     const data = await window.dataLoader?.load(`/api/notificacoes?${params.toString()}&limit=50`, {
       useDataStore: false, // Sem cache para filtros
       ttl: 0
     });
 
     renderNotificacoes(data);
+    
+    if (window.Logger) {
+      window.Logger.debug('✅ Filtros aplicados com sucesso', {
+        total: data?.total || 0,
+        notificacoes: data?.notificacoes?.length || 0
+      });
+    }
   } catch (error) {
     window.Logger?.error('Erro ao aplicar filtros:', error);
-    showError('Erro ao aplicar filtros');
+    showError('Erro ao aplicar filtros: ' + (error.message || 'Erro desconhecido'));
   }
 }
 
@@ -400,9 +648,9 @@ function setupControleManual() {
   if (btnSelecionarTodos) {
     const handlerSelecionarTodos = () => {
       const checkboxes = document.querySelectorAll('#notificacoes-lista-emails input[type="checkbox"]:not(:disabled)');
-      const todosSelecionados = Array.from(checkboxes).every(cb => cb.checked);
+      // Sempre marcar todos (não desmarcar)
       checkboxes.forEach(cb => {
-        cb.checked = !todosSelecionados;
+        cb.checked = true;
       });
       atualizarContadorSelecionados();
     };
@@ -411,6 +659,22 @@ function setupControleManual() {
     window.Logger?.debug('✅ Listener adicionado ao botão "Selecionar Todos"');
   } else {
     window.Logger?.warn('⚠️ Botão "notificacoes-btn-selecionar-todos" não encontrado!');
+  }
+
+  // Configurar botão de envio extra
+  const btnEnviarExtra = document.getElementById('notificacoes-btn-enviar-extra');
+  if (btnEnviarExtra) {
+    const handlerEnviarExtra = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.Logger?.info('Botão "Enviar Extra" clicado');
+      enviarEmailExtra();
+    };
+    btnEnviarExtra.removeEventListener('click', handlerEnviarExtra);
+    btnEnviarExtra.addEventListener('click', handlerEnviarExtra);
+    window.Logger?.debug('✅ Listener adicionado ao botão "Enviar Extra"');
+  } else {
+    window.Logger?.warn('⚠️ Botão "notificacoes-btn-enviar-extra" não encontrado!');
   }
 
   window.Logger?.debug('✅ Controle manual configurado');
@@ -734,6 +998,138 @@ async function enviarEmailsSelecionados() {
       btnEnviar.disabled = false;
       btnEnviar.textContent = '📧 Enviar Emails Selecionados';
       btnEnviar.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+  }
+}
+
+async function enviarEmailExtra() {
+  const inputEmail = document.getElementById('notificacoes-email-extra');
+  if (!inputEmail) {
+    showError('Campo de email extra não encontrado');
+    return;
+  }
+
+  const emailsTexto = inputEmail.value.trim();
+  if (!emailsTexto) {
+    showError('Digite pelo menos um email');
+    return;
+  }
+
+  // Separar emails por vírgula e limpar espaços
+  const emails = emailsTexto
+    .split(',')
+    .map(e => e.trim())
+    .filter(e => e.length > 0);
+
+  if (emails.length === 0) {
+    showError('Nenhum email válido encontrado');
+    return;
+  }
+
+  // Validar formato básico de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailsInvalidos = emails.filter(e => !emailRegex.test(e));
+  if (emailsInvalidos.length > 0) {
+    showError(`Emails inválidos: ${emailsInvalidos.join(', ')}`);
+    return;
+  }
+
+  if (!confirm(`Deseja enviar email extra para ${emails.length} destinatário(s)?\n\n${emails.join('\n')}`)) {
+    return;
+  }
+
+  const btnEnviarExtra = document.getElementById('notificacoes-btn-enviar-extra');
+  const loadingDiv = document.getElementById('notificacoes-envio-loading');
+  const resultadoDiv = document.getElementById('notificacoes-envio-resultado');
+
+  if (btnEnviarExtra) {
+    btnEnviarExtra.disabled = true;
+    btnEnviarExtra.textContent = 'Enviando...';
+    btnEnviarExtra.classList.add('opacity-50', 'cursor-not-allowed');
+  }
+
+  if (loadingDiv) {
+    loadingDiv.classList.remove('hidden');
+    loadingDiv.innerHTML = `
+      <div class="inline-flex items-center gap-2 text-slate-400">
+        <span class="animate-spin inline-block mr-2">⏳</span>
+        <span>Enviando email extra para ${emails.length} destinatário(s)...</span>
+      </div>
+    `;
+  }
+  if (resultadoDiv) resultadoDiv.classList.add('hidden');
+
+  try {
+    const resultado = await fetch('/api/notificacoes/enviar-extra', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        emails: emails
+      })
+    });
+
+    const data = await resultado.json();
+
+    if (!resultado.ok) {
+      throw new Error(data.message || 'Erro ao enviar email extra');
+    }
+
+    if (loadingDiv) loadingDiv.classList.add('hidden');
+    if (resultadoDiv) resultadoDiv.classList.remove('hidden');
+
+    let html = `
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h4 class="font-semibold text-slate-200">Resultado do Envio Extra</h4>
+          <div class="text-sm">
+            <span class="text-green-400">✓ ${data.enviados || 0} enviado${(data.enviados || 0) !== 1 ? 's' : ''}</span>
+            ${(data.erros || 0) > 0 ? `<span class="text-red-400 ml-3">✗ ${data.erros} erro${data.erros !== 1 ? 's' : ''}</span>` : ''}
+          </div>
+        </div>
+        <div class="space-y-2 max-h-60 overflow-y-auto">
+          ${(data.detalhes || []).map(d => `
+            <div class="text-sm p-2 rounded ${d.status === 'enviado' ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}">
+              <div class="font-semibold ${d.status === 'enviado' ? 'text-green-400' : 'text-red-400'}">
+                ${d.email}
+              </div>
+              <div class="text-xs text-slate-400 mt-1">
+                ${d.status === 'enviado' 
+                  ? 'Email enviado com sucesso'
+                  : `Erro: ${d.motivo || 'Erro desconhecido'}`
+                }
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    if (resultadoDiv) {
+      resultadoDiv.innerHTML = html;
+    }
+
+    // Limpar campo de input
+    if (inputEmail) {
+      inputEmail.value = '';
+    }
+
+    // Recarregar estatísticas
+    setTimeout(() => {
+      loadNotificacoes();
+    }, 2000);
+
+  } catch (error) {
+    window.Logger?.error('Erro ao enviar email extra:', error);
+    showError('Erro ao enviar email extra: ' + error.message);
+    
+    if (loadingDiv) loadingDiv.classList.add('hidden');
+  } finally {
+    if (btnEnviarExtra) {
+      btnEnviarExtra.disabled = false;
+      btnEnviarExtra.textContent = 'Enviar Extra';
+      btnEnviarExtra.classList.remove('opacity-50', 'cursor-not-allowed');
     }
   }
 }

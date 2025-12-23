@@ -77,13 +77,27 @@ async function loadZeladoriaCategoria() {
     // ========================================================================
     // ETAPA 3: Criar gráfico principal de distribuição por categoria
     // ========================================================================
-    await window.chartFactory?.createBarChart('zeladoria-categoria-chart', labels, values, {
+    const chartCategoria = await window.chartFactory?.createBarChart('zeladoria-categoria-chart', labels, values, {
       horizontal: true,
       colorIndex: 1,
       field: 'categoria',
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       legendContainer: 'zeladoria-categoria-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros
+    if (chartCategoria && sortedData && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartCategoria, sortedData, {
+        field: 'categoria',
+        valueField: 'key',
+        onFilterChange: () => {
+          if (window.loadZeladoriaCategoria) setTimeout(() => window.loadZeladoriaCategoria(), 100);
+        },
+        onClearFilters: () => {
+          if (window.loadZeladoriaCategoria) setTimeout(() => window.loadZeladoriaCategoria(), 100);
+        }
+      });
+    }
     
     // ========================================================================
     // ETAPA 4: Renderizar ranking detalhado de categorias
@@ -195,11 +209,22 @@ async function renderCategoriaMesChart(dataMes, topCategorias) {
   
   const canvasMes = document.getElementById('zeladoria-categoria-mes-chart');
   if (canvasMes) {
-    await window.chartFactory?.createBarChart('zeladoria-categoria-mes-chart', labels, datasets, {
+    const chartMes = await window.chartFactory?.createBarChart('zeladoria-categoria-mes-chart', labels, datasets, {
       colorIndex: 0,
-      onClick: false,
+      onClick: true, // Habilitar interatividade para crossfilter
       legendContainer: 'zeladoria-categoria-mes-legend'
     });
+    
+    // CROSSFILTER: Adicionar sistema de filtros ao gráfico mensal
+    if (chartMes && dataMes && window.addCrossfilterToChart) {
+      window.addCrossfilterToChart(chartMes, dataMes, {
+        field: 'categoria',
+        valueField: 'categoria',
+        onFilterChange: () => {
+          if (window.loadZeladoriaCategoria) setTimeout(() => window.loadZeladoriaCategoria(), 100);
+        }
+      });
+    }
   } else {
     if (window.Logger) {
       window.Logger.warn('⚠️ Canvas zeladoria-categoria-mes-chart não encontrado');

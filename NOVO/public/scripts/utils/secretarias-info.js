@@ -91,9 +91,9 @@
               />
             </td>
             <td class="px-3 py-2">
-              <div class="font-semibold text-slate-100">${s.name || '—'}</div>
+              <div class="font-semibold text-slate-100">${s.name || s.acronym || 'N/A'}</div>
               ${
-                s.acronym
+                s.acronym && s.name && s.acronym !== s.name
                   ? `<div class="text-xs text-slate-400 mt-0.5">${s.acronym}</div>`
                   : ''
               }

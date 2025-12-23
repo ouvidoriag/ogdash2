@@ -15,6 +15,24 @@ async function loadReclamacoes() {
   }
   
   try {
+    // Coletar filtros de mês e status usando o novo helper
+    const filtrosPagina = window.PageFiltersHelper?.coletarFiltrosMesStatus?.('Reclamacoes') || [];
+    
+    // Combinar com filtros globais usando helper reutilizável
+    let activeFilters = filtrosPagina;
+    
+    // Usar helper para obter filtros ativos de todas as fontes
+    if (window.getActiveFilters) {
+      const globalFilters = window.getActiveFilters();
+      activeFilters = [...activeFilters, ...globalFilters];
+    } else {
+      // Fallback: método manual
+      if (window.chartCommunication) {
+        const globalFilters = window.chartCommunication.filters?.filters || [];
+        activeFilters = [...activeFilters, ...globalFilters];
+      }
+    }
+    
     const [data, dataMensal] = await Promise.all([
       window.dataLoader?.load('/api/complaints-denunciations', {
         useDataStore: true,
@@ -53,6 +71,21 @@ async function loadReclamacoes() {
     
     // Atualizar KPIs
     updateReclamacoesKPIs(assuntos, tipos);
+    
+    // CROSSFILTER: Conectar TODOS os elementos automaticamente (garantir que nada foi esquecido)
+    setTimeout(() => {
+      if (window.connectAllElementsInPage) {
+        window.connectAllElementsInPage('page-reclamacoes', {
+          fieldMap: {
+            'chartTiposReclamacoes': 'tipo',
+            'chartReclamacoesMes': 'tipo'
+          },
+          defaultField: 'tipo',
+          kpiUpdateFunction: () => updateReclamacoesKPIs(assuntos, tipos),
+          pageLoadFunction: window.loadReclamacoes
+        });
+      }
+    }, 600);
     
     if (window.Logger) {
       window.Logger.success('⚠️ loadReclamacoes: Concluído');
@@ -104,13 +137,40 @@ async function renderTiposChart(tipos) {
   const labels = tipos.map(t => t.tipo || t.key || t._id || 'N/A');
   const values = tipos.map(t => t.quantidade || t.count || 0);
   
-  await window.chartFactory?.createBarChart('chartReclamacoesTipo', labels, values, {
+  const reclamacoesTipoChart = await window.chartFactory?.createBarChart('chartReclamacoesTipo', labels, values, {
     horizontal: true,
     field: 'tipoDeManifestacao',
     colorIndex: 4,
     label: 'Quantidade',
     onClick: false
   });
+  
+  // CROSSFILTER: Adicionar filtros ao gráfico de tipo de reclamação
+  // Aguardar um pouco para garantir que o gráfico está totalmente renderizado
+  setTimeout(() => {
+    if (reclamacoesTipoChart && tipos && reclamacoesTipoChart.canvas && reclamacoesTipoChart.canvas.ownerDocument) {
+      try {
+        window.addCrossfilterToChart(reclamacoesTipoChart, tipos, {
+          field: 'tipo',
+          valueField: 'tipo',
+          onFilterChange: () => {
+            if (window.loadReclamacoes) window.loadReclamacoes();
+          },
+          onClearFilters: () => {
+            if (window.loadReclamacoes) window.loadReclamacoes();
+          }
+        });
+        
+        if (window.Logger) {
+          window.Logger.debug('✅ Gráfico chartReclamacoesTipo conectado ao crossfilter');
+        }
+      } catch (error) {
+        if (window.Logger) {
+          window.Logger.warn('Erro ao adicionar crossfilter ao gráfico reclamacoes:', error);
+        }
+      }
+    }
+  }, 100);
 }
 
 /**
@@ -148,15 +208,99 @@ async function renderReclamacoesMesChart(dataMensal) {
   });
   const values = dataMensal.map(x => x.count || 0);
   
-  await window.chartFactory?.createBarChart('chartReclamacoesMes', labels, values, {
+  const reclamacoesMesChart = await window.chartFactory?.createBarChart('chartReclamacoesMes', labels, values, {
     colorIndex: 4,
     label: 'Quantidade'
   });
+  
+  // CROSSFILTER: Adicionar filtros ao gráfico de reclamações por mês (filtrar por mês quando clicar)
+  if (reclamacoesMesChart && dataMensal) {
+    if (reclamacoesMesChart.options) {
+      const originalOnClick = reclamacoesMesChart.options.onClick;
+      reclamacoesMesChart.options.onClick = (event, elements) => {
+        if (elements && elements.length > 0) {
+          const element = elements[0];
+          const index = element.index;
+          
+          if (index >= 0 && index < dataMensal.length) {
+            const item = dataMensal[index];
+            const ym = item.ym || item.month || '';
+            
+            // Filtrar por mês usando chartCommunication (não há filtro de data no crossfilterOverview)
+            if (window.chartCommunication && window.chartCommunication.filters) {
+              const existingFilters = window.chartCommunication.filters.filters || [];
+              const newFilter = { field: 'dataCriacaoIso', op: 'contains', value: ym };
+              
+              window.chartCommunication.filters.filters = [
+                ...existingFilters.filter(f => f.field !== 'dataCriacaoIso'),
+                newFilter
+              ];
+              
+              if (window.chartCommunication.onFilterChange) {
+                window.chartCommunication.onFilterChange();
+              }
+            }
+            
+            if (window.loadReclamacoes) {
+              setTimeout(() => window.loadReclamacoes(), 100);
+            }
+          }
+        }
+        if (originalOnClick) originalOnClick(event, elements);
+      };
+    }
+    
+    // Adicionar clique direito para limpar
+    if (reclamacoesMesChart.canvas) {
+      const container = reclamacoesMesChart.canvas.parentElement;
+      if (container && !container.dataset.crossfilterEnabled) {
+        container.dataset.crossfilterEnabled = 'true';
+        container.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (window.chartCommunication && window.chartCommunication.filters) {
+            window.chartCommunication.filters.clear();
+            if (window.chartCommunication.onFilterChange) {
+              window.chartCommunication.onFilterChange();
+            }
+          }
+          if (window.loadReclamacoes) setTimeout(() => window.loadReclamacoes(), 100);
+        });
+      }
+    }
+  }
 }
 
-// Conectar ao sistema global de filtros
-if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
+// Conectar ao sistema global de filtros usando helper reutilizável
+if (window.createPageFilterListener) {
+  window.createPageFilterListener({
+    pageId: 'page-reclamacoes',
+    listenerKey: '_reclamacoesListenerRegistered',
+    loadFunction: loadReclamacoes
+  });
+} else if (window.chartCommunication && window.chartCommunication.createPageFilterListener) {
   window.chartCommunication.createPageFilterListener('page-reclamacoes', loadReclamacoes, 500);
+}
+
+// Inicializar filtros de mês e status
+function initReclamacoesPage() {
+  if (window.PageFiltersHelper && window.PageFiltersHelper.inicializarFiltrosMesStatus) {
+    window.PageFiltersHelper.inicializarFiltrosMesStatus({
+      prefix: 'Reclamacoes',
+      endpoint: '/api/aggregate/by-month',
+      onChange: async () => {
+        await loadReclamacoes();
+      },
+      mesSelecionado: ''
+    });
+  } else {
+    setTimeout(initReclamacoesPage, 100);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initReclamacoesPage);
+} else {
+  initReclamacoesPage();
 }
 
 window.loadReclamacoes = loadReclamacoes;

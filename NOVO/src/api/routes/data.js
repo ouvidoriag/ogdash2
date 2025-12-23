@@ -31,7 +31,7 @@ import { slaSummary } from '../controllers/slaController.js';
 import { filterRecords, filterAndAggregate } from '../controllers/filterController.js';
 import { getVencimento } from '../controllers/vencimentoController.js';
 import { getSecretariasInfo, getSecretariaInfoById } from '../controllers/secretariaInfoController.js';
-import { getNotificacoes, getNotificacoesStats, getUltimaExecucao, buscarVencimentos, enviarSelecionados } from '../controllers/notificacoesController.js';
+import { getNotificacoes, getNotificacoesStats, getUltimaExecucao, buscarVencimentos, enviarSelecionados, enviarEmailExtra, getMesesDisponiveis } from '../controllers/notificacoesController.js';
 import { getMetaAliases, reindexChat, exportDatabase } from '../controllers/utilsController.js';
 
 export default function dataRoutes(prisma, getMongoClient) {
@@ -122,6 +122,13 @@ export default function dataRoutes(prisma, getMongoClient) {
   router.get('/notificacoes', (req, res) => getNotificacoes(req, res));
 
   /**
+   * GET /api/notificacoes/meses-disponiveis
+   * Lista meses únicos com notificações (para popular select)
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.get('/notificacoes/meses-disponiveis', (req, res) => getMesesDisponiveis(req, res));
+
+  /**
    * GET /api/notificacoes/stats
    * Estatísticas de notificações
    * REFATORAÇÃO: Mongoose (sem prisma)
@@ -148,6 +155,13 @@ export default function dataRoutes(prisma, getMongoClient) {
    * REFATORAÇÃO: Mongoose (sem prisma)
    */
   router.post('/notificacoes/enviar-selecionados', (req, res) => enviarSelecionados(req, res));
+  
+  /**
+   * POST /api/notificacoes/enviar-extra
+   * Envia email extra para emails informados manualmente
+   * REFATORAÇÃO: Mongoose (sem prisma)
+   */
+  router.post('/notificacoes/enviar-extra', (req, res) => enviarEmailExtra(req, res));
   
   /**
    * POST /api/filter

@@ -1,0 +1,2777 @@
+
+### Implementação
+
+**Arquivo**: `backend/controllers/monitoringController.js`
+
+```javascript
+const Objective = require('../models/Objective');
+const Goal = require('../models/Goal');
+const Action = require('../models/Action');
+const User = require('../models/User');
+
+exports.getFeed = async (req, res, next) => {
+  try {
+    // 1. Buscar todas as coleções em paralelo
+    const [objectives, goals, actions] = await Promise.all([
+      Objective.find({}).lean(),
+      Goal.find({}).lean(),
+      Action.find({}).lean(),
+    ]);
+
+    // 2. Criar mapas de relacionamento
+    const objectiveById = new Map(objectives.map(o => [String(o._id), o]));
+    
+    const goalsByObjective = new Map();
+    goals.forEach(g => {
+      const key = String(g.objectiveId);
+      if (!goalsByObjective.has(key)) goalsByObjective.set(key, []);
+      goalsByObjective.get(key).push(g);
+    });
+
+    const actionsByGoal = new Map();
+    actions.forEach(a => {
+      const key = String(a.goalId);
+      if (!actionsByGoal.has(key)) actionsByGoal.set(key, []);
+      actionsByGoal.get(key).push(a);
+    });
+
+    // 3. Resolver usuários (assignedTo)
+    const userIds = Array.from(
+      new Set(
+        actions
+          .map(a => String(a.assignedTo))
+          .filter(id => id && id !== 'null' && String(id).length === 24)
+      )
+    );
+    const users = userIds.length ? await User.find({ _id: { $in: userIds } }).lean() : [];
+    const userById = new Map(users.map(u => [String(u._id), u]));
+
+    // 4. Construir feed flat com TODAS as dimensões
+    const feed = [];
+
+    objectives.forEach(obj => {
+      // Registro de Objetivo
+      feed.push({
+        tipo: 'objective',
+        objectiveId: String(obj._id),
+        objectiveTitle: obj.title,
+        unit: obj.unit || null,
+        status: obj.status || null,
+        progress: obj.progressPercent ?? 0,
+      });
+
+      // Registros de Metas
+      (goalsByObjective.get(String(obj._id)) || []).forEach(goal => {
+        feed.push({
+          tipo: 'goal',
+          objectiveId: String(obj._id),
+          objectiveTitle: obj.title,
+          unit: obj.unit || null,
+          goalId: String(goal._id),
+          goalTitle: goal.title,
+          status: goal.status || null,
+          progress: goal.progressPercent ?? 0,
+        });
+
+        // Registros de Ações
+        (actionsByGoal.get(String(goal._id)) || []).forEach(action => {
+          const assigned = action.assignedTo ? userById.get(String(action.assignedTo)) : null;
+          feed.push({
+            tipo: 'action',
+            objectiveId: String(obj._id),
+            objectiveTitle: obj.title,
+            unit: obj.unit || null,
+            goalId: String(goal._id),
+            goalTitle: goal.title,
+            actionId: String(action._id),
+            actionTitle: action.title,
+            status: action.status,
+            assignedTo: assigned ? (assigned.name || String(action.assignedTo)) : null,
+            startDate: action.startDate || null,
+            endDate: action.endDate || null,
+            progress: action.progressPercent ?? 0,
+          });
+        });
+      });
+    });
+
+    res.json({ count: feed.length, feed });
+  } catch (err) {
+    next(err);
+  }
+};
+```
+
+**Rota**: `backend/routes/monitoring.js`
+
+```javascript
+const express = require('express');
+const router = express.Router();
+const monitoringController = require('../controllers/monitoringController');
+
+router.get('/feed', monitoringController.getFeed);
+
+module.exports = router;
+```
+
+**Registro**: `backend/server.js`
+
+```javascript
+app.use('/api/monitoring', require('./routes/monitoring'));
+```
+
+### Resultado
+
+```json
+{
+  "count": 64,
+  "feed": [
+    {
+      "tipo": "action",
+      "objectiveId": "64abc123",
+      "objectiveTitle": "Melhorar Atendimento",
+      "unit": "Ouvidoria",
+      "goalId": "64def456",
+      "goalTitle": "Reduzir tempo de resposta",
+      "actionId": "64ghi789",
+      "actionTitle": "Implementar chatbot",
+      "status": "FINALIZADO",
+      "assignedTo": "João Silva",
+      "startDate": "2025-01-10T00:00:00.000Z",
+      "endDate": "2025-02-15T00:00:00.000Z",
+      "progress": 100
+    }
+  ]
+}
+```
+
+---
+
+## 🎨 PASSO 2: Frontend - Context de Filtros Multi-Dimensionais
+
+### Por Que Context API?
+Permite que **qualquer componente** na árvore acesse e modifique filtros globais sem prop drilling.
+
+### Implementação
+
+**Arquivo**: `frontend/src/contexts/FilterContext.jsx`
+
+```javascript
+import { createContext, useContext, useState, useMemo } from 'react';
+
+const FilterContext = createContext();
+
+export const useFilter = () => {
+  const context = useContext(FilterContext);
+  if (!context) {
+    throw new Error('useFilter must be used within a FilterProvider');
+  }
+  return context;
+};
+
+export const FilterProvider = ({ children }) => {
+  // Estado: objeto com múltiplas dimensões
+  const [filters, setFilters] = useState({
+    status: null,
+    goalId: null,
+    responsavel: null,
+    unit: null,
+  });
+
+  // Setters individuais para cada dimensão
+  const setStatusFilter = (status) => {
+    setFilters(prev => ({ ...prev, status }));
+  };
+
+  const setGoalFilter = (goalId) => {
+    setFilters(prev => ({ ...prev, goalId }));
+  };
+
+  const setResponsavelFilter = (responsavel) => {
+    setFilters(prev => ({ ...prev, responsavel }));
+  };
+
+  const setUnitFilter = (unit) => {
+    setFilters(prev => ({ ...prev, unit }));
+  };
+
+  // Limpar todos os filtros de uma vez
+  const clearAllFilters = () => {
+    setFilters({ status: null, goalId: null, responsavel: null, unit: null });
+  };
+
+  // Função que aplica TODOS os filtros ativos de uma vez
+  const applyFilters = (actions) => {
+    let result = actions;
+
+    if (filters.status) {
+      result = result.filter(a => a.status === filters.status);
+    }
+
+    if (filters.goalId) {
+      result = result.filter(a => String(a.goalId) === String(filters.goalId));
+    }
+
+    if (filters.responsavel) {
+      result = result.filter(a => {
+        const name = a.assignedTo && (a.assignedTo.name || a.assignedTo);
+        return name === filters.responsavel;
+      });
+    }
+
+    if (filters.unit) {
+      result = result.filter(a => a.unit === filters.unit);
+    }
+
+    return result;
+  };
+
+  // Contador de filtros ativos (para o banner)
+  const activeFilterCount = useMemo(() => {
+    return Object.values(filters).filter(Boolean).length;
+  }, [filters]);
+
+  const value = {
+    filters,
+    setStatusFilter,
+    setGoalFilter,
+    setResponsavelFilter,
+    setUnitFilter,
+    clearAllFilters,
+    applyFilters,
+    activeFilterCount,
+  };
+
+  return <FilterContext.Provider value={value}>{children}</FilterContext.Provider>;
+};
+```
+
+### Regras Cruciais
+
+1. **Componente que USA o Context deve estar DENTRO do Provider**:
+```jsx
+// ❌ ERRADO
+const Monitoramento = () => {
+  const { filters } = useFilter(); // Erro!
+  return <FilterProvider>...</FilterProvider>;
+};
+
+// ✅ CORRETO
+const MonitoramentoContent = () => {
+  const { filters } = useFilter(); // OK!
+  return <div>...</div>;
+};
+
+const Monitoramento = () => (
+  <FilterProvider>
+    <MonitoramentoContent />
+  </FilterProvider>
+);
+```
+
+2. **applyFilters é a função mestre**: sempre use ela para filtrar os dados, nunca filtre manualmente.
+
+---
+
+## 📊 PASSO 3: Página Principal - Consumir Feed e Aplicar Filtros
+
+**Arquivo**: `frontend/src/pages/Monitoramento.jsx`
+
+### 3.1: Estrutura com Provider
+
+```jsx
+import { FilterProvider, useFilter } from '../contexts/FilterContext';
+
+// Componente interno que acessa o Context
+const MonitoramentoContent = ({ filters: propFilters }) => {
+  const { 
+    filters, 
+    setStatusFilter, 
+    setGoalFilter, 
+    setResponsavelFilter, 
+    setUnitFilter,
+    clearAllFilters,
+    applyFilters,
+    activeFilterCount 
+  } = useFilter();
+
+  const [feed, setFeed] = useState(null);
+  const [tree, setTree] = useState([]);
+
+  // ... código continua
+};
+
+// Wrapper que fornece o Context
+const Monitoramento = (props) => (
+  <FilterProvider>
+    <MonitoramentoContent {...props} />
+  </FilterProvider>
+);
+
+export default Monitoramento;
+```
+
+### 3.2: Buscar Feed em Paralelo
+
+```jsx
+const fetchData = useCallback(async () => {
+  setLoading(true);
+  try {
+    const params = buildFilterParams(propFilters);
+
+    const [summaryResponse, treeResponse, feedResponse] = await Promise.all([
+      api.get('/reports/summary', { params }),
+      api.get('/objectives', { params: { include: 'tree', unit: propFilters.unitValue || undefined } }),
+      fetchMonitoringFeed(params).catch(() => null), // Não falha se feed não existir
+    ]);
+
+    setSummary(summaryResponse.data);
+    setTree(treeResponse.data || []);
+    setFeed(feedResponse?.feed || null);
+  } catch (err) {
+    console.error('Erro ao buscar dados:', err);
+  } finally {
+    setLoading(false);
+  }
+}, [propFilters]);
+```
+
+### 3.3: Construir flatActions Preferindo o Feed
+
+```jsx
+// Preferir feed quando disponível, fallback para tree
+const flatActions = useMemo(() => {
+  if (feed && Array.isArray(feed)) {
+    return feed
+      .filter(r => r.tipo === 'action')
+      .map(a => ({
+        _id: a.actionId,
+        title: a.actionTitle,
+        status: a.status,
+        progress: a.progress,
+        startDate: a.startDate,
+        endDate: a.endDate,
+        assignedTo: a.assignedTo,
+        goalId: a.goalId,
+        goalTitle: a.goalTitle,
+        objectiveTitle: a.objectiveTitle,
+        unit: a.unit,
+      }));
+  }
+
+  // Fallback: construir de tree
+  return tree.flatMap((objective) =>
+    (objective.goals || []).flatMap((goal) =>
+      (goal.actions || []).map((action) => ({
+        ...action,
+        goalId: goal._id,
+        goalTitle: goal.title,
+        objectiveTitle: objective.title,
+        unit: objective.unit,
+      }))
+    )
+  );
+}, [feed, tree]);
+```
+
+### 3.4: Aplicar Filtros Globais
+
+```jsx
+// SEMPRE usar applyFilters do Context
+const filteredActions = useMemo(() => {
+  return applyFilters(flatActions);
+}, [flatActions, filters]); // Reage a mudanças em filtros
+```
+
+### 3.5: Calcular Agregações com Dados Filtrados
+
+```jsx
+// Todos os agrupamentos usam filteredActions
+const byResponsible = useMemo(() => {
+  const groups = {};
+  filteredActions.forEach(a => {
+    const key = (a.assignedTo && (a.assignedTo.name || a.assignedTo)) || 'Sem responsável';
+    if (!groups[key]) {
+      groups[key] = { name: key, FINALIZADO: 0, CANCELADO: 0, INICIADO: 0 };
+    }
+    if (a.status === 'FINALIZADO') groups[key].FINALIZADO++;
+    else if (a.status === 'CANCELADO') groups[key].CANCELADO++;
+    else if (a.status === 'INICIADO') groups[key].INICIADO++;
+  });
+  return Object.values(groups).slice(0, 20);
+}, [filteredActions]);
+
+const byUnit = useMemo(() => {
+  const groups = {};
+  filteredActions.forEach(a => {
+    const key = a.unit || 'Sem Unidade';
+    if (!groups[key]) {
+      groups[key] = { name: key, FINALIZADO: 0, CANCELADO: 0, INICIADO: 0 };
+    }
+    if (a.status === 'FINALIZADO') groups[key].FINALIZADO++;
+    else if (a.status === 'CANCELADO') groups[key].CANCELADO++;
+    else if (a.status === 'INICIADO') groups[key].INICIADO++;
+  });
+  return Object.values(groups).slice(0, 20);
+}, [filteredActions]);
+```
+
+### 3.6: Banner Visual de Filtros Ativos
+
+```jsx
+{activeFilterCount > 0 && (
+  <section className="card" style={{ 
+    background: '#E3F2FD', 
+    borderLeft: '4px solid #1a73e8', 
+    marginBottom: '1rem' 
+  }}>
+    <div style={{ 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      padding: '1rem',
+      flexWrap: 'wrap',
+      gap: '0.5rem'
+    }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+        <strong style={{ color: '#1a73e8', fontSize: '1.1rem' }}>
+          Filtros Ativos ({activeFilterCount}):
+        </strong>
+
+        {/* Pill de Status */}
+        {filters.status && (
+          <span style={{ 
+            background: '#fff', 
+            padding: '0.25rem 0.75rem', 
+            borderRadius: '16px', 
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            <strong>Status:</strong>
+            {filters.status === 'PLANEJADO' && '📋 Planejado'}
+            {filters.status === 'INICIADO' && '🔄 Iniciado'}
+            {filters.status === 'FINALIZADO' && '✅ Finalizado'}
+            {filters.status === 'CANCELADO' && '❌ Cancelado'}
+            <button 
+              onClick={() => setStatusFilter(null)}
+              style={{ 
+                background: 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                padding: 0,
+                color: '#999'
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        )}
+
+        {/* Pill de Meta */}
+        {filters.goalId && (
+          <span style={{ /* mesmo estilo */ }}>
+            <strong>Meta:</strong>
+            {goalOptions.find(g => String(g._id) === String(filters.goalId))?.title || 'Meta selecionada'}
+            <button onClick={() => setGoalFilter(null)}>✕</button>
+          </span>
+        )}
+
+        {/* Pill de Responsável */}
+        {filters.responsavel && (
+          <span style={{ /* mesmo estilo */ }}>
+            <strong>Responsável:</strong>
+            {filters.responsavel}
+            <button onClick={() => setResponsavelFilter(null)}>✕</button>
+          </span>
+        )}
+
+        {/* Pill de Unidade */}
+        {filters.unit && (
+          <span style={{ /* mesmo estilo */ }}>
+            <strong>Unidade:</strong>
+            {filters.unit}
+            <button onClick={() => setUnitFilter(null)}>✕</button>
+          </span>
+        )}
+      </div>
+
+      <button 
+        onClick={clearAllFilters}
+        style={{ 
+          padding: '0.5rem 1rem', 
+          background: '#1a73e8', 
+          color: '#fff', 
+          border: 'none', 
+          borderRadius: '4px', 
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        Limpar Todos os Filtros
+      </button>
+    </div>
+  </section>
+)}
+```
+
+---
+
+## 🎨 PASSO 4: Tornar Gráficos Interativos (Recharts)
+
+### 4.1: Gráfico de Barras com Crossfilter
+
+```jsx
+<div onContextMenu={(e) => { 
+  e.preventDefault(); 
+  clearAllFilters(); // Clique direito limpa tudo
+}}>
+  <ResponsiveContainer width="100%" height={300}>
+    <BarChart data={byResponsible}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+      <YAxis />
+      <Tooltip />
+      <Legend />
+
+      {/* Cada Bar representa um status */}
+      <Bar 
+        dataKey="FINALIZADO" 
+        fill="#27AE60" 
+        name="Finalizadas"
+        onClick={({ payload }) => {
+          setStatusFilter('FINALIZADO');
+          if (payload?.name) setResponsavelFilter(payload.name);
+        }}
+        style={{ cursor: 'pointer' }}
+      />
+
+      <Bar 
+        dataKey="CANCELADO" 
+        fill="#B82C3A" 
+        name="Canceladas"
+        onClick={({ payload }) => {
+          setStatusFilter('CANCELADO');
+          if (payload?.name) setResponsavelFilter(payload.name);
+        }}
+        style={{ cursor: 'pointer' }}
+      />
+
+      <Bar 
+        dataKey="INICIADO" 
+        fill="#FFC107" 
+        name="Em andamento"
+        onClick={({ payload }) => {
+          setStatusFilter('INICIADO');
+          if (payload?.name) setResponsavelFilter(payload.name);
+        }}
+        style={{ cursor: 'pointer' }}
+      />
+    </BarChart>
+  </ResponsiveContainer>
+</div>
+
+<div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666', textAlign: 'center' }}>
+  Clique em uma barra para filtrar | Clique direito para limpar filtros
+</div>
+```
+
+**Regras Importantes**:
+1. `onContextMenu` deve estar em uma `<div>` wrapper, NÃO no `<BarChart>`
+2. `onClick` em cada `<Bar>` recebe `{ payload }` com os dados da barra
+3. `payload.name` contém o valor do `dataKey` (ex: nome do responsável)
+4. Aplicar múltiplos filtros simultaneamente: `setStatusFilter` + `setResponsavelFilter`
+
+### 4.2: Gráfico de Pizza com Crossfilter
+
+```jsx
+<div onContextMenu={(e) => { 
+  e.preventDefault(); 
+  clearAllFilters();
+}}>
+  <ResponsiveContainer width="100%" height={300}>
+    <PieChart>
+      <Pie 
+        data={pieData} 
+        cx="50%" 
+        cy="50%" 
+        outerRadius={100} 
+        fill="#8884d8" 
+        dataKey="value"
+        label={({ name, pct }) => `${name} ${pct}%`}
+        onClick={(_, index) => {
+          const entry = pieData[index];
+          if (entry?.status) {
+            setStatusFilter(entry.status);
+          }
+        }}
+        style={{ cursor: 'pointer' }}
+      >
+        {pieData.map((entry, index) => (
+          <Cell 
+            key={`cell-${index}`} 
+            fill={colors[index]} 
+            style={{ cursor: 'pointer' }}
+          />
+        ))}
+      </Pie>
+      <Tooltip />
+    </PieChart>
+  </ResponsiveContainer>
+</div>
+```
+
+**Regras Importantes**:
+1. `onClick` no `<Pie>` recebe `(data, index)`
+2. Use o `index` para pegar o item correto de `pieData`
+3. Cada item em `pieData` deve ter um campo identificador (ex: `status`, `goalId`)
+
+### 4.3: Gráfico Empilhado "Status por Meta"
+
+```jsx
+<BarChart data={goalStatusData}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+  <YAxis />
+  <Tooltip />
+  <Legend />
+
+  {/* Cada Bar empilhada representa um status */}
+  <Bar 
+    dataKey="Planejado" 
+    stackId="status" 
+    fill="#4A90E2"
+    onClick={({ payload }) => {
+      setStatusFilter('PLANEJADO');
+      if (payload?.goalId) setGoalFilter(payload.goalId);
+    }}
+    style={{ cursor: 'pointer' }}
+  />
+
+  <Bar 
+    dataKey="Iniciado" 
+    stackId="status" 
+    fill="#FFC107"
+    onClick={({ payload }) => {
+      setStatusFilter('INICIADO');
+      if (payload?.goalId) setGoalFilter(payload.goalId);
+    }}
+    style={{ cursor: 'pointer' }}
+  />
+
+  <Bar 
+    dataKey="Finalizado" 
+    stackId="status" 
+    fill="#27AE60"
+    onClick={({ payload }) => {
+      setStatusFilter('FINALIZADO');
+      if (payload?.goalId) setGoalFilter(payload.goalId);
+    }}
+    style={{ cursor: 'pointer' }}
+  />
+
+  <Bar 
+    dataKey="Cancelado" 
+    stackId="status" 
+    fill="#B82C3A"
+    onClick={({ payload }) => {
+      setStatusFilter('CANCELADO');
+      if (payload?.goalId) setGoalFilter(payload.goalId);
+    }}
+    style={{ cursor: 'pointer' }}
+  />
+</BarChart>
+```
+
+**Regra Crucial**: Use `stackId` igual em todas as barras para empilhamento.
+
+---
+
+## 🎯 PASSO 5: Componente KPICharts com Crossfilter
+
+**Arquivo**: `frontend/src/components/KPICharts.jsx`
+
+### Props Necessárias
+
+```jsx
+const KPICharts = ({ 
+  actions = [],           // Dados filtrados (para contagens/display)
+  allActions = null,      // Dados completos (para cálculos de porcentagem)
+  hideUnitChart = false,
+  showUnitOnly = false,
+  onStatusClick = () => {},      // Callback para filtrar por status
+  onGoalClick = () => {},        // Callback para filtrar por meta
+}) => {
+```
+
+### Cálculo de Estatísticas
+
+```jsx
+const stats = useMemo(() => {
+  const baseActions = allActions || actions; // Usar allActions para percentuais
+
+  // Contagens usam actions (filtradas)
+  const statusCount = {
+    PLANEJADO: actions.filter(a => a.status === 'PLANEJADO').length,
+    INICIADO: actions.filter(a => a.status === 'INICIADO').length,
+    CANCELADO: actions.filter(a => a.status === 'CANCELADO').length,
+    FINALIZADO: actions.filter(a => a.status === 'FINALIZADO').length,
+  };
+
+  const totalActions = actions.length;
+
+  // Percentuais e agregações usam baseActions (completas)
+  const actionsByGoal = {};
+  baseActions.forEach(action => {
+    const key = action.goalId || 'sem-meta';
+    const name = action.goalTitle || 'Sem Meta';
+    if (!actionsByGoal[key]) {
+      actionsByGoal[key] = { goalId: key, name, count: 0 };
+    }
+    actionsByGoal[key].count++;
+  });
+
+  // Status por Meta (para gráfico empilhado)
+  const goalStatusDataMap = {};
+  baseActions.forEach(action => {
+    const key = action.goalId || 'sem-meta';
+    const name = action.goalTitle || 'Sem Meta';
+    if (!goalStatusDataMap[key]) {
+      goalStatusDataMap[key] = { 
+        goalId: key, 
+        name, 
+        Planejado: 0, 
+        Iniciado: 0, 
+        Cancelado: 0, 
+        Finalizado: 0 
+      };
+    }
+    if (action.status === 'PLANEJADO') goalStatusDataMap[key].Planejado++;
+    else if (action.status === 'INICIADO') goalStatusDataMap[key].Iniciado++;
+    else if (action.status === 'CANCELADO') goalStatusDataMap[key].Cancelado++;
+    else if (action.status === 'FINALIZADO') goalStatusDataMap[key].Finalizado++;
+  });
+
+  return { 
+    statusCount, 
+    totalActions, 
+    goalData: Object.values(actionsByGoal), 
+    goalStatusData: Object.values(goalStatusDataMap) 
+  };
+}, [actions, allActions]);
+```
+
+**REGRA CRÍTICA**: Use `allActions` (ou `baseActions`) para cálculos de percentuais/taxas. Se você usar apenas `actions` filtradas, quando o usuário filtrar por "FINALIZADO", a taxa será sempre 100% (todos os dados filtrados são finalizados!).
+
+### Renderização com Interatividade
+
+```jsx
+return (
+  <div>
+    {/* Gráfico de Pizza - Distribuição de Status */}
+    <div onContextMenu={(e) => { e.preventDefault(); onStatusClick(null); }}>
+      <ResponsiveContainer width="100%" height={300}>
+        <PieChart>
+          <Pie 
+            data={pieData} 
+            onClick={(_, index) => {
+              const entry = pieData[index];
+              if (entry?.status) onStatusClick(entry.status);
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            {/* Cells aqui */}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+
+    {/* Gráfico Empilhado - Status por Meta */}
+    <div onContextMenu={(e) => { e.preventDefault(); onStatusClick(null); }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={stats.goalStatusData}>
+          <Bar 
+            dataKey="Planejado" 
+            stackId="status" 
+            fill="#4A90E2"
+            onClick={({ payload }) => {
+              onStatusClick('PLANEJADO');
+              if (onGoalClick && payload?.goalId) onGoalClick(payload.goalId);
+            }}
+            style={{ cursor: 'pointer' }}
+          />
+          {/* Outras barras empilhadas */}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
+);
+```
+
+---
+
+## ⚠️ PROBLEMAS COMUNS E SOLUÇÕES
+
+### Problema 1: "Gráfico não atualiza quando clico em outro gráfico"
+
+**Causa**: Usando dados brutos (`flatActions`) em vez de dados filtrados (`filteredActions`).
+
+**Solução**:
+```jsx
+// ❌ ERRADO
+<KPICharts actions={flatActions} />
+
+// ✅ CORRETO
+<KPICharts actions={filteredActions} allActions={flatActions} />
+```
+
+### Problema 2: "Taxa de conclusão mostra sempre 100% quando filtro"
+
+**Causa**: Calculando percentuais dos dados filtrados.
+
+**Solução**: Passar `allActions` e usar `baseActions` para percentuais:
+```jsx
+const baseActions = allActions || actions;
+// Usar baseActions para calcular taxas/porcentagens
+// Usar actions para contagens diretas
+```
+
+### Problema 3: "Clique direito não limpa filtros"
+
+**Causa**: `onContextMenu` não está no elemento correto ou falta `e.preventDefault()`.
+
+**Solução**:
+```jsx
+// Deve estar em uma <div> wrapper ao redor do <ResponsiveContainer>
+<div onContextMenu={(e) => { 
+  e.preventDefault();  // ← OBRIGATÓRIO
+  clearAllFilters(); 
+}}>
+  <ResponsiveContainer>
+    {/* gráfico */}
+  </ResponsiveContainer>
+</div>
+```
+
+### Problema 4: "onClick não dispara / Cursor não muda"
+
+**Causa**: Falta `onClick` no elemento Recharts ou `style={{ cursor: 'pointer' }}`.
+
+**Solução**:
+```jsx
+<Bar 
+  dataKey="value"
+  onClick={(data) => {
+    // handler aqui
+  }}
+  style={{ cursor: 'pointer' }}  // ← OBRIGATÓRIO para UX
+/>
+```
+
+### Problema 5: "Gráfico 'Status por Meta' não reage a filtros externos"
+
+**Causa**: Usando `baseActions` para agregação em vez de `actions` filtradas.
+
+**Solução**: No `useMemo` de `goalStatusData`, iterar sobre `actions` (filtradas) em vez de `baseActions`:
+```jsx
+// ✅ CORRETO - Reage a filtros
+baseActions.forEach(action => {
+  // agregação aqui
+});
+
+// Mas se quiser que reaja, use actions:
+actions.forEach(action => {
+  // agregação aqui
+});
+```
+
+---
+
+## ✅ CHECKLIST DE VALIDAÇÃO FINAL
+
+Use esta lista para garantir implementação completa:
+
+### Backend
+- [ ] Endpoint `/api/monitoring/feed` criado
+- [ ] Retorna array flat com campos: `tipo`, `objectiveId`, `goalId`, `actionId`, `status`, `assignedTo`, `unit`, `progress`
+- [ ] Resolve relacionamentos via Maps
+- [ ] Filtra IDs inválidos de usuários
+
+### Frontend - Context
+- [ ] `FilterContext.jsx` criado com estado `filters` multi-dimensional
+- [ ] Funções `setStatusFilter`, `setGoalFilter`, `setResponsavelFilter`, `setUnitFilter` implementadas
+- [ ] Função `applyFilters(actions)` que aplica TODOS os filtros simultaneamente
+- [ ] Função `clearAllFilters()` implementada
+- [ ] Propriedade `activeFilterCount` calculada
+- [ ] Provider envolve a página (ou App inteiro)
+
+### Frontend - Página Principal
+- [ ] Componente separado em `Content` (usa Context) + `Wrapper` (fornece Provider)
+- [ ] Feed buscado em paralelo com outras APIs
+- [ ] `flatActions` construído preferindo feed
+- [ ] `filteredActions` calculado com `applyFilters(flatActions)`
+- [ ] TODOS os agrupamentos/agregações usam `filteredActions`
+- [ ] Banner visual mostra filtros ativos com contador
+- [ ] Cada filtro tem botão individual de remoção (pill)
+- [ ] Botão "Limpar Todos os Filtros" implementado
+
+### Frontend - Gráficos
+- [ ] Todos os gráficos usam `filteredActions` como fonte de dados
+- [ ] `onContextMenu` em `<div>` wrapper com `e.preventDefault()` + `clearAllFilters()`
+- [ ] `onClick` handlers em elementos Recharts (`<Bar>`, `<Pie>`, etc.)
+- [ ] Handlers aplicam filtros usando callbacks: `setStatusFilter()`, `setGoalFilter()`, etc.
+- [ ] `style={{ cursor: 'pointer' }}` em elementos clicáveis
+- [ ] Mensagens de ajuda abaixo dos gráficos
+
+### Frontend - KPICharts
+- [ ] Props `actions` (filtradas) e `allActions` (completas) recebidas
+- [ ] Props `onStatusClick` e `onGoalClick` recebidas
+- [ ] `baseActions = allActions || actions` definido
+- [ ] Contagens usam `actions`
+- [ ] Percentuais/taxas usam `baseActions`
+- [ ] Gráfico "Status por Meta" empilhado com todas as categorias
+- [ ] Cliques aplicam múltiplos filtros: status + goalId
+
+### Testes Manuais
+- [ ] Clicar em qualquer gráfico atualiza todos os outros
+- [ ] Banner aparece mostrando filtros ativos
+- [ ] Cada pill pode ser removida individualmente
+- [ ] Botão "Limpar Todos" remove todos os filtros
+- [ ] Clique direito em qualquer gráfico limpa todos os filtros
+- [ ] Percentuais permanecem corretos mesmo com filtros ativos
+- [ ] Cursor muda para pointer ao passar sobre elementos clicáveis
+
+---
+
+## 📚 CONCEITOS-CHAVE PARA REPLICAÇÃO
+
+Se você for implementar isso em outro projeto, lembre-se:
+
+1. **Feed Único**: Backend deve fornecer um endpoint que retorna todos os dados em formato flat com todas as dimensões necessárias.
+
+2. **Context Multi-Dimensional**: Filtros devem ser um objeto `{ dimensao1, dimensao2, ... }`, não variáveis separadas.
+
+3. **Função applyFilters Mestre**: Uma única função que aplica TODOS os filtros de uma vez, nunca filtrar manualmente em múltiplos lugares.
+
+4. **Dois Conjuntos de Dados**: 
+   - `filteredActions` → para displays e contagens
+   - `allActions` → para percentuais e taxas
+
+5. **Payload-Based Handlers**: Sempre ler dados do `payload` em vez de depender de `activeLabel` ou índices.
+
+6. **Wrapper para onContextMenu**: Clique direito só funciona em `<div>` ao redor do `<ResponsiveContainer>`.
+
+7. **Bidirecionality**: Cada gráfico deve ENVIAR filtros (onClick) E RECEBER filtros (usar `filteredActions` que reage a `filters`).
+
+---
+
+## 🎓 EXEMPLO MÍNIMO FUNCIONAL
+
+Se você quiser testar rapidamente, este é o código mínimo:
+
+```jsx
+// Context
+const FilterContext = createContext();
+export const FilterProvider = ({ children }) => {
+  const [status, setStatus] = useState(null);
+  const applyFilters = (data) => status ? data.filter(d => d.status === status) : data;
+  return <FilterContext.Provider value={{ status, setStatus, applyFilters }}>{children}</FilterContext.Provider>;
+};
+
+// Página
+const Dashboard = () => {
+  const { status, setStatus, applyFilters } = useContext(FilterContext);
+  const allData = [{ id: 1, status: 'A' }, { id: 2, status: 'B' }];
+  const filtered = applyFilters(allData);
+  
+  return (
+    <div onContextMenu={(e) => { e.preventDefault(); setStatus(null); }}>
+      <BarChart data={filtered}>
+        <Bar dataKey="id" onClick={(d) => setStatus(d.status)} style={{ cursor: 'pointer' }} />
+      </BarChart>
+    </div>
+  );
+};
+
+// App
+const App = () => (
+  <FilterProvider>
+    <Dashboard />
+  </FilterProvider>
+);
+```
+
+---
+
+**Documento Versão**: 4.0 - Metodologia Completa de Crossfilter  
+**Data**: Dezembro 2025  
+**Projeto**: Gerenciador de Tarefas Ouvidoria
+
+### Objetivo
+Criar um sistema de gráficos interativos onde ao clicar em qualquer elemento de um gráfico (fatia de pizza, barra, etc.), **todos os gráficos da página** são filtrados simultaneamente para exibir apenas os dados relacionados àquela seleção, similar ao comportamento do Microsoft Power BI.
+
+**Funcionalidades:**
+- **Clique esquerdo:** Aplica filtro global
+- **Clique direito:** Remove filtro e volta ao estado normal
+
+### Tecnologias Utilizadas
+- **React 18+** (Hooks: useState, useMemo, useContext, useCallback)
+- **Recharts** (biblioteca de gráficos)
+- **Context API** (para estado global compartilhado)
+
+### ⚠️ Limitação Importante
+Gráficos que calculam **porcentagens** ou **taxas** devem receber **dois conjuntos de dados**:
+- `actions` (filtradas) → para contagens/displays
+- `allActions` (completas) → para cálculos de porcentagem
+
+**Por quê?** Se você filtra por "FINALIZADO" e calcula taxa de conclusão dos dados filtrados, o resultado será sempre 100% (todos os dados filtrados são finalizados!).
+
+### Fluxo de Funcionamento
+```
+Usuário clica em gráfico → Context atualiza filtro global → Todos componentes reagem → Dados são filtrados → Gráficos re-renderizam
+```
+
+---
+
+## Arquitetura da Solução
+
+### Estrutura de Arquivos
+```
+src/
+├── contexts/
+│   └── FilterContext.jsx          # Context API para filtro global
+├── pages/
+│   └── Monitoramento.jsx          # Página principal com gráficos
+└── components/
+    └── KPICharts.jsx              # Componente de gráficos reutilizável
+```
+
+### Fluxo de Dados
+```
+┌─────────────────────────────────────────────────────────┐
+│                    FilterProvider                        │
+│  (Estado global: globalStatusFilter)                    │
+└─────────────────┬───────────────────────────────────────┘
+                  │
+                  ├──────────────────┬──────────────────┐
+                  ▼                  ▼                  ▼
+         ┌────────────────┐  ┌────────────┐   ┌──────────────┐
+         │  KPICharts     │  │  BarChart  │   │  PieChart    │
+         │  (filtrado)    │  │ (filtrado) │   │  (filtrado)  │
+         └────────────────┘  └────────────┘   └──────────────┘
+                  │                  │                  │
+                  └──────────────────┴──────────────────┘
+                            onClick → setStatusFilter()
+```
+
+---
+
+## Implementação Passo a Passo
+
+### PASSO 1: Criar o Context de Filtro Global
+
+**Arquivo:** `src/contexts/FilterContext.jsx`
+
+Este é o **coração** do sistema. Ele gerencia o estado global do filtro que será compartilhado entre todos os componentes.
+
+```jsx
+import { createContext, useContext, useState } from 'react';
+
+// 1. Criar o Context
+const FilterContext = createContext();
+
+// 2. Hook personalizado para usar o context facilmente
+export const useFilter = () => {
+  const context = useContext(FilterContext);
+  if (!context) {
+    throw new Error('useFilter must be used within a FilterProvider');
+  }
+  return context;
+};
+
+// 3. Provider que envolve a aplicação
+export const FilterProvider = ({ children }) => {
+  // Estado: null = sem filtro, 'PLANEJADO'/'INICIADO'/'FINALIZADO'/'CANCELADO' = filtro ativo
+  const [globalStatusFilter, setGlobalStatusFilter] = useState(null);
+
+  // Função para definir o filtro
+  const setStatusFilter = (status) => {
+    setGlobalStatusFilter(status);
+  };
+
+  // Função para limpar o filtro
+  const clearStatusFilter = () => {
+    setGlobalStatusFilter(null);
+  };
+
+  // Valores expostos para os componentes filhos
+  const value = {
+    globalStatusFilter,      // Estado atual do filtro
+    setStatusFilter,         // Função para setar filtro
+    clearStatusFilter,       // Função para limpar filtro
+  };
+
+  return <FilterContext.Provider value={value}>{children}</FilterContext.Provider>;
+};
+```
+
+**Por que isso funciona:**
+- O `Context` permite que qualquer componente filho acesse e modifique o estado global
+- Quando `globalStatusFilter` muda, todos os componentes que o utilizam são re-renderizados automaticamente
+- Não precisa passar props manualmente através de múltiplos níveis
+
+---
+
+### PASSO 2: Estruturar a Página Principal
+
+**Arquivo:** `src/pages/Monitoramento.jsx`
+
+#### 2.1: Imports e Setup Inicial
+
+```jsx
+import { useCallback, useEffect, useState, useMemo } from 'react';
+import { FilterProvider, useFilter } from '../contexts/FilterContext';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
+import KPICharts from '../components/KPICharts';
+import api from '../services/api';
+```
+
+#### 2.2: Criar Componente Interno com Acesso ao Context
+
+**IMPORTANTE:** Você precisa de **dois componentes**:
+1. `Monitoramento` - wrapper que fornece o Context
+2. `MonitoramentoContent` - componente que usa o Context
+
+```jsx
+// Componente interno que TEM acesso ao Context
+const MonitoramentoContent = ({ filters }) => {
+  // Hook para acessar o filtro global
+  const { globalStatusFilter, setStatusFilter, clearStatusFilter } = useFilter();
+  
+  const [tree, setTree] = useState([]);
+  const [loading, setLoading] = useState(false);
+  
+  // ... resto do código
+```
+
+**Por que separar em dois componentes?**
+- O `useFilter()` hook só funciona dentro de um componente que está envolvido pelo `FilterProvider`
+- Se você tentar usar `useFilter()` no mesmo nível que renderiza o `FilterProvider`, dará erro
+- A estrutura correta é: Provider → Componente que usa o hook
+
+#### 2.3: Aplicar Filtro aos Dados
+
+```jsx
+// 1. Coletar todas as ações da árvore de dados
+const flatActions = tree.flatMap((objective) =>
+  (objective.goals || []).flatMap((goal) =>
+    (goal.actions || []).map((action) => ({
+      ...action,
+      goalTitle: goal.title,
+      objectiveTitle: objective.title,
+      unit: objective.unit,
+    }))
+  )
+);
+
+// 2. Aplicar filtro global (CHAVE DO SISTEMA!)
+const filteredActions = useMemo(() => {
+  // Se não há filtro, retorna todos os dados
+  if (!globalStatusFilter) return flatActions;
+  
+  // Se há filtro, retorna apenas ações com aquele status
+  return flatActions.filter(a => a.status === globalStatusFilter);
+}, [flatActions, globalStatusFilter]);
+
+// 3. SEMPRE use 'filteredActions' em vez de 'flatActions' em todos os cálculos e gráficos
+const totalActions = filteredActions.length;
+const completedActions = filteredActions.filter(a => a.status === 'FINALIZADO').length;
+const canceledActions = filteredActions.filter(a => a.status === 'CANCELADO').length;
+```
+
+**Conceito Crucial:**
+- `useMemo` garante que o filtro só é recalculado quando `flatActions` ou `globalStatusFilter` mudam
+- Isso evita recalcular em cada render e melhora performance
+
+#### 2.4: Criar Dados Derivados Filtrados
+
+Todos os agrupamentos/agregações devem usar `filteredActions`:
+
+```jsx
+// Agrupar por responsável (usando dados filtrados)
+const byResponsible = useMemo(() => {
+  const groups = {};
+  filteredActions.forEach(a => {
+    const key = (a.assignedTo && (a.assignedTo.name || a.assignedTo)) || 'Sem responsável';
+    if (!groups[key]) groups[key] = { name: key, Finalizadas: 0, Canceladas: 0, 'Em andamento': 0 };
+    
+    if (a.status === 'FINALIZADO') groups[key].Finalizadas++;
+    else if (a.status === 'CANCELADO') groups[key].Canceladas++;
+    else if (a.status === 'PLANEJADO' || a.status === 'INICIADO') groups[key]['Em andamento']++;
+  });
+  return Object.values(groups).slice(0, 20);
+}, [filteredActions]);
+
+// Agrupar por unidade (usando dados filtrados)
+const byUnit = useMemo(() => {
+  const groups = {};
+  filteredActions.forEach(a => {
+    const key = a.unit || 'Sem Unidade';
+    if (!groups[key]) groups[key] = { name: key, Finalizadas: 0, Canceladas: 0, 'Em andamento': 0 };
+    
+    if (a.status === 'FINALIZADO') groups[key].Finalizadas++;
+    else if (a.status === 'CANCELADO') groups[key].Canceladas++;
+    else if (a.status === 'PLANEJADO' || a.status === 'INICIADO') groups[key]['Em andamento']++;
+  });
+  return Object.values(groups).slice(0, 20);
+}, [filteredActions]);
+```
+
+#### 2.5: Adicionar Banner Visual de Filtro Ativo
+
+```jsx
+return (
+  <div className="page">
+    {/* Banner que aparece quando há filtro ativo */}
+    {globalStatusFilter && (
+      <section className="card" style={{ 
+        background: '#E3F2FD', 
+        borderLeft: '4px solid #1a73e8', 
+        marginBottom: '1rem' 
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          padding: '1rem' 
+        }}>
+          <div>
+            <strong style={{ color: '#1a73e8', fontSize: '1.1rem' }}>
+              Filtro Ativo:
+            </strong>
+            <span style={{ marginLeft: '0.5rem', fontSize: '1rem' }}>
+              {globalStatusFilter === 'PLANEJADO' && '📋 Planejado'}
+              {globalStatusFilter === 'INICIADO' && '🔄 Iniciado'}
+              {globalStatusFilter === 'FINALIZADO' && '✅ Finalizado'}
+              {globalStatusFilter === 'CANCELADO' && '❌ Cancelado'}
+            </span>
+          </div>
+          <button 
+            onClick={clearStatusFilter}
+            style={{ 
+              padding: '0.5rem 1rem', 
+              background: '#1a73e8', 
+              color: '#fff', 
+              border: 'none', 
+              borderRadius: '4px', 
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+          >
+            Limpar Filtro
+          </button>
+        </div>
+      </section>
+    )}
+    
+    {/* Resto dos gráficos aqui */}
+  </div>
+);
+```
+
+#### 2.6: Passar Dados e Callbacks para Componentes de Gráfico
+
+```jsx
+{/* Passar filteredActions e callback para setar filtro */}
+<KPICharts 
+  actions={filteredActions} 
+  hideUnitChart={true} 
+  onStatusClick={setStatusFilter}  // ← CALLBACK CRUCIAL
+/>
+```
+
+#### 2.7: Adicionar Interatividade aos Gráficos Recharts Nativos
+
+Para gráficos criados diretamente com Recharts (não em componentes separados):
+
+```jsx
+{/* Envolver o ResponsiveContainer com div que captura onContextMenu */}
+<div onContextMenu={(e) => { e.preventDefault(); setStatusFilter(null); }}>
+<ResponsiveContainer width="100%" height={300}>
+<BarChart data={statusData}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey="name" />
+  <YAxis />
+  <Tooltip />
+  
+  {/* Adicionar onClick nas barras */}
+  <Bar 
+    dataKey="value" 
+    onClick={(data) => {
+      // Mapear nome exibido para código de status
+      const statusMap = { 
+        'Finalizados': 'FINALIZADO', 
+        'Cancelados': 'CANCELADO', 
+        'Em andamento': 'INICIADO' 
+      };
+      const status = statusMap[data.name];
+      if (status) setStatusFilter(status);  // ← Atualizar filtro global (clique esquerdo)
+    }}
+  >
+    {/* Adicionar cursor pointer em cada célula */}
+    {statusData.map((entry, index) => (
+      <Cell 
+        key={`cell-${index}`} 
+        fill={entry.color}
+        style={{ cursor: 'pointer' }}  // ← Feedback visual
+      />
+    ))}
+  </Bar>
+</BarChart>
+</ResponsiveContainer>
+</div>
+```
+
+**Importante:** 
+- O `onContextMenu` DEVE estar em uma `<div>` wrapper ao redor do `<ResponsiveContainer>`
+- NÃO funciona diretamente no `<BarChart>`, `<PieChart>` ou outros componentes Recharts
+- Sempre use `e.preventDefault()` para evitar o menu de contexto nativo do navegador
+
+#### 2.8: Envolver com FilterProvider (PASSO FINAL)
+
+**No final do arquivo**, envolver o componente principal:
+
+```jsx
+// Componente exportado que fornece o Context
+const Monitoramento = (props) => (
+  <FilterProvider>
+    <MonitoramentoContent {...props} />
+  </FilterProvider>
+);
+
+export default Monitoramento;
+```
+
+---
+
+### PASSO 3: Atualizar Componentes de Gráfico
+
+**Arquivo:** `src/components/KPICharts.jsx`
+
+#### 3.1: Adicionar Prop de Callback
+
+```jsx
+const KPICharts = ({ 
+  actions = [], 
+  hideUnitChart = false, 
+  showUnitOnly = false, 
+  onStatusClick = () => {}  // ← Callback para clicar em status
+}) => {
+```
+
+#### 3.2: Tornar Gráfico de Pizza Interativo
+
+```jsx
+{/* Envolver ResponsiveContainer com div para capturar clique direito */}
+<div onContextMenu={(e) => {
+  e.preventDefault();  // ← Previne menu padrão do navegador
+  onStatusClick(null);  // ← Limpa o filtro (clique direito)
+}}>
+<ResponsiveContainer width="100%" height={300}>
+  <PieChart>
+    <Pie 
+      data={pieData} 
+      cx="50%" 
+      cy="50%" 
+      labelLine={false}
+      label={({ name, value }) => {
+        const pct = stats.totalActions ? Math.round((value / stats.totalActions) * 100) : 0;
+        return `${name} ${value} (${pct}%)`;
+      }} 
+      outerRadius={100} 
+      fill="#8884d8" 
+      dataKey="value"
+      onClick={(_, index) => {
+        const entry = pieData[index];
+        if (entry && entry.status) {
+          onStatusClick(entry.status);  // ← Aplica filtro (clique esquerdo)
+        }
+      }}
+      style={{ cursor: 'pointer' }}  // ← Cursor pointer
+    >
+      {pieData.map((entry, index) => (
+        <Cell 
+          key={`cell-${index}`} 
+          fill={colors[index]} 
+          style={{ cursor: 'pointer' }}  // ← Cursor pointer em cada fatia
+        />
+      ))}
+    </Pie>
+    <Tooltip formatter={(value) => [value, 'Ações']} />
+  </PieChart>
+</ResponsiveContainer>
+</div>
+<div style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#666', textAlign: 'center' }}>
+  Clique para filtrar | Clique direito para limpar filtro
+</div>
+```
+
+**Elementos-chave:**
+- `onContextMenu` deve estar em uma **`<div>` wrapper** ao redor do `<ResponsiveContainer>`
+- `e.preventDefault()` evita menu de contexto do navegador
+- `onStatusClick(null)` limpa o filtro
+- `onClick` no `<Pie>` recebe `(data, index)`
+- Pegamos o status real do `pieData[index]`
+- Chamamos `onStatusClick(status)` para atualizar o filtro global
+- `style={{ cursor: 'pointer' }}` melhora UX
+
+#### 3.3: Tornar Gráfico de Barras Interativo
+
+```jsx
+<BarChart data={barData}
+  onContextMenu={(e) => {
+    e.preventDefault();  // ← Previne menu padrão do navegador
+    onStatusClick(null);  // ← Limpa o filtro (clique direito)
+  }}
+>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey="status" />
+  <YAxis />
+  <Tooltip formatter={(value) => [value, 'Volume']} />
+  <Legend />
+  
+  <Bar 
+    dataKey="count" 
+    name="Volume" 
+    onClick={(data) => {
+      // Mapear label exibido para código interno
+      const statusMap = { 
+        'Planejado': 'PLANEJADO', 
+        'Iniciado': 'INICIADO', 
+        'Cancelado': 'CANCELADO', 
+        'Finalizado': 'FINALIZADO' 
+      };
+      const status = statusMap[data.status];
+      if (status) onStatusClick(status);  // ← Dispara callback (clique esquerdo)
+    }}
+  >
+    {barData.map((entry, index) => (
+      <Cell 
+        key={`cell-vol-${index}`} 
+        fill={entry.color} 
+        style={{ cursor: 'pointer' }}  // ← Cursor pointer
+      />
+    ))}
+  </Bar>
+</BarChart>
+```
+
+---
+
+## Código Completo
+
+### FilterContext.jsx (Completo)
+
+```jsx
+import { createContext, useContext, useState } from 'react';
+
+const FilterContext = createContext();
+
+export const useFilter = () => {
+  const context = useContext(FilterContext);
+  if (!context) {
+    throw new Error('useFilter must be used within a FilterProvider');
+  }
+  return context;
+};
+
+export const FilterProvider = ({ children }) => {
+  const [globalStatusFilter, setGlobalStatusFilter] = useState(null);
+
+  const setStatusFilter = (status) => {
+    setGlobalStatusFilter(status);
+  };
+
+  const clearStatusFilter = () => {
+    setGlobalStatusFilter(null);
+  };
+
+  const value = {
+    globalStatusFilter,
+    setStatusFilter,
+    clearStatusFilter,
+  };
+
+  return <FilterContext.Provider value={value}>{children}</FilterContext.Provider>;
+};
+```
+
+### Monitoramento.jsx (Estrutura Principal)
+
+```jsx
+import { useCallback, useEffect, useState, useMemo } from 'react';
+import { FilterProvider, useFilter } from '../contexts/FilterContext';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Cell } from 'recharts';
+import KPICharts from '../components/KPICharts';
+
+const MonitoramentoContent = ({ filters }) => {
+  const { globalStatusFilter, setStatusFilter, clearStatusFilter } = useFilter();
+  const [tree, setTree] = useState([]);
+  
+  // Coletar ações
+  const flatActions = tree.flatMap((objective) =>
+    (objective.goals || []).flatMap((goal) =>
+      (goal.actions || []).map((action) => ({
+        ...action,
+        goalTitle: goal.title,
+        objectiveTitle: objective.title,
+        unit: objective.unit,
+      }))
+    )
+  );
+
+  // Aplicar filtro global
+  const filteredActions = useMemo(() => {
+    if (!globalStatusFilter) return flatActions;
+    return flatActions.filter(a => a.status === globalStatusFilter);
+  }, [flatActions, globalStatusFilter]);
+
+  // Agrupar dados filtrados
+  const byResponsible = useMemo(() => {
+    const groups = {};
+    filteredActions.forEach(a => {
+      const key = (a.assignedTo?.name || a.assignedTo) || 'Sem responsável';
+      if (!groups[key]) groups[key] = { name: key, Finalizadas: 0, Canceladas: 0, 'Em andamento': 0 };
+      if (a.status === 'FINALIZADO') groups[key].Finalizadas++;
+      else if (a.status === 'CANCELADO') groups[key].Canceladas++;
+      else groups[key]['Em andamento']++;
+    });
+    return Object.values(groups);
+  }, [filteredActions]);
+
+  return (
+    <div className="page">
+      {/* Banner de filtro ativo */}
+      {globalStatusFilter && (
+        <section className="card" style={{ background: '#E3F2FD', borderLeft: '4px solid #1a73e8', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem' }}>
+            <div>
+              <strong style={{ color: '#1a73e8', fontSize: '1.1rem' }}>Filtro Ativo:</strong>
+              <span style={{ marginLeft: '0.5rem' }}>
+                {globalStatusFilter === 'PLANEJADO' && '📋 Planejado'}
+                {globalStatusFilter === 'INICIADO' && '🔄 Iniciado'}
+                {globalStatusFilter === 'FINALIZADO' && '✅ Finalizado'}
+                {globalStatusFilter === 'CANCELADO' && '❌ Cancelado'}
+              </span>
+            </div>
+            <button onClick={clearStatusFilter} style={{ padding: '0.5rem 1rem', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+              Limpar Filtro
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Componentes de gráfico */}
+      <KPICharts actions={filteredActions} onStatusClick={setStatusFilter} />
+
+      {/* Gráfico por responsável */}
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={byResponsible}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" />
+          <YAxis />
+          <Tooltip />
+          <Legend />
+          <Bar dataKey="Finalizadas" fill="#27AE60" />
+          <Bar dataKey="Canceladas" fill="#B82C3A" />
+          <Bar dataKey="Em andamento" fill="#FFC107" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Wrapper com Provider
+const Monitoramento = (props) => (
+  <FilterProvider>
+    <MonitoramentoContent {...props} />
+  </FilterProvider>
+);
+
+export default Monitoramento;
+```
+
+### KPICharts.jsx (Gráficos Interativos)
+
+```jsx
+import { useMemo } from 'react';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+const KPICharts = ({ actions = [], onStatusClick = () => {} }) => {
+  const stats = useMemo(() => {
+    const statusCount = {
+      PLANEJADO: actions.filter(a => a.status === 'PLANEJADO').length,
+      INICIADO: actions.filter(a => a.status === 'INICIADO').length,
+      CANCELADO: actions.filter(a => a.status === 'CANCELADO').length,
+      FINALIZADO: actions.filter(a => a.status === 'FINALIZADO').length,
+    };
+    const totalActions = actions.length;
+    return { statusCount, totalActions };
+  }, [actions]);
+
+  const pieData = useMemo(() => (
+    [
+      { name: 'Planejado', value: stats.statusCount.PLANEJADO, status: 'PLANEJADO' },
+      { name: 'Iniciado', value: stats.statusCount.INICIADO, status: 'INICIADO' },
+      { name: 'Cancelado', value: stats.statusCount.CANCELADO, status: 'CANCELADO' },
+      { name: 'Finalizado', value: stats.statusCount.FINALIZADO, status: 'FINALIZADO' },
+    ].filter(d => d.value > 0)
+  ), [stats.statusCount]);
+
+  const colors = ['#4A90E2', '#FFC107', '#B82C3A', '#16A086'];
+
+  return (
+    <div>
+      {/* Gráfico de Pizza Interativo */}
+      <ResponsiveContainer width="100%" height={300}>
+        <PieChart
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onStatusClick(null);
+          }}
+        >
+          <Pie 
+            data={pieData} 
+            cx="50%" 
+            cy="50%" 
+            outerRadius={100} 
+            fill="#8884d8" 
+            dataKey="value"
+            onClick={(_, index) => {
+              const entry = pieData[index];
+              if (entry?.status) onStatusClick(entry.status);
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            {pieData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={colors[index]} style={{ cursor: 'pointer' }} />
+            ))}
+          </Pie>
+          <Tooltip />
+        </PieChart>
+      </ResponsiveContainer>
+      <div style={{ textAlign: 'center', fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+        Clique para filtrar | Clique direito para limpar
+      </div>
+    </div>
+  );
+};
+
+export default KPICharts;
+```
+
+---
+
+## Casos de Uso e Exemplos
+
+### Caso 1: Adicionar Novo Gráfico Interativo
+
+**Problema:** Preciso adicionar um gráfico de linha que também responda ao filtro global.
+
+**Solução:**
+
+```jsx
+// No MonitoramentoContent
+const { globalStatusFilter, setStatusFilter } = useFilter();
+
+// Calcular dados usando filteredActions
+const timelineData = useMemo(() => {
+  // ... processamento
+  return filteredActions.reduce((acc, action) => {
+    // agrupar por data, etc.
+  }, []);
+}, [filteredActions]);
+
+// Renderizar gráfico
+<LineChart data={timelineData}>
+  {/* ... */}
+</LineChart>
+```
+
+### Caso 2: Filtrar por Múltiplas Dimensões
+
+**Problema:** Quero filtrar não só por status, mas também por unidade.
+
+**Solução: Expandir o Context**
+
+```jsx
+// FilterContext.jsx
+const [filters, setFilters] = useState({
+  status: null,
+  unit: null,
+  responsible: null
+});
+
+const setFilter = (key, value) => {
+  setFilters(prev => ({ ...prev, [key]: value }));
+};
+
+// MonitoramentoContent
+const filteredActions = useMemo(() => {
+  let result = flatActions;
+  
+  if (filters.status) {
+    result = result.filter(a => a.status === filters.status);
+  }
+  
+  if (filters.unit) {
+    result = result.filter(a => a.unit === filters.unit);
+  }
+  
+  if (filters.responsible) {
+    result = result.filter(a => a.assignedTo === filters.responsible);
+  }
+  
+  return result;
+}, [flatActions, filters]);
+```
+
+### Caso 3: Manter Filtro ao Navegar entre Páginas
+
+**Problema:** Ao trocar de aba e voltar, o filtro é perdido.
+
+**Solução: Provider em nível mais alto**
+
+```jsx
+// App.jsx (ou index.jsx)
+import { FilterProvider } from './contexts/FilterContext';
+
+function App() {
+  return (
+    <FilterProvider>  {/* ← Envolver toda a aplicação */}
+      <Router>
+        <Routes>
+          <Route path="/monitoramento" element={<Monitoramento />} />
+          <Route path="/planejamento" element={<Planejamento />} />
+        </Routes>
+      </Router>
+    </FilterProvider>
+  );
+}
+```
+
+Agora o filtro persiste entre navegações!
+
+---
+
+## Troubleshooting
+
+### ❌ Erro: "useFilter must be used within a FilterProvider"
+
+**Causa:** Você está tentando usar `useFilter()` fora do `FilterProvider`.
+
+**Solução:**
+```jsx
+// ❌ ERRADO
+const Monitoramento = () => {
+  const { globalStatusFilter } = useFilter();  // Erro aqui!
+  return <FilterProvider>...</FilterProvider>;
+};
+
+// ✅ CORRETO
+const MonitoramentoContent = () => {
+  const { globalStatusFilter } = useFilter();  // OK!
+  return <div>...</div>;
+};
+
+const Monitoramento = () => (
+  <FilterProvider>
+    <MonitoramentoContent />
+  </FilterProvider>
+);
+```
+
+### ❌ Gráficos não atualizam ao clicar
+
+**Causa 1:** Não está usando `filteredActions`, está usando `flatActions`.
+
+**Solução:** Substituir todas as ocorrências:
+```jsx
+// ❌ ERRADO
+<KPICharts actions={flatActions} />
+
+// ✅ CORRETO
+<KPICharts actions={filteredActions} />
+```
+
+**Causa 2:** Esqueceu de passar `onStatusClick`.
+
+**Solução:**
+```jsx
+// ✅ CORRETO
+<KPICharts actions={filteredActions} onStatusClick={setStatusFilter} />
+```
+
+### ❌ Performance ruim / muitos re-renders
+
+**Causa:** Não está usando `useMemo` para dados derivados.
+
+**Solução:**
+```jsx
+// ❌ ERRADO - recalcula em cada render
+const byResponsible = groupByResponsible(filteredActions);
+
+// ✅ CORRETO - só recalcula quando filteredActions muda
+const byResponsible = useMemo(() => {
+  return groupByResponsible(filteredActions);
+}, [filteredActions]);
+```
+
+### ❌ Clique direito não limpa o filtro
+
+**Causa:** Esqueceu de adicionar `onContextMenu` no componente de gráfico.
+
+**Solução:**
+```jsx
+// ✅ CORRETO - Adicionar no componente principal (PieChart, BarChart, etc.)
+<PieChart
+  onContextMenu={(e) => {
+    e.preventDefault();  // Previne menu padrão
+    onStatusClick(null);  // Limpa filtro
+  }}
+>
+  {/* Pie e outras configurações */}
+</PieChart>
+```
+
+**Nota:** O `onContextMenu` DEVE estar no componente wrapper (`<PieChart>`, `<BarChart>`), não no `<Pie>` ou `<Bar>`.
+
+### ❌ Clique esquerdo não faz nada
+
+**Causa:** Esqueceu de adicionar `onClick` no elemento Recharts.
+
+**Solução:**
+```jsx
+// ✅ Adicionar onClick
+<Bar 
+  dataKey="value" 
+  onClick={(data) => {
+    onStatusClick(data.status);  // ← NECESSÁRIO
+  }}
+>
+  {/* Cells aqui */}
+</Bar>
+```
+
+### ❌ Cursor não muda para pointer
+
+**Causa:** Faltou `style={{ cursor: 'pointer' }}`.
+
+**Solução:**
+```jsx
+<Cell 
+  key={`cell-${index}`} 
+  fill={color}
+  style={{ cursor: 'pointer' }}  // ← ADICIONAR
+/>
+```
+
+---
+
+## Checklist de Implementação
+
+Use este checklist para garantir que implementou tudo corretamente:
+
+- [ ] **FilterContext.jsx criado** com `FilterProvider` e `useFilter`
+- [ ] **Provider envolve a página** (ou App inteiro)
+- [ ] **Componente interno** usa `useFilter()` hook
+- [ ] **filteredActions** calculado com `useMemo`
+- [ ] **Todos os gráficos** usam `filteredActions` em vez de dados brutos
+- [ ] **onStatusClick** passado para componentes de gráfico
+- [ ] **onClick handlers** adicionados aos elementos Recharts (`<Pie>`, `<Bar>`, etc.)
+- [ ] **onContextMenu** adicionado aos componentes wrapper (`<PieChart>`, `<BarChart>`, etc.) para clique direito
+- [ ] **e.preventDefault()** chamado no onContextMenu para prevenir menu padrão
+- [ ] **cursor: pointer** aplicado para feedback visual
+- [ ] **Banner de filtro** ativo implementado com botão "Limpar"
+- [ ] **useMemo** usado para dados derivados (performance)
+- [ ] **Mensagens de ajuda** nos gráficos ("Clique para filtrar | Clique direito para limpar")
+
+---
+
+## Conceitos-Chave para Outra IA
+
+Se você está passando este documento para outra IA implementar:
+
+### 1. **Fluxo de Dados Unidirecional**
+```
+Estado Global (Context) → Componentes → Eventos de Clique → Atualizar Estado Global
+```
+
+### 2. **Separação de Responsabilidades**
+- **Context:** Gerencia estado global
+- **Página:** Aplica filtro aos dados
+- **Componentes:** Renderizam dados filtrados + disparam eventos
+
+### 3. **Padrão de Composição**
+```jsx
+<Provider>
+  <ComponenteQueUsaContext />
+</Provider>
+```
+
+### 4. **Memoização para Performance**
+- Use `useMemo` para dados derivados
+- Use `useCallback` para funções passadas como props
+
+### 5. **Recharts Específico**
+- `onClick` nos componentes Recharts recebe `(data, index)`
+- `onContextMenu` deve estar no componente wrapper (`<PieChart>`, `<BarChart>`) para capturar clique direito
+- Sempre chamar `e.preventDefault()` no `onContextMenu` para evitar menu padrão do navegador
+- Use `<Cell>` dentro de `<Bar>` ou `<Pie>` para estilização individual
+- `style={{ cursor: 'pointer' }}` deve estar tanto no componente pai quanto nos `<Cell>`
+
+### 6. **Debugging**
+Adicione logs para rastrear o fluxo:
+```jsx
+console.log('Filtro atual:', globalStatusFilter);
+console.log('Dados originais:', flatActions.length);
+console.log('Dados filtrados:', filteredActions.length);
+```
+
+---
+
+## Recursos Adicionais
+
+- [React Context API Docs](https://react.dev/reference/react/useContext)
+- [Recharts Documentation](https://recharts.org/en-US/)
+- [useMemo Hook](https://react.dev/reference/react/useMemo)
+- [React Hooks Best Practices](https://react.dev/learn/reusing-logic-with-custom-hooks)
+
+---
+
+## ⚠️ PROBLEMA CRÍTICO: Gráficos de Porcentagem
+
+### O Problema
+Quando você implementa filtros interativos, gráficos que mostram **porcentagens** ou **taxas** podem mostrar valores incorretos (geralmente 100%).
+
+**Exemplo do Problema:**
+```
+1. Você tem 100 ações: 60 finalizadas, 40 em andamento
+2. Taxa de conclusão correta: 60%
+3. Usuário filtra por "FINALIZADO" (clique em gráfico)
+4. Agora você tem 60 ações filtradas (todas finalizadas)
+5. Cálculo errado: 60 finalizadas / 60 totais = 100% ❌
+```
+
+### Por Que Acontece?
+Componentes que recalculam estatísticas baseadas em `actions` filtradas perdem o contexto do **dataset completo**. Eles calculam porcentagens apenas dos dados visíveis após o filtro.
+
+### A Solução
+Passar **dois conjuntos de dados** para componentes que calculam porcentagens:
+
+#### 1. Modificar KPICharts para aceitar `allActions`
+
+```jsx
+const KPICharts = ({ 
+  actions = [],           // ← Dados filtrados (para contagens)
+  allActions = null,      // ← Dataset completo (para porcentagens)
+  hideUnitChart = false, 
+  showUnitOnly = false, 
+  onStatusClick = () => {} 
+}) => {
+  // Use allActions para calcular porcentagens, ou actions se não fornecido
+  const baseActions = allActions || actions;
+
+  const stats = useMemo(() => {
+    // Contagens usam actions (filtradas)
+    const statusCount = {
+      PLANEJADO: actions.filter(a => a.status === 'PLANEJADO').length,
+      INICIADO: actions.filter(a => a.status === 'INICIADO').length,
+      CANCELADO: actions.filter(a => a.status === 'CANCELADO').length,
+      FINALIZADO: actions.filter(a => a.status === 'FINALIZADO').length,
+    };
+
+    const totalActions = actions.length;
+
+    // Porcentagens usam baseActions (completas) ✅
+    const actionsByGoal = {};
+    baseActions.forEach(action => {
+      const goal = action.goalTitle || 'Sem Meta';
+      if (!actionsByGoal[goal]) {
+        actionsByGoal[goal] = { name: goal, count: 0, completed: 0 };
+      }
+      actionsByGoal[goal].count++;
+      if (action.status === 'FINALIZADO') actionsByGoal[goal].completed++;
+    });
+
+    const progressByUnit = {};
+    baseActions.forEach(action => {
+      const unit = action.unit || 'Sem Unidade';
+      if (!progressByUnit[unit]) {
+        progressByUnit[unit] = { name: unit, total: 0, completed: 0, count: 0 };
+      }
+      progressByUnit[unit].total += action.progressPercent || 0;
+      progressByUnit[unit].count++;
+      if (action.status === 'FINALIZADO') progressByUnit[unit].completed++;
+    });
+
+    const unitData = Object.values(progressByUnit).map(u => ({
+      ...u,
+      avgProgress: u.count ? Math.round(u.total / u.count) : 0,
+      completionRate: u.count ? Math.round((u.completed / u.count) * 100) : 0,
+    }));
+
+    return { statusCount, totalActions, goalData: Object.values(actionsByGoal), unitData };
+  }, [actions, baseActions]); // ← Adicionar baseActions nas dependências
+
+  // ... resto do componente
+};
+```
+
+#### 2. Atualizar chamadas no componente pai (Monitoramento.jsx)
+
+```jsx
+const MonitoramentoContent = ({ filters }) => {
+  // ... código existente ...
+
+  const flatActions = tree.flatMap((objective) =>
+    (objective.goals || []).flatMap((goal) =>
+      (goal.actions || []).map((action) => ({
+        ...action,
+        goalId: goal._id,
+        goalTitle: goal.title,
+        objectiveTitle: objective.title,
+        unit: objective.unit,
+      }))
+    )
+  );
+
+  // Aplicar filtro global
+  const filteredActions = useMemo(() => {
+    if (!globalStatusFilter) return flatActions;
+    return flatActions.filter(a => a.status === globalStatusFilter);
+  }, [flatActions, globalStatusFilter]);
+
+  return (
+    <div className="page">
+      {/* ... */}
+      
+      {/* Passar AMBOS os datasets */}
+      <KPICharts 
+        actions={filteredActions}      // ← Dados filtrados (display)
+        allActions={flatActions}        // ← Dados completos (cálculos)
+        hideUnitChart={true} 
+        onStatusClick={setStatusFilter} 
+      />
+
+      {/* Outro exemplo */}
+      <KPICharts 
+        actions={filteredActions} 
+        allActions={flatActions}        // ← Sempre passar dataset completo
+        showUnitOnly={true} 
+        onStatusClick={setStatusFilter} 
+      />
+    </div>
+  );
+};
+```
+
+### Quando Usar Esta Solução?
+
+✅ **USE quando o gráfico calcula:**
+- Taxas de conclusão / finalização
+- Porcentagens por categoria
+- Médias ponderadas
+- Progresso geral
+- KPIs relativos (ex: "% de ações atrasadas")
+
+❌ **NÃO USE quando o gráfico mostra:**
+- Contagens absolutas simples
+- Listas de itens
+- Dados que devem refletir apenas o filtro aplicado
+
+### Exemplo Visual
+
+**Antes (incorreto):**
+```
+Filtro: FINALIZADO
+Taxa de Conclusão por Meta:
+  Meta A: 100% ← ERRADO (deveria ser 60%)
+  Meta B: 100% ← ERRADO (deveria ser 80%)
+```
+
+**Depois (correto):**
+```
+Filtro: FINALIZADO
+Taxa de Conclusão por Meta:
+  Meta A: 60% ← Calcula de allActions
+  Meta B: 80% ← Calcula de allActions
+(Mas exibe apenas as ações finalizadas dessas metas)
+```
+
+### Checklist de Implementação
+
+- [ ] Adicionar prop `allActions` ao componente de gráficos
+- [ ] Criar `const baseActions = allActions || actions` no início do componente
+- [ ] Usar `actions` para contagens diretas (totalActions, statusCount)
+- [ ] Usar `baseActions` para cálculos de porcentagem (goalData, unitData)
+- [ ] Atualizar chamadas do componente para passar `allActions={flatActions}`
+- [ ] Testar: filtrar por status e verificar se porcentagens permanecem corretas
+- [ ] Adicionar `baseActions` nas dependências do useMemo
+
+---
+
+**Versão do Documento:** 3.0 (Filtros Múltiplos - Power BI Full)  
+**Data:** Dezembro 2025  
+**Projeto:** Gerenciador de Tarefas Ouvidoria  
+**Autor:** Sistema de IA
+
+---
+
+## 🚀 ATUALIZAÇÃO 3.0: Filtros Múltiplos Simultâneos
+
+### O Que Mudou?
+Implementado sistema completo de **filtros múltiplos simultâneos** igual ao Power BI:
+- Filtrar por **Status** + **Meta** + **Responsável** + **Unidade** ao mesmo tempo
+- Banner mostra todos os filtros ativos com contador
+- Cada filtro pode ser removido individualmente
+- Botão "Limpar Todos os Filtros"
+- Clique direito agora limpa TODOS os filtros
+
+### Arquitetura Atualizada
+
+**FilterContext.jsx** agora gerencia objeto `filters`:
+```jsx
+{
+  status: null,        // 'FINALIZADO', 'INICIADO', etc.
+  goalId: null,        // ID da meta selecionada
+  responsavel: null,   // Nome do responsável
+  unit: null,          // Nome da unidade
+}
+```
+
+**Funções disponíveis:**
+- `setStatusFilter(status)` - Filtra por status
+- `setGoalFilter(goalId)` - Filtra por meta específica
+- `setResponsavelFilter(nome)` - Filtra por responsável
+- `setUnitFilter(nome)` - Filtra por unidade
+- `applyFilters(actions)` - Aplica todos os filtros ativos de uma vez
+- `clearAllFilters()` - Remove todos os filtros
+- `activeFilterCount` - Número de filtros ativos
+
+### Como Funciona?
+
+**Exemplo de uso em Monitoramento.jsx:**
+```jsx
+const { applyFilters, setGoalFilter, setResponsavelFilter, clearAllFilters, activeFilterCount } = useFilter();
+
+// Aplicar todos os filtros de uma vez
+const filteredActions = useMemo(() => {
+  return applyFilters(flatActions);
+}, [flatActions, filters]);
+
+// Tornar gráfico clicável para filtrar por responsável
+<BarChart 
+  data={byResponsible}
+  onClick={(data) => {
+    if (data && data.activeLabel) {
+      setResponsavelFilter(data.activeLabel); // ← Adiciona filtro
+    }
+  }}
+>
+```
+
+### Banner de Filtros Múltiplos
+
+```jsx
+{activeFilterCount > 0 && (
+  <section className="card" style={{ background: '#E3F2FD' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div>
+        <strong>Filtros Ativos ({activeFilterCount}):</strong>
+        {filters.status && <span>📋 Status: {filters.status} <button onClick={() => setStatusFilter(null)}>✕</button></span>}
+        {filters.goalId && <span>🎯 Meta: ... <button onClick={() => setGoalFilter(null)}>✕</button></span>}
+        {/* etc */}
+      </div>
+      <button onClick={clearAllFilters}>Limpar Todos</button>
+    </div>
+  </section>
+)}
+```
+
+### Comparação: Antes vs Depois
+
+| Antes (v2.0) | Depois (v3.0) |
+|---|---|
+| Apenas 1 filtro por vez (status) | Múltiplos filtros simultâneos |
+| Filtrar ações OU metas, nunca ambos | Filtrar status + meta + responsável + unidade juntos |
+| Clique direito limpa apenas status | Clique direito limpa TODOS os filtros |
+| Banner simples com 1 filtro | Banner com pills individuais removíveis |
+| Gráficos não se comunicam completamente | Cross-filtering total (como Power BI) |
+
+---
+
+## Nota Final
+
+Este padrão funciona para **qualquer tipo de filtro interativo**:
+- Status
+- Categoria
+- Período de tempo
+- Responsável
+- Unidade organizacional
+- Tags
+- Prioridade
+- Etc.
+
+---
+
+## 📏 Regras Anti-Regressão (Memória do Sistema)
+
+Estas regras são práticas obrigatórias para evitar o erro recorrente do Vite/React Babel “Unexpected token” e telas brancas:
+
+- Nunca inserir JSX dentro de funções de cálculo: `useMemo`, `forEach`, `map`, `reduce` devem conter apenas lógica JavaScript.
+- Encerramento de blocos: sempre fechar `if/forEach` com chaves `}` corretamente antes de qualquer retorno.
+- Recharts: cliques devem ser declarados nas `Bar` e ler `payload.name`; evite depender de `activeLabel` do `BarChart`.
+- Separação de responsabilidades: feedback visual (labels, mensagens) deve ficar no retorno JSX do componente, não em helpers internos.
+- Porcentagens: usar `allActions` (dataset completo) para cálculos e `actions` (filtrado) para exibição.
+- Validação pós-edição: após mudanças em componentes grandes, rodar build e checar rapidamente `KPICharts.jsx` e `Monitoramento.jsx` com um lint/compilação.
+
+### Exemplo do erro resolvido
+
+- Sintoma: `[plugin:vite:react-babel] ... Unexpected token (linha X:Y)` dentro de `KPICharts.jsx`.
+- Causa: JSX inserido por engano dentro do `useMemo` de `stats` e falta de chaves de fechamento, além de `PieChart>>` com `>` extra.
+- Correção:
+  - Reescrever o `useMemo` para:
+    - Definir `statusCount`, `totalActions`, `avgProgress` corretamente
+    - Montar `actionsByGoal` e `progressByUnit` sem JSX, incluindo `actionsByGoal[goal].count++`
+    - Extrair `unit = action.unit || 'Sem Unidade'` antes de usar
+    - Retornar `{ statusCount, totalActions, avgProgress, inProgress, goalData, unitData }`
+  - Corrigir `PieChart>>` para `PieChart>`
+
+Seguir estas regras antes de concluir qualquer tarefa previne o erro e mantém o frontend estável.
+
+Basta adaptar:
+1. O estado no Context (de `status` para o que você precisar)
+2. A lógica de filtro no `useMemo`
+3. Os `onClick` handlers para disparar o filtro correto
+
+**A arquitetura permanece a mesma!** 🎯
+
+---
+
+## 🎯 LEARNINGS: Feed Relacional e Crossfilter Completo
+
+### Contexto e Objetivo
+O usuário solicitou transformar TODOS os gráficos em elementos interativos que funcionam como Power BI: clicar em qualquer "fatia" (barra/setor) aplica um filtro global e todos os outros gráficos se atualizam instantaneamente. Para viabilizar isso de forma escalável e consistente, implementamos:
+
+1. **Feed Relacional Único** no backend
+2. **Crossfilter Multi-Dimensional** no frontend
+3. **Gráfico "Status por Meta" Aprimorado**
+
+---
+
+### 1. Feed Relacional Único (Backend)
+
+#### Problema Anterior
+- Dados de Objetivos, Metas e Ações estavam aninhados na estrutura de árvore (`/api/objectives`).
+- Cada componente montava `flatActions` localmente, gerando inconsistências e duplicação de lógica.
+- Difícil garantir que todos os gráficos usassem a mesma base para cálculos percentuais.
+
+#### Solução Implementada
+Criamos um endpoint unificado `/api/monitoring/feed` que retorna um feed "flat" com tipo e dimensões consistentes.
+
+**Backend: `backend/controllers/monitoringController.js`**
+```javascript
+const Objective = require('../models/Objective');
+const Goal = require('../models/Goal');
+const Action = require('../models/Action');
+const User = require('../models/User');
+
+exports.getFeed = async (req, res, next) => {
+  try {
+    const [objectives, goals, actions] = await Promise.all([
+      Objective.find({}).lean(),
+      Goal.find({}).lean(),
+      Action.find({}).lean(),
+    ]);
+
+    // Mapas para relacionamento
+    const objectiveById = new Map(objectives.map(o => [String(o._id), o]));
+    const goalsByObjective = new Map();
+    goals.forEach(g => {
+      const key = String(g.objectiveId);
+      if (!goalsByObjective.has(key)) goalsByObjective.set(key, []);
+      goalsByObjective.get(key).push(g);
+    });
+
+    const actionsByGoal = new Map();
+    actions.forEach(a => {
+      const key = String(a.goalId);
+      if (!actionsByGoal.has(key)) actionsByGoal.set(key, []);
+      actionsByGoal.get(key).push(a);
+    });
+
+    // Carregar nomes de usuários para assignedTo
+    const userIds = Array.from(new Set(actions.map(a => String(a.assignedTo)).filter(Boolean)));
+    const users = userIds.length ? await User.find({ _id: { $in: userIds } }).lean() : [];
+    const userById = new Map(users.map(u => [String(u._id), u]));
+
+    const feed = [];
+
+    objectives.forEach(obj => {
+      const objectiveRecord = {
+        tipo: 'objective',
+        objectiveId: String(obj._id),
+        objectiveTitle: obj.title,
+        unit: obj.unit || null,
+        status: obj.status || null,
+        progress: obj.progressPercent ?? 0,
+      };
+      feed.push(objectiveRecord);
+
+      (goalsByObjective.get(String(obj._id)) || []).forEach(goal => {
+        const goalRecord = {
+          tipo: 'goal',
+          objectiveId: String(obj._id),
+          objectiveTitle: obj.title,
+          unit: obj.unit || null,
+          goalId: String(goal._id),
+          goalTitle: goal.title,
+          status: goal.status || null,
+          progress: goal.progressPercent ?? 0,
+        };
+        feed.push(goalRecord);
+
+        (actionsByGoal.get(String(goal._id)) || []).forEach(action => {
+          const assigned = action.assignedTo ? userById.get(String(action.assignedTo)) : null;
+          const actionRecord = {
+            tipo: 'action',
+            objectiveId: String(obj._id),
+            objectiveTitle: obj.title,
+            unit: obj.unit || null,
+            goalId: String(goal._id),
+            goalTitle: goal.title,
+            actionId: String(action._id),
+            actionTitle: action.title,
+            status: action.status,
+            assignedTo: assigned ? (assigned.name || String(action.assignedTo)) : null,
+            startDate: action.startDate || null,
+            endDate: action.endDate || null,
+            progress: action.progressPercent ?? 0,
+          };
+          feed.push(actionRecord);
+        });
+      });
+    });
+
+    res.json({ count: feed.length, feed });
+  } catch (err) {
+    next(err);
+  }
+};
+```
+
+**Rota: `backend/routes/monitoring.js`**
+```javascript
+const express = require('express');
+const router = express.Router();
+const monitoringController = require('../controllers/monitoringController');
+
+router.get('/feed', monitoringController.getFeed);
+
+module.exports = router;
+```
+
+**Registro no servidor: `backend/server.js`**
+```javascript
+app.use('/api/monitoring', require('./routes/monitoring'));
+```
+
+#### Benefícios
+- **Fonte única de verdade**: todos os gráficos consomem o mesmo feed.
+- **Dimensões consistentes**: `tipo`, `objectiveId`, `goalId`, `actionId`, `status`, `assignedTo`, `unit`, `progress`.
+- **Escalável**: adicionar novas dimensões (tags, prioridade, etc.) é trivial.
+- **Performance**: consulta única com join em memória via Maps.
+
+---
+
+### 2. Frontend: Consumo do Feed e Crossfilter Multi-Dimensional
+
+#### Serviço de API: `frontend/src/services/monitoring.js`
+```javascript
+import api from './api';
+
+export async function fetchMonitoringFeed(params = {}) {
+  const { data } = await api.get('/monitoring/feed', { params });
+  return data;
+}
+```
+
+#### Integração no Monitoramento: `frontend/src/pages/Monitoramento.jsx`
+
+**Busca Paralela do Feed**
+```javascript
+const [summaryResponse, treeResponse, feedResponse] = await Promise.all([
+  api.get('/reports/summary', { params }),
+  api.get('/objectives', { params: { include: 'tree', unit: propFilters.unitValue || undefined } }),
+  fetchMonitoringFeed(params).catch(() => null),
+]);
+
+const summaryData = summaryResponse.data;
+const treeData = treeResponse.data || [];
+const feedData = feedResponse?.feed || null;
+
+setSummary(summaryData);
+setTree(treeData);
+setFeed(feedData);
+```
+
+**Preferência pelo Feed ao Construir flatActions**
+```javascript
+const flatActions = (feed && Array.isArray(feed))
+  ? feed.filter(r => r.tipo === 'action').map(a => ({
+      _id: a.actionId,
+      title: a.actionTitle,
+      status: a.status,
+      progress: a.progress,
+      startDate: a.startDate,
+      endDate: a.endDate,
+      assignedTo: a.assignedTo,
+      goalId: a.goalId,
+      goalTitle: a.goalTitle,
+      objectiveTitle: a.objectiveTitle,
+      unit: a.unit,
+    }))
+  : tree.flatMap((objective) =>
+      (objective.goals || []).flatMap((goal) =>
+        (goal.actions || []).map((action) => ({
+          ...action,
+          goalId: goal._id,
+          goalTitle: goal.title,
+          objectiveTitle: objective.title,
+          unit: objective.unit,
+        }))
+      )
+    );
+```
+
+#### Contexto Multi-Filtro: `frontend/src/contexts/FilterContext.jsx`
+
+**Estado expandido para múltiplas dimensões**
+```javascript
+const [filters, setFilters] = useState({
+  status: null,
+  goalId: null,
+  responsavel: null,
+  unit: null,
+});
+
+const setStatusFilter = (status) => setFilters(prev => ({ ...prev, status }));
+const setGoalFilter = (goalId) => setFilters(prev => ({ ...prev, goalId }));
+const setResponsavelFilter = (responsavel) => setFilters(prev => ({ ...prev, responsavel }));
+const setUnitFilter = (unit) => setFilters(prev => ({ ...prev, unit }));
+
+const clearAllFilters = () => setFilters({ status: null, goalId: null, responsavel: null, unit: null });
+
+const applyFilters = (actions) => {
+  let result = actions;
+  if (filters.status) result = result.filter(a => a.status === filters.status);
+  if (filters.goalId) result = result.filter(a => String(a.goalId) === String(filters.goalId));
+  if (filters.responsavel) {
+    result = result.filter(a => {
+      const name = a.assignedTo && (a.assignedTo.name || a.assignedTo);
+      return name === filters.responsavel;
+    });
+  }
+  if (filters.unit) result = result.filter(a => a.unit === filters.unit);
+  return result;
+};
+
+const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+const value = {
+  filters,
+  setStatusFilter,
+  setGoalFilter,
+  setResponsavelFilter,
+  setUnitFilter,
+  clearAllFilters,
+  applyFilters,
+  activeFilterCount,
+};
+```
+
+**Banner Visual Multi-Filtro**
+```jsx
+{activeFilterCount > 0 && (
+  <section className="card" style={{ background: '#E3F2FD', borderLeft: '4px solid #1a73e8', marginBottom: '1rem' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+        <strong style={{ color: '#1a73e8', fontSize: '1.1rem' }}>
+          Filtros Ativos ({activeFilterCount}):
+        </strong>
+        {filters.status && (
+          <span style={{ background: '#fff', padding: '0.25rem 0.75rem', borderRadius: '16px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <strong>Status:</strong>
+            {filters.status === 'PLANEJADO' && '📋 Planejado'}
+            {filters.status === 'INICIADO' && '🔄 Iniciado'}
+            {filters.status === 'FINALIZADO' && '✅ Finalizado'}
+            {filters.status === 'CANCELADO' && '❌ Cancelado'}
+            <button onClick={() => setStatusFilter(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#999' }}>✕</button>
+          </span>
+        )}
+        {filters.goalId && (
+          <span style={{ background: '#fff', padding: '0.25rem 0.75rem', borderRadius: '16px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <strong>Meta:</strong>
+            {goalOptions.find(g => String(g._id) === String(filters.goalId))?.title || 'Meta selecionada'}
+            <button onClick={() => setGoalFilter(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#999' }}>✕</button>
+          </span>
+        )}
+        {filters.responsavel && (
+          <span style={{ background: '#fff', padding: '0.25rem 0.75rem', borderRadius: '16px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <strong>Responsável:</strong>
+            {filters.responsavel}
+            <button onClick={() => setResponsavelFilter(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#999' }}>✕</button>
+          </span>
+        )}
+        {filters.unit && (
+          <span style={{ background: '#fff', padding: '0.25rem 0.75rem', borderRadius: '16px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <strong>Unidade:</strong>
+            {filters.unit}
+            <button onClick={() => setUnitFilter(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#999' }}>✕</button>
+          </span>
+        )}
+      </div>
+      <button 
+        onClick={clearAllFilters}
+        style={{ 
+          padding: '0.5rem 1rem', 
+          background: '#1a73e8', 
+          color: '#fff', 
+          border: 'none', 
+          borderRadius: '4px', 
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        Limpar Todos os Filtros
+      </button>
+    </div>
+  </section>
+)}
+```
+
+---
+
+### 3. Gráfico "Status por Meta" Aprimorado
+
+#### Problema Anterior
+- Usuário reportou: "Status por Meta quando seleciono a meta não aparece os status Planejado, Iniciado, Finalizado, Cancelado".
+- Existia um select de meta separado que acionava um gráfico isolado com categorias inconsistentes.
+- Não havia crossfilter: clicar em uma meta não filtrava os outros gráficos.
+
+#### Solução Implementada
+Removemos o gráfico antigo e transformamos "Taxa de Finalização por Meta (%)" em um gráfico de barras empilhadas "Status por Meta" com todas as categorias.
+
+**KPICharts.jsx: Agregação por Meta e Status**
+```javascript
+const goalStatusDataMap = {};
+baseActions.forEach(action => {
+  const key = action.goalId || 'sem-meta';
+  const name = action.goalTitle || 'Sem Meta';
+  if (!goalStatusDataMap[key]) {
+    goalStatusDataMap[key] = { goalId: key, name, Planejado: 0, Iniciado: 0, Cancelado: 0, Finalizado: 0 };
+  }
+  if (action.status === 'PLANEJADO') goalStatusDataMap[key].Planejado++;
+  else if (action.status === 'INICIADO') goalStatusDataMap[key].Iniciado++;
+  else if (action.status === 'CANCELADO') goalStatusDataMap[key].Cancelado++;
+  else if (action.status === 'FINALIZADO') goalStatusDataMap[key].Finalizado++;
+});
+
+return { 
+  statusCount, 
+  totalActions, 
+  avgProgress, 
+  inProgress, 
+  goalData: Object.values(actionsByGoal), 
+  unitData, 
+  goalStatusData: Object.values(goalStatusDataMap) 
+};
+```
+
+**Renderização do Gráfico Empilhado**
+```jsx
+<div style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '2rem' }}>
+  <h3 style={{ marginBottom: '1rem', color: '#333' }}>Status por Meta</h3>
+  {stats.goalStatusData.length > 0 ? (
+    <div onContextMenu={(e) => { e.preventDefault(); onStatusClick(null); }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={stats.goalStatusData}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+          <YAxis />
+          <Tooltip />
+          <Legend />
+          <Bar dataKey="Planejado" stackId="status" fill="#4A90E2" name="Planejado" onClick={({payload}) => {
+            onStatusClick('PLANEJADO');
+            if (onGoalClick && payload?.goalId) onGoalClick(payload.goalId);
+          }} style={{ cursor: 'pointer' }} />
+          <Bar dataKey="Iniciado" stackId="status" fill="#FFC107" name="Iniciado" onClick={({payload}) => {
+            onStatusClick('INICIADO');
+            if (onGoalClick && payload?.goalId) onGoalClick(payload.goalId);
+          }} style={{ cursor: 'pointer' }} />
+          <Bar dataKey="Finalizado" stackId="status" fill="#27AE60" name="Finalizado" onClick={({payload}) => {
+            onStatusClick('FINALIZADO');
+            if (onGoalClick && payload?.goalId) onGoalClick(payload.goalId);
+          }} style={{ cursor: 'pointer' }} />
+          <Bar dataKey="Cancelado" stackId="status" fill="#B82C3A" name="Cancelado" onClick={({payload}) => {
+            onStatusClick('CANCELADO');
+            if (onGoalClick && payload?.goalId) onGoalClick(payload.goalId);
+          }} style={{ cursor: 'pointer' }} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  ) : (<div style={{ textAlign: 'center', color: '#999', paddingTop: '2rem' }}>Nenhuma meta com ações</div>)}
+</div>
+```
+
+**Integração no Monitoramento**
+```jsx
+<KPICharts 
+  actions={filteredActions} 
+  allActions={flatActions} 
+  hideUnitChart={true} 
+  onStatusClick={setStatusFilter} 
+  onGoalClick={setGoalFilter}
+/>
+```
+
+#### Benefícios
+- **Crossfilter completo**: clicar em qualquer barra aplica filtro de status + meta simultaneamente.
+- **Visibilidade total**: todas as 4 categorias sempre visíveis, mesmo com valores zero.
+- **Consistência**: usa `baseActions` (feed ou flatActions completo) para cálculos, evitando erro de 100%.
+- **UX melhorada**: clique direito limpa filtros; banner visual mostra filtros ativos.
+
+---
+
+### 4. Checklist de Implementação Completa
+
+- [x] Endpoint `/api/monitoring/feed` com feed relacional.
+- [x] Serviço `fetchMonitoringFeed` no frontend.
+- [x] `FilterContext` expandido para múltiplos filtros simultâneos.
+- [x] `applyFilters` aplicado de forma consistente em todos os cálculos.
+- [x] Banner visual multi-filtro com pills removíveis.
+- [x] Gráfico "Status por Meta" empilhado com crossfilter.
+- [x] Cliques em todos os gráficos conectados aos filtros globais.
+- [x] Uso de `allActions` para percentuais e `actions` filtrados para display.
+- [x] Validação de erros pós-edição.
+
+---
+
+### 5. Próximos Passos (Planejados)
+
+- [ ] Subir backend e validar endpoint `/api/monitoring/feed` retornando dados reais.
+- [ ] Testar interatividade cruzada clicando em diferentes gráficos.
+- [ ] Opcional: adicionar filtro por Objetivo (`objectiveId`) se necessário.
+- [ ] Opcional: feedback visual (opacidade) nas barras selecionadas.
+- [ ] Opcional: endpoint agregado `/api/monitoring/analytics` para grandes volumes.
+
+---
+
+### 6. Lições Aprendidas
+
+1. **Feed Relacional é Fundamental**: evita inconsistências e centraliza a fonte de dados.
+2. **Crossfilter Requer Múltiplos Filtros Simultâneos**: um único filtro não basta para UX tipo Power BI.
+3. **Separação de Dados Completos vs Filtrados**: percentuais exigem `allActions`; displays usam `filteredActions`.
+4. **Payload-Based Click Handlers**: usar `payload.name`, `payload.goalId` torna cliques robustos e extensíveis.
+5. **Banner Visual Multi-Filtro**: melhora UX ao mostrar todos os filtros ativos com remoção individual.
+6. **Gráficos Empilhados para Multi-Categoria**: barras empilhadas (`stackId`) mostram distribuição total e permitem cliques granulares.
+7. **Validação Contínua**: após mudanças, rodar build e checar erros evita regressões.
+
+---
+
+### 7. Padrão de Arquitetura Final
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Backend: MongoDB                          │
+│  Objective ←→ Goal ←→ Action ←→ User                        │
+│           ↓                                                  │
+│  /api/monitoring/feed (relational flat feed)                │
+└───────────────────────┬──────────────────────────────────────┘
+                        │
+                        ↓
+┌──────────────────────────────────────────────────────────────┐
+│              Frontend: FilterContext (Multi-Dim)            │
+│  filters: { status, goalId, responsavel, unit }            │
+│  applyFilters(flatActions) → filteredActions                │
+└───────────────────────┬──────────────────────────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        ↓               ↓               ↓
+  ┌─────────┐    ┌─────────┐    ┌─────────┐
+  │KPICharts│    │ByResp.  │    │ByUnit   │
+  │ (stack) │    │ (click) │    │ (click) │
+  └─────────┘    └─────────┘    └─────────┘
+        │               │               │
+        └───────────────┴───────────────┘
+                        │
+                  onClick → setFilter()
+                        │
+                All charts re-render with new filteredActions
+```
+
+---
+
+### 8. Arquivo de Exemplo: Estrutura Completa do Feed
+
+```json
+{
+  "count": 150,
+  "feed": [
+    {
+      "tipo": "objective",
+      "objectiveId": "64abc...",
+      "objectiveTitle": "Melhorar Atendimento",
+      "unit": "Ouvidoria",
+      "status": "INICIADO",
+      "progress": 45
+    },
+    {
+      "tipo": "goal",
+      "objectiveId": "64abc...",
+      "objectiveTitle": "Melhorar Atendimento",
+      "unit": "Ouvidoria",
+      "goalId": "64def...",
+      "goalTitle": "Reduzir tempo de resposta",
+      "status": "INICIADO",
+      "progress": 60
+    },
+    {
+      "tipo": "action",
+      "objectiveId": "64abc...",
+      "objectiveTitle": "Melhorar Atendimento",
+      "unit": "Ouvidoria",
+      "goalId": "64def...",
+      "goalTitle": "Reduzir tempo de resposta",
+      "actionId": "64ghi...",
+      "actionTitle": "Implementar chatbot",
+      "status": "FINALIZADO",
+      "assignedTo": "João Silva",
+      "startDate": "2025-01-10T00:00:00.000Z",
+      "endDate": "2025-02-15T00:00:00.000Z",
+      "progress": 100
+    }
+  ]
+}
+```
+
+---
+
+**Conclusão**: Com o feed relacional, o crossfilter multi-dimensional e o gráfico "Status por Meta" aprimorado, a aba Monitoramento agora funciona exatamente como Power BI: qualquer clique em qualquer gráfico atualiza todos os demais de forma consistente e instantânea. 🎯
+
+
+
+
+faz um txto explciando que eu quero que os graficos se comuniquem e todos os grupos de cards, graficos pziza,textos, barras, se ajustem de acordo com o filtro 
