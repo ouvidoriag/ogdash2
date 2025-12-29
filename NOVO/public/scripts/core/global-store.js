@@ -73,12 +73,6 @@ function createDeepCopy(data) {
     }
 }
 function getEffectiveTTL(key) {
-    // Usar TTL centralizado do cache-config.js se disponível
-    if (window.cacheConfig && window.cacheConfig.getTTL) {
-        return window.cacheConfig.getTTL(key);
-    }
-    
-    // Fallback para configuração antiga (compatibilidade)
     for (const [pattern, ttl] of Object.entries(dataStore.ttlConfig)) {
         if (pattern.includes('*')) {
             const regex = new RegExp(pattern.replace(/\*/g, '.*'));
@@ -97,11 +91,7 @@ function getPersistent(key, ttl = null) {
         const cached = localStorage.getItem(storageKey);
         if (cached) {
             const { data, timestamp, ttl: storedTTL } = JSON.parse(cached);
-            // Usar TTL centralizado se disponível
-            const defaultTTL = (window.cacheConfig && window.cacheConfig.getDefaultTTL) 
-                ? window.cacheConfig.getDefaultTTL() 
-                : dataStore.defaultTTL;
-            const effectiveTTL = ttl !== null ? ttl : (storedTTL || defaultTTL);
+            const effectiveTTL = ttl !== null ? ttl : (storedTTL || dataStore.defaultTTL);
             const age = Date.now() - timestamp;
             if (age < effectiveTTL) {
                 if (window.Logger) {
@@ -215,17 +205,6 @@ function get(key, ttl = null, returnCopy = false) {
     }
     return null;
 }
-// REFATORAÇÃO FASE 6: Heurística para estimar tamanho dos dados
-function estimateDataSize(data) {
-  try {
-    const jsonString = JSON.stringify(data);
-    return new Blob([jsonString]).size; // Tamanho em bytes
-  } catch (e) {
-    // Se não conseguir serializar, assumir grande (> 5KB)
-    return 6000;
-  }
-}
-
 function set(key, data, deepCopy = false) {
     if (typeof key !== 'string' || !key.trim()) {
         if (window.Logger) {
@@ -235,30 +214,14 @@ function set(key, data, deepCopy = false) {
     }
     let dataToStore = data;
     if (deepCopy && data !== null && data !== undefined) {
-        // REFATORAÇÃO FASE 6: Deep copy inteligente
-        // Se objeto < 5KB → cópia normal (shallow), se > 5KB → deep copy
-        const dataSize = estimateDataSize(data);
-        const DEEP_COPY_THRESHOLD = 5 * 1024; // 5KB
-        
-        if (dataSize < DEEP_COPY_THRESHOLD) {
-            // Cópia normal (shallow) para objetos pequenos
-            if (Array.isArray(data)) {
-                dataToStore = [...data];
-            } else if (typeof data === 'object') {
-                dataToStore = { ...data };
-            } else {
-                dataToStore = data;
+        // Usar createDeepCopy que tem proteção contra referências circulares
+        dataToStore = createDeepCopy(data);
+        // Se createDeepCopy retornou null ou erro, usar referência original
+        if (dataToStore === null && data !== null) {
+            if (window.Logger) {
+                window.Logger.warn('dataStore.set: Dados contêm objetos não serializáveis (Chart.js?), usando referência original');
             }
-        } else {
-            // Deep copy para objetos grandes
-            dataToStore = createDeepCopy(data);
-            // Se createDeepCopy retornou null ou erro, usar referência original
-            if (dataToStore === null && data !== null) {
-                if (window.Logger) {
-                    window.Logger.warn('dataStore.set: Dados contêm objetos não serializáveis (Chart.js?), usando referência original');
-                }
-                dataToStore = data;
-            }
+            dataToStore = data;
         }
     }
     if (key === 'dashboardData') {
@@ -399,13 +362,7 @@ if (typeof window !== 'undefined') {
         invalidate,
         subscribe,
         getStats,
-        getDefaultTTL: () => {
-            // Usar TTL centralizado do cache-config.js se disponível
-            if (window.cacheConfig && window.cacheConfig.getDefaultTTL) {
-                return window.cacheConfig.getDefaultTTL();
-            }
-            return dataStore.defaultTTL;
-        },
+        getDefaultTTL: () => dataStore.defaultTTL,
         setDefaultTTL: (ttl) => { dataStore.defaultTTL = ttl; },
         getPersistent,
         setPersistent,

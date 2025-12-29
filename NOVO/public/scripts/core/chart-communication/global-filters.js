@@ -13,14 +13,14 @@
     'use strict';
     // REFATORAÇÃO FASE 3: Usar APENAS window.eventBus global (único event bus)
     // event-bus.js é carregado antes deste módulo no HTML
-    if (!window.eventBus) {
+    const win = window;
+    if (!win.eventBus) {
         if (window.Logger) {
             window.Logger.error('eventBus global não encontrado. Verifique se event-bus.js está carregado antes de global-filters.js');
         }
-        // Fallback apenas para desenvolvimento - não deve acontecer em produção
         throw new Error('eventBus global não encontrado. Carregue event-bus.js antes de global-filters.js');
     }
-    const eventBus = window.eventBus;
+    const eventBus = win.eventBus;
     // ============================================
     // GLOBAL FILTERS - Sistema de Filtros Globais
     // ============================================
@@ -39,9 +39,8 @@
          * @param options - Opções adicionais
          */
         apply(field, value, chartId = null, options = {}) {
-            // REFATORAÇÃO FASE 6: Debounce otimizado (200-500ms)
-            // Usar 200ms para melhor responsividade, mas permitir customização
-            const debounceDelay = options.debounce !== undefined ? options.debounce : 200;
+            // OTIMIZAÇÃO: Debounce de 300ms para evitar múltiplas requisições
+            const debounceDelay = options.debounce !== undefined ? options.debounce : 300;
             // Cancelar timer anterior se existir
             if (this._debounceTimer && window.timerManager?.clearTimeout) {
                 window.timerManager.clearTimeout(this._debounceTimer);
@@ -75,25 +74,12 @@
          * - clearPrevious: false por padrão (permite múltiplos filtros simultâneos)
          * - toggle: true por padrão (clicar novamente remove o filtro)
          * - Suporta múltiplos filtros: Status + Tema + Órgão + etc.
-         * - MELHORIA: Limita arrays muito grandes (máx 20 valores)
          */
         _applyImmediate(field, value, chartId = null, options = {}) {
-            // MELHORIA: Limitar arrays muito grandes
-            const MAX_MULTISELECT = 20;
-            let finalValue = value;
-            if (Array.isArray(value) && value.length > MAX_MULTISELECT) {
-                if (window.Logger) {
-                    window.Logger.warn(`Filtro ${field}: Array limitado de ${value.length} para ${MAX_MULTISELECT} valores`);
-                }
-                finalValue = value.slice(0, MAX_MULTISELECT);
-            }
-            
-            // Usar valor limitado
-            value = finalValue;
             // MUDANÇA: clearPrevious = false por padrão (sistema Power BI multi-dimensional)
             const { toggle = true, operator = 'eq', clearPrevious = false } = options;
             if (window.Logger) {
-                window.Logger.debug(`Aplicando filtro: ${field} = ${value}`, {
+                window.Logger.debug?.(`Aplicando filtro: ${field} = ${value}`, {
                     filtrosAntes: this.filters.length,
                     clearPrevious,
                     toggle,
@@ -106,7 +92,7 @@
             // Se clearPrevious estiver habilitado, limpar todos os filtros anteriores
             if (clearPrevious && this.filters.length > 0) {
                 if (window.Logger) {
-                    window.Logger.debug(`Limpando ${this.filters.length} filtro(s) anterior(es) (clearPrevious=true)`);
+                    window.Logger.debug?.(`Limpando ${this.filters.length} filtro(s) anterior(es) (clearPrevious=true)`);
                 }
                 this.filters = [];
             }
@@ -126,7 +112,7 @@
                     this.activeValue = lastFilter.value;
                 }
                 if (window.Logger) {
-                    window.Logger.debug(`Filtro removido (toggle). Total de filtros: ${this.filters.length}`);
+                    window.Logger.debug?.(`Filtro removido (toggle). Total de filtros: ${this.filters.length}`);
                 }
                 // Persistir se habilitado
                 if (this.persist) {
@@ -152,7 +138,7 @@
                 this.activeField = field;
                 this.activeValue = value;
                 if (window.Logger) {
-                    window.Logger.debug(`Filtro adicionado. Total de filtros: ${this.filters.length}`);
+                    window.Logger.debug?.(`Filtro adicionado. Total de filtros: ${this.filters.length}`);
                 }
                 // Persistir se habilitado
                 if (this.persist) {
@@ -256,7 +242,7 @@
                 // Limpar filtros do localStorage para evitar persistência indesejada
                 localStorage.removeItem('dashboardFilters');
                 if (window.Logger) {
-                    window.Logger.debug('🔄 Filtros do localStorage limpos (sistema local por página)');
+                    window.Logger.debug?.('🔄 Filtros do localStorage limpos (sistema local por página)');
                 }
             }
             catch (e) {
@@ -283,11 +269,11 @@
                     '/api/aggregate/count-by',
                     '/api/stats/status-overview'
                 ];
-                window.dataStore.invalidate(keysToInvalidate);
+                window.dataStore.invalidate?.(keysToInvalidate);
                 // Notificar recarregamento se necessário
                 if (window.reloadAllData) {
                     setTimeout(() => {
-                        window.reloadAllData();
+                        window.reloadAllData?.();
                     }, 100);
                 }
             }
@@ -401,7 +387,7 @@
                 // FILTROS LOCAIS POR PÁGINA: Identificar página atual visível
                 const visiblePage = this.getCurrentVisiblePage();
                 if (window.Logger) {
-                    window.Logger.debug(`🔄 Notificando gráficos da página: ${visiblePage || 'todas'}`);
+                    window.Logger.debug?.(`🔄 Notificando gráficos da página: ${visiblePage || 'todas'}`);
                 }
                 // Emitir evento para que gráficos reativos se atualizem
                 // Os listeners de página vão verificar se a página está visível antes de atualizar
@@ -441,7 +427,7 @@
                     catch (e) {
                         // Ignorar erros ao iterar sobre canvas
                         if (window.Logger) {
-                            window.Logger.debug('Erro ao acessar instâncias Chart.js:', e);
+                            window.Logger.debug?.('Erro ao acessar instâncias Chart.js:', e);
                         }
                     }
                 }

@@ -13,14 +13,14 @@
     'use strict';
     // REFATORAÇÃO FASE 3: Usar APENAS window.eventBus global (único event bus)
     // event-bus.js é carregado antes deste módulo no HTML
-    if (!window.eventBus) {
+    const win = window;
+    if (!win.eventBus) {
         if (window.Logger) {
             window.Logger.error('eventBus global não encontrado. Verifique se event-bus.js está carregado antes de chart-registry.js');
         }
-        // Fallback apenas para desenvolvimento - não deve acontecer em produção
         throw new Error('eventBus global não encontrado. Carregue event-bus.js antes de chart-registry.js');
     }
-    const eventBus = window.eventBus;
+    const eventBus = win.eventBus;
     // ============================================
     // CHART FIELD MAP - Mapeamento de Campos
     // ============================================

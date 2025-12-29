@@ -2,16 +2,10 @@
  * Sistema de Legenda Interativa para Gráficos
  * Permite marcar/desmarcar datasets em gráficos de linha múltipla
  *
- * REFATORAÇÃO FASE 5: Mantido como wrapper para compatibilidade
- * A lógica principal está integrada no chartFactory
- * 
  * Sistema modular e robusto para controle de visibilidade de datasets
  * MIGRAÇÃO: Migrado para TypeScript
- * Data: 03/12/2025 (Refatorado: 09/12/2025)
+ * Data: 03/12/2025
  * CÉREBRO X-3
- * 
- * ⚠️ DEPRECADO: Use chartFactory com opção createLegend: true
- * Este arquivo é mantido apenas para compatibilidade com código antigo
  */
 /// <reference path="./chart-communication/global.d.ts" />
 /**
@@ -31,7 +25,7 @@ function createInteractiveLegend(chartId, containerId, datasets, options = {}) {
         return;
     }
     const chart = window[chartId];
-    if (!chart || !(window.Chart && chart instanceof window.Chart)) {
+    if (!chart || !(window.Chart && window.Chart.getChart)) {
         if (window.Logger) {
             window.Logger.warn(`Gráfico ${chartId} não encontrado`);
         }
@@ -48,7 +42,7 @@ function createInteractiveLegend(chartId, containerId, datasets, options = {}) {
     const visibility = window[visibilityKey];
     // Função para atualizar gráfico baseado na visibilidade
     const updateChart = () => {
-        if (!chart || !(window.Chart && chart instanceof window.Chart))
+        if (!chart || !(window.Chart && window.Chart.getChart))
             return;
         const visibleDatasets = datasets.filter((ds, idx) => {
             const label = ds.label || `Dataset ${idx}`;
@@ -217,7 +211,7 @@ function createDoughnutLegend(chartId, containerId, labels, values, colors = nul
         return;
     }
     const chart = window[chartId];
-    if (!chart || !(window.Chart && chart instanceof window.Chart)) {
+    if (!chart || !(window.Chart && window.Chart.getChart)) {
         if (window.Logger) {
             window.Logger.warn(`Gráfico ${chartId} não encontrado`);
         }
@@ -242,7 +236,7 @@ function createDoughnutLegend(chartId, containerId, labels, values, colors = nul
     const visibility = window[visibilityKey];
     // Função para atualizar gráfico baseado na visibilidade
     const updateChart = () => {
-        if (!chart || !(window.Chart && chart instanceof window.Chart))
+        if (!chart || !(window.Chart && window.Chart.getChart))
             return;
         const visibleLabels = labels.filter(label => visibility[label] !== false);
         if (visibleLabels.length === 0) {

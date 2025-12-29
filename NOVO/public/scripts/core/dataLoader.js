@@ -1,32 +1,16 @@
 /**
  * Sistema Global de Carregamento de Dados
  * Unifica o carregamento de dados para TODAS as páginas e cards
- * 
- * REFATORAÇÃO FASE 2: Separação clara de responsabilidades
- * - dataLoader: fetch, retry, timeout, concorrência, deduplicação
- * - dataStore: cache, TTL, listeners, persistência (único cache)
- * 
  * OTIMIZADO: Controle de concorrência, retry com backoff exponencial, timeouts adaptativos
  * MIGRAÇÃO: Migrado para TypeScript
- * Data: 03/12/2025 (Refatorado: 09/12/2025)
+ * Data: 03/12/2025
  * CÉREBRO X-3
  */
 /// <reference path="./chart-communication/global.d.ts" />
-
-// DEDUPLICAÇÃO: Map para evitar requisições duplicadas em andamento (NÃO é cache)
 const pendingRequests = new Map();
 const requestQueue = [];
 let activeRequests = 0;
-
-// REFATORAÇÃO FASE 6: Concorrência adaptativa baseada em hardware
-// Usa navigator.hardwareConcurrency se disponível, senão usa 6 como padrão
-const MAX_CONCURRENT_REQUESTS = (() => {
-  if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
-    // Usar 2 cores a menos que o total disponível, mínimo 4
-    return Math.max(4, navigator.hardwareConcurrency - 2);
-  }
-  return 6; // Fallback padrão
-})();
+const MAX_CONCURRENT_REQUESTS = 6; // Limite de requisições simultâneas
 // Timeouts adaptativos por tipo de endpoint
 const TIMEOUT_CONFIG = {
     '/api/summary': 10000, // 10s - rápido
@@ -78,38 +62,33 @@ window.dataLoader = {
          } = options;
         // Usar timeout adaptativo se não especificado
         const effectiveTimeout = timeout !== null ? timeout : getAdaptiveTimeout(endpoint);
-        
-        // CACHE: Verificar cache no dataStore (única fonte de cache)
-        // dataLoader delega cache para dataStore, não mantém cache próprio
         if (useDataStore && window.dataStore) {
-            // Usar TTL centralizado do cache-config.js
-            const ttl = options.ttl !== undefined 
-                ? options.ttl 
-                : (window.cacheConfig ? window.cacheConfig.getTTL(endpoint) : 5000);
-            
-            // CORREÇÃO CRÍTICA: Usar endpoint completo (incluindo query string) como chave de cache
-            // Isso garante que endpoints com parâmetros diferentes tenham caches separados
-            const cacheKey = endpoint === '/api/dashboard-data' || endpoint.includes('/api/dashboard-data')
-                ? 'dashboardData'
-                : endpoint; // endpoint já contém query string se foi passado na URL
-            
-            const cached = window.dataStore.get(cacheKey, ttl);
-            if (cached !== null) {
-                if (window.Logger) {
-                    window.Logger.debug(`${endpoint}: Dados obtidos do cache (dataStore)`);
+            const ttl = options.ttl !== undefined ? options.ttl : window.dataStore.getDefaultTTL();
+            if (endpoint === '/api/dashboard-data' || endpoint.includes('/api/dashboard-data')) {
+                const cached = window.dataStore.get('dashboardData', ttl);
+                if (cached !== null) {
+                    if (window.Logger) {
+                        window.Logger.debug(`${endpoint}: Dados obtidos do cache`);
+                    }
+                    return cached;
                 }
-                return cached;
+            }
+            else {
+                const cached = window.dataStore.get(endpoint, ttl);
+                if (cached !== null) {
+                    if (window.Logger) {
+                        window.Logger.debug(`${endpoint}: Dados obtidos do cache`);
+                    }
+                    return cached;
+                }
             }
         }
-        
-        // DEDUPLICAÇÃO: Verificar se já existe requisição em andamento para o mesmo endpoint+opções
-        // Isso evita múltiplas requisições idênticas simultâneas (NÃO é cache, é deduplicação)
-        const deduplicationKey = `${endpoint}_${JSON.stringify(options)}`;
-        if (pendingRequests.has(deduplicationKey)) {
+        const cacheKey = `${endpoint}_${JSON.stringify(options)}`;
+        if (pendingRequests.has(cacheKey)) {
             if (window.Logger) {
-                window.Logger.debug(`${endpoint}: Reutilizando requisição em andamento (deduplicação)`);
+                window.Logger.debug(`${endpoint}: Reutilizando requisição pendente`);
             }
-            return pendingRequests.get(deduplicationKey);
+            return pendingRequests.get(cacheKey);
         }
         // Criar promise que será executada via fila de concorrência
         const requestPromise = new Promise((resolve, reject) => {
@@ -121,13 +100,11 @@ window.dataLoader = {
                         retries,
                         deepCopy: options.deepCopy
                     });
-                    // Limpar deduplicação após requisição completar
-                    pendingRequests.delete(deduplicationKey);
+                    pendingRequests.delete(cacheKey);
                     resolve(data);
                 }
                 catch (error) {
-                    // Limpar deduplicação mesmo em caso de erro
-                    pendingRequests.delete(deduplicationKey);
+                    pendingRequests.delete(cacheKey);
                     reject(error);
                 }
             };
@@ -156,8 +133,7 @@ window.dataLoader = {
                 processQueue();
             }
         });
-        // Registrar requisição em andamento para deduplicação
-        pendingRequests.set(deduplicationKey, requestPromise);
+        pendingRequests.set(cacheKey, requestPromise);
         return requestPromise;
     },
     async _fetchDirect(endpoint, { fallback, timeout, retries, deepCopy = true }) {
@@ -213,21 +189,10 @@ window.dataLoader = {
                 if (safeData === null || safeData === undefined) {
                     safeData = fallback !== null ? fallback : null;
                 }
-                // CACHE: Salvar dados no dataStore (único cache do sistema)
-                // dataLoader apenas delega cache para dataStore, não mantém cache próprio
                 if (window.dataStore) {
                     const useDeepCopy = deepCopy !== false;
-                    
-                    // Determinar chave de cache
-                    const cacheKey = endpoint === '/api/dashboard-data' || endpoint.includes('/api/dashboard-data')
-                        ? 'dashboardData'
-                        : endpoint;
-                    
-                    // Salvar dados principais no cache
-                    window.dataStore.set(cacheKey, safeData, useDeepCopy);
-                    
-                    // Para dashboard-data, também salvar sub-dados separadamente (otimização)
                     if (endpoint === '/api/dashboard-data' || endpoint.includes('/api/dashboard-data')) {
+                        window.dataStore.set('dashboardData', safeData, useDeepCopy);
                         if (safeData && safeData.manifestationsByMonth) {
                             window.dataStore.set('manifestationsByMonth', safeData.manifestationsByMonth, useDeepCopy);
                             window.dataStore.set('/api/aggregate/by-month', safeData.manifestationsByMonth, useDeepCopy);
@@ -251,9 +216,11 @@ window.dataLoader = {
                             window.dataStore.set('manifestationsByOrgan', safeData.manifestationsByOrgan, useDeepCopy);
                         }
                     }
-                    
+                    else {
+                        window.dataStore.set(endpoint, safeData, useDeepCopy);
+                    }
                     if (window.Logger) {
-                        window.Logger.debug(`${endpoint}: Dados armazenados no dataStore (único cache)${useDeepCopy ? ' (deepCopy)' : ''}`);
+                        window.Logger.debug(`${endpoint}: Dados armazenados no dataStore${useDeepCopy ? ' (deepCopy)' : ''}`);
                     }
                 }
                 if (window.Logger) {
