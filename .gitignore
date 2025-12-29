@@ -1,0 +1,11 @@
+# Credenciais e arquivos sensíveis
+client_secret*.json
+*credentials*.json
+*.pem
+*.key
+
+# Arquivos de configuração sensíveis
+.env
+.env.local
+.env.*.local
+
