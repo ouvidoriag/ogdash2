@@ -20,7 +20,9 @@ import {
   updateSecretariaEmail,
   testSecretariaEmail,
   getSystemStats,
-  executePipeline
+  executePipeline,
+  downloadPlanilha,
+  previewDownload
 } from '../controllers/configController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 
@@ -58,6 +60,10 @@ router.get('/system-stats', getSystemStats);
 
 // Rotas de Pipeline
 router.post('/pipeline/execute', executePipeline);
+
+// Rotas de Download (ordem importante: rotas mais específicas primeiro)
+router.post('/download/preview', previewDownload);
+router.post('/download', downloadPlanilha);
 
 export default router;
 

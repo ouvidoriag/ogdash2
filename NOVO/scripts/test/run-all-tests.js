@@ -182,8 +182,7 @@ function testDocumentation() {
   console.log('\n📚 Testando Documentação...');
   
   const docs = [
-    'docs/EVOLUCAO_CROSSFILTER.md',
-    'docs/RESUMO_CROSSFILTER_FINAL.md',
+    'docs/02-desenvolvimento/GUIA_CROSSFILTER.md', // Consolidado de EVOLUCAO_CROSSFILTER.md e outros
     'public/scripts/test/README-TESTES.md'
   ];
   

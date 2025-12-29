@@ -629,6 +629,165 @@ async function renderSecretariasConfig() {
 }
 
 /**
+ * Renderizar configurações de Downloads
+ */
+async function renderDownloadsConfig() {
+  const container = document.getElementById('config-downloads');
+  if (!container) return;
+
+  try {
+    // Carregar opções disponíveis
+    const [secretarias, statusOptions] = await Promise.all([
+      window.dataLoader?.load('/api/config/secretarias', {
+        useDataStore: true,
+        ttl: 10 * 60 * 1000
+      }).then(res => {
+        let secs = [];
+        if (Array.isArray(res)) secs = res;
+        else if (res.data && Array.isArray(res.data)) secs = res.data;
+        else if (res.success && Array.isArray(res.data)) secs = res.data;
+        return secs.map(s => ({ id: s._id || s.id, nome: s.nome || s.name || 'N/A' }));
+      }).catch(() => []),
+      window.dataLoader?.load('/api/distinct?field=statusDemanda', {
+        useDataStore: true,
+        ttl: 5 * 60 * 1000
+      }).then(res => {
+        const data = res.data || res || [];
+        return Array.isArray(data) ? data : [];
+      }).catch(() => [])
+    ]);
+
+    const html = `
+      <div class="config-section">
+        <h3 class="config-title">📥 Download de Planilhas</h3>
+        <p class="config-description">Baixe dados em formato Google Sheets ou XLS com filtros personalizados</p>
+        
+        <div class="config-grid" style="grid-template-columns: 1fr;">
+          <!-- Formato de Download -->
+          <div class="config-item">
+            <label>📋 Formato de Download</label>
+            <div class="flex gap-4 mt-2">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="download-format" value="xls" checked class="w-4 h-4">
+                <span>📊 Excel (XLS)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="download-format" value="google" class="w-4 h-4">
+                <span>🌐 Google Sheets</span>
+              </label>
+            </div>
+            <small>Escolha o formato do arquivo a ser baixado</small>
+          </div>
+
+          <!-- Fonte dos Dados -->
+          <div class="config-item">
+            <label>🗄️ Fonte dos Dados</label>
+            <select id="download-source" class="w-full p-3 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 mt-2">
+              <option value="mongodb">📊 MongoDB Atlas (Dados Normalizados)</option>
+              <option value="google-bruta">📥 Planilha Bruta (Google Drive)</option>
+              <option value="google-tratada">✅ Planilha Tratada (Google Sheets)</option>
+            </select>
+            <small>Escolha de onde os dados serão extraídos</small>
+          </div>
+
+          <!-- Filtros -->
+          <div class="config-item">
+            <label>🔍 Filtros (Opcional)</label>
+            <div class="mt-2 space-y-3">
+              <!-- Filtro por Secretaria -->
+              <div>
+                <label class="text-sm text-slate-400">Secretaria</label>
+                <select id="download-filter-secretaria" class="w-full p-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 mt-1">
+                  <option value="">Todas as secretarias</option>
+                  ${secretarias.map(s => `<option value="${s.id}">${s.nome}</option>`).join('')}
+                </select>
+              </div>
+
+              <!-- Filtro por Status -->
+              <div>
+                <label class="text-sm text-slate-400">Status</label>
+                <select id="download-filter-status" class="w-full p-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 mt-1">
+                  <option value="">Todos os status</option>
+                  ${statusOptions.map(s => `<option value="${s}">${s}</option>`).join('')}
+                </select>
+              </div>
+
+              <!-- Filtro por Período -->
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-sm text-slate-400">Data Inicial</label>
+                  <input type="date" id="download-filter-data-inicio" class="w-full p-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 mt-1">
+                </div>
+                <div>
+                  <label class="text-sm text-slate-400">Data Final</label>
+                  <input type="date" id="download-filter-data-fim" class="w-full p-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 mt-1">
+                </div>
+              </div>
+
+              <!-- Filtro por Tipo de Manifestação -->
+              <div>
+                <label class="text-sm text-slate-400">Tipo de Manifestação</label>
+                <select id="download-filter-tipo" class="w-full p-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 mt-1">
+                  <option value="">Todos os tipos</option>
+                  <option value="Reclamação">Reclamação</option>
+                  <option value="Denúncia">Denúncia</option>
+                  <option value="Solicitação">Solicitação</option>
+                  <option value="Sugestão">Sugestão</option>
+                  <option value="E-SIC">E-SIC</option>
+                </select>
+              </div>
+            </div>
+            <small>Deixe em branco para baixar todos os dados</small>
+          </div>
+
+          <!-- Opções Adicionais -->
+          <div class="config-item">
+            <label>⚙️ Opções Adicionais</label>
+            <div class="mt-2 space-y-2">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="download-include-headers" checked class="w-4 h-4">
+                <span>Incluir cabeçalhos</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="download-normalize-dates" checked class="w-4 h-4">
+                <span>Normalizar datas (formato ISO)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="download-only-active" class="w-4 h-4">
+                <span>Apenas registros ativos (não concluídos)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <div class="config-actions">
+          <button class="btn-primary" onclick="executeDownload()" style="background: linear-gradient(135deg, #22d3ee 0%, #a78bfa 100%); font-weight: 600;">
+            📥 Baixar Planilha
+          </button>
+          <button class="btn-secondary" onclick="previewDownload()">👁️ Visualizar Prévia</button>
+          <button class="btn-secondary" onclick="resetDownloadFilters()">🔄 Limpar Filtros</button>
+        </div>
+
+        <!-- Área de status do download -->
+        <div id="download-status" class="mt-4 p-4 glass rounded-lg hidden">
+          <div class="flex items-center gap-2">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-cyan-400"></div>
+            <span class="text-slate-300">Processando download...</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  } catch (error) {
+    if (window.Logger) {
+      window.Logger.error('Erro ao renderizar downloads config:', error);
+    }
+    container.innerHTML = '<p class="error">Erro ao carregar opções de download</p>';
+  }
+}
+
+/**
  * Renderizar estatísticas do sistema
  */
 async function renderSystemStats() {
@@ -996,6 +1155,7 @@ function showConfigTab(tabName) {
     'sla': '⏱️',
     'integrations': '🔗',
     'secretarias': '🏛️',
+    'downloads': '📥',
     'system': '📊'
   };
   
@@ -1017,6 +1177,7 @@ function showConfigTab(tabName) {
     'sla': renderSLAConfig,
     'integrations': renderIntegrationsConfig,
     'secretarias': renderSecretariasConfig,
+    'downloads': renderDownloadsConfig,
     'system': renderSystemStats
   };
   
@@ -1462,6 +1623,172 @@ async function resetSLAConfig() {
   showNotification('ℹ️ Valores restaurados. Clique em "Salvar" para aplicar.', 'info');
 }
 
+/**
+ * Executar download de planilha
+ */
+async function executeDownload() {
+  try {
+    // Coletar opções do formulário
+    const format = document.querySelector('input[name="download-format"]:checked')?.value || 'xls';
+    const source = document.getElementById('download-source')?.value || 'mongodb';
+    const secretaria = document.getElementById('download-filter-secretaria')?.value || '';
+    const status = document.getElementById('download-filter-status')?.value || '';
+    const dataInicio = document.getElementById('download-filter-data-inicio')?.value || '';
+    const dataFim = document.getElementById('download-filter-data-fim')?.value || '';
+    const tipo = document.getElementById('download-filter-tipo')?.value || '';
+    const includeHeaders = document.getElementById('download-include-headers')?.checked !== false;
+    const normalizeDates = document.getElementById('download-normalize-dates')?.checked !== false;
+    const onlyActive = document.getElementById('download-only-active')?.checked || false;
+
+    // Montar filtros
+    const filters = {};
+    if (secretaria) filters.secretaria = secretaria;
+    if (status) filters.statusDemanda = status;
+    if (dataInicio) filters.dataInicio = dataInicio;
+    if (dataFim) filters.dataFim = dataFim;
+    if (tipo) filters.tipoDeManifestacao = tipo;
+    if (onlyActive) filters.onlyActive = true;
+
+    // Mostrar status
+    const statusDiv = document.getElementById('download-status');
+    if (statusDiv) {
+      statusDiv.classList.remove('hidden');
+    }
+
+    window.loadingManager?.show('Preparando download...');
+
+    // Fazer requisição para o backend
+    const response = await fetch('/api/config/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        format,
+        source,
+        filters,
+        options: {
+          includeHeaders,
+          normalizeDates
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Erro desconhecido' }));
+      throw new Error(error.message || `Erro HTTP ${response.status}`);
+    }
+
+    // Se for Google Sheets, retornará URL
+    if (format === 'google') {
+      const result = await response.json();
+      if (result.success && result.url) {
+        window.open(result.url, '_blank');
+        showNotification('✅ Planilha Google Sheets criada com sucesso!', 'success');
+      } else {
+        throw new Error(result.message || 'Erro ao criar planilha Google Sheets');
+      }
+    } else {
+      // Se for XLS, fazer download do blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Nome do arquivo baseado na data e filtros
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filterStr = secretaria ? `_${secretaria}` : '';
+      link.download = `manifestacoes_${dateStr}${filterStr}.xls`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      showNotification('✅ Planilha XLS baixada com sucesso!', 'success');
+    }
+  } catch (error) {
+    showNotification(`❌ Erro ao baixar planilha: ${error.message}`, 'error');
+    if (window.Logger) {
+      window.Logger.error('Erro ao executar download:', error);
+    }
+  } finally {
+    window.loadingManager?.hide();
+    const statusDiv = document.getElementById('download-status');
+    if (statusDiv) {
+      statusDiv.classList.add('hidden');
+    }
+  }
+}
+
+/**
+ * Visualizar prévia dos dados antes de baixar
+ */
+async function previewDownload() {
+  try {
+    const source = document.getElementById('download-source')?.value || 'mongodb';
+    const secretaria = document.getElementById('download-filter-secretaria')?.value || '';
+    const status = document.getElementById('download-filter-status')?.value || '';
+    const dataInicio = document.getElementById('download-filter-data-inicio')?.value || '';
+    const dataFim = document.getElementById('download-filter-data-fim')?.value || '';
+    const tipo = document.getElementById('download-filter-tipo')?.value || '';
+    const onlyActive = document.getElementById('download-only-active')?.checked || false;
+
+    const filters = {};
+    if (secretaria) filters.secretaria = secretaria;
+    if (status) filters.statusDemanda = status;
+    if (dataInicio) filters.dataInicio = dataInicio;
+    if (dataFim) filters.dataFim = dataFim;
+    if (tipo) filters.tipoDeManifestacao = tipo;
+    if (onlyActive) filters.onlyActive = true;
+
+    window.loadingManager?.show('Carregando prévia...');
+
+    const response = await fetch('/api/config/download/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        source,
+        filters,
+        limit: 10 // Apenas 10 registros para prévia
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      const preview = `
+📊 Prévia dos Dados
+
+Total de registros que serão baixados: ${result.total || 0}
+Registros na prévia: ${result.preview?.length || 0}
+
+${result.preview?.length > 0 ? 'Primeiros registros:\n' + JSON.stringify(result.preview.slice(0, 3), null, 2) : 'Nenhum registro encontrado com os filtros selecionados.'}
+      `;
+      alert(preview);
+    } else {
+      throw new Error(result.message || 'Erro ao gerar prévia');
+    }
+  } catch (error) {
+    showNotification(`❌ Erro ao visualizar prévia: ${error.message}`, 'error');
+  } finally {
+    window.loadingManager?.hide();
+  }
+}
+
+/**
+ * Limpar todos os filtros de download
+ */
+function resetDownloadFilters() {
+  document.getElementById('download-filter-secretaria').value = '';
+  document.getElementById('download-filter-status').value = '';
+  document.getElementById('download-filter-data-inicio').value = '';
+  document.getElementById('download-filter-data-fim').value = '';
+  document.getElementById('download-filter-tipo').value = '';
+  document.getElementById('download-only-active').checked = false;
+  showNotification('✅ Filtros limpos!', 'success');
+}
+
 // Exportar todas as funções para uso global
 window.loadConfiguracoes = loadConfiguracoes;
 window.showConfigTab = showConfigTab;
@@ -1489,4 +1816,8 @@ window.testMongoDB = testMongoDB;
 window.refreshIntegrationsStatus = refreshIntegrationsStatus;
 window.syncGoogleSheets = syncGoogleSheets;
 window.executeDatabaseUpdate = executeDatabaseUpdate;
+window.renderDownloadsConfig = renderDownloadsConfig;
+window.executeDownload = executeDownload;
+window.previewDownload = previewDownload;
+window.resetDownloadFilters = resetDownloadFilters;
 

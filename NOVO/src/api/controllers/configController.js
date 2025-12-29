@@ -889,3 +889,399 @@ function extractNumber(text, label) {
   return match ? parseInt(match[1], 10) : 0;
 }
 
+/**
+ * POST /api/config/download
+ * Download de planilhas em formato XLS ou Google Sheets
+ */
+export async function downloadPlanilha(req, res) {
+  try {
+    logger.info('📥 downloadPlanilha: Requisição recebida', { body: req.body });
+    
+    const { format, source, filters = {}, options = {} } = req.body;
+
+    if (!format || !['xls', 'google'].includes(format)) {
+      logger.warn('❌ downloadPlanilha: Formato inválido', { format });
+      return res.status(400).json({
+        success: false,
+        message: 'Formato inválido. Use "xls" ou "google"'
+      });
+    }
+
+    if (!source || !['mongodb', 'google-bruta', 'google-tratada'].includes(source)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fonte inválida. Use "mongodb", "google-bruta" ou "google-tratada"'
+      });
+    }
+
+    logger.info(`📥 Iniciando download: formato=${format}, fonte=${source}`);
+
+    let data = [];
+
+    // Buscar dados conforme a fonte
+    if (source === 'mongodb') {
+      // Buscar do MongoDB com filtros
+      const query = buildMongoQuery(filters);
+      data = await Record.find(query).lean().limit(100000); // Limite de segurança
+      
+      // Normalizar dados se solicitado
+      if (options.normalizeDates) {
+        data = data.map(record => normalizeRecordDates(record));
+      }
+    } else if (source === 'google-bruta' || source === 'google-tratada') {
+      // Buscar do Google Sheets
+      data = await fetchFromGoogleSheets(source === 'google-bruta', filters);
+    }
+
+    if (data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Nenhum dado encontrado com os filtros especificados'
+      });
+    }
+
+    // Gerar planilha conforme formato
+    if (format === 'xls') {
+      return await generateXLSFile(res, data, options);
+    } else if (format === 'google') {
+      return await generateGoogleSheets(res, data, options);
+    }
+  } catch (error) {
+    logger.error('❌ Erro ao gerar download:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao gerar planilha',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * POST /api/config/download/preview
+ * Visualizar prévia dos dados antes de baixar
+ */
+export async function previewDownload(req, res) {
+  try {
+    logger.info('👁️ previewDownload: Requisição recebida', { body: req.body });
+    
+    const { source, filters = {}, limit = 10 } = req.body;
+
+    let data = [];
+    let total = 0;
+
+    if (source === 'mongodb') {
+      const query = buildMongoQuery(filters);
+      total = await Record.countDocuments(query);
+      data = await Record.find(query).lean().limit(limit);
+    } else if (source === 'google-bruta' || source === 'google-tratada') {
+      const allData = await fetchFromGoogleSheets(source === 'google-bruta', filters);
+      total = allData.length;
+      data = allData.slice(0, limit);
+    }
+
+    return res.json({
+      success: true,
+      total,
+      preview: data,
+      limit
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao gerar prévia:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao gerar prévia',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Construir query MongoDB baseado nos filtros
+ */
+function buildMongoQuery(filters) {
+  const query = {};
+
+  if (filters.secretaria) {
+    query.secretaria = filters.secretaria;
+  }
+
+  if (filters.statusDemanda) {
+    query.statusDemanda = filters.statusDemanda;
+  }
+
+  if (filters.tipoDeManifestacao) {
+    query.tipoDeManifestacao = filters.tipoDeManifestacao;
+  }
+
+  if (filters.dataInicio || filters.dataFim) {
+    query.dataCriacaoIso = {};
+    if (filters.dataInicio) {
+      query.dataCriacaoIso.$gte = filters.dataInicio;
+    }
+    if (filters.dataFim) {
+      query.dataCriacaoIso.$lte = filters.dataFim;
+    }
+  }
+
+  if (filters.onlyActive) {
+    query.statusDemanda = { $ne: 'Concluído' };
+  }
+
+  return query;
+}
+
+/**
+ * Normalizar datas do registro
+ */
+function normalizeRecordDates(record) {
+  const normalized = { ...record };
+  
+  if (normalized.dataCriacaoIso) {
+    normalized.dataCriacao = normalized.dataCriacaoIso;
+  }
+  if (normalized.dataConclusaoIso) {
+    normalized.dataConclusao = normalized.dataConclusaoIso;
+  }
+  
+  return normalized;
+}
+
+/**
+ * Buscar dados do Google Sheets
+ */
+async function fetchFromGoogleSheets(isBruta, filters) {
+  try {
+    const { fileURLToPath } = await import('url');
+    const { dirname } = await import('path');
+    const { readFileSync } = await import('fs');
+    const { google } = await import('googleapis');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const credentialsPath = `${__dirname}/../../../config/google-credentials.json`;
+
+    const credentials = JSON.parse(readFileSync(credentialsPath, 'utf8'));
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly', 'https://www.googleapis.com/auth/drive.readonly']
+    });
+
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+
+    let spreadsheetId;
+    if (isBruta) {
+      // Buscar última planilha da pasta bruta
+      const folderId = process.env.GOOGLE_FOLDER_BRUTA || '1qXj9eGauvOREKVgRPOfKjRlLSKhefXI5';
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
+        orderBy: 'modifiedTime desc',
+        pageSize: 1
+      });
+      
+      if (!response.data.files || response.data.files.length === 0) {
+        throw new Error('Nenhuma planilha bruta encontrada');
+      }
+      
+      spreadsheetId = response.data.files[0].id;
+    } else {
+      // Usar planilha tratada
+      spreadsheetId = process.env.GOOGLE_SHEET_ID || '1aF0I8pxABXhqyO2DmzBV9aoWHQN2h7LpTN-qdkGLc_g';
+    }
+
+    // Ler dados da planilha
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'A:ZZ'
+    });
+
+    const rows = response.data.values || [];
+    if (rows.length === 0) {
+      return [];
+    }
+
+    // Converter para JSON
+    const headers = rows[0];
+    const data = rows.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((header, index) => {
+        obj[header] = row[index] || '';
+      });
+      return obj;
+    });
+
+    // Aplicar filtros se necessário
+    return applyFiltersToData(data, filters);
+  } catch (error) {
+    logger.error('❌ Erro ao buscar dados do Google Sheets:', error);
+    throw error;
+  }
+}
+
+/**
+ * Aplicar filtros aos dados
+ */
+function applyFiltersToData(data, filters) {
+  let filtered = [...data];
+
+  if (filters.secretaria) {
+    filtered = filtered.filter(r => 
+      (r.secretaria && r.secretaria.includes(filters.secretaria)) ||
+      (r.Secretaria && r.Secretaria.includes(filters.secretaria))
+    );
+  }
+
+  if (filters.statusDemanda) {
+    filtered = filtered.filter(r => 
+      (r.statusDemanda === filters.statusDemanda) ||
+      (r.Status === filters.statusDemanda)
+    );
+  }
+
+  if (filters.tipoDeManifestacao) {
+    filtered = filtered.filter(r => 
+      (r.tipoDeManifestacao === filters.tipoDeManifestacao) ||
+      (r.Tipo === filters.tipoDeManifestacao)
+    );
+  }
+
+  if (filters.dataInicio) {
+    filtered = filtered.filter(r => {
+      const date = r.dataCriacaoIso || r['Data de Criação'] || r.dataCriacao;
+      return date && date >= filters.dataInicio;
+    });
+  }
+
+  if (filters.dataFim) {
+    filtered = filtered.filter(r => {
+      const date = r.dataCriacaoIso || r['Data de Criação'] || r.dataCriacao;
+      return date && date <= filters.dataFim;
+    });
+  }
+
+  if (filters.onlyActive) {
+    filtered = filtered.filter(r => {
+      const status = r.statusDemanda || r.Status || '';
+      return status !== 'Concluído' && status !== 'Concluido';
+    });
+  }
+
+  return filtered;
+}
+
+/**
+ * Gerar arquivo XLS
+ */
+async function generateXLSFile(res, data, options) {
+  try {
+    const XLSX = (await import('xlsx')).default;
+
+    // Preparar dados para planilha
+    const worksheetData = data.map(record => {
+      // Converter objeto aninhado em objeto plano
+      const flat = {};
+      Object.keys(record).forEach(key => {
+        const value = record[key];
+        if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          Object.keys(value).forEach(subKey => {
+            flat[`${key}_${subKey}`] = value[subKey];
+          });
+        } else {
+          flat[key] = value;
+        }
+      });
+      return flat;
+    });
+
+    // Criar workbook
+    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Dados');
+
+    // Gerar buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xls' });
+
+    // Enviar arquivo
+    const filename = `manifestacoes_${new Date().toISOString().split('T')[0]}.xls`;
+    res.setHeader('Content-Type', 'application/vnd.ms-excel');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (error) {
+    logger.error('❌ Erro ao gerar XLS:', error);
+    throw error;
+  }
+}
+
+/**
+ * Gerar planilha Google Sheets
+ */
+async function generateGoogleSheets(res, data, options) {
+  try {
+    const { fileURLToPath } = await import('url');
+    const { dirname } = await import('path');
+    const { readFileSync } = await import('fs');
+    const { google } = await import('googleapis');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const credentialsPath = `${__dirname}/../../../config/google-credentials.json`;
+
+    const credentials = JSON.parse(readFileSync(credentialsPath, 'utf8'));
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+    });
+
+    const sheets = google.sheets({ version: 'v4', auth });
+    const drive = google.drive({ version: 'v3', auth });
+
+    // Criar nova planilha
+    const spreadsheet = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: {
+          title: `Manifestações_${new Date().toISOString().split('T')[0]}`
+        }
+      }
+    });
+
+    const spreadsheetId = spreadsheet.data.spreadsheetId;
+
+    // Preparar dados
+    const headers = data.length > 0 ? Object.keys(data[0]) : [];
+    const values = [
+      headers,
+      ...data.map(record => headers.map(header => record[header] || ''))
+    ];
+
+    // Escrever dados
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'A1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values
+      }
+    });
+
+    // Tornar a planilha pública para leitura (opcional)
+    await drive.permissions.create({
+      fileId: spreadsheetId,
+      requestBody: {
+        role: 'reader',
+        type: 'anyone'
+      }
+    });
+
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+
+    return res.json({
+      success: true,
+      url,
+      spreadsheetId
+    });
+  } catch (error) {
+    logger.error('❌ Erro ao gerar Google Sheets:', error);
+    throw error;
+  }
+}
+
