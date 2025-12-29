@@ -36,10 +36,9 @@
 - ✅ Página reclamacoes
 - ✅ Página notificacoes
 
-## 📚 Documentação (3/3 ✅)
+## 📚 Documentação (2/2 ✅)
 
-- ✅ Documentação EVOLUCAO_CROSSFILTER.md
-- ✅ Documentação RESUMO_CROSSFILTER_FINAL.md
+- ✅ Documentação GUIA_CROSSFILTER.md (consolidado de EVOLUCAO_CROSSFILTER.md e outros)
 - ✅ Documentação README-TESTES.md
 
 ## 📊 Gráficos (12/12 ✅)

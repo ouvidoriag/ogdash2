@@ -30,6 +30,14 @@ export default function chatRoutes(prisma) {
    */
   router.post('/messages', (req, res) => chatController.createMessage(req, res)); // REFATORAÇÃO: prisma removido
   
+  /**
+   * GET /api/chat/export
+   * Exportar conversas do usuário
+   * Query params: context (opcional), format (json|csv|txt, padrão: json)
+   * MELHORIA: Nova funcionalidade
+   */
+  router.get('/export', (req, res) => chatController.exportConversations(req, res));
+  
   return router;
 }
 

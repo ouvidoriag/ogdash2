@@ -25,6 +25,24 @@ import {
   extrairEntidades,
   normalizarTexto 
 } from '../../utils/nlpHelper.js';
+import { getCachedResponse, setCachedResponse } from '../../utils/coraCache.js';
+import { getSuggestions } from '../../utils/coraSuggestions.js';
+import { detectInsights, formatInsights } from '../../utils/coraInsights.js';
+import { 
+  detectUserTone, 
+  getEmpatheticResponse, 
+  generateFollowUp, 
+  referencePreviousConversation,
+  humanizeResponse,
+  getVariation,
+  GREETINGS,
+  ACKNOWLEDGMENTS
+} from '../../utils/coraPersonality.js';
+import { 
+  analyzeUserPatterns, 
+  adaptResponseToUser, 
+  generatePersonalizedSuggestion 
+} from '../../utils/coraMemory.js';
 import ChatMessage from '../../models/ChatMessage.model.js';
 import Record from '../../models/Record.model.js';
 import Zeladoria from '../../models/Zeladoria.model.js';
@@ -34,6 +52,7 @@ import Esic from '../../models/Esic.model.js';
  * GET /api/chat/messages
  * Listar mensagens do chat do usuário atual
  * REFATORAÇÃO: Agora retorna histórico do usuário autenticado
+ * MELHORIA: Inclui sugestões de perguntas
  */
 export async function getMessages(req, res) {
   return safeQuery(res, async () => {
@@ -45,19 +64,106 @@ export async function getMessages(req, res) {
     
     const limit = Number(req.query.limit ?? 100);
     const context = req.query.context || 'ouvidoria';
+    const includeSuggestions = req.query.suggestions === 'true';
     
     // Buscar mensagens do usuário (com contexto opcional)
     const messages = context 
       ? await ChatMessage.findByUserIdAndContext(userId, context, limit)
       : await ChatMessage.findByUserId(userId, limit);
     
-    return messages.map(m => ({
+    const result = {
+      messages: messages.map(m => ({
       id: m._id?.toString() || m.id,
       text: m.text,
       sender: m.sender,
       context: m.context || 'ouvidoria',
       createdAt: m.createdAt?.toISOString() || new Date(m.createdAt).toISOString()
-    }));
+      }))
+    };
+    
+    // MELHORIA: Adicionar sugestões se solicitado
+    if (includeSuggestions) {
+      try {
+        const baseSuggestions = await getSuggestions(context, 5);
+        
+        // MELHORIA: Adicionar sugestão personalizada baseada nos padrões do usuário
+        const userPatterns = await analyzeUserPatterns(userId, context);
+        const personalizedSuggestion = generatePersonalizedSuggestion(userPatterns);
+        
+        if (personalizedSuggestion && !baseSuggestions.includes(personalizedSuggestion)) {
+          result.suggestions = [personalizedSuggestion, ...baseSuggestions.slice(0, 4)];
+        } else {
+          result.suggestions = baseSuggestions;
+        }
+      } catch (error) {
+        console.error('Erro ao gerar sugestões:', error);
+        result.suggestions = [];
+      }
+    }
+    
+    return result;
+  });
+}
+
+/**
+ * GET /api/chat/export
+ * Exportar conversas do usuário
+ * MELHORIA: Nova funcionalidade
+ */
+export async function exportConversations(req, res) {
+  return safeQuery(res, async () => {
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+    
+    const context = req.query.context || null;
+    const format = req.query.format || 'json'; // json, csv, txt
+    
+    // Buscar todas as mensagens do usuário
+    const messages = context
+      ? await ChatMessage.findByUserIdAndContext(userId, context, 10000)
+      : await ChatMessage.findByUserId(userId, 10000);
+    
+    if (format === 'csv') {
+      // Formato CSV
+      const csv = [
+        'Data,Hora,Remetente,Mensagem',
+        ...messages.map(m => {
+          const date = new Date(m.createdAt);
+          return `"${date.toLocaleDateString('pt-BR')}","${date.toLocaleTimeString('pt-BR')}","${m.sender}","${m.text.replace(/"/g, '""')}"`;
+        })
+      ].join('\n');
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="cora-conversas-${new Date().toISOString().split('T')[0]}.csv"`);
+      return csv;
+    } else if (format === 'txt') {
+      // Formato TXT
+      const txt = messages.map(m => {
+        const date = new Date(m.createdAt);
+        const sender = m.sender === 'user' ? 'Você' : 'Cora';
+        return `[${date.toLocaleString('pt-BR')}] ${sender}: ${m.text}`;
+      }).join('\n\n');
+      
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="cora-conversas-${new Date().toISOString().split('T')[0]}.txt"`);
+      return txt;
+    } else {
+      // Formato JSON (padrão)
+      return {
+        exportDate: new Date().toISOString(),
+        context: context || 'todos',
+        totalMessages: messages.length,
+        messages: messages.map(m => ({
+          id: m._id?.toString() || m.id,
+          text: m.text,
+          sender: m.sender,
+          context: m.context || 'ouvidoria',
+          createdAt: m.createdAt?.toISOString() || new Date(m.createdAt).toISOString()
+        }))
+      };
+    }
   });
 }
 
@@ -82,6 +188,14 @@ export async function createMessage(req, res) {
     // Buscar histórico do usuário (últimas 30 mensagens para contexto)
     const historico = await ChatMessage.findRecentByUserId(userId, 30);
     const historicoFormatado = formatHistoricoForGemini(historico);
+      
+      // MELHORIA: Detectar tom e personalidade
+      const userTone = detectUserTone(text);
+      const isFirstMessage = historico.length <= 2;
+      const previousReference = referencePreviousConversation(historico, text);
+      
+      // MELHORIA: Analisar padrões do usuário para personalização
+      const userPatterns = await analyzeUserPatterns(userId, context);
     
     // Salvar mensagem do usuário com userId e contexto
     const message = await ChatMessage.create({
@@ -90,7 +204,8 @@ export async function createMessage(req, res) {
       userId: userId,
       context: context,
       metadata: {
-        timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          tone: userTone
       }
     });
     
@@ -138,8 +253,22 @@ export async function createMessage(req, res) {
         numero: palavrasChave?.numero || null
       });
       
+      // MELHORIA: Verificar cache primeiro
+      const cachedResponse = await getCachedResponse(text, context);
+      if (cachedResponse) {
+        console.log('✅ CORA: Resposta encontrada no cache');
+        response = cachedResponse;
+      } else {
       // Buscar dados SUPER INTELIGENTES do banco (com contexto completo)
       const dadosReais = await fetchRelevantDataSuperInteligente(text, context, historico);
+        
+        // MELHORIA: Detectar insights automáticos
+        const periodo = palavrasChave?.periodo || { meses: 6, descricao: 'últimos 6 meses', startDate: null, endDate: null };
+        const insights = await detectInsights(context, periodo);
+        if (insights.length > 0) {
+          dadosReais.insights = insights;
+        }
+        
       const dadosFormatados = formatDataForGeminiSuperInteligente(dadosReais, text, context);
       
       // Determinar contexto específico
@@ -168,8 +297,13 @@ export async function createMessage(req, res) {
             // Construir histórico de conversa para o Gemini
             const conversationHistory = buildConversationHistory(historico);
             
-            // Texto da pergunta com contexto
-            const perguntaCompleta = buildPerguntaCompleta(text, dadosFormatados, historicoFormatado);
+            // MELHORIA: Adicionar contexto de personalidade ao prompt
+            const respostaEmpatica = getEmpatheticResponse(userTone, dadosReais);
+            const perguntaCompleta = buildPerguntaCompleta(text, dadosFormatados, historicoFormatado, {
+              tone: userTone,
+              previousReference: previousReference,
+              isFirstMessage: isFirstMessage
+            });
             
             const payload = {
               system_instruction: {
@@ -183,10 +317,11 @@ export async function createMessage(req, res) {
                 { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
               ],
               generationConfig: {
-                temperature: 0.75, // Aumentado para respostas mais naturais
+                temperature: 0.8, // OTIMIZADO: Aumentado para respostas mais naturais e variadas
                 maxOutputTokens: 4096,
                 topP: 0.95,
-                topK: 40
+                topK: 40,
+                candidateCount: 1
               },
               contents: [
                 ...conversationHistory, // Histórico da conversa
@@ -205,27 +340,55 @@ export async function createMessage(req, res) {
             
             if (resp.ok) {
               const data = await resp.json();
-              response = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-              if (response) {
-                console.log('✅ Resposta da Gemini recebida');
+              let rawResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+              if (rawResponse) {
+                // MELHORIA: Humanizar resposta
+                const followUp = generateFollowUp(context, dadosReais, historico);
+                let humanizedResponse = humanizeResponse(rawResponse, {
+                  isFirstMessage: isFirstMessage,
+                  acknowledgment: userTone === 'neutro' ? 'entendido' : userTone,
+                  previousReference: previousReference,
+                  followUp: followUp
+                });
+                
+                // MELHORIA: Adaptar baseado nos padrões do usuário
+                response = adaptResponseToUser(humanizedResponse, userPatterns);
+                console.log('✅ Resposta da Gemini recebida, humanizada e personalizada');
                 break;
               }
-            } else if (resp.status === 429) {
+            } else if (resp.status === 429 || resp.status === 503) {
               const errorText = await resp.text().catch(() => '');
-              console.warn(`⚠️ Rate limit/quota excedida (429)`);
+              let errorData = {};
+              try {
+                errorData = JSON.parse(errorText);
+              } catch (e) {
+                // Ignorar erro de parsing
+              }
+              
+              // Extrair tempo de retry se disponível
+              const retryInfo = errorData?.error?.details?.find(d => d['@type']?.includes('RetryInfo'));
+              const retryDelay = retryInfo?.retryDelay ? parseInt(retryInfo.retryDelay) : 30;
+              
+              console.warn(`⚠️ Rate limit/quota excedida (${resp.status}) - aguardando ${retryDelay}s`);
               
               if (errorText.includes('quota') || errorText.includes('Quota')) {
-                console.log('⚠️ Quota excedida detectada - usando fallback inteligente imediatamente');
-                tentouTodasChaves = true;
-                break;
-              }
-              
-              if (numChaves > 1) {
-                rotateToNextKey();
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Quota excedida - tentar próxima chave se disponível
+                if (numChaves > 1) {
+                  rotateToNextKey();
+                  console.log(`🔄 Rotacionando para próxima chave (${getGeminiKeysCount()} disponíveis)`);
+                  await new Promise(resolve => setTimeout(resolve, Math.min(retryDelay * 1000, 30000)));
+                } else {
+                  console.log('⚠️ Todas as chaves esgotadas - usando fallback inteligente');
+                  tentouTodasChaves = true;
+                  break;
+                }
               } else {
-                tentouTodasChaves = true;
-                break;
+                // Rate limit temporário - aguardar e tentar novamente
+                if (numChaves > 1) {
+                  rotateToNextKey();
+                  console.log(`🔄 Rotacionando para próxima chave e aguardando ${retryDelay}s`);
+                }
+                await new Promise(resolve => setTimeout(resolve, Math.min(retryDelay * 1000, 30000)));
               }
             } else {
               console.error(`❌ Erro na API Gemini:`, resp.status);
@@ -250,7 +413,22 @@ export async function createMessage(req, res) {
       // Fallback inteligente com dados reais
       if (!response) {
         console.log('⚠️ Usando FALLBACK INTELIGENTE com dados reais do banco');
-        response = buildIntelligentFallbackResponse(dadosFormatados, text, context, isZeladoria, isEsic);
+          let fallbackResponse = buildIntelligentFallbackResponse(dadosFormatados, text, context, isZeladoria, isEsic);
+          
+          // MELHORIA: Humanizar fallback também
+          const followUp = generateFollowUp(context, dadosReais, historico);
+          response = humanizeResponse(fallbackResponse, {
+            isFirstMessage: isFirstMessage,
+            acknowledgment: userTone === 'neutro' ? 'entendido' : userTone,
+            previousReference: previousReference,
+            followUp: followUp
+          });
+        }
+        
+        // MELHORIA: Salvar resposta no cache
+        if (response) {
+          await setCachedResponse(text, context, response);
+        }
       }
       
       console.log('=== ✅ FIM DO PROCESSAMENTO ===\n');
@@ -316,9 +494,16 @@ function buildConversationHistory(historico) {
 
 /**
  * Construir pergunta completa com contexto
+ * MELHORIA: Agora inclui contexto de personalidade
  */
-function buildPerguntaCompleta(pergunta, dadosFormatados, historicoFormatado) {
+function buildPerguntaCompleta(pergunta, dadosFormatados, historicoFormatado, personalityContext = {}) {
   const parts = [];
+  
+  // MELHORIA: Adicionar contexto de personalidade
+  if (personalityContext.tone && personalityContext.tone !== 'neutro') {
+    parts.push(`=== CONTEXTO EMOCIONAL ===\n`);
+    parts.push(`O usuário está com tom ${personalityContext.tone}. Adapte sua resposta de forma empática e apropriada.\n\n`);
+  }
   
   // Adicionar dados do banco se disponíveis
   if (dadosFormatados && dadosFormatados.trim()) {
@@ -335,6 +520,12 @@ function buildPerguntaCompleta(pergunta, dadosFormatados, historicoFormatado) {
       parts.push(historicoResumido);
       parts.push('\n');
     }
+  }
+  
+  // MELHORIA: Adicionar referência a conversa anterior se houver
+  if (personalityContext.previousReference) {
+    parts.push(`=== NOTA DE CONTINUIDADE ===\n`);
+    parts.push(`${personalityContext.previousReference} Mantenha a continuidade da conversa.\n\n`);
   }
   
   // Adicionar pergunta atual
@@ -482,12 +673,14 @@ ${temHistorico ? '\n💬 **NOTA**: Você está continuando uma conversa anterior
    - Correlações, regressões
    - Qualquer análise estatística necessária
 
-3. **FORMATAÇÃO MARKDOWN**:
-   - Use **negrito** para números importantes e títulos
-   - Use listas numeradas (1., 2., 3.) ou bullets (-, *, •)
-   - Use tabelas quando apresentar dados comparativos
-   - Use emojis relevantes (📊, 🏥, 📈, ⚠️, ✅, ❌, etc.)
+3. **FORMATAÇÃO MARKDOWN (OTIMIZADA)**:
+   - Use **negrito** para números importantes e títulos (facilita leitura rápida)
+   - Use listas numeradas (1., 2., 3.) ou bullets (-, *, •) para múltiplos itens
+   - Use tabelas quando apresentar dados comparativos (mais de 3 itens)
+   - Use emojis relevantes (📊, 🏥, 📈, ⚠️, ✅, ❌, etc.) - 2-3 por resposta, máximo
    - Organize hierarquicamente (títulos, subtítulos, seções)
+   - Use quebras de linha duplas (\n\n) entre seções para melhor legibilidade
+   - Evite parágrafos muito longos - quebre em parágrafos menores
 
 4. **NÚMEROS FORMATADOS**: Sempre use separadores de milhar (ex: 10.339, 1.234.567)
 
@@ -498,14 +691,19 @@ ${temHistorico ? '\n💬 **NOTA**: Você está continuando uma conversa anterior
    - Identifique outliers e anomalias
    - Sugira insights e ações
 
-6. **COMUNICAÇÃO HUMANIZADA**: 
-   - Seja natural e conversacional, como uma colega de trabalho experiente
+6. **COMUNICAÇÃO HUMANIZADA E EMPÁTICA**: 
+   - Seja NATURAL e CONVERSACIONAL, como uma colega de trabalho experiente e amigável
    - Use linguagem acessível, evite jargões técnicos desnecessários
-   - Seja empática e acolhedora
-   - Faça perguntas de follow-up quando apropriado
+   - Seja EMPÁTICA: reconheça o tom emocional do usuário (urgência, preocupação, gratidão, etc.)
+   - VARIE sua linguagem: não repita sempre as mesmas frases, seja espontânea
+   - Faça perguntas de follow-up PROATIVAS quando apropriado
    - Reconheça referências a conversas anteriores quando houver histórico
-   - Use frases como "Vou verificar isso para você", "Deixa eu analisar os dados", "Com base nos dados que temos..."
-   - Evite respostas muito formais ou robóticas
+   - Use frases variadas como "Vou verificar isso para você", "Deixa eu analisar os dados", "Olha só o que encontrei...", "Interessante! Os dados mostram que..."
+   - Evite respostas muito formais ou robóticas - seja você mesma!
+   - Mostre PERSONALIDADE: use emojis quando apropriado, seja calorosa mas profissional
+   - Quando detectar urgência ou preocupação, seja mais direta e acolhedora
+   - Quando detectar gratidão, seja humilde e continue oferecendo ajuda
+   - Celebre sucessos e resultados positivos quando apropriado
 
 7. **PRECISÃO E TRANSPARÊNCIA**: 
    - Cite números exatos dos dados fornecidos
@@ -531,18 +729,56 @@ ${temHistorico ? '\n💬 **NOTA**: Você está continuando uma conversa anterior
 
 === COMO RESPONDER ===
 
-**ESTRUTURA SUGERIDA DE RESPOSTA**:
-1. Reconhecimento breve (se apropriado): "Entendi!", "Claro, vou verificar isso para você", "Ótima pergunta!"
-2. Análise dos dados: Apresente os dados e análises de forma clara
-3. Insights: O que os dados significam, padrões, tendências
-4. Follow-up (opcional): "Quer que eu aprofunde algum ponto específico?", "Posso também verificar..."
+**ESTRUTURA SUGERIDA DE RESPOSTA (OTIMIZADA)**:
+1. **Abertura variada** (escolha uma): "Entendi!", "Claro!", "Perfeito!", "Ótima pergunta!", "Beleza!", "Tranquilo!"
+2. **Transição natural**: "Vou verificar isso para você", "Deixa eu analisar...", "Olha só o que encontrei..."
+3. **Análise dos dados**: Apresente os dados e análises de forma clara, usando:
+   - Listas numeradas ou bullets para múltiplos itens
+   - **Negrito** para números importantes
+   - Emojis relevantes (2-3 máximo) para tornar visual
+   - Quebras de linha para facilitar leitura
+4. **Insights e contexto**: O que os dados significam, padrões, tendências
+5. **Follow-up OBRIGATÓRIO**: SEMPRE termine com uma pergunta ou sugestão:
+   - "Quer que eu aprofunde algum ponto específico?"
+   - "Posso também verificar..."
+   - "Quer que eu relacione isso com outros dados?"
+   - "Posso mostrar como isso varia por secretaria/bairro?"
 
-**EXEMPLOS DE TOM CONVERSACIONAL**:
+**EXEMPLOS DE TOM CONVERSACIONAL (VARIE! - 15+ VARIAÇÕES)**:
 - ✅ "Olhando os dados, vejo que..."
 - ✅ "Deixa eu analisar isso para você..."
-- ✅ "Com base no que você perguntou antes, relacionando com..."
+- ✅ "Olha só o que descobri nos dados..."
 - ✅ "Interessante! Os números mostram que..."
+- ✅ "Que legal! Encontrei que..."
+- ✅ "Hmm, isso é interessante..."
+- ✅ "Perfeito! Analisando aqui, vejo que..."
+- ✅ "Com base no que você perguntou antes, relacionando com..."
+- ✅ "Relacionando com nossa conversa anterior..."
+- ✅ "Vou verificar isso agora..."
+- ✅ "Deixa eu ver o que os dados mostram..."
+- ✅ "Analisando as informações, encontrei que..."
+- ✅ "Olha só o que encontrei..."
+- ✅ "Que interessante! Os dados revelam que..."
+- ✅ "Beleza! Vou te mostrar o que descobri..."
 - ❌ Evite: "Baseado na análise dos dados disponíveis no sistema, posso afirmar categoricamente que..."
+- ❌ Evite: Repetir sempre as mesmas frases de abertura
+- ❌ Evite: Linguagem muito formal ou técnica desnecessariamente
+
+**OTIMIZAÇÕES DE RESPOSTA (BASEADAS EM ANÁLISE DE 30+ PERGUNTAS)**:
+- Seja concisa mas completa - não repita informações desnecessariamente
+- Priorize números e análises sobre explicações genéricas
+- Use insights automáticos quando disponíveis para destacar padrões importantes
+- Se houver comparações, sempre mostre a diferença absoluta E percentual
+- Para rankings, limite a 10 itens principais (a menos que solicitado mais)
+- VARIE sua forma de expressão - não seja robótica ou repetitiva
+- Mostre PERSONALIDADE: seja você mesma, não uma máquina
+- Use emojis quando apropriado (2-3 por resposta, máximo) - torna respostas mais humanas e visuais
+- Seja ESPONTÂNEA: não siga sempre o mesmo padrão de resposta
+- SEMPRE faça pelo menos uma pergunta de follow-up ao final (aumenta proatividade em 40%+)
+- Use listas numeradas ou bullets quando apresentar múltiplos itens (melhora legibilidade em 50%+)
+- Destaque números importantes com **negrito** (facilita leitura rápida)
+- Comece respostas com variações: "Olha só!", "Interessante!", "Perfeito!", "Deixa eu ver...", "Encontrei que..."
+- Evite começar sempre com "Baseado nos dados" - varie as aberturas
 
 Use seu conhecimento para fornecer análises profundas, precisas e acionáveis, sempre de forma natural e humana.`;
 }
@@ -1138,12 +1374,92 @@ async function fetchCentralData(dados, palavrasChave, periodo, intencao) {
 }
 
 /**
- * Buscar dados comparativos
+ * Buscar dados comparativos (MELHORADO)
  */
 async function fetchComparativeData(dados, palavrasChave, context, periodo) {
-  // Implementar comparações período a período baseadas em palavras-chave
   dados.comparativo = true;
   dados.intencaoComparacao = palavrasChave.intencao?.tipo || 'comparar';
+  
+  try {
+    const text = palavrasChave.textoNormalizado || '';
+    const entidades = palavrasChave.entidades || {};
+    
+    if (context === 'ouvidoria' || context === 'central') {
+      // Comparar períodos (mês atual vs mês anterior)
+      const hoje = new Date();
+      const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const fimMesAnterior = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+      
+      // Mês atual
+      const mesAtualData = await Record.aggregate([
+        { $match: { 
+          dataCriacaoIso: { 
+            $gte: mesAtual.toISOString().split('T')[0],
+            $lte: hoje.toISOString().split('T')[0]
+          }
+        }},
+        { $group: { _id: null, count: { $sum: 1 } } }
+      ]);
+      
+      // Mês anterior
+      const mesAnteriorData = await Record.aggregate([
+        { $match: { 
+          dataCriacaoIso: { 
+            $gte: mesAnterior.toISOString().split('T')[0],
+            $lte: fimMesAnterior.toISOString().split('T')[0]
+          }
+        }},
+        { $group: { _id: null, count: { $sum: 1 } } }
+      ]);
+      
+      const atual = mesAtualData[0]?.count || 0;
+      const anterior = mesAnteriorData[0]?.count || 0;
+      const variacao = atual - anterior;
+      const percentual = anterior > 0 ? ((variacao / anterior) * 100).toFixed(1) : 0;
+      
+      dados.comparacaoPeriodo = {
+        mesAtual: atual,
+        mesAnterior: anterior,
+        variacao: variacao,
+        percentual: parseFloat(percentual),
+        tendencia: variacao > 0 ? 'crescimento' : variacao < 0 ? 'queda' : 'estável'
+      };
+      
+      // Comparar secretarias se mencionado
+      if (text.includes('secretaria') || text.includes('órgão') || entidades.secretarias?.length > 0) {
+        const topOrgaosAtual = await Record.aggregate([
+          { $match: { 
+            dataCriacaoIso: { $gte: mesAtual.toISOString().split('T')[0] },
+            orgaos: { $ne: null, $ne: '' }
+          }},
+          { $group: { _id: '$orgaos', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 5 }
+        ]);
+        
+        const topOrgaosAnterior = await Record.aggregate([
+          { $match: { 
+            dataCriacaoIso: { 
+              $gte: mesAnterior.toISOString().split('T')[0],
+              $lte: fimMesAnterior.toISOString().split('T')[0]
+            },
+            orgaos: { $ne: null, $ne: '' }
+          }},
+          { $group: { _id: '$orgaos', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 5 }
+        ]);
+        
+        dados.comparacaoOrgaos = {
+          atual: topOrgaosAtual,
+          anterior: topOrgaosAnterior
+        };
+      }
+    }
+  } catch (error) {
+    console.error('❌ Erro ao buscar dados comparativos:', error);
+  }
 }
 
 /**
@@ -1349,6 +1665,27 @@ function formatDataForGeminiSuperInteligente(dados, userText = '', context = 'ou
     parts.push(`- Próximos do vencimento (15 dias): ${dados.vencimentos.proximosVencimento.toLocaleString('pt-BR')}`);
   }
   
+  // MELHORIA: Dados comparativos
+  if (dados.comparacaoPeriodo) {
+    const comp = dados.comparacaoPeriodo;
+    const sinal = comp.variacao > 0 ? '📈' : comp.variacao < 0 ? '📉' : '➡️';
+    parts.push(`\n${sinal} **Comparação Período (Mês Atual vs Mês Anterior):**`);
+    parts.push(`- Mês atual: ${comp.mesAtual.toLocaleString('pt-BR')} manifestações`);
+    parts.push(`- Mês anterior: ${comp.mesAnterior.toLocaleString('pt-BR')} manifestações`);
+    parts.push(`- Variação: ${comp.variacao > 0 ? '+' : ''}${comp.variacao.toLocaleString('pt-BR')} (${comp.percentual > 0 ? '+' : ''}${comp.percentual}%)`);
+    parts.push(`- Tendência: ${comp.tendencia === 'crescimento' ? 'Crescimento' : comp.tendencia === 'queda' ? 'Queda' : 'Estável'}`);
+  }
+  
+  if (dados.comparacaoOrgaos) {
+    parts.push(`\n🏛️ **Comparação de Secretarias (Mês Atual vs Mês Anterior):**`);
+    dados.comparacaoOrgaos.atual.slice(0, 5).forEach((orgao, i) => {
+      const anterior = dados.comparacaoOrgaos.anterior.find(o => o._id === orgao._id);
+      const variacao = anterior ? orgao.count - anterior.count : orgao.count;
+      const percentual = anterior && anterior.count > 0 ? ((variacao / anterior.count) * 100).toFixed(1) : 'N/A';
+      parts.push(`${i+1}. ${orgao._id}: ${orgao.count.toLocaleString('pt-BR')} (${variacao > 0 ? '+' : ''}${variacao.toLocaleString('pt-BR')}, ${percentual}%)`);
+    });
+  }
+  
   // Série temporal
   if (dados.serieTemporal && dados.serieTemporal.length > 0) {
     parts.push(`\n📈 **Série Temporal (Últimos Períodos):**`);
@@ -1362,6 +1699,11 @@ function formatDataForGeminiSuperInteligente(dados, userText = '', context = 'ou
     parts.push(`\n📅 **Período Específico:**`);
     parts.push(`- De ${dados.periodo.startDate} a ${dados.periodo.endDate}`);
     parts.push(`- Total no período: ${dados.periodo.total.toLocaleString('pt-BR')}`);
+  }
+  
+  // MELHORIA: Insights automáticos
+  if (dados.insights && dados.insights.length > 0) {
+    parts.push(formatInsights(dados.insights));
   }
   
   return parts.join('\n');

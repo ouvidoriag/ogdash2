@@ -18,19 +18,89 @@
  */
 
 // Rastrear estado global de Ctrl/Cmd para seleção múltipla
-// Usar um objeto para armazenar o estado de forma mais confiável
-window._ctrlKeyState = { pressed: false, timestamp: 0 };
+// SOLUÇÃO ROBUSTA: Usar Map para rastrear estado por canvas
+window._ctrlKeyState = new Map(); // Map<canvasId, {pressed: boolean, timestamp: number}>
 
 // Variáveis para filtros de mês e status
 let filtroMesOverview = '';
 let filtroStatusOverview = '';
 
+/**
+ * Helper robusto para capturar estado do CTRL/Cmd no momento do clique
+ * Esta função deve ser chamada ANTES do Chart.js processar o onClick
+ */
+function createCtrlCaptureHelper(canvas) {
+  if (!canvas) {
+    // Retornar objeto com métodos vazios se canvas não existe
+    return {
+      getCtrlState: () => false,
+      cleanup: () => {}
+    };
+  }
+  
+  const canvasId = canvas.id || `canvas_${Date.now()}`;
+  let ctrlState = { pressed: false, timestamp: 0 };
+  window._ctrlKeyState.set(canvasId, ctrlState);
+  
+  // Capturar no mousedown (ANTES do Chart.js processar)
+  const handleMouseDown = (e) => {
+    if (e.target === canvas || canvas.contains(e.target)) {
+      ctrlState.pressed = e.ctrlKey || e.metaKey;
+      ctrlState.timestamp = Date.now();
+      
+      if (window.Logger) {
+        window.Logger.debug(`📊 CTRL capturado para ${canvasId}:`, ctrlState.pressed);
+      }
+    }
+  };
+  
+  // Capturar no click também (backup)
+  const handleClick = (e) => {
+    if (e.target === canvas || canvas.contains(e.target)) {
+      ctrlState.pressed = e.ctrlKey || e.metaKey;
+      ctrlState.timestamp = Date.now();
+    }
+  };
+  
+  // Adicionar listeners na fase de captura (antes do Chart.js)
+  document.addEventListener('mousedown', handleMouseDown, true);
+  canvas.addEventListener('click', handleClick, true);
+  
+  // Função para obter estado atual
+  const getCtrlState = () => {
+    const state = window._ctrlKeyState.get(canvasId);
+    if (!state) return false;
+    
+    // Verificar se o estado ainda é válido (não muito antigo)
+    const age = Date.now() - state.timestamp;
+    if (age > 500) {
+      // Estado muito antigo, considerar como false
+      state.pressed = false;
+    }
+    
+    return state.pressed;
+  };
+  
+  // Função de limpeza
+  const cleanup = () => {
+    document.removeEventListener('mousedown', handleMouseDown, true);
+    canvas.removeEventListener('click', handleClick, true);
+    window._ctrlKeyState.delete(canvasId);
+  };
+  
+  // Retornar função getter e cleanup
+  return { getCtrlState, cleanup };
+}
+
 if (typeof document !== 'undefined') {
-  // Rastrear Ctrl/Cmd em todos os eventos relevantes
+  // Rastrear Ctrl/Cmd globalmente também (fallback)
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey) {
-      window._ctrlKeyState.pressed = true;
-      window._ctrlKeyState.timestamp = Date.now();
+      // Atualizar todos os estados ativos
+      window._ctrlKeyState.forEach((state) => {
+        state.pressed = true;
+        state.timestamp = Date.now();
+      });
     }
   });
   
@@ -38,30 +108,12 @@ if (typeof document !== 'undefined') {
     if (!e.ctrlKey && !e.metaKey) {
       // Delay para permitir que o onClick do Chart.js capture o estado
       setTimeout(() => {
-        window._ctrlKeyState.pressed = false;
+        window._ctrlKeyState.forEach((state) => {
+          if (Date.now() - state.timestamp > 300) {
+            state.pressed = false;
+          }
+        });
       }, 200);
-    }
-  });
-  
-  // Capturar estado no mousedown (mais confiável para Chart.js)
-  document.addEventListener('mousedown', (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      window._ctrlKeyState.pressed = true;
-      window._ctrlKeyState.timestamp = Date.now();
-    }
-  });
-  
-  // Manter estado por um tempo após mouseup para garantir que Chart.js veja
-  document.addEventListener('mouseup', (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      window._ctrlKeyState.pressed = true;
-      window._ctrlKeyState.timestamp = Date.now();
-      // Manter por mais tempo para garantir captura
-      setTimeout(() => {
-        if (Date.now() - window._ctrlKeyState.timestamp > 500) {
-          window._ctrlKeyState.pressed = false;
-        }
-      }, 300);
     }
   });
 }
@@ -1689,13 +1741,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
           if (statusChart && statusChart.canvas) {
             statusChart.canvas.style.cursor = 'pointer';
             
-            // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
-            let lastClickCtrlState = false;
-            
-            statusChart.canvas.addEventListener('click', (e) => {
-              lastClickCtrlState = e.ctrlKey || e.metaKey;
-              setTimeout(() => { lastClickCtrlState = false; }, 100);
-            }, true);
+            // SOLUÇÃO ROBUSTA: Usar helper para capturar CTRL
+            const ctrlHelper = createCtrlCaptureHelper(statusChart.canvas);
             
             statusChart.options.onClick = (event, elements) => {
               if (elements && elements.length > 0) {
@@ -1705,7 +1752,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 const statusItem = statusData[index];
                 const status = statusItem?.status || statusItem?._id || labels[index];
                 if (status && window.crossfilterOverview) {
-                  const multiSelect = lastClickCtrlState;
+                  // Obter estado do CTRL usando helper robusto
+                  const multiSelect = ctrlHelper.getCtrlState();
                   
                   if (window.Logger) {
                     window.Logger.debug('📊 Clique no gráfico de Status:', { 
@@ -1713,12 +1761,12 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                       index, 
                       label: labels[index], 
                       statusItem, 
-                      multiSelect
+                      multiSelect,
+                      ctrlState: ctrlHelper.getCtrlState()
                     });
                   }
                   window.crossfilterOverview.setStatusFilter(status, multiSelect);
                   window.crossfilterOverview.notifyListeners();
-                  lastClickCtrlState = false;
                 }
               }
             };
@@ -2319,19 +2367,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
       if (tiposChart && tiposChart.canvas) {
         tiposChart.canvas.style.cursor = 'pointer';
         
-        // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
-        // Armazenar estado de Ctrl no momento do clique
-        let lastClickCtrlState = false;
-        
-        tiposChart.canvas.addEventListener('click', (e) => {
-          // Capturar estado de Ctrl no momento exato do clique
-          lastClickCtrlState = e.ctrlKey || e.metaKey;
-          
-          // Manter estado por um tempo curto para garantir que Chart.js veja
-          setTimeout(() => {
-            lastClickCtrlState = false;
-          }, 100);
-        }, true); // Usar capture phase para interceptar antes do Chart.js
+        // SOLUÇÃO ROBUSTA: Usar helper para capturar CTRL
+        const ctrlHelper = createCtrlCaptureHelper(tiposChart.canvas);
         
         tiposChart.options.onClick = (event, elements) => {
           if (elements && elements.length > 0) {
@@ -2341,8 +2378,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
             const tipoItem = byType[index];
             const tipo = tipoItem?.type || tipoItem?._id || labels[index];
             if (tipo && window.crossfilterOverview) {
-              // Usar o estado capturado no clique do canvas
-              const multiSelect = lastClickCtrlState;
+              // Obter estado do CTRL usando helper robusto
+              const multiSelect = ctrlHelper.getCtrlState();
               
               if (window.Logger) {
                 window.Logger.debug('📊 Clique no gráfico de Tipos:', { 
@@ -2350,15 +2387,11 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                   index, 
                   tipoItem, 
                   multiSelect,
-                  lastClickCtrlState,
-                  ctrlState: window._ctrlKeyState
+                  ctrlState: ctrlHelper.getCtrlState()
                 });
               }
               window.crossfilterOverview.setTipoFilter(tipo, multiSelect);
               window.crossfilterOverview.notifyListeners();
-              
-              // Reset após uso
-              lastClickCtrlState = false;
             }
           }
         };
@@ -2432,13 +2465,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
           if (canaisChart && canaisChart.canvas) {
             canaisChart.canvas.style.cursor = 'pointer';
             
-            // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
-            let lastClickCtrlState = false;
-            
-            canaisChart.canvas.addEventListener('click', (e) => {
-              lastClickCtrlState = e.ctrlKey || e.metaKey;
-              setTimeout(() => { lastClickCtrlState = false; }, 100);
-            }, true);
+            // SOLUÇÃO ROBUSTA: Usar helper para capturar CTRL
+            const ctrlHelper = createCtrlCaptureHelper(canaisChart.canvas);
             
             canaisChart.options.onClick = (event, elements) => {
               if (elements && elements.length > 0) {
@@ -2448,7 +2476,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 const canalItem = topCanais[index];
                 const canal = canalItem?.channel || canalItem?._id || labels[index];
                 if (canal && window.crossfilterOverview) {
-                  const multiSelect = lastClickCtrlState;
+                  // Obter estado do CTRL usando helper robusto
+                  const multiSelect = ctrlHelper.getCtrlState();
                   
                   if (window.Logger) {
                     window.Logger.debug('📊 Clique no gráfico de Canais:', { 
@@ -2460,7 +2489,6 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                   }
                   window.crossfilterOverview.setCanalFilter(canal, multiSelect);
                   window.crossfilterOverview.notifyListeners();
-                  lastClickCtrlState = false;
                 }
               }
             };
@@ -2532,13 +2560,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
           if (prioridadesChart && prioridadesChart.canvas) {
             prioridadesChart.canvas.style.cursor = 'pointer';
             
-            // SOLUÇÃO DEFINITIVA: Interceptar clique diretamente no canvas ANTES do Chart.js
-            let lastClickCtrlState = false;
-            
-            prioridadesChart.canvas.addEventListener('click', (e) => {
-              lastClickCtrlState = e.ctrlKey || e.metaKey;
-              setTimeout(() => { lastClickCtrlState = false; }, 100);
-            }, true);
+            // SOLUÇÃO ROBUSTA: Usar helper para capturar CTRL
+            const ctrlHelper = createCtrlCaptureHelper(prioridadesChart.canvas);
             
             prioridadesChart.options.onClick = (event, elements) => {
               if (elements && elements.length > 0) {
@@ -2548,7 +2571,8 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                 const prioridadeItem = byPriority[index];
                 const prioridade = prioridadeItem?.priority || prioridadeItem?._id || labels[index];
                 if (prioridade && window.crossfilterOverview) {
-                  const multiSelect = lastClickCtrlState;
+                  // Obter estado do CTRL usando helper robusto
+                  const multiSelect = ctrlHelper.getCtrlState();
                   
                   if (window.Logger) {
                     window.Logger.debug('📊 Clique no gráfico de Prioridades:', { 
@@ -2560,7 +2584,6 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
                   }
                   window.crossfilterOverview.setPrioridadeFilter(prioridade, multiSelect);
                   window.crossfilterOverview.notifyListeners();
-                  lastClickCtrlState = false;
                 }
               }
             };
@@ -2743,6 +2766,9 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
           }
         }
         
+        // CROSSFILTER: Criar helper para capturar CTRL ANTES de criar o gráfico
+        const ctrlHelperTiposTemporal = createCtrlCaptureHelper(tiposTemporalCanvas);
+        
         const tiposTemporalChart = new window.Chart(tiposTemporalCanvas, {
           type: 'line',
           data: {
@@ -2801,9 +2827,57 @@ async function renderMainCharts(summary, byMonth, byDay, byTheme, byOrgan, byTyp
               mode: 'nearest',
               axis: 'x',
               intersect: false
+            },
+            // CROSSFILTER: Adicionar onClick para filtrar por tipo
+            onClick: (event, elements) => {
+              if (elements && elements.length > 0) {
+                const element = elements[0];
+                const datasetIndex = element.datasetIndex;
+                
+                // Obter o tipo correspondente ao dataset clicado
+                if (datasetIndex >= 0 && datasetIndex < tiposTotais.length) {
+                  const tipoItem = tiposTotais[datasetIndex];
+                  const tipo = tipoItem.tipo;
+                  
+                  if (tipo && window.crossfilterOverview) {
+                    // Usar helper criado antes do gráfico
+                    const multiSelect = ctrlHelperTiposTemporal.getCtrlState();
+                    
+                    if (window.Logger) {
+                      window.Logger.debug('📊 Clique no gráfico de Tipos Temporal:', { 
+                        tipo, 
+                        datasetIndex, 
+                        multiSelect
+                      });
+                    }
+                    
+                    window.crossfilterOverview.setTipoFilter(tipo, multiSelect);
+                    window.crossfilterOverview.notifyListeners();
+                  }
+                }
+              }
             }
           }
         });
+        
+        // CROSSFILTER: Adicionar wrapper para clique direito
+        if (tiposTemporalCanvas) {
+          const container = tiposTemporalCanvas.parentElement;
+          if (container && !container.dataset.crossfilterEnabled) {
+            container.dataset.crossfilterEnabled = 'true';
+            container.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              if (window.crossfilterOverview) {
+                window.crossfilterOverview.clearAllFilters();
+                window.crossfilterOverview.notifyListeners();
+              }
+            });
+          }
+          
+          // Tornar gráfico clicável
+          tiposTemporalCanvas.style.cursor = 'pointer';
+          tiposTemporalCanvas.title = 'Clique em uma linha para filtrar por tipo | Clique direito para limpar filtros';
+        }
         
         // Armazenar referência
         window.chartTiposTemporal = tiposTemporalChart;
@@ -2959,7 +3033,37 @@ async function renderSLAChart(slaData) {
       if (slaChart && slaChart.canvas) {
         slaChart.canvas.style.cursor = 'pointer';
         slaChart.options.onClick = (event, elements) => {
-          // CROSSFILTER: Por enquanto não filtrar por SLA (categoria especial)
+          // CROSSFILTER: Filtrar por status baseado no SLA
+          if (elements && elements.length > 0) {
+            const element = elements[0];
+            const index = element.index;
+            
+            // Mapear índice do SLA para status
+            // 0 = Concluídos, 1 = Verde, 2 = Amarelo, 3 = Vermelho
+            const slaStatusMap = {
+              0: 'Concluído', // ou 'Fechado' dependendo do sistema
+              1: 'Em Andamento', // Verde (dentro do prazo)
+              2: 'Em Andamento', // Amarelo (próximo do prazo)
+              3: 'Em Andamento' // Vermelho (atrasado)
+            };
+            
+            // Por enquanto, apenas logar - SLA é uma métrica calculada
+            // Pode ser implementado filtro por status de SLA no futuro
+            if (window.Logger) {
+              window.Logger.debug('📊 Clique no gráfico de SLA:', { 
+                index, 
+                label: labels[index],
+                value: values[index]
+              });
+            }
+            
+            // OPÇÃO: Filtrar por status "Concluído" se clicar em "Concluídos"
+            if (index === 0 && window.crossfilterOverview) {
+              // Filtrar por status concluído
+              window.crossfilterOverview.setStatusFilter('Concluído', false);
+              window.crossfilterOverview.notifyListeners();
+            }
+          }
         };
         safeChartUpdate(slaChart, 'none');
       }

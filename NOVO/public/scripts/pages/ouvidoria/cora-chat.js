@@ -130,6 +130,7 @@ async function loadCoraChat() {
 
 /**
  * Carregar mensagens do banco
+ * MELHORIA: Agora também carrega sugestões de perguntas
  */
 async function loadChatMessages() {
   try {
@@ -137,7 +138,8 @@ async function loadChatMessages() {
       window.Logger.debug('📥 Carregando mensagens do banco...');
     }
     
-    const response = await fetch('/api/chat/messages', {
+    const context = chatConfig?.context || 'ouvidoria';
+    const response = await fetch(`/api/chat/messages?context=${context}&suggestions=true`, {
       credentials: 'include' // Enviar cookies de sessão
     });
     if (response.ok) {
@@ -154,6 +156,12 @@ async function loadChatMessages() {
         createdAt: msg.createdAt || msg.timestamp || new Date().toISOString()
       }));
       
+      // MELHORIA: Armazenar sugestões se disponíveis
+      if (data.suggestions && Array.isArray(data.suggestions)) {
+        window.coraSuggestions = data.suggestions;
+        renderSuggestions();
+      }
+      
       // Se não há mensagens, adicionar mensagem inicial baseada no contexto
       if (chatMessages.length === 0) {
         const contextMessages = {
@@ -163,7 +171,7 @@ async function loadChatMessages() {
         };
         
         chatMessages.push({
-          text: contextMessages[chatConfig?.context || 'ouvidoria'] || contextMessages.ouvidoria,
+          text: contextMessages[context] || contextMessages.ouvidoria,
           sender: 'cora',
           createdAt: new Date().toISOString()
         });
@@ -191,6 +199,63 @@ async function loadChatMessages() {
     }];
   }
 }
+
+/**
+ * Renderizar sugestões de perguntas
+ * MELHORIA: Nova funcionalidade
+ */
+function renderSuggestions() {
+  const suggestions = window.coraSuggestions || [];
+  if (suggestions.length === 0) return;
+  
+  // Tentar encontrar container de sugestões
+  let suggestionsContainer = document.getElementById('coraSuggestions');
+  if (!suggestionsContainer && chatConfig?.messagesContainer) {
+    // Criar container se não existir
+    suggestionsContainer = document.createElement('div');
+    suggestionsContainer.id = 'coraSuggestions';
+    suggestionsContainer.className = 'mt-4 space-y-2';
+    
+    const title = document.createElement('div');
+    title.className = 'text-sm text-slate-400 mb-2';
+    title.textContent = '💡 Sugestões de perguntas:';
+    suggestionsContainer.appendChild(title);
+    
+    const suggestionsList = document.createElement('div');
+    suggestionsList.id = 'coraSuggestionsList';
+    suggestionsList.className = 'flex flex-wrap gap-2';
+    suggestionsContainer.appendChild(suggestionsList);
+    
+    // Inserir antes do formulário
+    const form = chatConfig?.form;
+    if (form && form.parentNode) {
+      form.parentNode.insertBefore(suggestionsContainer, form);
+    }
+  }
+  
+  const suggestionsList = document.getElementById('coraSuggestionsList');
+  if (!suggestionsList) return;
+  
+  suggestionsList.innerHTML = suggestions.map(suggestion => `
+    <button 
+      type="button"
+      class="px-3 py-1.5 text-xs bg-slate-700/50 hover:bg-slate-600/50 rounded-lg text-slate-300 transition-colors"
+      onclick="window.sendCoraSuggestion('${suggestion.replace(/'/g, "\\'")}')"
+    >
+      ${suggestion}
+    </button>
+  `).join('');
+}
+
+/**
+ * Enviar sugestão como mensagem
+ */
+window.sendCoraSuggestion = function(suggestion) {
+  if (chatConfig?.input) {
+    chatConfig.input.value = suggestion;
+    sendMessage(suggestion);
+  }
+};
 
 /**
  * Formatar data/hora para exibição
