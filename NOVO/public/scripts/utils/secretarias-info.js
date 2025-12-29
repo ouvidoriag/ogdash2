@@ -21,6 +21,7 @@
     if (!modal) return;
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    modal.style.display = 'flex'; // Forçar display flex
 
     // Sempre recarregar dados ao abrir o modal (para garantir dados atualizados)
     loadData(false);
@@ -31,6 +32,7 @@
     if (!modal) return;
     modal.classList.add('hidden');
     modal.classList.remove('flex');
+    modal.style.display = 'none'; // Forçar display none
   }
 
   async function loadData(forceRefresh = false) {
@@ -192,9 +194,23 @@
     }
   }
 
+  // Garantir que o modal comece oculto
+  function ensureModalHidden() {
+    const modal = qs('secretariasInfoModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      modal.style.display = 'none';
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initEvents);
+    document.addEventListener('DOMContentLoaded', () => {
+      ensureModalHidden();
+      initEvents();
+    });
   } else {
+    ensureModalHidden();
     initEvents();
   }
 
