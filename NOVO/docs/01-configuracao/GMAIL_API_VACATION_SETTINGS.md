@@ -22,12 +22,14 @@ As credenciais foram atualizadas em `NOVO/config/gmail-credentials.json`:
 ```json
 {
   "web": {
-    "client_id": "353430763944-tmerll34c4anr8d12vjnpk6bv0c9i3fd.apps.googleusercontent.com",
+    "client_id": "SEU_CLIENT_ID_AQUI",
     "project_id": "agendaouvidoria",
-    "client_secret": "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"
+    "client_secret": "SEU_CLIENT_SECRET_AQUI"
   }
 }
 ```
+
+> ⚠️ **IMPORTANTE**: Nunca commite credenciais reais no repositório. Use variáveis de ambiente ou arquivos de configuração locais que estejam no `.gitignore`.
 
 ### Escopos Configurados
 
