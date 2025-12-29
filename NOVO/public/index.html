@@ -37,6 +37,34 @@
         const tailwindCSS = document.createElement('link');
         tailwindCSS.rel = 'stylesheet';
         tailwindCSS.href = '/styles/tailwind.css'; // Arquivo CSS compilado
+        
+        // Fallback: se o CSS não carregar em 3 segundos, usar CDN
+        tailwindCSS.onerror = () => {
+          console.warn('⚠️ Tailwind CSS local não carregou, usando CDN como fallback');
+          const tailwindScript = document.createElement('script');
+          tailwindScript.src = 'https://cdn.tailwindcss.com';
+          document.head.appendChild(tailwindScript);
+        };
+        
+        // Verificar se carregou após 3 segundos
+        setTimeout(() => {
+          const stylesheets = Array.from(document.styleSheets);
+          const tailwindLoaded = stylesheets.some(sheet => {
+            try {
+              return sheet.href && sheet.href.includes('tailwind');
+            } catch (e) {
+              return false;
+            }
+          });
+          
+          if (!tailwindLoaded) {
+            console.warn('⚠️ Tailwind CSS não detectado após 3s, usando CDN como fallback');
+            const tailwindScript = document.createElement('script');
+            tailwindScript.src = 'https://cdn.tailwindcss.com';
+            document.head.appendChild(tailwindScript);
+          }
+        }, 3000);
+        
         document.head.appendChild(tailwindCSS);
       }
     </script>
@@ -1510,7 +1538,7 @@
           </section>
         </section>
         
-        <section id="page-home" class="">
+        <section id="page-home" class="" style="display: block;">
           <div class="glass rounded-2xl p-8 md:p-12 text-center">
             <div class="mb-8">
               <div class="inline-block relative">

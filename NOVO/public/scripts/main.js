@@ -40,6 +40,19 @@ function initPage() {
     });
   }
   
+  // FALLBACK: Garantir que a página home seja exibida mesmo se não estiver no container #pages
+  const homePage = document.getElementById(homePageId);
+  if (homePage) {
+    homePage.style.display = 'block';
+    if (window.Logger) {
+      window.Logger.debug(`✅ Página ${homePageId} exibida via fallback`);
+    }
+  } else {
+    if (window.Logger) {
+      window.Logger.warn(`⚠️ Página ${homePageId} não encontrada`);
+    }
+  }
+  
   const activeMenu = isCentral ? document.getElementById('sideMenuCentral') :
                      (isOuvidoria ? document.getElementById('sideMenuOuvidoria') : 
                      (isZeladoria ? document.getElementById('sideMenuZeladoria') : document.getElementById('sideMenuEsic')));
